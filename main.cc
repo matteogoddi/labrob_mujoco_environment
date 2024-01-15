@@ -43,6 +43,10 @@ extern "C" {
 #endif
 }
 
+// hrp4_locomotion
+#include <hrp4_locomotion/ISMPCState.hpp>
+
+
 namespace {
 namespace mj = ::mujoco;
 namespace mju = ::mujoco::sample_util;
@@ -360,6 +364,13 @@ void PhysicsLoop(mj::Simulate& sim) {
           // misalignment condition: distance from target sim time is bigger than syncmisalign
           bool misaligned =
               mju_abs(Seconds(elapsedCPU).count()/slowdown - elapsedSim) > syncMisalign;
+
+          // IS-MPC
+          labrob::ISMPCState ismpc_state(
+            Eigen::Vector3d::Zero(),
+            Eigen::Vector3d::Zero(),
+            Eigen::Vector3d::Zero()
+          );
 
           for (int i=0; i<m->nu; i++) {
             d->qvel[i] = 1;

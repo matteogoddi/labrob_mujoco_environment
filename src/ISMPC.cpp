@@ -1,7 +1,5 @@
 #include <hrp4_locomotion/ISMPC.hpp>
 
-#include <ros/ros.h>
-
 namespace labrob {
 
 ISMPC::ISMPC(
@@ -64,9 +62,9 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
 
   double omega = std::sqrt(9.81 / com_target_height_);
 
-  const auto& feet_placement = walking_data.footstep_plan.front().getFeetPlacement();
-  Eigen::Vector3d p_support = feet_placement.getSupportFootConfiguration().p;
-  Eigen::Vector3d p_swing = feet_placement.getSwingFootConfiguration().p;
+  //const auto& feet_placement = walking_data.footstep_plan.front().getFeetPlacement();
+  //Eigen::Vector3d p_support = feet_placement.getSupportFootConfiguration().p;
+  //Eigen::Vector3d p_swing = feet_placement.getSwingFootConfiguration().p;
 
   Eigen::VectorXd mc_x(N_);
   Eigen::VectorXd mc_y(N_);

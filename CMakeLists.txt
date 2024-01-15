@@ -34,6 +34,15 @@ project(
   HOMEPAGE_URL "https://mujoco.org"
 )
 
+find_package(blasfeo REQUIRED)
+find_package(hpipm REQUIRED)
+find_package(Eigen3 REQUIRED)
+find_package(pinocchio REQUIRED)
+
+# Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
+set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
+set(hpipm_INCLUDE_DIRS /opt/hpipm/include)
+
 enable_language(C)
 enable_language(CXX)
 if(APPLE)
@@ -100,6 +109,36 @@ if(NOT TARGET lodepng)
   endif()
 endif()
 
+# WalkingController library
+add_library(WalkingController OBJECT)
+target_include_directories(
+  WalkingController
+  PUBLIC
+    include
+    ${blasfeo_INCLUDE_DIRS}
+    ${hpipm_INCLUDE_DIRS}
+)
+target_sources(
+  WalkingController
+  PUBLIC
+    src/DoubleSupportConfiguration.cpp
+    src/FootstepPlanElement.cpp
+    src/ISMPC.cpp
+    src/ISMPCState.cpp
+    src/JointState.cpp
+    src/RobotState.cpp
+    src/SE3.cpp
+    src/utils.cpp
+    src/WalkingData.cpp
+    #src/WalkingManager.cpp
+    src/WalkingState.cpp
+)
+target_link_libraries(
+  WalkingController
+  pinocchio::pinocchio
+  ${blasfeo_LIBRARIES}
+)
+
 # Simulate library
 add_library(platform_ui_adapter OBJECT)
 target_sources(
@@ -133,7 +172,7 @@ target_sources(
 )
 target_include_directories(libsimulate PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(libsimulate PRIVATE ${MUJOCO_SIMULATE_COMPILE_OPTIONS})
-target_link_libraries(libsimulate PUBLIC lodepng mujoco::platform_ui_adapter mujoco::mujoco)
+target_link_libraries(libsimulate PUBLIC lodepng mujoco::platform_ui_adapter mujoco::mujoco WalkingController)
 target_link_options(libsimulate PRIVATE ${MUJOCO_SIMULATE_LINK_OPTIONS})
 
 if(APPLE)

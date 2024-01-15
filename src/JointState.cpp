@@ -1,3 +1,5 @@
+#include <string>
+
 #include <hrp4_locomotion/JointState.hpp>
 
 namespace labrob {

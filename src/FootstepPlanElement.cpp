@@ -8,9 +8,10 @@ FootstepPlanElement::FootstepPlanElement(
     int64_t duration,
     const labrob::WalkingState& walking_state
 ) : feet_placement_(feet_placement),
+    walking_state_(walking_state),
     swing_foot_trajectory_height_(swing_foot_trajectory_height),
-    duration_(duration),
-    walking_state_(walking_state) { }
+    duration_(duration)
+     { }
 
 labrob::DoubleSupportConfiguration&
 FootstepPlanElement::getFeetPlacement() {
