@@ -34,14 +34,16 @@ project(
   HOMEPAGE_URL "https://mujoco.org"
 )
 
-find_package(blasfeo REQUIRED)
-find_package(hpipm REQUIRED)
+#find_package(blasfeo REQUIRED)
+#find_package(hpipm REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(pinocchio REQUIRED)
 
 # Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
 set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
 set(hpipm_INCLUDE_DIRS /opt/hpipm/include)
+set(blasfeo_LIBRARIES /opt/blasfeo/lib/libblasfeo.a)
+set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 
 enable_language(C)
 enable_language(CXX)
