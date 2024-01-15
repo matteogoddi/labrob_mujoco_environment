@@ -1,0 +1,24 @@
+#pragma once
+
+#include <hrp4_locomotion/JointState.hpp>
+
+#include <Eigen/Core>
+#include <Eigen/Geometry>
+
+namespace labrob {
+
+class RobotState {
+ public:
+  RobotState();
+
+  Eigen::Vector3d position;
+  Eigen::Quaterniond orientation;
+
+  // Velocities of the base link expressed in the reference frame of the base.
+  Eigen::Vector3d linear_velocity;
+  Eigen::Vector3d angular_velocity;
+
+  labrob::JointState joint_state;
+}; // end class RobotState
+
+} // end namespace labrob
