@@ -49,6 +49,7 @@ extern "C" {
 // hrp4_locomotion
 #include <hrp4_locomotion/ISMPCState.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
+#include <hrp4_locomotion/utils.hpp>
 
 
 namespace {
@@ -63,6 +64,8 @@ const int kErrorLength = 1024;          // load error string length
 // model and data
 mjModel* m = nullptr;
 mjData* d = nullptr;
+
+mjtNum* qpos0 = nullptr;
 
 // control noise variables
 mjtNum* ctrlnoise = nullptr;
@@ -397,27 +400,29 @@ void PhysicsLoop(mj::Simulate& sim) {
 
           for (int i = 1; i < m->njnt; ++i) {
             const char* name = mj_id2name(m, mjOBJ_JOINT, i);
-            robot_state.joint_state[name].pos = d->qpos[i + m->nq - m->njnt];
-            robot_state.joint_state[name].vel = d->qvel[i + m->nv - m->njnt];
+            robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
+            robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
           }
 
-          /*for (int i = 7; i < m->nq; ++i) {
-            robot_state.joint_state[key].pos = d->qpos[i];
-          }
-
-          for (int i = 6; i m->nv; ++i) {
-            robot_state.joint_state[key].vel = d->qvel[i];
-          }*/
-
-          // Write velocities:
-          for (int i = 0; i < m->nv; ++i) {
+          // Keep pose of the robot constant:
+          for (int i = 0; i < 6; ++i) {
             d->qvel[i] = 0.0;
           }
 
-          // Torque controlled:
-          //for (int i = 0; i < m->nu; ++i) {
-          //d->ctrl[i] = 0.0;
-          //}
+          // Send control inputs:
+          for (int i = 1; i < m->njnt; ++i) {
+            const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+            int jnt_qpos_idx = m->jnt_qposadr[i];
+            int jnt_qvel_idx = m->jnt_dofadr[i];
+            mjtNum err_q = labrob::wrap_angle(qpos0[jnt_qpos_idx] - d->qpos[jnt_qpos_idx]);
+            mjtNum err_v = -d->qvel[jnt_qvel_idx];
+            printf("%s\n", name);
+            printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
+            printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
+            printf("qpos[%d]=%f\n", jnt_qpos_idx, d->qpos[jnt_qpos_idx]);
+            printf("err_q=%f\n", err_q);
+            d->ctrl[i - 1] = 200.0 * err_q + 10.0 * err_v;
+          }
 
           // out-of-sync (for any reason): reset sync times, step
           if (elapsedSim < 0 || elapsedCPU.count() < 0 || syncCPU.time_since_epoch().count() == 0 ||
@@ -493,11 +498,55 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
     }
     if (d) {
       // Init robot posture:
+      mjtNum r_hip_y_init = 0.0;
+      mjtNum r_hip_r_init = -0.05;
+      mjtNum r_hip_p_init = -0.44;
+      mjtNum r_knee_init = 0.95;
+      mjtNum r_ankle_p_init = -0.49;
+      mjtNum r_ankle_r_init = 0.07;
+      mjtNum l_hip_y_init = 0.0;
+      mjtNum l_hip_r_init = -r_hip_r_init;
+      mjtNum l_hip_p_init = r_hip_p_init;
+      mjtNum l_knee_init = r_knee_init;
+      mjtNum l_ankle_p_init = r_ankle_p_init;
+      mjtNum l_ankle_r_init = -r_ankle_r_init;
+      mjtNum r_shoulder_p_init = 0.07;
+      mjtNum r_shoulder_r_init = -0.14;
+      mjtNum r_shoulder_y_init = 0.0;
+      mjtNum r_elbow_p_init = -0.44;
+      mjtNum l_shoulder_p_init = r_shoulder_p_init;
+      mjtNum l_shoulder_r_init = -r_shoulder_r_init;
+      mjtNum l_shoulder_y_init = 0.0;
+      mjtNum l_elbow_p_init = r_elbow_p_init;
+
       for (int i = 0; i < m->nq; ++i) {
         d->qpos[i] = 0.0;
       }
-      d->qpos[2] = 0.85;
+      d->qpos[2] = 1.0;//0.792151;
       d->qpos[3] = 1.0;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_Y")]] = r_hip_y_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_R")]] = r_hip_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_P")]] = r_hip_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_KNEE")]] = r_knee_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_ANKLE_P")]] = r_ankle_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_ANKLE_R")]] = r_ankle_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_HIP_Y")]] = l_hip_y_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_HIP_R")]] = l_hip_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_HIP_P")]] = l_hip_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_KNEE")]] = l_knee_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_ANKLE_P")]] = l_ankle_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_ANKLE_R")]] = l_ankle_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_SHOULDER_P")]] = r_shoulder_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_SHOULDER_R")]] = r_shoulder_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_SHOULDER_Y")]] = r_shoulder_y_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_ELBOW_P")]] = r_elbow_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_SHOULDER_P")]] = l_shoulder_p_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_SHOULDER_R")]] = l_shoulder_r_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_SHOULDER_Y")]] = l_shoulder_y_init;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "L_ELBOW_P")]] = l_elbow_p_init;
+
+      qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * m->nq);
+      memcpy(qpos0, d->qpos, m->nq * sizeof(mjtNum));
 
       sim->Load(m, d, filename);
 
@@ -519,6 +568,7 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
 
   // delete everything we allocated
   free(ctrlnoise);
+  free(qpos0);
   mj_deleteData(d);
   mj_deleteModel(m);
 }

@@ -38,9 +38,14 @@ Rz_planar(T theta) {
 
 template <class T>
 T
+wrap_angle(T alpha) {
+  return std::atan2(std::sin(alpha), std::cos(alpha));
+}
+
+template <class T>
+T
 angle_difference(T alpha, T beta) {
-  Eigen::Matrix<T, 2, 2> R_diff = Rz_planar<T>(alpha - beta);
-  return std::atan2(R_diff(1, 0), R_diff(0, 0));
+  return wrap_angle(alpha - beta);
 }
 
 labrob::WalkingState
