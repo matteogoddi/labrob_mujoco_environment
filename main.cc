@@ -43,8 +43,12 @@ extern "C" {
 #endif
 }
 
+// Eigen
+#include <Eigen/Geometry>
+
 // hrp4_locomotion
 #include <hrp4_locomotion/ISMPCState.hpp>
+#include <hrp4_locomotion/RobotState.hpp>
 
 
 namespace {
@@ -372,9 +376,48 @@ void PhysicsLoop(mj::Simulate& sim) {
             Eigen::Vector3d::Zero()
           );
 
-          for (int i=0; i<m->nu; i++) {
-            d->qvel[i] = 1;
+          // Read robot state:
+          labrob::RobotState robot_state;
+
+          robot_state.position = Eigen::Vector3d(
+            d->qpos[0], d->qpos[1], d->qpos[2]
+          );
+
+          robot_state.orientation = Eigen::Quaterniond(
+            d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
+          );
+
+          robot_state.linear_velocity = Eigen::Vector3d(
+            d->qvel[0], d->qvel[1], d->qvel[2]
+          );
+
+          robot_state.angular_velocity = Eigen::Vector3d(
+            d->qvel[3], d->qvel[4], d->qvel[5]
+          );
+
+          for (int i = 1; i < m->njnt; ++i) {
+            const char* name = mj_id2name(m, mjOBJ_JOINT, i);
+            robot_state.joint_state[name].pos = d->qpos[i + m->nq - m->njnt];
+            robot_state.joint_state[name].vel = d->qvel[i + m->nv - m->njnt];
           }
+
+          /*for (int i = 7; i < m->nq; ++i) {
+            robot_state.joint_state[key].pos = d->qpos[i];
+          }
+
+          for (int i = 6; i m->nv; ++i) {
+            robot_state.joint_state[key].vel = d->qvel[i];
+          }*/
+
+          // Write velocities:
+          for (int i = 0; i < m->nv; ++i) {
+            d->qvel[i] = 0.0;
+          }
+
+          // Torque controlled:
+          //for (int i = 0; i < m->nu; ++i) {
+          //d->ctrl[i] = 0.0;
+          //}
 
           // out-of-sync (for any reason): reset sync times, step
           if (elapsedSim < 0 || elapsedCPU.count() < 0 || syncCPU.time_since_epoch().count() == 0 ||
@@ -449,6 +492,13 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
       d = mj_makeData(m);
     }
     if (d) {
+      // Init robot posture:
+      for (int i = 0; i < m->nq; ++i) {
+        d->qpos[i] = 0.0;
+      }
+      d->qpos[2] = 0.85;
+      d->qpos[3] = 1.0;
+
       sim->Load(m, d, filename);
 
       // lock the sim mutex
