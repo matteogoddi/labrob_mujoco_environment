@@ -405,15 +405,18 @@ void PhysicsLoop(mj::Simulate& sim) {
           }
 
           // Keep pose of the robot constant:
-          for (int i = 0; i < 6; ++i) {
-            d->qvel[i] = 0.0;
-          }
+          //for (int i = 0; i < 6; ++i) {
+          //  d->qvel[i] = 0.0;
+          //}
+
+          printf("nq=%d, nv=%d, nu=%d\n", m->nq, m->nv, m->nu);
 
           // Send control inputs:
-          for (int i = 1; i < m->njnt; ++i) {
-            const char* name = mj_id2name(m, mjOBJ_JOINT, i);
-            int jnt_qpos_idx = m->jnt_qposadr[i];
-            int jnt_qvel_idx = m->jnt_dofadr[i];
+          for (int i = 0; i < m->nu; ++i) {
+            const char* name = mj_id2name(m, mjOBJ_ACTUATOR, i);
+            int joint_id = m->actuator_trnid[i * 2];
+            int jnt_qpos_idx = m->jnt_qposadr[joint_id];
+            int jnt_qvel_idx = m->jnt_dofadr[joint_id];
             mjtNum err_q = labrob::wrap_angle(qpos0[jnt_qpos_idx] - d->qpos[jnt_qpos_idx]);
             mjtNum err_v = -d->qvel[jnt_qvel_idx];
             printf("%s\n", name);
@@ -421,7 +424,9 @@ void PhysicsLoop(mj::Simulate& sim) {
             printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
             printf("qpos[%d]=%f\n", jnt_qpos_idx, d->qpos[jnt_qpos_idx]);
             printf("err_q=%f\n", err_q);
-            d->ctrl[i - 1] = 200.0 * err_q + 10.0 * err_v;
+            d->ctrl[i] = 2000.0 * err_q + 50.0 * err_v;
+            //d->ctrl[i - 1] = 10.0 * err_q;
+            //d->qvel[jnt_qvel_idx] = 10.0 * err_q;
           }
 
           // out-of-sync (for any reason): reset sync times, step
@@ -498,6 +503,7 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
     }
     if (d) {
       // Init robot posture:
+      mjtNum waist_p_init = 0.425;
       mjtNum r_hip_y_init = 0.0;
       mjtNum r_hip_r_init = -0.05;
       mjtNum r_hip_p_init = -0.44;
@@ -522,8 +528,9 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
       for (int i = 0; i < m->nq; ++i) {
         d->qpos[i] = 0.0;
       }
-      d->qpos[2] = 1.0;//0.792151;
+      d->qpos[2] = 0.792151;
       d->qpos[3] = 1.0;
+      d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "WAIST_P")]] = waist_p_init;
       d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_Y")]] = r_hip_y_init;
       d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_R")]] = r_hip_r_init;
       d->qpos[m->jnt_qposadr[mj_name2id(m, mjOBJ_JOINT, "R_HIP_P")]] = r_hip_p_init;
