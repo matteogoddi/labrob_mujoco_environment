@@ -113,6 +113,8 @@ endif()
 
 # WalkingController library
 add_library(WalkingController OBJECT)
+set(HRP4_LOCOMOTION_HEADER_DIR include/hrp4_locomotion)
+set(LABROB_QP_SOLVERS_HEADER_DIR include/labrob_qpsolvers)
 target_include_directories(
   WalkingController
   PUBLIC
@@ -123,6 +125,26 @@ target_include_directories(
 target_sources(
   WalkingController
   PUBLIC
+    ${HRP4_LOCOMOTION_HEADER_DIR}/DoubleSupportConfiguration.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/Foot.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/FootstepPlanElement.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/ISMPC.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/ISMPCState.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/JointCommand.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/JointState.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/RobotState.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/SE3.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/TimingLaw.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/utils.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingData.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingManager.hpp
+    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingState.hpp
+    ${LABROB_QP_SOLVERS_HEADER_DIR}/HPIPMQPSolver.hpp
+    #${LABROB_QP_SOLVERS_HEADER_DIR}/QPOASESQPSolver.hpp
+    ${LABROB_QP_SOLVERS_HEADER_DIR}/QPSolver.hpp
+    ${LABROB_QP_SOLVERS_HEADER_DIR}/QPSolverEigenWrapper.hpp
+    ${LABROB_QP_SOLVERS_HEADER_DIR}/qpsolvers.hpp
+  PRIVATE
     src/DoubleSupportConfiguration.cpp
     src/FootstepPlanElement.cpp
     src/ISMPC.cpp

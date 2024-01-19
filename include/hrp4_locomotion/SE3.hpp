@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_SE3_HPP_
+#define LABROB_SE3_HPP_
 
 #include <Eigen/Core>
 
@@ -14,3 +15,5 @@ class SE3 {
 }; // end class SE3
 
 } // end namespace labrob
+
+#endif // LABROB_SE3_HPP_

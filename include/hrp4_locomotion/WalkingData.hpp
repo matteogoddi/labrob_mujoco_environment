@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_WALKING_DATA_HPP_
+#define LABROB_WALKING_DATA_HPP_
 
 #include <deque>
 
@@ -35,3 +36,5 @@ class WalkingData {
 }; // end class WalkingData
 
 } // end namespace labrob
+
+#endif // LABROB_WALKING_DATA_HPP_

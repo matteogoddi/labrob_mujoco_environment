@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_ISMPC_HPP_
+#define LABROB_ISMPC_HPP_
 
 // STL
 #include <fstream>
@@ -81,3 +82,5 @@ class ISMPC{
 }; // end class ISMPC
 
 } // end namespace labrob
+
+#endif // LABROB_ISMPC_HPP_

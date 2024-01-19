@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_
+#define LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_
 
 #include "QPSolver.hpp"
 
@@ -60,3 +61,5 @@ class QPSolverEigenWrapper {
 
 } // end namespace qpsolvers
 } // end namespace labrob
+
+#endif // LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_ROBOT_STATE_H_
+#define LABROB_ROBOT_STATE_H_
 
 #include <hrp4_locomotion/JointState.hpp>
 
@@ -22,3 +23,5 @@ class RobotState {
 }; // end class RobotState
 
 } // end namespace labrob
+
+#endif // LABROB_ROBOT_STATE_H_

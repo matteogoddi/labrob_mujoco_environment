@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_FOOTSTEP_PLAN_ELEMENT_HPP_
+#define LABROB_FOOTSTEP_PLAN_ELEMENT_HPP_
 
 #include <vector>
 
@@ -43,3 +44,5 @@ class FootstepPlanElement {
 }; // end class FootstepPlanElement
 
 } // end namespace labrob
+
+#endif // LABROB_FOOTSTEP_PLAN_ELEMENT_HPP_

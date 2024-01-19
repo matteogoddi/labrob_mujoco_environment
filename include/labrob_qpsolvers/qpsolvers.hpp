@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_QP_SOLVERS_
+#define LABROB_QP_SOLVERS_
 
 #include "QPSolver.hpp"
 
@@ -7,3 +8,5 @@
 //#include "QPOASESQPSolver.hpp"
 
 #include "QPSolverEigenWrapper.hpp"
+
+#endif // LABROB_QP_SOLVERS_

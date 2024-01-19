@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_JOINT_STATE_H_
+#define LABROB_JOINT_STATE_H_
 
 // STL
 #include <string>
@@ -28,3 +29,5 @@ class JointState {
 }; // end class JointState
 
 } // end namespace labrob
+
+#endif // LABROB_JOINT_STATE_H_

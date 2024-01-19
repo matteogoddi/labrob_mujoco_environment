@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_TIMING_LAW_HPP_
+#define LABROB_TIMING_LAW_HPP_
 
 #include <cmath>
 
@@ -178,3 +179,5 @@ class TrapezoidalAccelerationTimingLaw : public TimingLaw {
 }; // end class TrapezoidalAccelerationTimingLaw
 
 } // end namespace labrob
+
+#endif // LABROB_TIMING_LAW_HPP_

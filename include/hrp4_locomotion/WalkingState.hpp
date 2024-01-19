@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_WALKING_STATE_HPP_
+#define LABROB_WALKING_STATE_HPP_
 
 #include <string>
 
@@ -19,3 +20,5 @@ enum class WalkingState {
 std::string to_string(const WalkingState& walking_state);
 
 } // end namespace labrob
+
+#endif // LABROB_WALKING_STATE_HPP_

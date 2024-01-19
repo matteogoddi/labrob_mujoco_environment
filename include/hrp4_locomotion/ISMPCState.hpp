@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_ISMPC_STATE_HPP_
+#define LABROB_ISMPC_STATE_HPP_
 
 #include <Eigen/Core>
 
@@ -18,3 +19,5 @@ class ISMPCState {
 }; // end class ISMPCState
 
 } // end namespace labrob
+
+#endif // LABROB_ISMPC_STATE_HPP_

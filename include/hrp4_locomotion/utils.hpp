@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_UTILS_HPP_
+#define LABROB_UTILS_HPP_
 
 // STL
 #include <cmath>
@@ -76,3 +77,5 @@ void saveFootstepPlan(
 );
 
 } // end namespace labrob
+
+#endif // LABROB_UTILS_HPP_

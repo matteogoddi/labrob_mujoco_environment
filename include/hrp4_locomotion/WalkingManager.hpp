@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_WALKING_MANAGER_HPP_
+#define LABROB_WALKING_MANAGER_HPP_
 
 #include <cmath>
 #include <string>
@@ -80,3 +81,5 @@ private:
 }; // end class WalkingManager
 
 } // end namespace labrob
+
+#endif // LABROB_WALKING_MANAGER_HPP_

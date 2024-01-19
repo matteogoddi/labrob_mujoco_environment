@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_HPIPM_QP_SOLVER_HPP_
+#define LABROB_HPIPM_QP_SOLVER_HPP_
 
 #include "QPSolver.hpp"
 
@@ -110,3 +111,5 @@ class HPIPMQPSolver : public QPSolver<double> {
 
 } // end namespace labrob::qpsolvers
 } // end namespace labrob
+
+#endif // LABROB_HPIPM_QP_SOLVER_HPP_

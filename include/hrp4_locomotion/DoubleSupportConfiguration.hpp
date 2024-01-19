@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LABROB_DOUBLE_SUPPORT_CONFIGURATION_HPP_
+#define LABROB_DOUBLE_SUPPORT_CONFIGURATION_HPP_
 
 #include <hrp4_locomotion/Foot.hpp>
 #include <hrp4_locomotion/SE3.hpp>
@@ -34,3 +35,5 @@ class DoubleSupportConfiguration {
 }; // end class DoubleSupportConfiguration
 
 } // end namespace labrob
+
+#endif // LABROB_DOUBLE_SUPPORT_CONFIGURATION_HPP_
