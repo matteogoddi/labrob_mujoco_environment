@@ -376,13 +376,6 @@ void PhysicsLoop(mj::Simulate& sim) {
           bool misaligned =
               mju_abs(Seconds(elapsedCPU).count()/slowdown - elapsedSim) > syncMisalign;
 
-          // IS-MPC
-          labrob::ISMPCState ismpc_state(
-            Eigen::Vector3d::Zero(),
-            Eigen::Vector3d::Zero(),
-            Eigen::Vector3d::Zero()
-          );
-
           // Read robot state:
           labrob::RobotState robot_state;
 

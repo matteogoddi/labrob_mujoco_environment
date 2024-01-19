@@ -112,58 +112,33 @@ if(NOT TARGET lodepng)
 endif()
 
 # WalkingController library
-add_library(WalkingController OBJECT)
-set(HRP4_LOCOMOTION_HEADER_DIR include/hrp4_locomotion)
-set(LABROB_QP_SOLVERS_HEADER_DIR include/labrob_qpsolvers)
+add_library(
+  WalkingController STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPCState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SE3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingState.cpp
+)
 target_include_directories(
   WalkingController
   PUBLIC
-    include
-    ${blasfeo_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
-)
-target_sources(
-  WalkingController
-  PUBLIC
-    ${HRP4_LOCOMOTION_HEADER_DIR}/DoubleSupportConfiguration.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/Foot.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/FootstepPlanElement.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/ISMPC.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/ISMPCState.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/JointCommand.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/JointState.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/RobotState.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/SE3.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/TimingLaw.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/utils.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingData.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingManager.hpp
-    ${HRP4_LOCOMOTION_HEADER_DIR}/WalkingState.hpp
-    ${LABROB_QP_SOLVERS_HEADER_DIR}/HPIPMQPSolver.hpp
-    #${LABROB_QP_SOLVERS_HEADER_DIR}/QPOASESQPSolver.hpp
-    ${LABROB_QP_SOLVERS_HEADER_DIR}/QPSolver.hpp
-    ${LABROB_QP_SOLVERS_HEADER_DIR}/QPSolverEigenWrapper.hpp
-    ${LABROB_QP_SOLVERS_HEADER_DIR}/qpsolvers.hpp
-  PRIVATE
-    src/DoubleSupportConfiguration.cpp
-    src/FootstepPlanElement.cpp
-    src/ISMPC.cpp
-    src/ISMPCState.cpp
-    src/JointCommand.cpp
-    src/JointState.cpp
-    src/RobotState.cpp
-    src/SE3.cpp
-    src/utils.cpp
-    src/WalkingData.cpp
-    src/WalkingManager.cpp
-    src/WalkingState.cpp
+    ${blasfeo_INCLUDE_DIRS}
 )
 target_link_libraries(
   WalkingController
-  PUBLIC
     pinocchio::pinocchio
-    ${blasfeo_LIBRARIES}
     ${hpipm_LIBRARIES}
+    ${blasfeo_LIBRARIES}
 )
 
 # Simulate library
