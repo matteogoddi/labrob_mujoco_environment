@@ -127,18 +127,21 @@ target_sources(
     src/FootstepPlanElement.cpp
     src/ISMPC.cpp
     src/ISMPCState.cpp
+    src/JointCommand.cpp
     src/JointState.cpp
     src/RobotState.cpp
     src/SE3.cpp
     src/utils.cpp
     src/WalkingData.cpp
-    #src/WalkingManager.cpp
+    src/WalkingManager.cpp
     src/WalkingState.cpp
 )
 target_link_libraries(
   WalkingController
-  pinocchio::pinocchio
-  ${blasfeo_LIBRARIES}
+  PUBLIC
+    pinocchio::pinocchio
+    ${blasfeo_LIBRARIES}
+    ${hpipm_LIBRARIES}
 )
 
 # Simulate library
@@ -174,7 +177,7 @@ target_sources(
 )
 target_include_directories(libsimulate PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(libsimulate PRIVATE ${MUJOCO_SIMULATE_COMPILE_OPTIONS})
-target_link_libraries(libsimulate PUBLIC lodepng mujoco::platform_ui_adapter mujoco::mujoco WalkingController)
+target_link_libraries(libsimulate PUBLIC lodepng mujoco::platform_ui_adapter mujoco::mujoco)
 target_link_options(libsimulate PRIVATE ${MUJOCO_SIMULATE_LINK_OPTIONS})
 
 if(APPLE)
@@ -212,6 +215,7 @@ if(SIMULATE_BUILD_EXECUTABLE)
     glfw
     Threads::Threads
     lodepng
+    WalkingController
   )
 
   target_link_options(simulate PRIVATE ${MUJOCO_SIMULATE_LINK_OPTIONS})

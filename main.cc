@@ -48,8 +48,10 @@ extern "C" {
 
 // hrp4_locomotion
 #include <hrp4_locomotion/ISMPCState.hpp>
+#include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/utils.hpp>
+#include <hrp4_locomotion/WalkingManager.hpp>
 
 
 namespace {
@@ -72,6 +74,8 @@ mjtNum* ctrlnoise = nullptr;
 
 using Seconds = std::chrono::duration<double>;
 
+// labrob WalkingManager
+labrob::WalkingManager walking_manager;
 
 //---------------------------------------- plugin handling -----------------------------------------
 
@@ -404,22 +408,18 @@ void PhysicsLoop(mj::Simulate& sim) {
             robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
           }
 
-          // Keep pose of the robot constant:
-          //for (int i = 0; i < 6; ++i) {
-          //  d->qvel[i] = 0.0;
-          //}
-
-          printf("nq=%d, nv=%d, nu=%d\n", m->nq, m->nv, m->nu);
+          // Update walking manager:
+          labrob::JointCommand joint_command;
+          walking_manager.update(robot_state, joint_command);
 
           // Send control inputs:
           for (int i = 0; i < m->nu; ++i) {
-            const char* name = mj_id2name(m, mjOBJ_ACTUATOR, i);
             int joint_id = m->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(m, mjOBJ_JOINT, joint_id));
             int jnt_qpos_idx = m->jnt_qposadr[joint_id];
             int jnt_qvel_idx = m->jnt_dofadr[joint_id];
             mjtNum err_q = labrob::wrap_angle(qpos0[jnt_qpos_idx] - d->qpos[jnt_qpos_idx]);
-            mjtNum err_v = -d->qvel[jnt_qvel_idx];
-            printf("%s\n", name);
+            mjtNum err_v = joint_command[joint_name] - d->qvel[jnt_qvel_idx];
             printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
             printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
             printf("qpos[%d]=%f\n", jnt_qpos_idx, d->qpos[jnt_qpos_idx]);
@@ -554,6 +554,9 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
 
       qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * m->nq);
       memcpy(qpos0, d->qpos, m->nq * sizeof(mjtNum));
+
+      // Initialize walking manager:
+      walking_manager.init();
 
       sim->Load(m, d, filename);
 

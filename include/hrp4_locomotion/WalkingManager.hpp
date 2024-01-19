@@ -8,9 +8,8 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
-#include <ros/ros.h>
-
 #include <hrp4_locomotion/ISMPC.hpp>
+#include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/JointState.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
@@ -25,11 +24,11 @@ class WalkingManager {
  public:
   WalkingManager() = default;
 
-  bool init(ros::NodeHandle& node_handle);
+  bool init();
 
   void update(
       const labrob::RobotState& robot_state,
-      labrob::RobotState& desired_robot_state
+      labrob::JointCommand& joint_command
   );
 
  protected:
@@ -68,31 +67,11 @@ private:
 
   int64_t t_msec_ = 0;
 
-  // Counter relative to reading of footstep planner, to be remove after
-  // refactoring of Humanoids 2023:
-  int footstep_reference_iter_ = 0;
-  //int impulse_application_instant_msec_ = 4400 + 4500;
-  double impulse_magnitude_ = 25.0;//16.0;
-  std::vector<Eigen::Vector3d> impulses_direction_ = {
-      Eigen::Vector3d(-2.0, -1.0, 0.0),
-      Eigen::Vector3d(-1.0, 0.0, 0.0),
-      Eigen::Vector3d(1.0, 0.0, 0.0),
-      Eigen::Vector3d(0.0, -1.0, 0.0),
-      Eigen::Vector3d(0.0, 1.0, 0.0)
-  };
-  std::vector<int64_t> impulses_application_instant_msec_ = {
-      4400 + 4500,
-      4400 + 9500,
-      4400 + 15500,
-      4400 + 24500,
-      4400 + 30500
-  };
-
   // Log files:
   std::ofstream mpc_timings_log_file_;
   std::ofstream com_log_file_;
   std::ofstream zmp_log_file_;
-  std::ofstream configuration_log_file_;
+  //std::ofstream configuration_log_file_;
   std::ofstream lsole_log_file_;
   std::ofstream rsole_log_file_;
   std::ofstream lsole_des_log_file_;

@@ -17,55 +17,26 @@
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
+#include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/TimingLaw.hpp>
 #include <hrp4_locomotion/utils.hpp>
 
 namespace labrob {
 
 bool
-WalkingManager::init(ros::NodeHandle& node_handle) {
-  // Read URDF from ROS server:
-  std::string robot_description_param = "/robot_description";
-  std::string robot_description_str;
-  if (!node_handle.getParam(robot_description_param, robot_description_str)) {
-    ROS_ERROR_STREAM(
-        "Cannot read robot description from " << robot_description_param
-    );
-    return false;
-  }
+WalkingManager::init() {
+  // Read URDF from file:
+  std::string robot_description_filename = "../../jvrc_description/jvrc1.urdf";
 
   // Build Pinocchio model and data from URDF:
   pinocchio::Model full_robot_model;
   pinocchio::JointModelFreeFlyer root_joint;
-  pinocchio::urdf::buildModelFromXML(
-      robot_description_str,
-      root_joint,
-      full_robot_model
+  pinocchio::urdf::buildModel(
+    robot_description_filename,
+    root_joint,
+    full_robot_model
   );
-  const std::vector<std::string> joint_to_lock_names{
-      "L_F22",
-      "L_F23",
-      "L_F32",
-      "L_F33",
-      "L_F42",
-      "L_F43",
-      "L_F52",
-      "L_F53",
-      "R_F22",
-      "R_F23",
-      "R_F32",
-      "R_F33",
-      "R_F42",
-      "R_F43",
-      "R_F52",
-      "R_F53",
-      "L_SHOULDER_R",
-      "R_SHOULDER_R",
-      "L_SHOULDER_P",
-      "R_SHOULDER_P",
-      "CHEST_P",
-      "CHEST_Y"
-  };
+  const std::vector<std::string> joint_to_lock_names{};
   std::vector<pinocchio::JointIndex> joint_ids_to_lock;
   for (const auto& joint_name : joint_to_lock_names) {
     if (full_robot_model.existJointName(joint_name)) {
@@ -85,9 +56,9 @@ WalkingManager::init(ros::NodeHandle& node_handle) {
   pinocchio::forwardKinematics(robot_model_, robot_data_, q_neutral);
   pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q_neutral);
   pinocchio::framesForwardKinematics(robot_model_, robot_data_, q_neutral);
-  lsole_idx_ = robot_model_.getFrameId("l_sole");
-  rsole_idx_ = robot_model_.getFrameId("r_sole");
-  torso_idx_ = robot_model_.getFrameId("torso");
+  lsole_idx_ = robot_model_.getFrameId("L_ANKLE_P_S");
+  rsole_idx_ = robot_model_.getFrameId("R_ANKLE_P_S");
+  torso_idx_ = robot_model_.getFrameId("base_link");
   const auto& T_lsole_init = robot_data_.oMf[lsole_idx_];
   const auto& T_rsole_init = robot_data_.oMf[rsole_idx_];
 
@@ -118,13 +89,13 @@ WalkingManager::init(ros::NodeHandle& node_handle) {
   q_jnt_des_(robot_model_.getJointId("R_HIP_Y") - 2) = r_hip_y_des;
   q_jnt_des_(robot_model_.getJointId("R_HIP_R") - 2) = r_hip_r_des;
   q_jnt_des_(robot_model_.getJointId("R_HIP_P") - 2) = r_hip_p_des;
-  q_jnt_des_(robot_model_.getJointId("R_KNEE_P") - 2) = r_knee_p_des;
+  q_jnt_des_(robot_model_.getJointId("R_KNEE") - 2) = r_knee_p_des;
   q_jnt_des_(robot_model_.getJointId("R_ANKLE_P") - 2) = r_ankle_p_des;
   q_jnt_des_(robot_model_.getJointId("R_ANKLE_R") - 2) = r_ankle_r_des;
   q_jnt_des_(robot_model_.getJointId("L_HIP_Y") - 2) = l_hip_y_des;
   q_jnt_des_(robot_model_.getJointId("L_HIP_R") - 2) = l_hip_r_des;
   q_jnt_des_(robot_model_.getJointId("L_HIP_P") - 2) = l_hip_p_des;
-  q_jnt_des_(robot_model_.getJointId("L_KNEE_P") - 2) = l_knee_p_des;
+  q_jnt_des_(robot_model_.getJointId("L_KNEE") - 2) = l_knee_p_des;
   q_jnt_des_(robot_model_.getJointId("L_ANKLE_P") - 2) = l_ankle_p_des;
   q_jnt_des_(robot_model_.getJointId("L_ANKLE_R") - 2) = l_ankle_r_des;
   q_jnt_des_(robot_model_.getJointId("R_SHOULDER_P") - 2) = r_shoulder_p_des;
@@ -239,37 +210,17 @@ WalkingManager::init(ros::NodeHandle& node_handle) {
   ));
 
   // Save and read again footstep plan to double check it's working:
-  std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
+  //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
   //labrob::saveFootstepPlan(walking_data_.footstep_plan, footstep_plan_path);
   //labrob::readFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-  labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-
-  // Debug readHumanoids2023FootstepPlan:
-  labrob::SE3 T_lsole_init_humanoids2023(
-      Eigen::Matrix3d::Identity(),
-      Eigen::Vector3d(-2.1, -1.25+0.06845, 0.0)
-  );
-  labrob::SE3 T_rsole_init_humanoids2023(
-      Eigen::Matrix3d::Identity(),
-      Eigen::Vector3d(-2.1, -1.25-0.06845, 0.0)
-  );
-  readHumanoids2023FootstepPlan(
-    "/home/administrator/repos/ISMPCFeasibility/data/footstep-reference-controller-0.txt",
-    labrob::DoubleSupportConfiguration(
-          T_lsole_init_humanoids2023,
-          T_rsole_init_humanoids2023,
-          labrob::Foot::RIGHT
-    ),
-    labrob::WalkingState::Init,
-    walking_data_.footstep_plan
-  );
+  //labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
 
   // Init MPC:
   Eigen::Vector3d p_CoM = robot_data_.com[0];
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-  ROS_WARN_STREAM("CoM target height: " << com_target_height);
+  std::cerr << "CoM target height: " << com_target_height << std::endl;
   double foot_constraint_square_width = 0.05;
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   labrob::ISMPCState mpc_init_state(
@@ -298,7 +249,7 @@ WalkingManager::init(ros::NodeHandle& node_handle) {
   mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
   com_log_file_.open("/tmp/com.txt");
   zmp_log_file_.open("/tmp/zmp.txt");
-  configuration_log_file_.open("/tmp/configuration.txt");
+  //configuration_log_file_.open("/tmp/configuration.txt");
   lsole_log_file_.open("/tmp/lsole.txt");
   rsole_log_file_.open("/tmp/rsole.txt");
   lsole_des_log_file_.open("/tmp/lsole_des.txt");
@@ -310,7 +261,7 @@ WalkingManager::init(ros::NodeHandle& node_handle) {
 void
 WalkingManager::update(
     const labrob::RobotState& robot_state,
-    labrob::RobotState& desired_robot_state) {
+    labrob::JointCommand& joint_command) {
 
   double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
@@ -370,8 +321,8 @@ WalkingManager::update(
       J_rsole
   );
 
-  ROS_WARN_STREAM("lsole position: " << T_lsole.translation().transpose());
-  ROS_WARN_STREAM("rsole position: " << T_rsole.translation().transpose());
+  std::cerr << "lsole position: " << T_lsole.translation().transpose() << std::endl;
+  std::cerr << "rsole position: " << T_rsole.translation().transpose() << std::endl;
 
   // Update walking state:
   walking_data_.updateWalkingState(t_msec_);
@@ -390,33 +341,6 @@ WalkingManager::update(
       ));
   }
 
-  // Push CoM (for Humanoids 2023 only):
-  //if (t_msec_ == impulse_application_instant_msec_) {
-  if (auto impulses_it = std::find(impulses_application_instant_msec_.begin(), impulses_application_instant_msec_.end(), t_msec_);
-      impulses_it != impulses_application_instant_msec_.end()) {
-    const auto& impulse_direction = impulses_direction_[impulses_it - impulses_application_instant_msec_.begin()];
-    Eigen::Vector3d impulse = 0.001 * static_cast<double>(controller_timestep_msec_) * impulse_magnitude_ * impulse_direction;
-    ROS_ERROR_STREAM("Applying an impulse of " << impulse.transpose() << " at t=" << controller_timestep);
-    auto ismpc_state = ismpc_ptr_->getState();
-    ismpc_state.com_vel_ += impulse;
-    ismpc_ptr_->setState(ismpc_state);
-  }
-
-  // Update footstep plan (receiving data from nonlinear footstep planner):
-  if (walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation) {
-    readHumanoids2023FootstepPlan(
-        "/home/administrator/repos/ISMPCFeasibility/data/footstep-reference-controller-" + std::to_string(footstep_reference_iter_) + ".txt",
-        labrob::DoubleSupportConfiguration(
-              labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
-              labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-              labrob::Foot::RIGHT
-        ),
-        walking_data_.getWalkingState(),
-        walking_data_.footstep_plan
-    );
-    ++footstep_reference_iter_;
-  }
-
   // Update first element of footstep plan to make it consistent with 
   // state estimation module:
   //walking_data_.updateFootstepPlanWithCurrentStance(
@@ -424,9 +348,9 @@ WalkingManager::update(
   //    labrob::SE3(T_rsole.rotation(), T_rsole.translation())
   //);
 
-  ROS_WARN_STREAM("t (msec): " << t_msec_);
-  ROS_WARN_STREAM("\tWalkingState::" << to_string(walking_data_.getWalkingState()));
-  ROS_WARN_STREAM("\tFootstep plan size: " << walking_data_.footstep_plan.size());
+  std::cerr << "t (msec):" << t_msec_ << std::endl;
+  std::cerr << "\tWalkingState::" << to_string(walking_data_.getWalkingState()) << std::endl;
+  std::cerr << "\tFootstep plan size: " << walking_data_.footstep_plan.size() << std::endl;
   /*for (const auto& footstep_plan_element : walking_data_.footstep_plan) {
     const auto& feet_placement = footstep_plan_element.getFeetPlacement();
     auto duration = footstep_plan_element.getDuration();
@@ -522,11 +446,11 @@ WalkingManager::update(
   Eigen::MatrixXd err_posture_selection_matrix = Eigen::MatrixXd::Identity(njnt, njnt);
   if (walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation) {
     const std::vector<std::string> legs_joint_name = {
-        "R_HIP_Y", "R_HIP_R", "R_HIP_P", "R_KNEE_P", "R_ANKLE_P", "R_ANKLE_R",
-        "L_HIP_Y", "L_HIP_R", "L_HIP_P", "L_KNEE_P", "L_ANKLE_P", "L_ANKLE_R"
+        "R_HIP_Y", "R_HIP_R", "R_HIP_P", "R_KNEE", "R_ANKLE_P", "R_ANKLE_R",
+        "L_HIP_Y", "L_HIP_R", "L_HIP_P", "L_KNEE", "L_ANKLE_P", "L_ANKLE_R"
     };
     for (const auto& joint_name : legs_joint_name) {
-      auto idx = robot_model_.getJointId("R_HIP_Y") - 2;
+      auto idx = robot_model_.getJointId(joint_name) - 2;
       err_posture_selection_matrix(idx, idx) = 0.0;
     }
   }
@@ -609,14 +533,6 @@ WalkingManager::update(
   d_min_ineq << q_jnt_dot_min, q_jnt_min - q.tail(njnt);
   d_max_ineq << q_jnt_dot_max, q_jnt_max - q.tail(njnt);
 
-  //ROS_WARN_STREAM("cost_function_H(" << cost_function_H.rows() << ", " << cost_function_H.cols() << "):\n" << cost_function_H);
-  //ROS_WARN_STREAM("cost_function_f(" << cost_function_f.rows() << ", " << cost_function_f.cols() << "):\n" << cost_function_f.transpose());
-  //ROS_WARN_STREAM("A_eq(" << A_eq.rows() << ", " << A_eq.cols() << "):\n" << A_eq);
-  //ROS_WARN_STREAM("b_eq(" << b_eq.rows() << ", " << b_eq.cols() << "):\n" << b_eq.transpose());
-  //ROS_WARN_STREAM("C_ineq(" << C_ineq.rows() << ", " << C_ineq.cols() << "):\n" << C_ineq);
-  //ROS_WARN_STREAM("d_min_ineq(" << d_min_ineq.rows() << ", " << d_min_ineq.cols() << "):\n" << d_min_ineq.transpose());
-  //ROS_WARN_STREAM("d_max_ineq(" << d_max_ineq.rows() << ", " << d_max_ineq.cols() << "):\n" << d_max_ineq.transpose());
-
   qp_solver_ptr_->solve(
       cost_function_H,
       cost_function_f,
@@ -628,21 +544,14 @@ WalkingManager::update(
   );
 
   Eigen::VectorXd q_dot = qp_solver_ptr_->get_solution();
-  Eigen::VectorXd q_next(robot_model_.nq);
-  Eigen::VectorXd v = controller_timestep * q_dot;
-  pinocchio::integrate(robot_model_, q, v, q_next);
 
   // Pinocchio representation to labrob::RobotState representation:
   // TODO: is there a less error-prone way to convert representation?
-  desired_robot_state.position = q_next.head<3>();
-  desired_robot_state.orientation = q_next.segment<4>(3);
-  desired_robot_state.linear_velocity = v.head<3>();
-  desired_robot_state.angular_velocity = v.segment<3>(3);
   for(pinocchio::JointIndex joint_id = 2;
       joint_id < (pinocchio::JointIndex) robot_model_.njoints;
       ++joint_id) {
     const auto& joint_name = robot_model_.names[joint_id];
-    desired_robot_state.joint_state[joint_name].pos = q_next[joint_id + 5];
+    joint_command[joint_name] = q_dot[joint_id + 4];
   }
 
   // Update timing in milliseconds.
@@ -654,21 +563,6 @@ WalkingManager::update(
   mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
   com_log_file_ << p_CoM_des.transpose() << std::endl;
   zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
-  configuration_log_file_ << "x:" << desired_robot_state.position.x()
-      << ",y:" << desired_robot_state.position.y()
-      << ",z:" << desired_robot_state.position.z()
-      << ",qx:" << desired_robot_state.orientation.x()
-      << ",qy:" << desired_robot_state.orientation.y()
-      << ",qz:" << desired_robot_state.orientation.z()
-      << ",qw:" << desired_robot_state.orientation.w();
-  for(pinocchio::JointIndex joint_id = 2;
-      joint_id < (pinocchio::JointIndex) robot_model_.njoints;
-      ++joint_id) {
-    const auto& joint_name = robot_model_.names[joint_id];
-    configuration_log_file_ << "," << joint_name << ":"
-        << desired_robot_state.joint_state[joint_name].pos;
-  }
-  configuration_log_file_ << std::endl;
   lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
   rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
   lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;
