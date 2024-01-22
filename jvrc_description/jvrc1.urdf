@@ -33,14 +33,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_R_S.dae" />
+        <mesh filename="meshes/R_HIP_R_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_R_S.dae" />
+        <mesh filename="meshes/R_HIP_R_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -53,14 +53,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_Y_S.dae" />
+        <mesh filename="meshes/R_HIP_Y_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_Y_S.dae" />
+        <mesh filename="meshes/R_HIP_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -73,14 +73,14 @@
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0" />
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_KNEE_S.dae" />
+        <mesh filename="meshes/R_KNEE_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0" />
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_KNEE_S.dae" />
+        <mesh filename="meshes/R_KNEE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -100,14 +100,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ANKLE_P_S.dae" />
+        <mesh filename="meshes/R_ANKLE_P_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ANKLE_P_S.dae" />
+        <mesh filename="meshes/R_ANKLE_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -127,14 +127,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_R_S.dae" />
+        <mesh filename="meshes/L_HIP_R_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_R_S.dae" />
+        <mesh filename="meshes/L_HIP_R_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -147,14 +147,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_Y_S.dae" />
+        <mesh filename="meshes/L_HIP_Y_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_Y_S.dae" />
+        <mesh filename="meshes/L_HIP_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -167,14 +167,14 @@
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_KNEE_S.dae" />
+        <mesh filename="meshes/L_KNEE_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_KNEE_S.dae" />
+        <mesh filename="meshes/L_KNEE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -194,14 +194,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ANKLE_P_S.dae" />
+        <mesh filename="meshes/L_ANKLE_P_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ANKLE_P_S.dae" />
+        <mesh filename="meshes/L_ANKLE_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -214,14 +214,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_Y_S.dae" />
+        <mesh filename="meshes/WAIST_Y_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_Y_S.dae" />
+        <mesh filename="meshes/WAIST_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -241,14 +241,14 @@
     <visual>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_R_S.dae" />
+        <mesh filename="meshes/WAIST_R_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_R_S.dae" />
+        <mesh filename="meshes/WAIST_R_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -261,14 +261,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_Y_S.dae" />
+        <mesh filename="meshes/NECK_Y_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_Y_S.dae" />
+        <mesh filename="meshes/NECK_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -288,14 +288,14 @@
     <visual>
       <origin rpy="-0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_P_S.dae" />
+        <mesh filename="meshes/NECK_P_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_P_S.dae" />
+        <mesh filename="meshes/NECK_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -308,14 +308,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/R_SHOULDER_P_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/R_SHOULDER_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -335,14 +335,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/R_SHOULDER_Y_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/R_SHOULDER_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -355,14 +355,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_P_S.dae" />
+        <mesh filename="meshes/R_ELBOW_P_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_P_S.dae" />
+        <mesh filename="meshes/R_ELBOW_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -375,14 +375,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/R_ELBOW_Y_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/R_ELBOW_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -402,14 +402,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_WRIST_Y_S.dae" />
+        <mesh filename="meshes/R_WRIST_Y_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_WRIST_Y_S.dae" />
+        <mesh filename="meshes/R_WRIST_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -422,14 +422,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UTHUMB_S.dae" />
+        <mesh filename="meshes/R_UTHUMB_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UTHUMB_S.dae" />
+        <mesh filename="meshes/R_UTHUMB_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -442,14 +442,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LTHUMB_S.dae" />
+        <mesh filename="meshes/R_LTHUMB_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LTHUMB_S.dae" />
+        <mesh filename="meshes/R_LTHUMB_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -462,14 +462,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UINDEX_S.dae" />
+        <mesh filename="meshes/R_UINDEX_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UINDEX_S.dae" />
+        <mesh filename="meshes/R_UINDEX_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -482,14 +482,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LINDEX_S.dae" />
+        <mesh filename="meshes/R_LINDEX_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LINDEX_S.dae" />
+        <mesh filename="meshes/R_LINDEX_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -502,14 +502,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ULITTLE_S.dae" />
+        <mesh filename="meshes/R_ULITTLE_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ULITTLE_S.dae" />
+        <mesh filename="meshes/R_ULITTLE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -522,14 +522,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LLITTLE_S.dae" />
+        <mesh filename="meshes/R_LLITTLE_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LLITTLE_S.dae" />
+        <mesh filename="meshes/R_LLITTLE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -542,14 +542,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/L_SHOULDER_P_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/L_SHOULDER_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -569,14 +569,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/L_SHOULDER_Y_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/L_SHOULDER_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -589,14 +589,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_P_S.dae" />
+        <mesh filename="meshes/L_ELBOW_P_S.dae" />
       </geometry>
       <material name="dark_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_P_S.dae" />
+        <mesh filename="meshes/L_ELBOW_P_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -609,14 +609,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/L_ELBOW_Y_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/L_ELBOW_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -636,14 +636,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_WRIST_Y_S.dae" />
+        <mesh filename="meshes/L_WRIST_Y_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_WRIST_Y_S.dae" />
+        <mesh filename="meshes/L_WRIST_Y_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -656,14 +656,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UTHUMB_S.dae" />
+        <mesh filename="meshes/L_UTHUMB_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UTHUMB_S.dae" />
+        <mesh filename="meshes/L_UTHUMB_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -676,14 +676,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LTHUMB_S.dae" />
+        <mesh filename="meshes/L_LTHUMB_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LTHUMB_S.dae" />
+        <mesh filename="meshes/L_LTHUMB_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -696,14 +696,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UINDEX_S.dae" />
+        <mesh filename="meshes/L_UINDEX_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UINDEX_S.dae" />
+        <mesh filename="meshes/L_UINDEX_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -716,14 +716,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LINDEX_S.dae" />
+        <mesh filename="meshes/L_LINDEX_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LINDEX_S.dae" />
+        <mesh filename="meshes/L_LINDEX_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -736,14 +736,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ULITTLE_S.dae" />
+        <mesh filename="meshes/L_ULITTLE_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ULITTLE_S.dae" />
+        <mesh filename="meshes/L_ULITTLE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -756,14 +756,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LLITTLE_S.dae" />
+        <mesh filename="meshes/L_LLITTLE_S.dae" />
       </geometry>
       <material name="light_gray" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LLITTLE_S.dae" />
+        <mesh filename="meshes/L_LLITTLE_S.dae" />
       </geometry>
     </collision>
   </link>
@@ -776,14 +776,14 @@
     <visual>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/PELVIS_S.dae" />
+        <mesh filename="meshes/PELVIS_S.dae" />
       </geometry>
       <material name="orange" />
     </visual>
     <collision>
       <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/PELVIS_S.dae" />
+        <mesh filename="meshes/PELVIS_S.dae" />
       </geometry>
     </collision>
   </link>

@@ -549,7 +549,9 @@ void PhysicsThread(mj::Simulate* sim, const char* filename) {
       memcpy(qpos0, d->qpos, m->nq * sizeof(mjtNum));
 
       // Initialize walking manager:
+      printf("Init walking manager\n");
       walking_manager.init();
+      printf("Init walking manager [OK]\n");
 
       sim->Load(m, d, filename);
 
