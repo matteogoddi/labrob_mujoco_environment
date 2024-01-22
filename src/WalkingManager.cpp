@@ -26,7 +26,7 @@ namespace labrob {
 bool
 WalkingManager::init() {
   // Read URDF from file:
-  std::string robot_description_filename = "/home/michele/repos/labrob_mujoco_environment/jvrc_description/jvrc1.urdf";
+  std::string robot_description_filename = "/home/michele/repos/labrob_mujoco_environment/jvrc_description/urdf/jvrc1.urdf";
 
   // Build Pinocchio model and data from URDF:
   std::cerr << "building Pinocchio model from urdf" << std::endl;
@@ -35,8 +35,7 @@ WalkingManager::init() {
   pinocchio::urdf::buildModel(
     robot_description_filename,
     root_joint,
-    full_robot_model,
-    true
+    full_robot_model
   );
   std::cerr << "[OK]" << std::endl;
   const std::vector<std::string> joint_to_lock_names{};
