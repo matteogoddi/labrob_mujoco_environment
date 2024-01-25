@@ -11,27 +11,11 @@
 #include <pinocchio/parsers/urdf.hpp>
 
 // Labrob
+#include <hrp4_locomotion/JointCommand.hpp>
+#include <hrp4_locomotion/RobotState.hpp>
+#include <hrp4_locomotion/WalkingManager.hpp>
 #include <hrp4_locomotion/utils.hpp>
 
-mjtNum* qpos0;
-
-void jvrc1_controller(mjModel* m, mjData* d) {
-  for (int i = 0; i < m->nu; ++i) {
-    int joint_id = m->actuator_trnid[i * 2];
-    std::string joint_name = std::string(mj_id2name(m, mjOBJ_JOINT, joint_id));
-    int jnt_qpos_idx = m->jnt_qposadr[joint_id];
-    int jnt_qvel_idx = m->jnt_dofadr[joint_id];
-    mjtNum err_q = labrob::wrap_angle(qpos0[jnt_qpos_idx] - d->qpos[jnt_qpos_idx]);
-    mjtNum err_v = -d->qvel[jnt_qvel_idx];
-    printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
-    printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
-    printf("qpos[%d]=%f\n", jnt_qpos_idx, d->qpos[jnt_qpos_idx]);
-    printf("err_q=%f\n", err_q);
-    d->ctrl[i] = 2000.0 * err_q + 50.0 * err_v;
-    //d->ctrl[i - 1] = 10.0 * err_q;
-    //d->qvel[jnt_qvel_idx] = 10.0 * err_q;
-  }
-}
 
 int main() {
 
@@ -92,8 +76,12 @@ int main() {
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_SHOULDER_Y")]] = l_shoulder_y_init;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_ELBOW_P")]] = l_elbow_p_init;
 
-  qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * jvrc1_mj_model_ptr->nq);
+  mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * jvrc1_mj_model_ptr->nq);
   memcpy(qpos0, jvrc1_mj_data_ptr->qpos, jvrc1_mj_model_ptr->nq * sizeof(mjtNum));
+
+  // Walking Manager:
+  labrob::WalkingManager walking_manager;
+  walking_manager.init();
 
   // Mujoco visualization:
   mjvCamera cam;                      // abstract camera
@@ -133,7 +121,51 @@ int main() {
   while (!glfwWindowShouldClose(window)) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
-      jvrc1_controller(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+      // Read robot state:
+      labrob::RobotState robot_state;
+
+      robot_state.position = Eigen::Vector3d(
+        jvrc1_mj_data_ptr->qpos[0], jvrc1_mj_data_ptr->qpos[1], jvrc1_mj_data_ptr->qpos[2]
+      );
+
+      robot_state.orientation = Eigen::Quaterniond(
+        jvrc1_mj_data_ptr->qpos[3], jvrc1_mj_data_ptr->qpos[4], jvrc1_mj_data_ptr->qpos[5], jvrc1_mj_data_ptr->qpos[6]
+      );
+
+      robot_state.linear_velocity = Eigen::Vector3d(
+        jvrc1_mj_data_ptr->qvel[0], jvrc1_mj_data_ptr->qvel[1], jvrc1_mj_data_ptr->qvel[2]
+      );
+
+      robot_state.angular_velocity = Eigen::Vector3d(
+        jvrc1_mj_data_ptr->qvel[3], jvrc1_mj_data_ptr->qvel[4], jvrc1_mj_data_ptr->qvel[5]
+      );
+
+      for (int i = 1; i < jvrc1_mj_model_ptr->njnt; ++i) {
+        const char* name = mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, i);
+        robot_state.joint_state[name].pos = jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[i]];
+        robot_state.joint_state[name].vel = jvrc1_mj_data_ptr->qvel[jvrc1_mj_model_ptr->jnt_dofadr[i]];
+      }
+
+      // Update walking manager:
+      labrob::JointCommand joint_command;
+      walking_manager.update(robot_state, joint_command);
+
+      for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+        int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+        int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
+        int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
+        mjtNum err_q = 0.0; //labrob::wrap_angle(qpos0[jnt_qpos_idx] - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
+        mjtNum err_v = joint_command[joint_name] - jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
+        printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
+        printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
+        printf("qpos[%d]=%f\n", jnt_qpos_idx, jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
+        printf("err_q=%f\n", err_q);
+        jvrc1_mj_data_ptr->ctrl[i] = 2000.0 * err_q + 50.0 * err_v;
+        //jvrc1_mj_data_ptr->ctrl[i - 1] = 10.0 * err_q;
+        //jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = 10.0 * err_q;
+      }
+
       mj_step(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
     }
       
