@@ -1,1 +1,0 @@
-# labrob_mujoco_environment
