@@ -105,18 +105,6 @@ int main() {
   mjv_makeScene(jvrc1_mj_model_ptr, &scn, 1000);
   mjr_makeContext(jvrc1_mj_model_ptr, &con, mjFONTSCALE_100);
 
-  // Load URDF (for Pinocchio):
-  std::string robot_description_filename = "/home/michele/repos/labrob_mujoco_environment/jvrc_description/urdf/jvrc1.urdf";
-  pinocchio::Model full_robot_model;
-  pinocchio::JointModelFreeFlyer root_joint;
-  pinocchio::urdf::buildModel(
-    robot_description_filename,
-    root_joint,
-    full_robot_model
-  );
-  pinocchio::Model robot_model = full_robot_model;
-  pinocchio::Data robot_data(robot_model);
-
   // Simulation loop:
   while (!glfwWindowShouldClose(window)) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
