@@ -25,7 +25,7 @@ class WalkingManager {
  public:
   WalkingManager() = default;
 
-  bool init();
+  bool init(const labrob::RobotState& initial_robot_state);
 
   void update(
       const labrob::RobotState& robot_state,
@@ -50,6 +50,13 @@ class WalkingManager {
   std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
 
 private:
+  // TODO: to move out of the class WalkingManager.
+  Eigen::VectorXd
+  robot_state_to_pinocchio_joint_configuration(
+      const pinocchio::Model& robot_model,
+      const labrob::RobotState& robot_state
+  );
+
   Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;
 
   Eigen::Matrix<double, 6, 1> err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb);

@@ -24,12 +24,11 @@
 namespace labrob {
 
 bool
-WalkingManager::init() {
+WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   // Read URDF from file:
   std::string robot_description_filename = "/home/michele/repos/labrob_mujoco_environment/jvrc_description/urdf/jvrc1.urdf";
 
   // Build Pinocchio model and data from URDF:
-  std::cerr << "building Pinocchio model from urdf" << std::endl;
   pinocchio::Model full_robot_model;
   pinocchio::JointModelFreeFlyer root_joint;
   pinocchio::urdf::buildModel(
@@ -37,8 +36,18 @@ WalkingManager::init() {
     root_joint,
     full_robot_model
   );
-  std::cerr << "[OK]" << std::endl;
-  const std::vector<std::string> joint_to_lock_names{};
+  const std::vector<std::string> joint_to_lock_names{
+    "R_LTHUMB",
+    "R_UTHUMB",
+    "R_LINDEX",
+    "R_UINDEX",
+    "R_LLITTLE",
+    "L_LTHUMB",
+    "L_UTHUMB",
+    "L_LINDEX",
+    "L_UINDEX",
+    "L_LLITTLE"
+  };
   std::vector<pinocchio::JointIndex> joint_ids_to_lock;
   for (const auto& joint_name : joint_to_lock_names) {
     if (full_robot_model.existJointName(joint_name)) {
@@ -54,10 +63,13 @@ WalkingManager::init() {
   robot_data_ = pinocchio::Data(robot_model_);
 
   // Init desired lsole and rsole poses:
-  auto q_neutral = pinocchio::neutral(robot_model_);
-  pinocchio::forwardKinematics(robot_model_, robot_data_, q_neutral);
-  pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q_neutral);
-  pinocchio::framesForwardKinematics(robot_model_, robot_data_, q_neutral);
+  auto q_init = robot_state_to_pinocchio_joint_configuration(
+      robot_model_,
+      initial_robot_state
+  );
+  pinocchio::forwardKinematics(robot_model_, robot_data_, q_init);
+  pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q_init);
+  pinocchio::framesForwardKinematics(robot_model_, robot_data_, q_init);
   lsole_idx_ = robot_model_.getFrameId("L_ANKLE_P_S");
   rsole_idx_ = robot_model_.getFrameId("R_ANKLE_P_S");
   torso_idx_ = robot_model_.getFrameId("base_link");
@@ -66,6 +78,7 @@ WalkingManager::init() {
 
   int njnt = robot_model_.nv - 6;
 
+  double waist_p_des = 0.425;
   double r_hip_y_des = 0.0;
   double r_hip_r_des = -0.05;
   double r_hip_p_des = -0.44;
@@ -88,6 +101,7 @@ WalkingManager::init() {
   double l_elbow_p_des = r_elbow_p_des;
 
   q_jnt_des_ = Eigen::VectorXd::Zero(njnt);
+  q_jnt_des_(robot_model_.getJointId("WAIST_P") - 2) = waist_p_des;
   q_jnt_des_(robot_model_.getJointId("R_HIP_Y") - 2) = r_hip_y_des;
   q_jnt_des_(robot_model_.getJointId("R_HIP_R") - 2) = r_hip_r_des;
   q_jnt_des_(robot_model_.getJointId("R_HIP_P") - 2) = r_hip_p_des;
@@ -127,7 +141,17 @@ WalkingManager::init() {
       10000,
       labrob::WalkingState::Init
   ));
-
+  walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
+      labrob::DoubleSupportConfiguration(
+          labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
+          labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
+          labrob::Foot::RIGHT
+      ),
+      0.0,
+      10000,
+      labrob::WalkingState::Standing
+  ));
+/*
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -210,7 +234,7 @@ WalkingManager::init() {
       2000,
       labrob::WalkingState::Standing
   ));
-
+*/
   // Save and read again footstep plan to double check it's working:
   //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
   //labrob::saveFootstepPlan(walking_data_.footstep_plan, footstep_plan_path);
@@ -269,19 +293,7 @@ WalkingManager::update(
 
   int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
-  // labrob::RobotState representation to Pinocchio representation:
-  // TODO: RobotState also has information about the velocity of the floating base.
-  // TODO: is there a less error-prone way to convert representation?
-  Eigen::VectorXd q(robot_model_.nq);
-  q.head<3>() = robot_state.position;
-  q.segment<4>(3) = robot_state.orientation.coeffs();
-  // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
-  for(pinocchio::JointIndex joint_id = 2;
-      joint_id < (pinocchio::JointIndex) robot_model_.njoints;
-      ++joint_id) {
-    const auto& joint_name = robot_model_.names[joint_id];
-    q[joint_id + 5] = robot_state.joint_state[joint_name].pos;
-  }
+  auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
 
   // Perform forward kinematics on the whole tree and update robot data:
   pinocchio::forwardKinematics(robot_model_, robot_data_, q);
@@ -569,6 +581,28 @@ WalkingManager::update(
   rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
   lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;
   rsole_des_log_file_ << T_rsole_des.translation().transpose() << std::endl;
+}
+
+Eigen::VectorXd
+WalkingManager::robot_state_to_pinocchio_joint_configuration(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state
+) {
+  // labrob::RobotState representation to Pinocchio representation:
+  // TODO: RobotState also has information about the velocity of the floating base.
+  // TODO: is there a less error-prone way to convert representation?
+  Eigen::VectorXd q(robot_model.nq);
+  q.head<3>() = robot_state.position;
+  q.segment<4>(3) = robot_state.orientation.coeffs();
+  // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
+  for(pinocchio::JointIndex joint_id = 2;
+      joint_id < (pinocchio::JointIndex) robot_model.njoints;
+      ++joint_id) {
+    const auto& joint_name = robot_model.names[joint_id];
+    q[joint_id + 5] = robot_state.joint_state[joint_name].pos;
+  }
+
+  return q;
 }
 
 Eigen::MatrixXd
