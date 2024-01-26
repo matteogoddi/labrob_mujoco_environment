@@ -50,7 +50,7 @@ int main() {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* jvrc1_mjcf_filepath = "/home/michele/repos/labrob_mujoco_environment/jvrc_mj_description/scene.xml";
+  const char* jvrc1_mjcf_filepath = "../jvrc_mj_description/scene.xml";
   mjModel* jvrc1_mj_model_ptr = mj_loadXML(jvrc1_mjcf_filepath, nullptr, loadError, kErrorLength);
   mjData* jvrc1_mj_data_ptr = mj_makeData(jvrc1_mj_model_ptr);
 
