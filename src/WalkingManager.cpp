@@ -26,7 +26,7 @@ namespace labrob {
 bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   // Read URDF from file:
-  std::string robot_description_filename = "/home/michele/repos/labrob_mujoco_environment/jvrc_description/urdf/jvrc1.urdf";
+  std::string robot_description_filename = "../jvrc_description/urdf/jvrc1.urdf";
 
   // Build Pinocchio model and data from URDF:
   pinocchio::Model full_robot_model;
