@@ -54,6 +54,11 @@ int main() {
   mjModel* jvrc1_mj_model_ptr = mj_loadXML(jvrc1_mjcf_filepath, nullptr, loadError, kErrorLength);
   mjData* jvrc1_mj_data_ptr = mj_makeData(jvrc1_mj_model_ptr);
 
+  std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
+  std::ofstream joint_vel_des_log_file("/tmp/joint_vel_des.txt");
+  std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
+  std::ofstream joint_names_log_file("/tmp/joint_names.txt");
+
   // Init robot posture:
   mjtNum waist_p_init = 0.425;
   mjtNum r_hip_y_init = 0.0;
@@ -134,7 +139,16 @@ int main() {
   mjv_makeScene(jvrc1_mj_model_ptr, &scn, 1000);
   mjr_makeContext(jvrc1_mj_model_ptr, &con, mjFONTSCALE_100);
 
-  // Simulation loop:
+  for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+    int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+    std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+    joint_names_log_file << joint_name << std::endl;
+  }
+
+  joint_names_log_file.flush();
+  joint_names_log_file.close();
+
+    // Simulation loop:
   while (!glfwWindowShouldClose(window)) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
@@ -149,6 +163,8 @@ int main() {
       }
 
       for (int k = 0; k < 10; ++k) {
+//        mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
         for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
           int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
@@ -163,12 +179,26 @@ int main() {
           jvrc1_mj_data_ptr->ctrl[i] = 2000.0 * err_q + 50.0 * err_v;
           //jvrc1_mj_data_ptr->ctrl[i - 1] = 10.0 * err_q;
           //jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = 10.0 * err_q;
+
+          joint_vel_log_file << jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] << " ";
+          joint_vel_des_log_file << joint_command[joint_name] << " ";
+          joint_eff_log_file << jvrc1_mj_data_ptr->ctrl[i] << " ";
         }
 
+//        mj_step2(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
         mj_step(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
+        joint_vel_log_file << std::endl;
+        joint_vel_des_log_file << std::endl;
+        joint_eff_log_file << std::endl;
       }
     }
-      
+
+    joint_vel_log_file.flush();
+    joint_vel_des_log_file.flush();
+    joint_eff_log_file.flush();
+
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
     glfwGetFramebufferSize(window, &viewport.width, &viewport.height);
@@ -192,6 +222,10 @@ int main() {
   // Free memory (Mujoco):
   mj_deleteData(jvrc1_mj_data_ptr);
   mj_deleteModel(jvrc1_mj_model_ptr);
+
+  joint_vel_log_file.close();
+  joint_vel_des_log_file.close();
+  joint_eff_log_file.close();
 
   return 0;
 }
