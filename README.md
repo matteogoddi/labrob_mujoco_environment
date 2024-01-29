@@ -17,6 +17,7 @@ To install Mujoco, download the source code from: https://github.com/google-deep
 Then, install Mujoco using:
 ```
 mkdir build
+cd build
 cmake ..
 make -j
 sudo make install
