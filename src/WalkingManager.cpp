@@ -343,7 +343,7 @@ WalkingManager::update(
   
   // Update CoM target height in IS-MPC depending on current configuration
   // in case of PostureRegulation walking state:
-  if (walking_data_.getWalkingState() == labrob::WalkingState::PostureRegulation) {
+  /*if (walking_data_.getWalkingState() == labrob::WalkingState::PostureRegulation) {
       const auto& p_support = walking_data_.footstep_plan.front().getFeetPlacement().getSupportFootConfiguration().p;
       auto com_target_height = p_CoM.z() - p_support.z();
       Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
@@ -353,7 +353,7 @@ WalkingManager::update(
           Eigen::Vector3d::Zero(),
           p_ZMP
       ));
-  }
+  }*/
 
   // Update first element of footstep plan to make it consistent with 
   // state estimation module:
@@ -365,7 +365,7 @@ WalkingManager::update(
   std::cerr << "t (msec):" << t_msec_ << std::endl;
   std::cerr << "\tWalkingState::" << to_string(walking_data_.getWalkingState()) << std::endl;
   std::cerr << "\tFootstep plan size: " << walking_data_.footstep_plan.size() << std::endl;
-  /*for (const auto& footstep_plan_element : walking_data_.footstep_plan) {
+  for (const auto& footstep_plan_element : walking_data_.footstep_plan) {
     const auto& feet_placement = footstep_plan_element.getFeetPlacement();
     auto duration = footstep_plan_element.getDuration();
     auto h_z = footstep_plan_element.getSwingFootTrajectoryHeight();
@@ -373,15 +373,15 @@ WalkingManager::update(
     auto support_foot = footstep_plan_element.getFeetPlacement().getSupportFoot();
     const auto& left_foot_configuration = feet_placement.getLeftFootConfiguration();
     const auto& right_foot_configuration = feet_placement.getRightFootConfiguration();
-    ROS_WARN_STREAM("qL=" << left_foot_configuration.p.transpose()
+    std::cerr << "qL=" << left_foot_configuration.p.transpose()
         << ", qR=" << right_foot_configuration.p.transpose()
         << ", T=" << duration
         << ", h_z=" << h_z
         << ", support foot=" << (support_foot == labrob::Foot::LEFT ? "LEFT" : "RIGHT")
         << ", walking state="
         << labrob::to_string(walking_state)
-    );
-  }*/
+        << std::endl;
+  }
 
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -392,7 +392,12 @@ WalkingManager::update(
   Eigen::Vector3d p_CoM_des = ismpc_state.com_pos_;
   Eigen::Vector3d p_ZMP_des = ismpc_state.zmp_pos_;
 
+  std::cerr << "p_CoM_des: " << p_CoM_des.transpose() << std::endl;
+
   // CoM task error:
+  /*p_CoM_des << 0.05, 0.0, ismpc_ptr_->getCOMTargetHeight();
+  v_CoM_des.setZero();
+  p_ZMP_des.setZero();*/
   auto err_CoM = p_CoM_des - p_CoM;
 
   // Torso orientation task (NOTE: choose orientation as the average of
@@ -479,14 +484,14 @@ WalkingManager::update(
   }
 
   // CLIK-weights:
-  Eigen::Matrix3d K_CoM = 0.5 * Eigen::Matrix3d::Identity();
-  Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(10.0, 10.0, 0.25).asDiagonal().toDenseMatrix();
+  Eigen::Matrix3d K_CoM = 50.0 * Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(50.0, 50.0, 50.0).asDiagonal().toDenseMatrix();
   Eigen::MatrixXd K_lsole = Eigen::MatrixXd::Identity(6, 6);
-  K_lsole.diagonal().head<3>().setConstant(30.0);
-  K_lsole.diagonal().tail<3>().setConstant(25.0);
+  K_lsole.diagonal().head<3>().setConstant(50.0);
+  K_lsole.diagonal().tail<3>().setConstant(50.0);
   Eigen::MatrixXd K_rsole = Eigen::MatrixXd::Identity(6, 6);
-  K_rsole.diagonal().head<3>().setConstant(30.0);
-  K_rsole.diagonal().tail<3>().setConstant(25.0);
+  K_rsole.diagonal().head<3>().setConstant(50.0);
+  K_rsole.diagonal().tail<3>().setConstant(50.0);
 
   // QP-based task priority IK:
   Eigen::MatrixXd cost_function_H = Eigen::MatrixXd::Zero(6 + njnt, 6 + njnt);

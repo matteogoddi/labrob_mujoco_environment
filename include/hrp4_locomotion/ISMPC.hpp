@@ -30,6 +30,8 @@ class ISMPC{
 
   void solve(int64_t time, const labrob::WalkingData& walking_data);
 
+  double getCOMTargetHeight() const;
+
   const ISMPCState& getState() const;
 
   void setCOMTargetHeight(double com_target_height);
