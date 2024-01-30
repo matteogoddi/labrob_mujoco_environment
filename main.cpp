@@ -1,3 +1,6 @@
+// std
+#include <fstream>
+
 // GLFW
 #include <GLFW/glfw3.h>
 
@@ -46,6 +49,9 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 }
 
 int main() {
+
+  // Paths (to be read from local configuration file):
+  const std::string pd_gains_filepath = "../config/pd_gains.txt";
 
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
@@ -148,7 +154,16 @@ int main() {
   joint_names_log_file.flush();
   joint_names_log_file.close();
 
-    // Simulation loop:
+  std::vector<double> position_gains(jvrc1_mj_model_ptr->nu);
+  std::vector<double> velocity_gains(jvrc1_mj_model_ptr->nu);
+
+  // Read PD gains from file (assuming the size matches):
+  std::ifstream pd_gains_file(pd_gains_filepath);
+  for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+    pd_gains_file >> position_gains[i] >> velocity_gains[i];
+  }
+
+  // Simulation loop:
   while (!glfwWindowShouldClose(window)) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
@@ -176,7 +191,7 @@ int main() {
           //printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
           //printf("qpos[%d]=%f\n", jnt_qpos_idx, jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
           //printf("err_q=%f\n", err_q);
-          jvrc1_mj_data_ptr->ctrl[i] = 2000.0 * err_q + 50.0 * err_v;
+          jvrc1_mj_data_ptr->ctrl[i] = position_gains[i] * err_q + velocity_gains[i] * err_v;
           //jvrc1_mj_data_ptr->ctrl[i - 1] = 10.0 * err_q;
           //jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = 10.0 * err_q;
 
