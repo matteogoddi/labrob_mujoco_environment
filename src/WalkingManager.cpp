@@ -515,8 +515,8 @@ WalkingManager::update(
     weight_posture_regulation_task = 1.0;
   } else {
     weight_q_dot = 1e-4;
-    weight_torso_orientation_task = 0.25; // 1e-3
-    weight_posture_regulation_task = 0.25; // 0.01; // (legs not considered)
+    weight_torso_orientation_task = 1e-3; // 1e-3
+    weight_posture_regulation_task = 0.01; // 0.01; // (legs not considered)
   }
 
   cost_function_H += weight_q_dot * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);

@@ -173,6 +173,14 @@ int main() {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
+      double desired_joint_pos[jvrc1_mj_model_ptr->nu];
+      for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+        int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+        int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
+        desired_joint_pos[i] = jvrc1_mj_data_ptr->qpos[jnt_qpos_idx] + 0.01 * joint_command[joint_name];
+      }
+
       for (const auto& joint_command_pair : joint_command) {
         std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
       }
@@ -185,7 +193,7 @@ int main() {
           std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
           int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
           int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-          mjtNum err_q = 0.001 * joint_command[joint_name];//labrob::wrap_angle(qpos0[jnt_qpos_idx] - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
+          mjtNum err_q = labrob::wrap_angle(desired_joint_pos[i] - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
           mjtNum err_v = joint_command[joint_name] - jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
           //printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
           //printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
