@@ -163,7 +163,7 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
   cost_function_H_.block(    N_,     N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
 
-  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.x() - mc_x - Eigen::VectorXd::Constant(N_, 1, 0.05));
+  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.x() - mc_x);
   cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.y() - mc_y);
   cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.z() - mc_z);
 

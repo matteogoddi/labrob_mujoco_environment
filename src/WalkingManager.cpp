@@ -78,7 +78,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
 
   int njnt = robot_model_.nv - 6;
 
-  double waist_p_des = 0.425;
+  double waist_p_des = 0.0;
   double r_hip_y_des = 0.0;
   double r_hip_r_des = -0.05;
   double r_hip_p_des = -0.44;
@@ -395,9 +395,6 @@ WalkingManager::update(
   std::cerr << "p_CoM_des: " << p_CoM_des.transpose() << std::endl;
 
   // CoM task error:
-  /*p_CoM_des << 0.05, 0.0, ismpc_ptr_->getCOMTargetHeight();
-  v_CoM_des.setZero();
-  p_ZMP_des.setZero();*/
   auto err_CoM = p_CoM_des - p_CoM;
 
   // Torso orientation task (NOTE: choose orientation as the average of

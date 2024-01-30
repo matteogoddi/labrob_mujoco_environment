@@ -60,7 +60,7 @@ int main() {
   std::ofstream joint_names_log_file("/tmp/joint_names.txt");
 
   // Init robot posture:
-  mjtNum waist_p_init = 0.425;
+  mjtNum waist_p_init = 0.0;
   mjtNum r_hip_y_init = 0.0;
   mjtNum r_hip_r_init = -0.05;
   mjtNum r_hip_p_init = -0.44;
