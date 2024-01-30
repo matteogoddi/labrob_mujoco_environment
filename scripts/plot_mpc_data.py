@@ -34,22 +34,24 @@ def read_position_file(path):
     return trajectory
 
 if __name__ == '__main__':
+    mpc_com_file_path = '/tmp/mpc_com.txt'
+    mpc_zmp_file_path = '/tmp/mpc_zmp.txt'
     com_file_path = '/tmp/com.txt'
-    zmp_file_path = '/tmp/zmp.txt'
     lsole_file_path = '/tmp/lsole.txt'
     rsole_file_path = '/tmp/rsole.txt'
     lsole_des_file_path = '/tmp/lsole_des.txt'
     rsole_des_file_path = '/tmp/rsole_des.txt'
 
+    mpc_com_trajectory = read_position_file(mpc_com_file_path)
+    mpc_zmp_trajectory = read_position_file(mpc_zmp_file_path)
     com_trajectory = read_position_file(com_file_path)
-    zmp_trajectory = read_position_file(zmp_file_path)
     lsole_trajectory = read_position_file(lsole_file_path)
     rsole_trajectory = read_position_file(rsole_file_path)
     lsole_des_trajectory = read_position_file(lsole_des_file_path)
     rsole_des_trajectory = read_position_file(rsole_des_file_path)
 
     delta_t = 0.01
-    samples = com_trajectory.x.shape[0]
+    samples = mpc_com_trajectory.x.shape[0]
     tt = np.linspace(0.0, delta_t * samples, samples)
 
     fig = plt.figure()
@@ -59,8 +61,9 @@ if __name__ == '__main__':
     ax1.set_xlabel('x')
     ax1.set_ylabel('y')
 
+    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM ref')
+    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP ref')
     ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM')
-    ax1.plot(zmp_trajectory.x, zmp_trajectory.y, label='ZMP')
 
     ax1.legend()
     ax1.grid()
@@ -71,8 +74,9 @@ if __name__ == '__main__':
     ax3.set_xlabel('t')
     ax3.set_ylabel('x')
 
+    ax3.plot(tt, mpc_com_trajectory.x, label='CoM.x ref')
+    ax3.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x ref')
     ax3.plot(tt, com_trajectory.x, label='CoM.x')
-    ax3.plot(tt, zmp_trajectory.x, label='ZMP.x')
 
     ax3.legend()
     ax3.grid()
@@ -82,8 +86,9 @@ if __name__ == '__main__':
     ax3.set_xlabel('t')
     ax3.set_ylabel('y')
 
+    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y ref')
+    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y ref')
     ax3.plot(tt, com_trajectory.y, label='CoM.y')
-    ax3.plot(tt, zmp_trajectory.y, label='ZMP.y')
 
     ax3.legend()
     ax3.grid()
@@ -93,8 +98,9 @@ if __name__ == '__main__':
     ax4.set_xlabel('t')
     ax4.set_ylabel('y')
 
+    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z ref')
+    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z ref')
     ax4.plot(tt, com_trajectory.z, label='CoM.z')
-    ax4.plot(tt, zmp_trajectory.z, label='ZMP.z')
 
     ax4.legend()
     ax4.grid()

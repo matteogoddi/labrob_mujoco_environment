@@ -127,8 +127,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   int64_t controller_frequency = 100;
   controller_timestep_msec_ = 1000 / controller_frequency;
 
-  double swing_foot_trajectory_height = 0.02;
-  double step_length_x = 0.25;
+  double swing_foot_trajectory_height = 0.0;
+  double step_length_x = 0.00;
   double step_length_y = 0.00;
   int n_steps = 50;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -151,7 +151,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
       10000,
       labrob::WalkingState::Standing
   ));
-/*
+
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -234,7 +234,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
       2000,
       labrob::WalkingState::Standing
   ));
-*/
+
   // Save and read again footstep plan to double check it's working:
   //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
   //labrob::saveFootstepPlan(walking_data_.footstep_plan, footstep_plan_path);
@@ -273,9 +273,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   // Init log files:
   // TODO: may be better to use a proper logging system such as glog.
   mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
-  com_log_file_.open("/tmp/com.txt");
-  zmp_log_file_.open("/tmp/zmp.txt");
+  mpc_com_log_file_.open("/tmp/mpc_com.txt");
+  mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
   //configuration_log_file_.open("/tmp/configuration.txt");
+  com_log_file_.open("/tmp/com.txt");
   lsole_log_file_.open("/tmp/lsole.txt");
   rsole_log_file_.open("/tmp/rsole.txt");
   lsole_des_log_file_.open("/tmp/lsole_des.txt");
@@ -481,14 +482,14 @@ WalkingManager::update(
   }
 
   // CLIK-weights:
-  Eigen::Matrix3d K_CoM = 50.0 * Eigen::Matrix3d::Identity();
-  Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(50.0, 50.0, 50.0).asDiagonal().toDenseMatrix();
+  Eigen::Matrix3d K_CoM = 240.0 * Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(120.0, 120.0, 120.0).asDiagonal().toDenseMatrix();
   Eigen::MatrixXd K_lsole = Eigen::MatrixXd::Identity(6, 6);
-  K_lsole.diagonal().head<3>().setConstant(50.0);
-  K_lsole.diagonal().tail<3>().setConstant(50.0);
+  K_lsole.diagonal().head<3>().setConstant(120.0);
+  K_lsole.diagonal().tail<3>().setConstant(120.0);
   Eigen::MatrixXd K_rsole = Eigen::MatrixXd::Identity(6, 6);
-  K_rsole.diagonal().head<3>().setConstant(50.0);
-  K_rsole.diagonal().tail<3>().setConstant(50.0);
+  K_rsole.diagonal().head<3>().setConstant(120.0);
+  K_rsole.diagonal().tail<3>().setConstant(120.0);
 
   // QP-based task priority IK:
   Eigen::MatrixXd cost_function_H = Eigen::MatrixXd::Zero(6 + njnt, 6 + njnt);
@@ -577,8 +578,9 @@ WalkingManager::update(
 
   // Log:
   mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
-  com_log_file_ << p_CoM_des.transpose() << std::endl;
-  zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
+  mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
+  mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
+  com_log_file_ << p_CoM.transpose() << std::endl;
   lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
   rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
   lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;

@@ -77,9 +77,10 @@ private:
 
   // Log files:
   std::ofstream mpc_timings_log_file_;
-  std::ofstream com_log_file_;
-  std::ofstream zmp_log_file_;
+  std::ofstream mpc_com_log_file_;
+  std::ofstream mpc_zmp_log_file_;
   //std::ofstream configuration_log_file_;
+  std::ofstream com_log_file_;
   std::ofstream lsole_log_file_;
   std::ofstream rsole_log_file_;
   std::ofstream lsole_des_log_file_;
