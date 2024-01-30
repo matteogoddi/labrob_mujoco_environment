@@ -127,8 +127,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   int64_t controller_frequency = 100;
   controller_timestep_msec_ = 1000 / controller_frequency;
 
-  double swing_foot_trajectory_height = 0.0;
-  double step_length_x = 0.00;
+  double swing_foot_trajectory_height = 0.05;
+  double step_length_x = 0.2;
   double step_length_y = 0.00;
   int n_steps = 50;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -159,7 +159,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       0.0,
-      600,
+      700,
       labrob::WalkingState::Starting
   ));
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -169,7 +169,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       swing_foot_trajectory_height,
-      600,
+      1400,
       labrob::WalkingState::SingleSupport
   ));
   for (int n = 0; n < n_steps; n += 2) {
@@ -180,7 +180,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::RIGHT
         ),
         0.0,
-        400,
+        1000,
         labrob::WalkingState::DoubleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -190,7 +190,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::LEFT
         ),
         swing_foot_trajectory_height,
-        600,
+        1400,
         labrob::WalkingState::SingleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -200,7 +200,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::LEFT
         ),
         0.0,
-        400,
+        1000,
         labrob::WalkingState::DoubleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -210,7 +210,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::RIGHT
         ),
         swing_foot_trajectory_height,
-        600,
+        1400,
         labrob::WalkingState::SingleSupport
     ));
   }
@@ -221,7 +221,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       0.0,
-      300,
+      700,
       labrob::WalkingState::Stopping
   ));
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
