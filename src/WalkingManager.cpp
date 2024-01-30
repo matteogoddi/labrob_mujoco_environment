@@ -434,7 +434,7 @@ WalkingManager::update(
     pinocchio::Motion v_support_des(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
     pinocchio::SE3 T_swing_des;
     pinocchio::Motion v_swing_des;
-    swingFootTrajectoryBezier(T_swing_des, v_swing_des);
+    swingFootTrajectory(T_swing_des, v_swing_des);
 
     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT) {
       // lsole is support:
@@ -482,7 +482,7 @@ WalkingManager::update(
   }
 
   // CLIK-weights:
-  Eigen::Matrix3d K_CoM = 240.0 * Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d K_CoM = 400.0 * Eigen::Matrix3d::Identity();
   Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(120.0, 120.0, 120.0).asDiagonal().toDenseMatrix();
   Eigen::MatrixXd K_lsole = Eigen::MatrixXd::Identity(6, 6);
   K_lsole.diagonal().head<3>().setConstant(120.0);
