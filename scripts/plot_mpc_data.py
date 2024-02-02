@@ -37,18 +37,26 @@ if __name__ == '__main__':
     mpc_com_file_path = '/tmp/mpc_com.txt'
     mpc_zmp_file_path = '/tmp/mpc_zmp.txt'
     com_file_path = '/tmp/com.txt'
-    lsole_file_path = '/tmp/lsole.txt'
-    rsole_file_path = '/tmp/rsole.txt'
-    lsole_des_file_path = '/tmp/lsole_des.txt'
-    rsole_des_file_path = '/tmp/rsole_des.txt'
+    p_lsole_file_path = '/tmp/p_lsole.txt'
+    p_rsole_file_path = '/tmp/p_rsole.txt'
+    v_lsole_file_path = '/tmp/v_lsole.txt'
+    v_rsole_file_path = '/tmp/v_rsole.txt'
+    p_lsole_des_file_path = '/tmp/p_lsole_des.txt'
+    p_rsole_des_file_path = '/tmp/p_rsole_des.txt'
+    v_lsole_des_file_path = '/tmp/v_lsole_des.txt'
+    v_rsole_des_file_path = '/tmp/v_rsole_des.txt'
 
     mpc_com_trajectory = read_position_file(mpc_com_file_path)
     mpc_zmp_trajectory = read_position_file(mpc_zmp_file_path)
     com_trajectory = read_position_file(com_file_path)
-    lsole_trajectory = read_position_file(lsole_file_path)
-    rsole_trajectory = read_position_file(rsole_file_path)
-    lsole_des_trajectory = read_position_file(lsole_des_file_path)
-    rsole_des_trajectory = read_position_file(rsole_des_file_path)
+    p_lsole_trajectory = read_position_file(p_lsole_file_path)
+    p_rsole_trajectory = read_position_file(p_rsole_file_path)
+    v_lsole_trajectory = read_position_file(v_lsole_file_path)
+    v_rsole_trajectory = read_position_file(v_rsole_file_path)
+    p_lsole_des_trajectory = read_position_file(p_lsole_des_file_path)
+    p_rsole_des_trajectory = read_position_file(p_rsole_des_file_path)
+    v_lsole_des_trajectory = read_position_file(v_lsole_des_file_path)
+    v_rsole_des_trajectory = read_position_file(v_rsole_des_file_path)
 
     delta_t = 0.01
     samples = mpc_com_trajectory.x.shape[0]
@@ -111,49 +119,100 @@ if __name__ == '__main__':
     ax_lsole_x = fig_soles.add_subplot(3, 2, 1)
     ax_lsole_x.set_xlabel('t')
     ax_lsole_x.set_ylabel('x')
-    ax_lsole_x.plot(tt, lsole_des_trajectory.x, label='lsole_des.x')
-    ax_lsole_x.plot(tt, lsole_trajectory.x, label='lsole.x')
+    ax_lsole_x.plot(tt, p_lsole_des_trajectory.x, label='p_lsole_des.x')
+    ax_lsole_x.plot(tt, p_lsole_trajectory.x, label='p_lsole.x')
     ax_lsole_x.legend()
     ax_lsole_x.grid()
     # lsole.y:
     ax_lsole_y = fig_soles.add_subplot(3, 2, 3)
     ax_lsole_y.set_xlabel('t')
     ax_lsole_y.set_ylabel('y')
-    ax_lsole_y.plot(tt, lsole_des_trajectory.y, label='lsole_des.y')
-    ax_lsole_y.plot(tt, lsole_trajectory.y, label='lsole.y')
+    ax_lsole_y.plot(tt, p_lsole_des_trajectory.y, label='p_lsole_des.y')
+    ax_lsole_y.plot(tt, p_lsole_trajectory.y, label='p_lsole.y')
     ax_lsole_y.legend()
     ax_lsole_y.grid()
     # lsole.z:
     ax_lsole_z = fig_soles.add_subplot(3, 2, 5)
     ax_lsole_z.set_xlabel('t')
     ax_lsole_z.set_ylabel('z')
-    ax_lsole_z.plot(tt, lsole_des_trajectory.z, label='lsole_des.z')
-    ax_lsole_z.plot(tt, lsole_trajectory.z, label='lsole.z')
+    ax_lsole_z.plot(tt, p_lsole_des_trajectory.z, label='p_lsole_des.z')
+    ax_lsole_z.plot(tt, p_lsole_trajectory.z, label='p_lsole.z')
     ax_lsole_z.legend()
     ax_lsole_z.grid()
     # rsole.x:
     ax_rsole_x = fig_soles.add_subplot(3, 2, 2)
     ax_rsole_x.set_xlabel('t')
     ax_rsole_x.set_ylabel('x')
-    ax_rsole_x.plot(tt, rsole_des_trajectory.x, label='rsole_des.x')
-    ax_rsole_x.plot(tt, rsole_trajectory.x, label='rsole.x')
+    ax_rsole_x.plot(tt, p_rsole_des_trajectory.x, label='p_rsole_des.x')
+    ax_rsole_x.plot(tt, p_rsole_trajectory.x, label='p_rsole.x')
     ax_rsole_x.legend()
     ax_rsole_x.grid()
     # rsole.y:
     ax_rsole_y = fig_soles.add_subplot(3, 2, 4)
     ax_rsole_y.set_xlabel('t')
     ax_rsole_y.set_ylabel('y')
-    ax_rsole_y.plot(tt, rsole_des_trajectory.y, label='rsole_des.y')
-    ax_rsole_y.plot(tt, rsole_trajectory.y, label='rsole.y')
+    ax_rsole_y.plot(tt, p_rsole_des_trajectory.y, label='p_rsole_des.y')
+    ax_rsole_y.plot(tt, p_rsole_trajectory.y, label='p_rsole.y')
     ax_rsole_y.legend()
     ax_rsole_y.grid()
     # rsole.z:
     ax_rsole_z = fig_soles.add_subplot(3, 2, 6)
     ax_rsole_z.set_xlabel('t')
     ax_rsole_z.set_ylabel('z')
-    ax_rsole_z.plot(tt, rsole_des_trajectory.z, label='rsole_des.z')
-    ax_rsole_z.plot(tt, rsole_trajectory.z, label='rsole.z')
+    ax_rsole_z.plot(tt, p_rsole_des_trajectory.z, label='p_rsole_des.z')
+    ax_rsole_z.plot(tt, p_rsole_trajectory.z, label='p_rsole.z')
     ax_rsole_z.legend()
     ax_rsole_z.grid()
+
+    # Figure soles (velocity):
+    fig_v_soles = plt.figure()
+    # v_lsole.x:
+    ax_v_lsole_x = fig_v_soles.add_subplot(3, 2, 1)
+    ax_v_lsole_x.set_xlabel('t')
+    ax_v_lsole_x.set_ylabel('x')
+    ax_v_lsole_x.plot(tt, v_lsole_des_trajectory.x, label='v_lsole_des.x')
+    ax_v_lsole_x.plot(tt, v_lsole_trajectory.x, label='v_lsole.x')
+    ax_v_lsole_x.legend()
+    ax_v_lsole_x.grid()
+    # v_lsole.y:
+    ax_v_lsole_y = fig_v_soles.add_subplot(3, 2, 3)
+    ax_v_lsole_y.set_xlabel('t')
+    ax_v_lsole_y.set_ylabel('y')
+    ax_v_lsole_y.plot(tt, v_lsole_des_trajectory.y, label='v_lsole_des.y')
+    ax_v_lsole_y.plot(tt, v_lsole_trajectory.y, label='v_lsole.y')
+    ax_v_lsole_y.legend()
+    ax_v_lsole_y.grid()
+    # v_lsole.z:
+    ax_v_lsole_z = fig_v_soles.add_subplot(3, 2, 5)
+    ax_v_lsole_z.set_xlabel('t')
+    ax_v_lsole_z.set_ylabel('z')
+    ax_v_lsole_z.plot(tt, v_lsole_des_trajectory.z, label='v_lsole_des.z')
+    ax_v_lsole_z.plot(tt, v_lsole_trajectory.z, label='v_lsole.z')
+    ax_v_lsole_z.legend()
+    ax_v_lsole_z.grid()
+    # v_rsole.x:
+    ax_v_rsole_x = fig_v_soles.add_subplot(3, 2, 2)
+    ax_v_rsole_x.set_xlabel('t')
+    ax_v_rsole_x.set_ylabel('x')
+    ax_v_rsole_x.plot(tt, v_rsole_des_trajectory.x, label='v_rsole_des.x')
+    ax_v_rsole_x.plot(tt, v_rsole_trajectory.x, label='v_rsole.x')
+    ax_v_rsole_x.legend()
+    ax_v_rsole_x.grid()
+    # v_rsole.y:
+    ax_v_rsole_y = fig_v_soles.add_subplot(3, 2, 4)
+    ax_v_rsole_y.set_xlabel('t')
+    ax_v_rsole_y.set_ylabel('y')
+    ax_v_rsole_y.plot(tt, v_rsole_des_trajectory.y, label='v_rsole_des.y')
+    ax_v_rsole_y.plot(tt, v_rsole_trajectory.y, label='v_rsole.y')
+    ax_v_rsole_y.legend()
+    ax_v_rsole_y.grid()
+    # v_rsole.z:
+    ax_v_rsole_z = fig_v_soles.add_subplot(3, 2, 6)
+    ax_v_rsole_z.set_xlabel('t')
+    ax_v_rsole_z.set_ylabel('z')
+    ax_v_rsole_z.plot(tt, v_rsole_des_trajectory.z, label='v_rsole_des.z')
+    ax_v_rsole_z.plot(tt, v_rsole_trajectory.z, label='v_rsole.z')
+    ax_v_rsole_z.legend()
+    ax_v_rsole_z.grid()
 
     plt.show()

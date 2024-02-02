@@ -124,13 +124,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   q_jnt_des_(robot_model_.getJointId("L_ELBOW_P") - 2) = l_elbow_p_des;
 
   // TODO: init using node handle.
-  int64_t controller_frequency = 100;
+  int64_t controller_frequency = 250;
   controller_timestep_msec_ = 1000 / controller_frequency;
 
   double swing_foot_trajectory_height = 0.05;
   double step_length_x = 0.2;
   double step_length_y = 0.00;
-  int n_steps = 50;
+  int n_steps = 10;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -277,10 +277,14 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
   //configuration_log_file_.open("/tmp/configuration.txt");
   com_log_file_.open("/tmp/com.txt");
-  lsole_log_file_.open("/tmp/lsole.txt");
-  rsole_log_file_.open("/tmp/rsole.txt");
-  lsole_des_log_file_.open("/tmp/lsole_des.txt");
-  rsole_des_log_file_.open("/tmp/rsole_des.txt");
+  p_lsole_log_file_.open("/tmp/p_lsole.txt");
+  p_rsole_log_file_.open("/tmp/p_rsole.txt");
+  v_lsole_log_file_.open("/tmp/v_lsole.txt");
+  v_rsole_log_file_.open("/tmp/v_rsole.txt");
+  p_lsole_des_log_file_.open("/tmp/p_lsole_des.txt");
+  p_rsole_des_log_file_.open("/tmp/p_rsole_des.txt");
+  v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
+  v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
 
   return true;
 }
@@ -295,6 +299,7 @@ WalkingManager::update(
   int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
+  auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
   // Perform forward kinematics on the whole tree and update robot data:
   pinocchio::forwardKinematics(robot_model_, robot_data_, q);
@@ -319,6 +324,7 @@ WalkingManager::update(
   auto J_torso_orientation = J_torso.bottomRows<3>();
   const auto& T_lsole = robot_data_.oMf[lsole_idx_];
   Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  const auto& v_lsole = J_lsole * qdot;
   pinocchio::getFrameJacobian(
       robot_model_,
       robot_data_,
@@ -328,6 +334,7 @@ WalkingManager::update(
   );
   const auto& T_rsole = robot_data_.oMf[rsole_idx_];
   Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  const auto& v_rsole = J_rsole * qdot;
   pinocchio::getFrameJacobian(
       robot_model_,
       robot_data_,
@@ -581,10 +588,14 @@ WalkingManager::update(
   mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
   mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
   com_log_file_ << p_CoM.transpose() << std::endl;
-  lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
-  rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
-  lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;
-  rsole_des_log_file_ << T_rsole_des.translation().transpose() << std::endl;
+  p_lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
+  p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
+  v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
+  v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
+  p_lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;
+  p_rsole_des_log_file_ << T_rsole_des.translation().transpose() << std::endl;
+  v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
+  v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
 }
 
 Eigen::VectorXd
@@ -607,6 +618,25 @@ WalkingManager::robot_state_to_pinocchio_joint_configuration(
   }
 
   return q;
+}
+
+Eigen::VectorXd
+WalkingManager::robot_state_to_pinocchio_joint_velocity(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state
+) {
+  Eigen::VectorXd qdot(robot_model.nv);
+  qdot.head<3>() = robot_state.linear_velocity;
+  qdot.segment<3>(3) = robot_state.angular_velocity;
+  // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
+  for(pinocchio::JointIndex joint_id = 2;
+      joint_id < (pinocchio::JointIndex) robot_model.njoints;
+      ++joint_id) {
+    const auto& joint_name = robot_model.names[joint_id];
+    qdot[joint_id + 4] = robot_state.joint_state[joint_name].vel;
+  }
+  
+  return qdot;
 }
 
 Eigen::MatrixXd

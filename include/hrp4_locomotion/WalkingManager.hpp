@@ -57,6 +57,12 @@ private:
       const labrob::RobotState& robot_state
   );
 
+  Eigen::VectorXd
+  robot_state_to_pinocchio_joint_velocity(
+      const pinocchio::Model& robot_model,
+      const labrob::RobotState& robot_state
+  );
+
   Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;
 
   Eigen::Matrix<double, 6, 1> err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb);
@@ -81,10 +87,14 @@ private:
   std::ofstream mpc_zmp_log_file_;
   //std::ofstream configuration_log_file_;
   std::ofstream com_log_file_;
-  std::ofstream lsole_log_file_;
-  std::ofstream rsole_log_file_;
-  std::ofstream lsole_des_log_file_;
-  std::ofstream rsole_des_log_file_;
+  std::ofstream p_lsole_log_file_;
+  std::ofstream p_rsole_log_file_;
+  std::ofstream v_lsole_log_file_;
+  std::ofstream v_rsole_log_file_;
+  std::ofstream p_lsole_des_log_file_;
+  std::ofstream p_rsole_des_log_file_;
+  std::ofstream v_lsole_des_log_file_;
+  std::ofstream v_rsole_des_log_file_;
 
 }; // end class WalkingManager
 

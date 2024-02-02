@@ -31,9 +31,10 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
     d->qpos[3], d->qpos[4], d->qpos[5], d->qpos[6]
   );
 
-  robot_state.linear_velocity = Eigen::Vector3d(
-    d->qvel[0], d->qvel[1], d->qvel[2]
-  );
+  robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() * 
+      Eigen::Vector3d(
+          d->qvel[0], d->qvel[1], d->qvel[2]
+      );
 
   robot_state.angular_velocity = Eigen::Vector3d(
     d->qvel[3], d->qvel[4], d->qvel[5]
@@ -185,7 +186,7 @@ int main() {
         std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
       }
 
-      for (int k = 0; k < 10; ++k) {
+      for (int k = 0; k < 4; ++k) {
 //        mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
         for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
