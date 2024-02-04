@@ -11,6 +11,7 @@
 
 // Pinocchio
 #include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/centroidal.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
@@ -285,6 +286,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   p_rsole_des_log_file_.open("/tmp/p_rsole_des.txt");
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
+  angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
 
   return true;
 }
@@ -308,6 +310,13 @@ WalkingManager::update(
   //       computeJointJacobians.
   pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
   pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+  auto centroidal_momentum_matrix = pinocchio::ccrba(
+      robot_model_,
+      robot_data_,
+      q,
+      qdot
+  );
+  auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
 
   const auto& p_CoM = robot_data_.com[0];
   const auto& J_CoM = robot_data_.Jcom;
@@ -567,7 +576,7 @@ WalkingManager::update(
       d_max_ineq
   );
 
-  Eigen::VectorXd q_dot = qp_solver_ptr_->get_solution();
+  Eigen::VectorXd joint_velocity_commands = qp_solver_ptr_->get_solution();
 
   // Pinocchio representation to labrob::RobotState representation:
   // TODO: is there a less error-prone way to convert representation?
@@ -575,7 +584,7 @@ WalkingManager::update(
       joint_id < (pinocchio::JointIndex) robot_model_.njoints;
       ++joint_id) {
     const auto& joint_name = robot_model_.names[joint_id];
-    joint_command[joint_name] = q_dot[joint_id + 4];
+    joint_command[joint_name] = joint_velocity_commands[joint_id + 4];
   }
 
   // Update timing in milliseconds.
@@ -596,6 +605,7 @@ WalkingManager::update(
   p_rsole_des_log_file_ << T_rsole_des.translation().transpose() << std::endl;
   v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
   v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
+  angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
 }
 
 Eigen::VectorXd

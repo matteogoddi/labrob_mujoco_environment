@@ -45,6 +45,7 @@ if __name__ == '__main__':
     p_rsole_des_file_path = '/tmp/p_rsole_des.txt'
     v_lsole_des_file_path = '/tmp/v_lsole_des.txt'
     v_rsole_des_file_path = '/tmp/v_rsole_des.txt'
+    angular_momentum_file_path = '/tmp/angular_momentum.txt'
 
     mpc_com_trajectory = read_position_file(mpc_com_file_path)
     mpc_zmp_trajectory = read_position_file(mpc_zmp_file_path)
@@ -57,6 +58,7 @@ if __name__ == '__main__':
     p_rsole_des_trajectory = read_position_file(p_rsole_des_file_path)
     v_lsole_des_trajectory = read_position_file(v_lsole_des_file_path)
     v_rsole_des_trajectory = read_position_file(v_rsole_des_file_path)
+    angular_momentum_trajectory = read_position_file(angular_momentum_file_path)
 
     delta_t = 0.01
     samples = mpc_com_trajectory.x.shape[0]
@@ -214,5 +216,29 @@ if __name__ == '__main__':
     ax_v_rsole_z.plot(tt, v_rsole_trajectory.z, label='v_rsole.z')
     ax_v_rsole_z.legend()
     ax_v_rsole_z.grid()
+
+    # Angular momentum:
+    fig_angular_momentum = plt.figure()
+    # Angular momentum (x):
+    ax_angular_momentum_x = fig_angular_momentum.add_subplot(3, 1, 1)
+    ax_angular_momentum_x.set_xlabel('t')
+    ax_angular_momentum_x.set_xlabel('angular momentum (x)')
+    ax_angular_momentum_x.plot(tt, angular_momentum_trajectory.x, label='ang. momentum (x)')
+    ax_angular_momentum_x.legend()
+    ax_angular_momentum_x.grid()
+    # Angular momentum (y):
+    ax_angular_momentum_y = fig_angular_momentum.add_subplot(3, 1, 2)
+    ax_angular_momentum_y.set_xlabel('t')
+    ax_angular_momentum_y.set_xlabel('angular momentum (y)')
+    ax_angular_momentum_y.plot(tt, angular_momentum_trajectory.y, label='ang. momentum (y)')
+    ax_angular_momentum_y.legend()
+    ax_angular_momentum_y.grid()
+    # Angular momentum (z):
+    ax_angular_momentum_z = fig_angular_momentum.add_subplot(3, 1, 3)
+    ax_angular_momentum_z.set_xlabel('t')
+    ax_angular_momentum_z.set_xlabel('angular momentum (z)')
+    ax_angular_momentum_z.plot(tt, angular_momentum_trajectory.z, label='ang. momentum (z)')
+    ax_angular_momentum_z.legend()
+    ax_angular_momentum_z.grid()
 
     plt.show()

@@ -98,6 +98,7 @@ private:
   std::ofstream p_rsole_des_log_file_;
   std::ofstream v_lsole_des_log_file_;
   std::ofstream v_rsole_des_log_file_;
+  std::ofstream angular_momentum_log_file_;
 
 }; // end class WalkingManager
 
