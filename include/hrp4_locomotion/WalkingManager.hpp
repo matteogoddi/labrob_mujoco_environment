@@ -32,6 +32,8 @@ class WalkingManager {
       labrob::JointCommand& joint_command
   );
 
+  int64_t get_controller_frequency() const;
+
  protected:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
@@ -79,6 +81,7 @@ private:
       pinocchio::Motion& swing_foot_velocity
   ) const;
 
+  int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
   // Log files:

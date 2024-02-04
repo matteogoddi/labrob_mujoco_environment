@@ -179,7 +179,7 @@ int main() {
         int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
         std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
         int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
-        desired_joint_pos[i] = jvrc1_mj_data_ptr->qpos[jnt_qpos_idx] + 0.01 * joint_command[joint_name];
+        desired_joint_pos[i] = jvrc1_mj_data_ptr->qpos[jnt_qpos_idx] + (1.0 / walking_manager.get_controller_frequency()) * joint_command[joint_name];
       }
 
       for (const auto& joint_command_pair : joint_command) {

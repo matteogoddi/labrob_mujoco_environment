@@ -124,8 +124,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   q_jnt_des_(robot_model_.getJointId("L_ELBOW_P") - 2) = l_elbow_p_des;
 
   // TODO: init using node handle.
-  int64_t controller_frequency = 250;
-  controller_timestep_msec_ = 1000 / controller_frequency;
+  controller_frequency_ = 250;
+  controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.05;
   double step_length_x = 0.2;
@@ -619,6 +619,12 @@ WalkingManager::robot_state_to_pinocchio_joint_configuration(
 
   return q;
 }
+
+int64_t
+WalkingManager::get_controller_frequency() const {
+  return controller_frequency_;
+}
+
 
 Eigen::VectorXd
 WalkingManager::robot_state_to_pinocchio_joint_velocity(
