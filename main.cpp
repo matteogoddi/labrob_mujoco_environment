@@ -92,7 +92,7 @@ int main() {
   for (int i = 0; i < jvrc1_mj_model_ptr->nq; ++i) {
     jvrc1_mj_data_ptr->qpos[i] = 0.0;
   }
-  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.026;
+  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263;
   jvrc1_mj_data_ptr->qpos[3] = 1.0;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "WAIST_P")]] = waist_p_init;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_HIP_Y")]] = r_hip_y_init;
