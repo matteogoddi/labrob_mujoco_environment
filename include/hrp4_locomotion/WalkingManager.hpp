@@ -84,6 +84,8 @@ private:
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
+  Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
+
   // Log files:
   std::ofstream mpc_timings_log_file_;
   std::ofstream mpc_com_log_file_;

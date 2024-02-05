@@ -310,7 +310,7 @@ WalkingManager::update(
   //       computeJointJacobians.
   pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
   pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
-  auto centroidal_momentum_matrix = pinocchio::ccrba(
+  const auto& centroidal_momentum_matrix = pinocchio::ccrba(
       robot_model_,
       robot_data_,
       q,
@@ -469,6 +469,11 @@ WalkingManager::update(
     }
   }
 
+  // Angular momentum task (select angular part from CMM):
+  Eigen::MatrixXd cmm_selection_matrix = Eigen::MatrixXd::Zero(3, 6);
+  cmm_selection_matrix.leftCols<3>().setZero();
+  cmm_selection_matrix.rightCols<3>().setIdentity();
+
   // lsole task error:
   auto err_lsole = err_frameplacement(T_lsole_des, T_lsole);
 
@@ -523,6 +528,9 @@ WalkingManager::update(
   double weight_rsole_task = 1.0;
   double weight_torso_orientation_task = 0.0;
   double weight_posture_regulation_task = 0.0;
+  double weight_angular_momentum_task_x = 0.000001;
+  double weight_angular_momentum_task_y = 0.000001;
+  double weight_angular_momentum_task_z = 0.0001;
 
   if (is_left_foot_support) weight_lsole_task = 100.0;
   if (is_right_foot_support) weight_rsole_task = 100.0;
@@ -532,8 +540,12 @@ WalkingManager::update(
   } else {
     weight_q_dot = 1e-4;
     weight_torso_orientation_task = 1e-3; // 1e-3
-    weight_posture_regulation_task = 0.01; // 0.01; // (legs not considered)
+    weight_posture_regulation_task = 1.0; // 0.01; // (legs not considered)
   }
+
+  cmm_selection_matrix(0, 3) = weight_angular_momentum_task_x;
+  cmm_selection_matrix(1, 4) = weight_angular_momentum_task_y;
+  cmm_selection_matrix(2, 5) = weight_angular_momentum_task_z;
 
   cost_function_H += weight_q_dot * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
   cost_function_H += weight_com_task * (J_CoM.transpose() * J_CoM);
@@ -541,6 +553,7 @@ WalkingManager::update(
   cost_function_H += weight_rsole_task * (J_rsole.transpose() * J_rsole);
   cost_function_H += weight_torso_orientation_task * (J_torso_orientation.transpose() * J_torso_orientation);
   cost_function_H += weight_posture_regulation_task * std::pow(controller_timestep, 2.0) * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
+  cost_function_H += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() * cmm_selection_matrix * centroidal_momentum_matrix;
   cost_function_f += -weight_com_task * J_CoM.transpose() * (v_CoM_des + K_CoM * err_CoM);
   cost_function_f += -weight_lsole_task * J_lsole.transpose() * (v_lsole_des + K_lsole * err_lsole);
   cost_function_f += -weight_rsole_task * J_rsole.transpose() * (v_rsole_des + K_rsole * err_rsole);
@@ -591,6 +604,7 @@ WalkingManager::update(
   // NOTE: assuming update() is actually called every controller_timestep_msec_
   //       milliseconds.
   t_msec_ += controller_timestep_msec_;
+  prev_angular_momentum_ = angular_momentum;
 
   // Log:
   mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
