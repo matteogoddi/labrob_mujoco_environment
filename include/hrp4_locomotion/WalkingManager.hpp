@@ -29,7 +29,8 @@ class WalkingManager {
 
   void update(
       const labrob::RobotState& robot_state,
-      labrob::JointCommand& joint_command
+      labrob::JointCommand& joint_command,
+      labrob::JointState& desired_joint_state
   );
 
   int64_t get_controller_frequency() const;

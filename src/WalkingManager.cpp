@@ -16,6 +16,7 @@
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/model.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
 #include <hrp4_locomotion/JointCommand.hpp>
@@ -294,7 +295,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
 void
 WalkingManager::update(
     const labrob::RobotState& robot_state,
-    labrob::JointCommand& joint_command) {
+    labrob::JointCommand& joint_command,
+    labrob::JointState& desired_joint_state) {
 
   double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
@@ -591,13 +593,27 @@ WalkingManager::update(
 
   Eigen::VectorXd joint_velocity_commands = qp_solver_ptr_->get_solution();
 
+  Eigen::VectorXd q_next_des(robot_model_.nq);
+  Eigen::VectorXd v = controller_timestep * joint_velocity_commands;
+  pinocchio::integrate(robot_model_, q, v, q_next_des);
+
+  const auto& joint_torques = pinocchio::rnea(
+      robot_model_,
+      robot_data_,
+      q,
+      joint_velocity_commands,
+      Eigen::VectorXd::Zero(qdot.size())
+  );
+
   // Pinocchio representation to labrob::RobotState representation:
   // TODO: is there a less error-prone way to convert representation?
   for(pinocchio::JointIndex joint_id = 2;
       joint_id < (pinocchio::JointIndex) robot_model_.njoints;
       ++joint_id) {
     const auto& joint_name = robot_model_.names[joint_id];
-    joint_command[joint_name] = joint_velocity_commands[joint_id + 4];
+    joint_command[joint_name] = joint_torques[joint_id + 4];
+    desired_joint_state[joint_name].pos = q_next_des[joint_id + 5];
+    desired_joint_state[joint_name].vel = joint_velocity_commands[joint_id + 4];
   }
 
   // Update timing in milliseconds.

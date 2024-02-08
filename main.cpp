@@ -169,10 +169,11 @@ int main() {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
       labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+      labrob::JointState desired_joint_state;
 
       // Update walking manager:
       labrob::JointCommand joint_command;
-      walking_manager.update(robot_state, joint_command);
+      walking_manager.update(robot_state, joint_command, desired_joint_state);
 
       double desired_joint_pos[jvrc1_mj_model_ptr->nu];
       for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
@@ -194,13 +195,13 @@ int main() {
           std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
           int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
           int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-          mjtNum err_q = labrob::wrap_angle(desired_joint_pos[i] - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
-          mjtNum err_v = joint_command[joint_name] - jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
+          mjtNum err_q = labrob::wrap_angle(desired_joint_state[joint_name].pos - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
+          mjtNum err_v = desired_joint_state[joint_name].vel - jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
           //printf("jnt_qpos_idx=%d\n", jnt_qpos_idx);
           //printf("qpos0[%d]=%f\n", jnt_qpos_idx, qpos0[jnt_qpos_idx]);
           //printf("qpos[%d]=%f\n", jnt_qpos_idx, jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
           //printf("err_q=%f\n", err_q);
-          jvrc1_mj_data_ptr->ctrl[i] = position_gains[i] * err_q + velocity_gains[i] * err_v;
+          jvrc1_mj_data_ptr->ctrl[i] = joint_command[joint_name] + position_gains[i] * err_q + velocity_gains[i] * err_v;
           //jvrc1_mj_data_ptr->ctrl[i - 1] = 10.0 * err_q;
           //jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = 10.0 * err_q;
 
