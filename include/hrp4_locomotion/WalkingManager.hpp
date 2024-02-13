@@ -30,8 +30,12 @@ class WalkingManager {
   void update(
       const labrob::RobotState& robot_state,
       labrob::JointCommand& joint_command,
-      labrob::JointState& desired_joint_state
+      labrob::JointState& desired_joint_state,
+      Eigen::VectorXd& desired_base_velocity,
+      Eigen::VectorXd& desired_base_acceleration
   );
+
+  double get_alpha() const;
 
   int64_t get_controller_frequency() const;
 
@@ -74,7 +78,8 @@ private:
 
   void swingFootTrajectory(
       pinocchio::SE3& swing_foot_pose,
-      pinocchio::Motion& swing_foot_velocity
+      pinocchio::Motion& swing_foot_velocity,
+      pinocchio::Motion& swing_foot_acceleration
   ) const;
 
   void swingFootTrajectoryBezier(
@@ -84,6 +89,7 @@ private:
 
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
+  double alpha_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 

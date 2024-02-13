@@ -10,6 +10,7 @@ namespace labrob {
 struct JointData {
   double pos = 0.0;
   double vel = 0.0;
+  double acc = 0.0;
   double eff = 0.0;
 }; // end struct JointData
 

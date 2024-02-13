@@ -12,6 +12,9 @@ class TimingLaw {
 
   virtual double eval(double t) const = 0;
   virtual double eval_dt(double t) const = 0;
+  virtual double eval_dt_dt(double t) const {
+    return 0.0;
+  }
 
   double get_duration() const {
     return duration_;
@@ -72,6 +75,12 @@ class QuinticPolynomialTimingLaw : public TimingLaw {
     return 5.0 * a_ * std::pow(t, 4.0) +
            4.0 * b_ * std::pow(t, 3.0) +
            3.0 * c_ * std::pow(t, 2.0);
+  }
+
+  double eval_dt_dt(double t) const override {
+    return 20.0 * a_ * std::pow(t, 3.0) +
+           12.0 * b_ * std::pow(t, 2.0) +
+           6.0 * c_ * t;
   }
 
  private:
