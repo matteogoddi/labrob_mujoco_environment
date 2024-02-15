@@ -200,14 +200,16 @@ int main() {
         desired_joint_pos[i] = jvrc1_mj_data_ptr->qpos[jnt_qpos_idx] + (1.0 / walking_manager.get_controller_frequency()) * joint_command[joint_name];
       }
 
-      for (const auto& joint_command_pair : joint_command) {
-        std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
-      }
+//      for (const auto& joint_command_pair : joint_command) {
+//        std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
+//      }
 
       Eigen::MatrixXd Jl_prev;
       Eigen::MatrixXd Jr_prev;
 
-      for (int k = 0; k < 4; ++k) {
+      mjtNum JTf[jvrc1_mj_model_ptr->nv];
+
+      for (int k = 0; k < 1; ++k) {
         mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
         mjtNum jacp_left[3 * jvrc1_mj_model_ptr->nv];
@@ -248,10 +250,11 @@ int main() {
         Eigen::MatrixXd Jru = Jr.block(0, 0, Jr.rows(), 6);
         Eigen::MatrixXd Jra = Jr.block(0, 6, Jr.rows(), n_act);
 
+        mj_mulJacTVec(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, JTf, jvrc1_mj_data_ptr->efc_force);
+
         Eigen::MatrixXd M_eigen = convert_matrix_mujoco_to_eigen(M, jvrc1_mj_model_ptr->nv, jvrc1_mj_model_ptr->nv);
 
         Eigen::VectorXd c_eigen(jvrc1_mj_model_ptr->nv);
-        Eigen::VectorXd qadd(jvrc1_mj_model_ptr->nv);
 
         Eigen::VectorXd dq = Eigen::VectorXd::Zero(jvrc1_mj_model_ptr->nv);
         for (int i = 0; i < jvrc1_mj_model_ptr->nv; ++i) {
@@ -268,17 +271,56 @@ int main() {
           qdd(jnt_qvel_idx) = desired_joint_state[joint_name].acc;
         }
 
+//        std::cout << "M = " << std::endl << M_eigen << std::endl;
+
         Eigen::MatrixXd Mu = M_eigen.block(0, 0, 6, jvrc1_mj_model_ptr->nv);
         Eigen::MatrixXd Ma = M_eigen.block(6, 0, n_act, jvrc1_mj_model_ptr->nv);
 
         Eigen::VectorXd cu = c_eigen.block(0, 0, 6, 1);
         Eigen::VectorXd ca = c_eigen.block(6, 0, n_act, 1);
 
+//        qdd.setZero();
+        for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+          int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+          int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
+          int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
+          mjtNum err_q = labrob::wrap_angle(qpos0[jnt_qpos_idx] - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
+          mjtNum err_v = -jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
+//          qdd(jnt_qvel_idx) = 50.0 * err_q + 10.0 * err_v;
+        }
+
         double alpha = walking_manager.get_alpha();
-        Eigen::VectorXd fl = Jlu.transpose().inverse() * (Mu * qdd + cu);
-        Eigen::VectorXd fr = Jru.transpose().inverse() * (Mu * qdd + cu);
-        Eigen::VectorXd tau_a = Ma * qdd + ca - (1.0 - alpha) * Jla.transpose() * fl - alpha * Jra.transpose() * fr;
-        std::cout << "tau_a = " << tau_a << std::endl;
+        std::cout << "alpha = " << alpha << std::endl;
+        Eigen::VectorXd fl = Jlu.transpose().completeOrthogonalDecomposition().pseudoInverse() * (Mu * qdd + cu);
+        Eigen::VectorXd fr = Jru.transpose().completeOrthogonalDecomposition().pseudoInverse() * (Mu * qdd + cu);
+        if (alpha >= -0.05 and alpha <= 1.05) {
+          Eigen::MatrixXd A(6, 2 * 6);
+          Eigen::VectorXd b(6);
+          A << Jlu.transpose(), Jru.transpose();
+          b << Mu * qdd + cu;
+          std::cout << A << std::endl;
+          std::cout << b << std::endl;
+          Eigen::VectorXd f = A.completeOrthogonalDecomposition().pseudoInverse() * b;
+          Eigen::VectorXd f_mix(12);
+          f_mix.block(0, 0, 6, 1) = 0.5 * fl;
+          f_mix.block(6, 0, 6, 1) = 0.5 * fr;
+          fl = f.block(0, 0, 6, 1);
+          fr = f.block(6, 0, 6, 1);
+//          std::cout << "f = " << f.transpose() << std::endl;
+//          std::cout << "f_mix = " << f_mix.transpose() << std::endl;
+//          std::cout << "f.norm() = " << f.norm() << std::endl;
+//          std::cout << "f_mix.norm() = " << f_mix.norm() << std::endl;
+        } else if (alpha < 0.5) {
+          fr.setZero();
+        } else {
+          fl.setZero();
+        }
+        std::cout << "fl = " << fl.transpose() << std::endl;
+        std::cout << "fr = " << fr.transpose() << std::endl;
+        Eigen::VectorXd tau_ext = Jla.transpose() * fl + Jra.transpose() * fr;
+        Eigen::VectorXd tau_a = Ma * qdd + ca - tau_ext;
+//        std::cout << "tau_a = " << tau_a.transpose() << std::endl;
 
         Eigen::VectorXd tau_a_expanded(6 + n_act);
         tau_a_expanded << Eigen::VectorXd::Zero(6), tau_a;
@@ -300,7 +342,7 @@ int main() {
           //printf("qpos[%d]=%f\n", jnt_qpos_idx, jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
           //printf("err_q=%f\n", err_q);
 //          jvrc1_mj_data_ptr->ctrl[i] = position_gains[i] * err_q + velocity_gains[i] * err_v;
-          jvrc1_mj_data_ptr->ctrl[i] = tau_a_expanded(jnt_qvel_idx);// + joint_command[joint_name] + position_gains[i] * err_q + velocity_gains[i] * err_v;
+          jvrc1_mj_data_ptr->ctrl[i] = tau_a_expanded(jnt_qvel_idx);// - jvrc1_mj_data_ptr->qfrc_applied[jnt_qvel_idx] - JTf[jnt_qvel_idx];// + joint_command[joint_name] + position_gains[i] * err_q + velocity_gains[i] * err_v;
 //          jvrc1_mj_data_ptr->ctrl[i] = 0.0;// position_gains[i] * err_q + velocity_gains[i] * err_v;
           //jvrc1_mj_data_ptr->ctrl[i - 1] = 10.0 * err_q;
           //jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = 10.0 * err_q;
@@ -309,21 +351,22 @@ int main() {
           joint_vel_des_log_file << joint_command[joint_name] << " ";
           joint_eff_log_file << jvrc1_mj_data_ptr->ctrl[i] << " ";
         }
-
-//        for (int i = 0; i < 6; ++i) {
-////          jvrc1_mj_data_ptr->qvel[i] += 0.001 * desired_base_acceleration(i);//desired_base_velocity(i);
+        for (int i = 0; i < 6; ++i) {
+          jvrc1_mj_data_ptr->qvel[i] += 0.001 * qdd(i);
+//          jvrc1_mj_data_ptr->qvel[i] += 0.001 * desired_base_acceleration(i);//desired_base_velocity(i);
 //          jvrc1_mj_data_ptr->qvel[i] = desired_base_velocity(i);
-//        }
+        }
 //
-//        for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
-//          int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
-//          std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
-//          int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
-//          int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-////          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] += 0.001 * desired_joint_state[joint_name].acc;//desired_joint_state[joint_name].vel;
+        for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+          int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+          int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
+          int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
+          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] += 0.001 * qdd(jnt_qvel_idx);
+//          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] += 0.001 * desired_joint_state[joint_name].acc;//desired_joint_state[joint_name].vel;
 //          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = desired_joint_state[joint_name].vel;
-//          jvrc1_mj_data_ptr->ctrl[i] = 0.0;
-//        }
+          jvrc1_mj_data_ptr->ctrl[i] = 0.0;
+        }
 
         mj_step2(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 

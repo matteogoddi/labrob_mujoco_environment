@@ -126,7 +126,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   q_jnt_des_(robot_model_.getJointId("L_ELBOW_P") - 2) = l_elbow_p_des;
 
   // TODO: init using node handle.
-  controller_frequency_ = 250;
+  controller_frequency_ = 1000;
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.05;
@@ -154,6 +154,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
       labrob::WalkingState::Standing
   ));
 
+  double double_support_duration = 300;
+  double single_support_duration = 600;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -161,7 +163,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       0.0,
-      700,
+      double_support_duration,
       labrob::WalkingState::Starting
   ));
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -171,7 +173,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       swing_foot_trajectory_height,
-      1400,
+      single_support_duration,
       labrob::WalkingState::SingleSupport
   ));
   for (int n = 0; n < n_steps; n += 2) {
@@ -182,7 +184,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::RIGHT
         ),
         0.0,
-        1000,
+        double_support_duration,
         labrob::WalkingState::DoubleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -192,7 +194,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::LEFT
         ),
         swing_foot_trajectory_height,
-        1400,
+        single_support_duration,
         labrob::WalkingState::SingleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -202,7 +204,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::LEFT
         ),
         0.0,
-        1000,
+        double_support_duration,
         labrob::WalkingState::DoubleSupport
     ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -212,7 +214,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
             labrob::Foot::RIGHT
         ),
         swing_foot_trajectory_height,
-        1400,
+        single_support_duration,
         labrob::WalkingState::SingleSupport
     ));
   }
@@ -248,8 +250,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-  std::cerr << "CoM target height: " << com_target_height << std::endl;
-  double foot_constraint_square_width = 0.05;
+//  std::cerr << "CoM target height: " << com_target_height << std::endl;
+  double foot_constraint_square_width = 1.0;//0.05;
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   labrob::ISMPCState mpc_init_state(
       p_CoM,
@@ -386,8 +388,8 @@ WalkingManager::update(
       );
 
 
-  std::cerr << "lsole position: " << T_lsole.translation().transpose() << std::endl;
-  std::cerr << "rsole position: " << T_rsole.translation().transpose() << std::endl;
+//  std::cerr << "lsole position: " << T_lsole.translation().transpose() << std::endl;
+//  std::cerr << "rsole position: " << T_rsole.translation().transpose() << std::endl;
 
   // Update walking state:
   walking_data_.updateWalkingState(t_msec_);
@@ -413,9 +415,9 @@ WalkingManager::update(
   //    labrob::SE3(T_rsole.rotation(), T_rsole.translation())
   //);
 
-  std::cerr << "t (msec):" << t_msec_ << std::endl;
-  std::cerr << "\tWalkingState::" << to_string(walking_data_.getWalkingState()) << std::endl;
-  std::cerr << "\tFootstep plan size: " << walking_data_.footstep_plan.size() << std::endl;
+//  std::cerr << "t (msec):" << t_msec_ << std::endl;
+//  std::cerr << "\tWalkingState::" << to_string(walking_data_.getWalkingState()) << std::endl;
+//  std::cerr << "\tFootstep plan size: " << walking_data_.footstep_plan.size() << std::endl;
   for (const auto& footstep_plan_element : walking_data_.footstep_plan) {
     const auto& feet_placement = footstep_plan_element.getFeetPlacement();
     auto duration = footstep_plan_element.getDuration();
@@ -424,14 +426,14 @@ WalkingManager::update(
     auto support_foot = footstep_plan_element.getFeetPlacement().getSupportFoot();
     const auto& left_foot_configuration = feet_placement.getLeftFootConfiguration();
     const auto& right_foot_configuration = feet_placement.getRightFootConfiguration();
-    std::cerr << "qL=" << left_foot_configuration.p.transpose()
-        << ", qR=" << right_foot_configuration.p.transpose()
-        << ", T=" << duration
-        << ", h_z=" << h_z
-        << ", support foot=" << (support_foot == labrob::Foot::LEFT ? "LEFT" : "RIGHT")
-        << ", walking state="
-        << labrob::to_string(walking_state)
-        << std::endl;
+//    std::cerr << "qL=" << left_foot_configuration.p.transpose()
+//        << ", qR=" << right_foot_configuration.p.transpose()
+//        << ", T=" << duration
+//        << ", h_z=" << h_z
+//        << ", support foot=" << (support_foot == labrob::Foot::LEFT ? "LEFT" : "RIGHT")
+//        << ", walking state="
+//        << labrob::to_string(walking_state)
+//        << std::endl;
   }
 
   // CoM task:
@@ -448,8 +450,8 @@ WalkingManager::update(
   Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
   Eigen::Vector3d a_CoM_des = eta2 * (p_CoM_des - p_ZMP_des) - g_vector;
 
-  std::cerr << "p_CoM_des: " << p_CoM_des.transpose() << std::endl;
-  std::cerr << "a_CoM_des: " << a_CoM_des.transpose() << std::endl;
+//  std::cerr << "p_CoM_des: " << p_CoM_des.transpose() << std::endl;
+//  std::cerr << "a_CoM_des: " << a_CoM_des.transpose() << std::endl;
 
   // CoM task error:
   auto err_CoM = p_CoM_des - p_CoM;
@@ -560,8 +562,8 @@ WalkingManager::update(
     Eigen::VectorXd err_posture(6 + njnt);
     err_posture << Eigen::VectorXd::Zero(6), q_jnt_des_ - q.tail(njnt);
 
-    double Kp = 50.0;
-    double Kd = 10.0;
+    double Kp = 50.0;//50.0;
+    double Kd = 10.0;//10.0;
 
     // CLIK-weights:
     Eigen::Matrix3d K_CoM = Kp * Eigen::Matrix3d::Identity();
@@ -604,13 +606,15 @@ WalkingManager::update(
 //    if (is_left_foot_support) weight_lsole_task = 100.0;
 //    if (is_right_foot_support) weight_rsole_task = 100.0;
 
-    if (walking_data_.footstep_plan.front().getWalkingState() == WalkingState::PostureRegulation) {
-      weight_posture_regulation_task = 1.0;
-    } else {
-      weight_q_dot = 1e-4;
-      weight_torso_orientation_task = 1e-3; // 1e-3
-      weight_posture_regulation_task = 1e-4; // 0.01; // (legs not considered)
-    }
+    weight_torso_orientation_task = 1e-3;
+    weight_posture_regulation_task = 1e-4;
+//    if (walking_data_.footstep_plan.front().getWalkingState() == WalkingState::PostureRegulation) {
+//      weight_posture_regulation_task = 1.0;
+//    } else {
+//      weight_q_dot = 1e-4;
+//      weight_torso_orientation_task = 1e-3; // 1e-3
+//      weight_posture_regulation_task = 1e-4; // 0.01; // (legs not considered)
+//    }
 
     cmm_selection_matrix(0, 3) = weight_angular_momentum_task_x;
     cmm_selection_matrix(1, 4) = weight_angular_momentum_task_y;
@@ -649,7 +653,7 @@ WalkingManager::update(
     auto q_jnt_dot_max = robot_model_.velocityLimit.tail(njnt);
     auto q_jnt_min = robot_model_.lowerPositionLimit.tail(njnt);
     auto q_jnt_max = robot_model_.upperPositionLimit.tail(njnt);
-    const double gamma = 100.0;
+    const double gamma = 10.0;
     if (is_left_foot_support) {
       A_eq.topRows(6) = J_lsole;
       // NOTE: the following is useful to correct kinematic simulation errors.
@@ -676,8 +680,6 @@ WalkingManager::update(
     );
 
     Eigen::VectorXd joint_acceleration_commands = qp_solver_ptr_->get_solution();
-
-    std::cout << joint_acceleration_commands.transpose() << std::endl;
 
     Eigen::VectorXd q_next_des(robot_model_.nq);
     Eigen::VectorXd v = controller_timestep * qdot;
@@ -865,9 +867,9 @@ WalkingManager::update(
       alpha_ = 0.5 + alpha_ / 2.0;
   } else if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
     if (is_left_foot_support)
-      alpha_ = 0.0;
+      alpha_ = -0.1;
     else if (is_right_foot_support)
-      alpha_ = 1.0;
+      alpha_ = 1.1;
   } else {
     alpha_ = 0.5;
   }

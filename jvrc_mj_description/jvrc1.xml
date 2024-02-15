@@ -6,9 +6,9 @@
   <size njmax="500" nconmax="100" />
 
   <option timestep="0.001" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />
-<!--  <option>-->
-<!--    <flag contact="disable" gravity="disable" />-->
-<!--  </option>-->
+  <option>
+    <flag contact="disable" gravity="disable" />
+  </option>
 
   <default>
     <default class="jvrc1">
