@@ -61,6 +61,7 @@ class WalkingManager {
   bool open_loop_ = false;
 
   std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
+  std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> force_solver_ptr_;
 
 
 private:
