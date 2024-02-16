@@ -21,29 +21,29 @@ if __name__ == '__main__':
     n = ceil(sqrt(plots_per_fig))
 
     figs = []
-    for i in range(num_joints):
-        if i % plots_per_fig == 0:
-            figs.append(plt.figure())
-        figs[-1].add_subplot(n, n, i % plots_per_fig + 1)
-        plt.xlabel('Time [s]')
-        plt.ylabel('Angular Velocity [rad/s]')
-        plt.plot(t, joint_vel_des[:, i], label='Desired')
-        plt.plot(t, joint_vel[:, i], label='Actual')
-        plt.title(joint_names[i])
-        plt.legend()
-        plt.grid()
-        plt.tight_layout()
-
-    # figs = []
     # for i in range(num_joints):
     #     if i % plots_per_fig == 0:
     #         figs.append(plt.figure())
     #     figs[-1].add_subplot(n, n, i % plots_per_fig + 1)
     #     plt.xlabel('Time [s]')
-    #     plt.ylabel('Torque [Nm]')
-    #     plt.plot(t, joint_eff[:, i])
+    #     plt.ylabel('Angular Velocity [rad/s]')
+    #     plt.plot(t, joint_vel_des[:, i], label='Desired')
+    #     plt.plot(t, joint_vel[:, i], label='Actual')
     #     plt.title(joint_names[i])
+    #     plt.legend()
     #     plt.grid()
     #     plt.tight_layout()
+
+    figs = []
+    for i in range(num_joints):
+        if i % plots_per_fig == 0:
+            figs.append(plt.figure())
+        figs[-1].add_subplot(n, n, i % plots_per_fig + 1)
+        plt.xlabel('Time [s]')
+        plt.ylabel('Torque [Nm]')
+        plt.plot(t, joint_eff[:, i])
+        plt.title(joint_names[i])
+        plt.grid()
+        plt.tight_layout()
 
     plt.show()

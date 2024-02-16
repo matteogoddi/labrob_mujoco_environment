@@ -25,14 +25,15 @@ class WalkingManager {
  public:
   WalkingManager() = default;
 
-  bool init(const labrob::RobotState& initial_robot_state);
+  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
 
   void update(
       const labrob::RobotState& robot_state,
       labrob::JointCommand& joint_command,
       labrob::JointState& desired_joint_state,
       Eigen::VectorXd& desired_base_velocity,
-      Eigen::VectorXd& desired_base_acceleration
+      Eigen::VectorXd& desired_base_acceleration,
+      Eigen::Vector3d& zmp_position
   );
 
   double get_alpha() const;
@@ -54,7 +55,13 @@ class WalkingManager {
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
 
+  Eigen::VectorXd M_armature_;
+  Eigen::VectorXd q_next_prev_;
+  Eigen::VectorXd v_next_prev_;
+  bool open_loop_ = false;
+
   std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
+
 
 private:
   // TODO: to move out of the class WalkingManager.
@@ -108,6 +115,10 @@ private:
   std::ofstream v_lsole_des_log_file_;
   std::ofstream v_rsole_des_log_file_;
   std::ofstream angular_momentum_log_file_;
+  std::ofstream fl_log_file_;
+  std::ofstream fr_log_file_;
+  std::ofstream cop_computed_log_file_;
+  std::ofstream alpha_log_file_;
 
 }; // end class WalkingManager
 

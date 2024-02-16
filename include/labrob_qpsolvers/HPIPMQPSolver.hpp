@@ -19,6 +19,8 @@
 #include <hpipm_d_dense_qp_sol.h>
 #include <hpipm_timing.h>
 
+#include <iostream>
+
 namespace labrob {
 namespace qpsolvers {
 
@@ -86,6 +88,8 @@ class HPIPMQPSolver : public QPSolver<double> {
     // solve QP
     d_dense_qp_ipm_solve(&qp_, &qp_sol_, &arg_, &workspace_);
     d_dense_qp_sol_get_v(&qp_sol_, u_);
+
+    std::cout << "Status = " << workspace_.status << std::endl;
   }
 
   const double* get_solution() const override {

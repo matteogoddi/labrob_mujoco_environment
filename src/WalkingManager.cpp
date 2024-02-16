@@ -17,6 +17,7 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
 #include <hrp4_locomotion/JointCommand.hpp>
@@ -26,7 +27,8 @@
 namespace labrob {
 
 bool
-WalkingManager::init(const labrob::RobotState& initial_robot_state) {
+WalkingManager::init(const labrob::RobotState& initial_robot_state,
+                     std::map<std::string, double> &armatures) {
   // Read URDF from file:
   std::string robot_description_filename = "../jvrc_description/urdf/jvrc1.urdf";
 
@@ -64,6 +66,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   );
   robot_data_ = pinocchio::Data(robot_model_);
 
+  q_next_prev_ = robot_state_to_pinocchio_joint_configuration(robot_model_, initial_robot_state);
+  v_next_prev_ = robot_state_to_pinocchio_joint_velocity(robot_model_, initial_robot_state);
+
   // Init desired lsole and rsole poses:
   auto q_init = robot_state_to_pinocchio_joint_configuration(
       robot_model_,
@@ -79,6 +84,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   const auto& T_rsole_init = robot_data_.oMf[rsole_idx_];
 
   int njnt = robot_model_.nv - 6;
+
+  M_armature_ = Eigen::VectorXd::Zero(njnt);
+  for(pinocchio::JointIndex joint_id = 2;
+      joint_id < (pinocchio::JointIndex) robot_model_.njoints;
+      ++joint_id) {
+    std::string joint_name = robot_model_.names[joint_id];
+    M_armature_(joint_id - 2) = armatures[joint_name];
+  }
+
+//  std::cout << "M_armature = " << M_armature << std::endl;
 
   double waist_p_des = 0.0;
   double r_hip_y_des = 0.0;
@@ -140,7 +155,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
           labrob::Foot::RIGHT
       ),
       0.0,
-      10000,
+      2000,
       labrob::WalkingState::Init
   ));
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -154,8 +169,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
       labrob::WalkingState::Standing
   ));
 
-  double double_support_duration = 300;
-  double single_support_duration = 600;
+  double double_support_duration = 2000;
+  double single_support_duration = 2000;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -290,6 +305,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state) {
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
   angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
+  fl_log_file_.open("/tmp/fl.txt");
+  fr_log_file_.open("/tmp/fr.txt");
+  cop_computed_log_file_.open("/tmp/cop_computed.txt");
+  alpha_log_file_.open("/tmp/alpha.txt");
 
   return true;
 }
@@ -300,7 +319,8 @@ WalkingManager::update(
     labrob::JointCommand& joint_command,
     labrob::JointState& desired_joint_state,
     Eigen::VectorXd &desired_base_velocity,
-    Eigen::VectorXd &desired_base_acceleration) {
+    Eigen::VectorXd &desired_base_acceleration,
+    Eigen::Vector3d &zmp_position) {
 
   double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
@@ -308,6 +328,14 @@ WalkingManager::update(
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
+
+  std::cout << "q = " << q.transpose() << std::endl;
+  std::cout << "qdot = " << qdot.transpose() << std::endl;
+
+  if (open_loop_) {
+    q = q_next_prev_;
+    qdot = v_next_prev_;
+  }
 
   // Perform forward kinematics on the whole tree and update robot data:
   pinocchio::forwardKinematics(robot_model_, robot_data_, q);
@@ -328,7 +356,7 @@ WalkingManager::update(
 
   const auto& p_CoM = robot_data_.com[0];
   const auto& a_CoM_drift = robot_data_.acom[0];
-  std::cout << "CoM_drift = " << a_CoM_drift.transpose() << std::endl;
+//  std::cout << "CoM_drift = " << a_CoM_drift.transpose() << std::endl;
   const auto& J_CoM = robot_data_.Jcom;
   const auto& T_torso = robot_data_.oMf[torso_idx_];
   auto torso_orientation = T_torso.rotation();
@@ -342,7 +370,7 @@ WalkingManager::update(
   );
   auto J_torso_orientation = J_torso.bottomRows<3>();
   Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobian(
+  pinocchio::getFrameJacobianTimeVariation(
       robot_model_,
       robot_data_,
       torso_idx_,
@@ -445,6 +473,7 @@ WalkingManager::update(
   Eigen::Vector3d v_CoM_des = ismpc_state.com_vel_;
   Eigen::Vector3d p_CoM_des = ismpc_state.com_pos_;
   Eigen::Vector3d p_ZMP_des = ismpc_state.zmp_pos_;
+  zmp_position = ismpc_state.zmp_pos_;
 
   double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
   Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
@@ -557,13 +586,39 @@ WalkingManager::update(
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == labrob::Foot::RIGHT) is_left_foot_support = false;
   }
 
+  if (walking_data_.getWalkingState() == WalkingState::DoubleSupport or
+      walking_data_.getWalkingState() == WalkingState::Starting) {
+    if (walking_data_.footstep_plan.size() > 1) {
+      alpha_ = static_cast<double>(t_msec_ - walking_data_.t0)
+          / static_cast<double>(walking_data_.footstep_plan.front().getDuration());
+      if (walking_data_.footstep_plan.at(1).getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT)
+        alpha_ = 1.0 - alpha_;
+    } else {
+      alpha_ = 0.5;
+    }
+    if (walking_data_.getWalkingState() == WalkingState::Starting)
+      alpha_ = 0.5 + alpha_ / 2.0;
+  } else if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    if (is_left_foot_support)
+      alpha_ = -0.1;
+    else if (is_right_foot_support)
+      alpha_ = 1.1;
+  } else {
+    alpha_ = 0.5;
+  }
+
+  Eigen::VectorXd fl;
+  Eigen::VectorXd fr;
+  double xc_computed = 0.0;
+  double yc_computed = 0.0;
+
   bool acc_wbc = true;
   if (acc_wbc) {
     Eigen::VectorXd err_posture(6 + njnt);
     err_posture << Eigen::VectorXd::Zero(6), q_jnt_des_ - q.tail(njnt);
 
-    double Kp = 50.0;//50.0;
-    double Kd = 10.0;//10.0;
+    double Kp = 5.0;//50.0;
+    double Kd = 1.0;//10.0;
 
     // CLIK-weights:
     Eigen::Matrix3d K_CoM = Kp * Eigen::Matrix3d::Identity();
@@ -620,14 +675,19 @@ WalkingManager::update(
     cmm_selection_matrix(1, 4) = weight_angular_momentum_task_y;
     cmm_selection_matrix(2, 5) = weight_angular_momentum_task_z;
 
-    double K_jnt = 50.0;
-    double Kd_jnt = 10.0;
+    double K_jnt = 5.0;
+    double Kd_jnt = 1.0;
 
     Eigen::VectorXd a_jnt_total = K_jnt * err_posture - Kd_jnt * qdot;
     Eigen::Vector3d a_CoM_total = a_CoM_des + K_CoM * err_CoM + Kd_CoM * err_CoM_vel;
     Eigen::VectorXd a_lsole_total = a_lsole_des + K_lsole * err_lsole + Kd_lsole * err_lsole_vel;
     Eigen::VectorXd a_rsole_total = a_rsole_des + K_rsole * err_rsole + Kd_rsole * err_rsole_vel;
     Eigen::VectorXd a_torso_orientation_total = a_torso_orientation_des + K_torso_orientation * err_torso_orientation + Kd_torso_orientation * err_torso_orientation_vel;
+    std::cout << "a_jnt_total =" << a_jnt_total.transpose() << std::endl;
+    std::cout << "a_CoM_total =" << a_CoM_total.transpose() << std::endl;
+    std::cout << "a_lsole_total =" << a_lsole_total.transpose() << std::endl;
+    std::cout << "a_rsole_total =" << a_rsole_total.transpose() << std::endl;
+    std::cout << "a_torso_orientation_total =" << a_torso_orientation_total.transpose() << std::endl;
 
     cost_function_H += weight_q_dot * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
     cost_function_H += weight_com_task * (J_CoM.transpose() * J_CoM);
@@ -636,8 +696,8 @@ WalkingManager::update(
     cost_function_H += weight_torso_orientation_task * (J_torso_orientation.transpose() * J_torso_orientation);
     cost_function_H += weight_posture_regulation_task * (err_posture_selection_matrix.transpose() * err_posture_selection_matrix);
 //    cost_function_H += weight_posture_regulation_task * (1.0 / 4.0) * std::pow(controller_timestep, 4.0) * err_posture_selection_matrix.transpose() * err_posture_selection_matrix;
-//    cost_function_H += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
-//        std::pow(controller_timestep, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
+    cost_function_H += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
+        std::pow(controller_timestep, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
     cost_function_f += weight_com_task * J_CoM.transpose() * (a_CoM_drift - a_CoM_total);
     cost_function_f += weight_lsole_task * J_lsole.transpose() * (J_lsole_dot * qdot - a_lsole_total);
     cost_function_f += weight_rsole_task * J_rsole.transpose() * (J_rsole_dot * qdot - a_rsole_total);
@@ -646,14 +706,14 @@ WalkingManager::update(
     cost_function_f += -weight_posture_regulation_task * err_posture_selection_matrix.transpose() * err_posture_selection_matrix * a_jnt_total;
 //    cost_function_f += -weight_posture_regulation_task * (1.0 / 2.0) * std::pow(controller_timestep, 2.0) *
 //        err_posture_selection_matrix.transpose() * err_posture_selection_matrix * err_posture;
-//    cost_function_f += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose()
-//        * controller_timestep * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
+    cost_function_f += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose()
+        * controller_timestep * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
     auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(njnt);
     auto q_jnt_dot_max = robot_model_.velocityLimit.tail(njnt);
     auto q_jnt_min = robot_model_.lowerPositionLimit.tail(njnt);
     auto q_jnt_max = robot_model_.upperPositionLimit.tail(njnt);
-    const double gamma = 10.0;
+    const double gamma = 1.0;
     if (is_left_foot_support) {
       A_eq.topRows(6) = J_lsole;
       // NOTE: the following is useful to correct kinematic simulation errors.
@@ -664,8 +724,8 @@ WalkingManager::update(
       // NOTE: the following is useful to correct kinematic simulation errors.
       b_eq.bottomRows(6) = -J_rsole_dot * qdot - gamma * J_rsole * qdot;
     }
-    C_ineq.rightCols(njnt).topRows(njnt).diagonal().setConstant(controller_timestep);
-    C_ineq.rightCols(njnt).bottomRows(njnt).diagonal().setConstant(std::pow(controller_timestep, 2.0) / 2.0);
+    C_ineq.rightCols(njnt).topRows(njnt).diagonal().setConstant(0.0 * controller_timestep);
+    C_ineq.rightCols(njnt).bottomRows(njnt).diagonal().setConstant(0.0 * std::pow(controller_timestep, 2.0) / 2.0);
     d_min_ineq << q_jnt_dot_min - qdot.tail(njnt), q_jnt_min - q.tail(njnt) - controller_timestep * qdot.tail(njnt);
     d_max_ineq << q_jnt_dot_max - qdot.tail(njnt), q_jnt_max - q.tail(njnt) - controller_timestep * qdot.tail(njnt);
 
@@ -686,14 +746,99 @@ WalkingManager::update(
     pinocchio::integrate(robot_model_, q, v, q_next_des);
     Eigen::VectorXd v_next_des = qdot;
     v_next_des += controller_timestep * joint_acceleration_commands;
+    q_next_prev_ = q_next_des;
+    v_next_prev_ = v_next_des;
 
-    const auto& joint_torques = pinocchio::rnea(
+    Eigen::MatrixXd M = pinocchio::crba(robot_model_, robot_data_, q);
+    M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
+    M.diagonal().tail(njnt) += M_armature_;
+//    std::cout << "M_pin = " << std::endl << M << std::endl;
+
+    const auto& c = pinocchio::rnea(
         robot_model_,
         robot_data_,
         q,
         qdot,
         joint_acceleration_commands
     );
+
+    Eigen::MatrixXd Jlu = J_lsole.block(0, 0, 6, 6);
+    Eigen::MatrixXd Jla = J_lsole.block(0, 6, 6, njnt);
+    Eigen::MatrixXd Jru = J_rsole.block(0, 0, 6, 6);
+    Eigen::MatrixXd Jra = J_rsole.block(0, 6, 6, njnt);
+
+    Eigen::MatrixXd Mu = M.block(0, 0, 6, 6 + njnt);
+    Eigen::MatrixXd Ma = M.block(6, 0, njnt, 6 + njnt);
+
+    Eigen::VectorXd cu = c.block(0, 0, 6, 1);
+    Eigen::VectorXd ca = c.block(6, 0, njnt, 1);
+
+    Eigen::VectorXd qdd = joint_acceleration_commands;
+
+    std::cout << "qddu = " << qdd.block(0, 0, 6, 1).transpose() << std::endl;
+
+    const double xl = T_lsole.translation().x();
+    const double yl = T_lsole.translation().y();
+    const double xr = T_rsole.translation().x();
+    const double yr = T_rsole.translation().y();
+    const double xc = ismpc_state.zmp_pos_(0);
+    const double yc = ismpc_state.zmp_pos_(1);
+
+    fl = Jlu.transpose().inverse() * (Mu * qdd + cu);
+    fr = Jru.transpose().inverse() * (Mu * qdd + cu);
+    if (alpha_ >= 0.0 and alpha_ <= 1.0) {
+      Eigen::MatrixXd A(6, 2 * 6);
+      Eigen::VectorXd b(6);
+//      Eigen::MatrixXd A(6 + 2, 2 * 6);
+//      Eigen::VectorXd b(6 + 2);
+      A.block(0, 0, 6, 6) = Jlu.transpose();
+      A.block(0, 6, 6, 6) = Jru.transpose();
+//      A.block(6, 0, 1, 12) =
+//        Eigen::MatrixXd{{0.0, 0.0, xc - xl,
+//                         0.0, 1.0, 0.0,
+//                         0.0, 0.0, xc - xr,
+//                         0.0, 1.0, 0.0}};
+//      A.block(7, 0, 1, 12) =
+//          Eigen::MatrixXd{{0.0, 0.0, yc - yl,
+//                           -1.0, 0.0, 0.0,
+//                           0.0, 0.0, yc - yr,
+//                           -1.0, 0.0, 0.0}};
+      b.block(0, 0, 6, 1) = Mu * qdd + cu;
+//      b(6) = 0.0;
+//      b(7) = 0.0;
+      std::cout << "A = " << std::endl << A << std::endl;
+      std::cout << "b = " << b.transpose() << std::endl;
+      Eigen::VectorXd f = A.completeOrthogonalDecomposition().pseudoInverse() * b;
+//    Eigen::VectorXd f_mix(12);
+//    f_mix.block(0, 0, 6, 1) = 0.5 * fl;
+//    f_mix.block(6, 0, 6, 1) = 0.5 * fr;
+      fl = f.block(0, 0, 6, 1);
+      fr = f.block(6, 0, 6, 1);
+//          std::cout << "f = " << f.transpose() << std::endl;
+//          std::cout << "f_mix = " << f_mix.transpose() << std::endl;
+//          std::cout << "f.norm() = " << f.norm() << std::endl;
+//          std::cout << "f_mix.norm() = " << f_mix.norm() << std::endl;
+    }
+//    else {
+//      fl = (1.0 - alpha_) * fl;
+//      fr = alpha_ * fr;
+//    }
+    else if (alpha_ < 0.5) {
+      fr.setZero();
+    } else {
+      fl.setZero();
+    }
+    std::cout << "fl = " << fl.transpose() << std::endl;
+    std::cout << "fr = " << fr.transpose() << std::endl;
+    xc_computed = (xl * fl(2) + xr * fr(2) - fl(4) - fr(4)) / (fl(2) + fr(2));
+    yc_computed = (yl * fl(2) + yr * fr(2) + fl(3) + fr(3)) / (fl(2) + fr(2));
+
+    Eigen::VectorXd tau_ext = Jla.transpose() * fl + Jra.transpose() * fr;
+    Eigen::VectorXd tau_a = Ma * qdd + ca - tau_ext;
+//        std::cout << "tau_a = " << tau_a.transpose() << std::endl;
+
+    Eigen::VectorXd tau_a_expanded(6 + njnt);
+    tau_a_expanded << Eigen::VectorXd::Zero(6), tau_a;
 
     desired_base_velocity = v_next_des.block(0, 0, 6, 1);
     desired_base_acceleration = joint_acceleration_commands.block(0, 0, 6, 1);
@@ -704,7 +849,7 @@ WalkingManager::update(
         joint_id < (pinocchio::JointIndex) robot_model_.njoints;
         ++joint_id) {
       const auto &joint_name = robot_model_.names[joint_id];
-      joint_command[joint_name] = joint_torques[joint_id + 4];
+      joint_command[joint_name] = tau_a_expanded[joint_id + 4];//joint_torques[joint_id + 4];
       desired_joint_state[joint_name].pos = q_next_des[joint_id + 5];
       desired_joint_state[joint_name].vel = v_next_des[joint_id + 4];
       desired_joint_state[joint_name].acc = joint_acceleration_commands[joint_id + 4];
@@ -852,27 +997,10 @@ WalkingManager::update(
   v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
   v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-
-  if (walking_data_.getWalkingState() == WalkingState::DoubleSupport or
-      walking_data_.getWalkingState() == WalkingState::Starting) {
-    if (walking_data_.footstep_plan.size() > 1) {
-      alpha_ = static_cast<double>(t_msec_ - walking_data_.t0)
-          / static_cast<double>(walking_data_.footstep_plan.front().getDuration());
-      if (walking_data_.footstep_plan.at(1).getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT)
-        alpha_ = 1.0 - alpha_;
-    } else {
-      alpha_ = 0.5;
-    }
-    if (walking_data_.getWalkingState() == WalkingState::Starting)
-      alpha_ = 0.5 + alpha_ / 2.0;
-  } else if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    if (is_left_foot_support)
-      alpha_ = -0.1;
-    else if (is_right_foot_support)
-      alpha_ = 1.1;
-  } else {
-    alpha_ = 0.5;
-  }
+  fl_log_file_ << fl.transpose() << std::endl;
+  fr_log_file_ << fr.transpose() << std::endl;
+  cop_computed_log_file_ << xc_computed << " " << yc_computed << std::endl;
+  alpha_log_file_ << alpha_ << std::endl;
 }
 
 double WalkingManager::get_alpha() const {

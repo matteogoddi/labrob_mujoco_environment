@@ -6,16 +6,18 @@
   <size njmax="500" nconmax="100" />
 
   <option timestep="0.001" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />
-  <option>
-    <flag contact="disable" gravity="disable" />
-  </option>
+<!--  <option>-->
+<!--    <flag contact="disable" gravity="disable" />-->
+<!--  </option>-->
 
   <default>
     <default class="jvrc1">
       <joint limited="true" damping="0.2" pos="0 0 0" />
+<!--      <joint limited="false" damping="0.0" pos="0 0 0" />-->
       <motor ctrllimited="false" forcelimited="false" />
     </default>
     <default class="collision">
+<!--      <geom type="mesh" condim="6" friction="0.6 0.005 0.0001" solref="0.015 1" solimp="0.99 0.99 0.001" priority="1"/>-->
       <geom condim="3" group="0" type="mesh" />
     </default>
     <default class="visual">
