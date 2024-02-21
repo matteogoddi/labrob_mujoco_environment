@@ -765,7 +765,7 @@ WalkingManager::update(
         robot_data_,
         q,
         qdot,
-        joint_acceleration_commands
+        0.0 * joint_acceleration_commands
     );
 
     Eigen::MatrixXd Jlu = J_lsole.block(0, 0, 6, 6);
