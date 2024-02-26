@@ -40,8 +40,7 @@ void WholeBodyController::computePinocchio(const Eigen::VectorXd &q, const Eigen
   pinocchio::centerOfMass(robot_model_, robot_data_, q, q_dot, 0.0 * q_dot); // This is used to compute the CoM drift (J_com_dot * qdot)
 }
 
-void WholeBodyController::getJacobians(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot,
-                                       Eigen::MatrixXd &J_torso, Eigen::MatrixXd &J_lsole, Eigen::MatrixXd &J_rsole) {
+void WholeBodyController::getJacobians(Eigen::MatrixXd &J_torso, Eigen::MatrixXd &J_lsole, Eigen::MatrixXd &J_rsole) {
   pinocchio::getFrameJacobian(
       robot_model_,
       robot_data_,
@@ -65,8 +64,7 @@ void WholeBodyController::getJacobians(const Eigen::VectorXd &q, const Eigen::Ve
   );
 }
 
-void WholeBodyController::getJacobiansTimeVariation(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot,
-                                                    Eigen::MatrixXd &J_torso_dot, Eigen::MatrixXd &J_lsole_dot, Eigen::MatrixXd &J_rsole_dot) {
+void WholeBodyController::getJacobiansTimeVariation(Eigen::MatrixXd &J_torso_dot, Eigen::MatrixXd &J_lsole_dot, Eigen::MatrixXd &J_rsole_dot) {
   pinocchio::getFrameJacobianTimeVariation(
       robot_model_,
       robot_data_,

@@ -43,13 +43,13 @@ class TorqueWholeBodyController : public WholeBodyController {
                             double sample_time,
                             std::map<std::string, double> &armatures);
 
-  Eigen::VectorXd control(const CoMMotion &desired_com_motion,
+  virtual WBCOutput control(const CoMMotion &desired_com_motion,
                           const FootMotion &desired_left_foot_motion,
                           const FootMotion &desired_right_foot_motion,
                           const Eigen::VectorXd &q,
                           const Eigen::VectorXd &q_dot,
                           bool is_left_support,
-                          bool is_right_support);
+                          bool is_right_support) override;
 
  private:
   TorqueWholeBodyControllerParams params_;

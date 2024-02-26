@@ -24,16 +24,26 @@ struct FootMotion {
   Eigen::VectorXd acceleration;
 };
 
+struct WBCOutput {
+  Eigen::VectorXd q;
+  Eigen::VectorXd q_dot;
+  Eigen::VectorXd q_ddot;
+  Eigen::VectorXd tau;
+  Eigen::VectorXd fl;
+  Eigen::VectorXd fr;
+};
+
 class WholeBodyController {
  public:
   WholeBodyController(const pinocchio::Model &robot_model,
                       const Eigen::VectorXd &q_jnt_reg,
                       double sample_time);
 
-  virtual Eigen::VectorXd control(const CoMMotion &desired_com_motion,
+  virtual WBCOutput control(const CoMMotion &desired_com_motion,
                           const FootMotion &desired_left_foot_motion,
                           const FootMotion &desired_right_foot_motion,
-                          const RobotState &robot_state,
+                          const Eigen::VectorXd &q,
+                          const Eigen::VectorXd &q_dot,
                           bool is_left_support,
                           bool is_right_support
                           ) = 0;
@@ -42,9 +52,9 @@ class WholeBodyController {
 
   void computePinocchio(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot);
 
-  void getJacobians(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot, Eigen::MatrixXd &J_torso, Eigen::MatrixXd &J_lsole, Eigen::MatrixXd &J_rsole);
+  void getJacobians(Eigen::MatrixXd &J_torso, Eigen::MatrixXd &J_lsole, Eigen::MatrixXd &J_rsole);
 
-  void getJacobiansTimeVariation(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot, Eigen::MatrixXd &J_torso_dot, Eigen::MatrixXd &J_lsole_dot, Eigen::MatrixXd &J_rsole_dot);
+  void getJacobiansTimeVariation(Eigen::MatrixXd &J_torso_dot, Eigen::MatrixXd &J_lsole_dot, Eigen::MatrixXd &J_rsole_dot);
 
   Eigen::Matrix<double, 6, 1> err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb);
 
