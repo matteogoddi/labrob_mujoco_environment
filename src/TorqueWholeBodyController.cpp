@@ -164,7 +164,6 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
   );
   double desired_torso_yaw = (left_foot_yaw + right_foot_yaw) / 2.0;
   Eigen::Matrix3d torso_orientation_des = labrob::Rz(desired_torso_yaw);
-  // TODO: include feedforward for torso orientation
   Eigen::Vector3d v_torso_orientation_des;
   Eigen::Vector3d a_torso_orientation_des;
   if (is_double_support) {
