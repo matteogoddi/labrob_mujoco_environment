@@ -275,7 +275,12 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
   // TODO: consider foot rotation
   T << I3, I3, I3, I3,
       pinocchio::skew(pcis[0]), pinocchio::skew(pcis[1]), pinocchio::skew(pcis[2]), pinocchio::skew(pcis[3]);
-//  std::cout << "T =" << std::endl << T << std::endl;
+
+//  std::cout << "T_lsole.rotation = " << std::endl << T_lsole.rotation() << std::endl;
+//  std::cout << "T_rsole.rotation = " << std::endl << T_rsole.rotation() << std::endl;
+
+//  Eigen::MatrixXd Tl = T_lsole.rotation() * T;
+//  Eigen::MatrixXd Tr = T_rsole.rotation() * T;
 
   Eigen::MatrixXd H_force_one = 1e-9 * Eigen::MatrixXd::Identity(3 * num_contacts_, 3 * num_contacts_);
   Eigen::VectorXd f_force_one = Eigen::VectorXd::Zero(3 * num_contacts_);
@@ -288,10 +293,7 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
       0.0, 1.0, -params_.mu,
       -1.0, 0.0, -params_.mu,
       0.0, -1.0, -params_.mu;
-  Eigen::MatrixXd C_force_one = Eigen::MatrixXd::Zero(4 * num_contacts_, 3 * num_contacts_);
-  for (int i = 0; i < num_contacts_; ++i) {
-    C_force_one.block(4 * i, 3 * i, 4, 3) = C_force_block;
-  }
+
 //  std::cout << "C_force_one = " << std::endl << C_force_one << std::endl;
   Eigen::VectorXd d_min_force_one = -10000.0 * Eigen::VectorXd::Ones(4 * num_contacts_);
   Eigen::VectorXd d_max_force_one = Eigen::VectorXd::Zero(4 * num_contacts_);
@@ -341,10 +343,19 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
 //    std::cout << "A = " << std::endl << A << std::endl;
 //    std::cout << "b = " << std::endl << b.transpose() << std::endl;
 
-    Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_one.rows(), num_variables_double_);
+    Eigen::MatrixXd C_force_left = Eigen::MatrixXd::Zero(4 * num_contacts_, 3 * num_contacts_);
+    for (int i = 0; i < num_contacts_; ++i) {
+      C_force_left.block(4 * i, 3 * i, 4, 3) = C_force_block * T_lsole.rotation().transpose();
+    }
+    Eigen::MatrixXd C_force_right = Eigen::MatrixXd::Zero(4 * num_contacts_, 3 * num_contacts_);
+    for (int i = 0; i < num_contacts_; ++i) {
+      C_force_right.block(4 * i, 3 * i, 4, 3) = C_force_block * T_rsole.rotation().transpose();
+    }
+
+    Eigen::MatrixXd C(C_acc.rows() + 2 * C_force_left.rows(), num_variables_double_);
     C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 2 * 3 * num_contacts_),
-        Eigen::MatrixXd::Zero(C_force_one.rows(), 6 + num_joints_), C_force_one, Eigen::MatrixXd::Zero(C_force_one.rows(), 3 * num_contacts_),
-        Eigen::MatrixXd::Zero(C_force_one.rows(), 6 + num_joints_), Eigen::MatrixXd::Zero(C_force_one.rows(), 3 * num_contacts_), C_force_one;
+        Eigen::MatrixXd::Zero(C_force_left.rows(), 6 + num_joints_), C_force_left, Eigen::MatrixXd::Zero(C_force_left.rows(), 3 * num_contacts_),
+        Eigen::MatrixXd::Zero(C_force_right.rows(), 6 + num_joints_), Eigen::MatrixXd::Zero(C_force_right.rows(), 3 * num_contacts_), C_force_right;
 //    std::cout << "C = " << std::endl << C << std::endl;
     Eigen::VectorXd d_min(d_min_acc.rows() + 2 * d_min_force_one.rows());
     Eigen::VectorXd d_max(d_max_acc.rows() + 2 * d_max_force_one.rows());
@@ -373,17 +384,19 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
     output.fl = T * fl;
     output.fr = T * fr;
   } else {
-    Eigen::MatrixXd Js, Js_dot, Jsu, Jsa;
+    Eigen::MatrixXd Js, Js_dot, Jsu, Jsa, RsT;
     if (is_left_support) {
       Js = J_lsole;
       Js_dot = J_lsole_dot;
       Jsu = Jlu;
       Jsa = Jla;
+      RsT = T_lsole.rotation().transpose();
     } else {
       Js = J_rsole;
       Js_dot = J_rsole_dot;
       Jsu = Jru;
       Jsa = Jra;
+      RsT = T_rsole.rotation().transpose();
     }
     Eigen::MatrixXd H = Eigen::MatrixXd::Zero(H_acc.rows() + H_force_one.rows(), H_acc.cols() + H_force_one.cols());
     H.block(0, 0, H_acc.rows(), H_acc.cols()) = H_acc;
@@ -405,9 +418,13 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
     b << b_acc,
         b_dyn;
 
-    Eigen::MatrixXd C(C_acc.rows() + C_force_one.rows(), num_variables_single_);
+    Eigen::MatrixXd C_force = Eigen::MatrixXd::Zero(4 * num_contacts_, 3 * num_contacts_);
+    for (int i = 0; i < num_contacts_; ++i) {
+      C_force.block(4 * i, 3 * i, 4, 3) = C_force_block * RsT;
+    }
+    Eigen::MatrixXd C(C_acc.rows() + C_force.rows(), num_variables_single_);
     C << C_acc, Eigen::MatrixXd::Zero(C_acc.rows(), 3 * num_contacts_),
-        Eigen::MatrixXd::Zero(C_force_one.rows(), 6 + num_joints_), C_force_one;
+        Eigen::MatrixXd::Zero(C_force.rows(), 6 + num_joints_), C_force;
     Eigen::VectorXd d_min(d_min_acc.rows() + d_min_force_one.rows());
     Eigen::VectorXd d_max(d_max_acc.rows() + d_max_force_one.rows());
     d_min << d_min_acc,

@@ -559,7 +559,10 @@ WalkingManager::update(
 
   filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
 
+//  if (std::isnan(measured_state.zmp_pos_(0)))
   ismpc_ptr_->setState(filtered_state_);
+//  else
+//    ismpc_ptr_->setState(measured_state);
 
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -704,10 +707,6 @@ WalkingManager::update(
     alpha_ = 0.5;
   }
 
-  Eigen::VectorXd fl;
-  Eigen::VectorXd fr;
-  double xc_computed = 0.0;
-  double yc_computed = 0.0;
   bool torque_wbc = true;
   if (torque_wbc) {
     CoMMotion desired_com_motion;
@@ -726,259 +725,6 @@ WalkingManager::update(
     WBCOutput output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
                                                            desired_right_foot_motion, q, qdot,
                                                            is_left_foot_support, is_right_foot_support);
-    Eigen::VectorXd err_posture(6 + njnt);
-    err_posture << Eigen::VectorXd::Zero(6), q_jnt_des_ - q.tail(njnt);
-
-    double Kp = 30.0;//50.0;
-    double Kd = 10.0;//10.0;
-
-    // CLIK-weights:
-    Eigen::Matrix3d K_CoM = Kp * Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d Kd_CoM = Kd * Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(Kp, Kp, Kp).asDiagonal().toDenseMatrix();
-    Eigen::Matrix3d Kd_torso_orientation = Eigen::Vector3d(Kd, Kd, Kd).asDiagonal().toDenseMatrix();
-    Eigen::MatrixXd K_lsole = Eigen::MatrixXd::Identity(6, 6);
-    Eigen::MatrixXd Kd_lsole = Eigen::MatrixXd::Identity(6, 6);
-    K_lsole.diagonal().head<3>().setConstant(Kp);
-    K_lsole.diagonal().tail<3>().setConstant(Kp);
-    Kd_lsole.diagonal().head<3>().setConstant(Kd);
-    Kd_lsole.diagonal().tail<3>().setConstant(Kd);
-    Eigen::MatrixXd K_rsole = Eigen::MatrixXd::Identity(6, 6);
-    Eigen::MatrixXd Kd_rsole = Eigen::MatrixXd::Identity(6, 6);
-    K_rsole.diagonal().head<3>().setConstant(Kp);
-    K_rsole.diagonal().tail<3>().setConstant(Kp);
-    Kd_rsole.diagonal().head<3>().setConstant(Kd);
-    Kd_rsole.diagonal().tail<3>().setConstant(Kd);
-
-    // QP-based task priority IK:
-    Eigen::MatrixXd cost_function_H = Eigen::MatrixXd::Zero(6 + njnt, 6 + njnt);
-    Eigen::VectorXd cost_function_f = Eigen::VectorXd::Zero(6 + njnt);
-    Eigen::MatrixXd A_eq = Eigen::MatrixXd::Zero(12, 6 + njnt);
-    Eigen::VectorXd b_eq = Eigen::VectorXd::Zero(12);
-    Eigen::MatrixXd C_ineq = Eigen::MatrixXd::Zero(2 * njnt, 6 + njnt);
-    Eigen::VectorXd d_min_ineq(2 * njnt);
-    Eigen::VectorXd d_max_ineq(2 * njnt);
-
-    // Set weights depending on walking state:
-    double weight_q_dot = 1e-4;
-    double weight_com_task = 0.1;//1.0;
-    double weight_lsole_task = 1.0;
-    double weight_rsole_task = 1.0;
-    double weight_torso_orientation_task = 0.0;
-    double weight_posture_regulation_task = 0.0;
-    double weight_angular_momentum_task_x = 0.000001;
-    double weight_angular_momentum_task_y = 0.000001;
-    double weight_angular_momentum_task_z = 0.0001;
-
-    weight_torso_orientation_task = 1e-3;
-    weight_posture_regulation_task = 1e-4;
-
-    cmm_selection_matrix(0, 3) = weight_angular_momentum_task_x;
-    cmm_selection_matrix(1, 4) = weight_angular_momentum_task_y;
-    cmm_selection_matrix(2, 5) = weight_angular_momentum_task_z;
-
-    double K_jnt = 30.0;
-    double Kd_jnt = 10.0;
-
-    Eigen::VectorXd a_jnt_total = K_jnt * err_posture - Kd_jnt * qdot;
-    Eigen::Vector3d a_CoM_total = a_CoM_des + K_CoM * err_CoM + Kd_CoM * err_CoM_vel;
-    Eigen::VectorXd a_lsole_total = a_lsole_des + K_lsole * err_lsole + Kd_lsole * err_lsole_vel;
-    Eigen::VectorXd a_rsole_total = a_rsole_des + K_rsole * err_rsole + Kd_rsole * err_rsole_vel;
-    Eigen::VectorXd a_torso_orientation_total = a_torso_orientation_des + K_torso_orientation * err_torso_orientation + Kd_torso_orientation * err_torso_orientation_vel;
-
-    cost_function_H += weight_q_dot * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
-    cost_function_H += weight_com_task * (J_CoM.transpose() * J_CoM);
-    cost_function_H += weight_lsole_task * (J_lsole.transpose() * J_lsole);
-    cost_function_H += weight_rsole_task * (J_rsole.transpose() * J_rsole);
-    cost_function_H += weight_torso_orientation_task * (J_torso_orientation.transpose() * J_torso_orientation);
-    cost_function_H += weight_posture_regulation_task * (err_posture_selection_matrix.transpose() * err_posture_selection_matrix);
-    cost_function_H += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
-        std::pow(controller_timestep, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
-    cost_function_f += weight_com_task * J_CoM.transpose() * (a_CoM_drift - a_CoM_total);
-    cost_function_f += weight_lsole_task * J_lsole.transpose() * (J_lsole_dot * qdot - a_lsole_total);
-    cost_function_f += weight_rsole_task * J_rsole.transpose() * (J_rsole_dot * qdot - a_rsole_total);
-    cost_function_f += weight_torso_orientation_task * J_torso_orientation.transpose()
-        * (J_torso_orientation_dot * qdot - a_torso_orientation_total);
-    cost_function_f += -weight_posture_regulation_task * err_posture_selection_matrix.transpose() * err_posture_selection_matrix * a_jnt_total;
-    cost_function_f += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose()
-        * controller_timestep * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
-
-//    std::cout << "cost_function_H = " << std::endl << cost_function_H << std::endl;
-//    std::cout << "cost_function_f = " << std::endl << cost_function_f << std::endl;
-
-    auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(njnt);
-    auto q_jnt_dot_max = robot_model_.velocityLimit.tail(njnt);
-    auto q_jnt_min = robot_model_.lowerPositionLimit.tail(njnt);
-    auto q_jnt_max = robot_model_.upperPositionLimit.tail(njnt);
-    const double gamma = 10.0;
-    if (is_left_foot_support) {
-      A_eq.topRows(6) = J_lsole;
-      // NOTE: the following is useful to correct kinematic simulation errors.
-      b_eq.topRows(6) = -J_lsole_dot * qdot - gamma * J_lsole * qdot;
-    }
-    if (is_right_foot_support) {
-      A_eq.bottomRows(6) = J_rsole;
-      // NOTE: the following is useful to correct kinematic simulation errors.
-      b_eq.bottomRows(6) = -J_rsole_dot * qdot - gamma * J_rsole * qdot;
-    }
-    C_ineq.rightCols(njnt).topRows(njnt).diagonal().setConstant(controller_timestep);
-    C_ineq.rightCols(njnt).bottomRows(njnt).diagonal().setConstant(std::pow(controller_timestep, 2.0) / 2.0);
-    d_min_ineq << q_jnt_dot_min - qdot.tail(njnt), q_jnt_min - q.tail(njnt) - controller_timestep * qdot.tail(njnt);
-    d_max_ineq << q_jnt_dot_max - qdot.tail(njnt), q_jnt_max - q.tail(njnt) - controller_timestep * qdot.tail(njnt);
-
-    qp_solver_ptr_->solve(
-        cost_function_H,
-        cost_function_f,
-        A_eq,
-        b_eq,
-        C_ineq,
-        d_min_ineq,
-        d_max_ineq
-    );
-
-    Eigen::VectorXd joint_acceleration_commands = qp_solver_ptr_->get_solution();
-
-    Eigen::VectorXd q_next_des(robot_model_.nq);
-    Eigen::VectorXd v = controller_timestep * qdot;
-    pinocchio::integrate(robot_model_, q, v, q_next_des);
-    Eigen::VectorXd v_next_des = qdot;
-    v_next_des += controller_timestep * joint_acceleration_commands;
-    q_next_prev_ = q_next_des;
-    v_next_prev_ = v_next_des;
-
-    Eigen::MatrixXd M = pinocchio::crba(robot_model_, robot_data_, q);
-    M.triangularView<Eigen::StrictlyLower>() = M.transpose().triangularView<Eigen::StrictlyLower>();
-    M.diagonal().tail(njnt) += M_armature_;
-
-    const auto& c = pinocchio::rnea(
-        robot_model_,
-        robot_data_,
-        q,
-        qdot,
-        0.0 * joint_acceleration_commands
-    );
-
-    Eigen::MatrixXd Jlu = J_lsole.block(0, 0, 6, 6);
-    Eigen::MatrixXd Jla = J_lsole.block(0, 6, 6, njnt);
-    Eigen::MatrixXd Jru = J_rsole.block(0, 0, 6, 6);
-    Eigen::MatrixXd Jra = J_rsole.block(0, 6, 6, njnt);
-
-    Eigen::MatrixXd Mu = M.block(0, 0, 6, 6 + njnt);
-    Eigen::MatrixXd Ma = M.block(6, 0, njnt, 6 + njnt);
-
-    Eigen::VectorXd cu = c.block(0, 0, 6, 1);
-    Eigen::VectorXd ca = c.block(6, 0, njnt, 1);
-
-    Eigen::VectorXd qdd = joint_acceleration_commands;
-
-//    std::cout << "qddu = " << qdd.block(0, 0, 6, 1).transpose() << std::endl;
-
-    const double xl = T_lsole.translation().x();
-    const double yl = T_lsole.translation().y();
-    const double xr = T_rsole.translation().x();
-    const double yr = T_rsole.translation().y();
-    const double xc = ismpc_state.zmp_pos_(0);
-    const double yc = ismpc_state.zmp_pos_(1);
-
-    double foot_length = 0.2;
-    double foot_width = 0.06;
-    double mu = 0.5;
-    // TODO: get rotations from Pinocchio.
-    double thetal = 0.0;
-    double thetar = 0.0;
-    int num_contacts = 4;
-    std::vector<Eigen::Vector3d> pcis(4);
-    pcis[0] << foot_length / 2.0, foot_width / 2.0, 0.0;
-    pcis[1] << foot_length / 2.0, -foot_width / 2.0, 0.0;
-    pcis[2] << -foot_length / 2.0, foot_width / 2.0, 0.0;
-    pcis[3] << -foot_length / 2.0, -foot_width / 2.0, 0.0;
-
-    Eigen::MatrixXd T(6, 3 * num_contacts);
-    Eigen::MatrixXd I3 = Eigen::MatrixXd::Identity(3, 3);
-    T << I3, I3, I3, I3,
-         pinocchio::skew(pcis[0]), pinocchio::skew(pcis[1]), pinocchio::skew(pcis[2]), pinocchio::skew(pcis[3]);
-
-//    std::cout << "T = " << T << std::endl;
-
-    fl = Jlu.transpose().inverse() * (Mu * qdd + cu);
-    fr = Jru.transpose().inverse() * (Mu * qdd + cu);
-    if (alpha_ >= 0.0 and alpha_ <= 1.0) {
-      Eigen::MatrixXd H_force = Eigen::MatrixXd::Identity(3 * 2 * num_contacts, 3 * 2 * num_contacts);
-      Eigen::MatrixXd f_force = Eigen::VectorXd::Zero(3 * 2 * num_contacts);
-
-      Eigen::MatrixXd A(6, 2 * 6);
-      Eigen::VectorXd b(6);
-      A.block(0, 0, 6, 6) = Jlu.transpose();
-      A.block(0, 6, 6, 6) = Jru.transpose();
-//      A.block(6, 0, 1, 12) =
-//        Eigen::MatrixXd{{0.0, 0.0, xc - xl,
-//                         0.0, 1.0, 0.0,
-//                         0.0, 0.0, xc - xr,
-//                         0.0, 1.0, 0.0}};
-//      A.block(7, 0, 1, 12) =
-//          Eigen::MatrixXd{{0.0, 0.0, yc - yl,
-//                           -1.0, 0.0, 0.0,
-//                           0.0, 0.0, yc - yr,
-//                           -1.0, 0.0, 0.0}};
-      b.block(0, 0, 6, 1) = Mu * qdd + cu;
-//      b(6) = 0.0;
-//      b(7) = 0.0;
-      Eigen::VectorXd f = A.completeOrthogonalDecomposition().pseudoInverse() * b;
-//    Eigen::VectorXd f_mix(12);
-//    f_mix.block(0, 0, 6, 1) = 0.5 * fl;
-//    f_mix.block(6, 0, 6, 1) = 0.5 * fr;
-      fl = f.block(0, 0, 6, 1);
-      fr = f.block(6, 0, 6, 1);
-//          std::cout << "f = " << f.transpose() << std::endl;
-//          std::cout << "f_mix = " << f_mix.transpose() << std::endl;
-//          std::cout << "f.norm() = " << f.norm() << std::endl;
-//          std::cout << "f_mix.norm() = " << f_mix.norm() << std::endl;
-      Eigen::MatrixXd A_force(6, 3 * 2 * num_contacts);
-      Eigen::VectorXd b_force(6);
-      A_force << Jlu.transpose() * T, Jru.transpose() * T;
-      b_force << Mu * qdd + cu;
-//      std::cout << "A = " << std::endl << A_force << std::endl;
-//      std::cout << "b = " << b_force.transpose() << std::endl;
-      Eigen::MatrixXd C_force_block(4, 3);
-      C_force_block << 1.0, 0.0, -mu,
-                       0.0, 1.0, -mu,
-                       -1.0, 0.0, -mu,
-                       0.0, -1.0, -mu;
-      Eigen::MatrixXd C_force(4 * 2 * num_contacts, 3 * 2 * num_contacts);
-      C_force.setZero();
-      for (int i = 0; i < num_contacts; ++i) {
-        C_force.block(4 * i, 3 * i, 4, 3) = C_force_block;
-      }
-      C_force.block(4 * num_contacts, 3 * num_contacts, 4 * num_contacts, 3 * num_contacts) =
-          C_force.block(0, 0, 4 * num_contacts, 3 * num_contacts);
-//      std::cout << "C_force = " << std::endl << C_force << std::endl;
-      Eigen::VectorXd d_min_force = -10000.0 * Eigen::VectorXd::Ones(4 * 2 * num_contacts);
-      Eigen::VectorXd d_max_force = Eigen::VectorXd::Zero(4 * 2 * num_contacts);
-
-      force_solver_ptr_->solve(H_force, f_force, A_force, b_force, C_force, d_min_force, d_max_force);
-
-      Eigen::VectorXd u_force = force_solver_ptr_->get_solution();
-
-      fl = T * u_force.block(0, 0, 12, 1);
-      fr = T * u_force.block(12, 0, 12, 1);
-    }
-//    else {
-//      fl = (1.0 - alpha_) * fl;
-//      fr = alpha_ * fr;
-//    }
-    else if (alpha_ < 0.5) {
-      fr.setZero();
-    } else {
-      fl.setZero();
-    }
-//    std::cout << "fl = " << fl.transpose() << std::endl;
-//    std::cout << "fr = " << fr.transpose() << std::endl;
-    xc_computed = (xl * fl(2) + xr * fr(2) - fl(4) - fr(4)) / (fl(2) + fr(2));
-    yc_computed = (yl * fl(2) + yr * fr(2) + fl(3) + fr(3)) / (fl(2) + fr(2));
-
-    Eigen::VectorXd tau_ext = Jla.transpose() * fl + Jra.transpose() * fr;
-    Eigen::VectorXd tau_a = Ma * qdd + ca - tau_ext;
-//        std::cout << "tau_a = " << tau_a.transpose() << std::endl;
 
     Eigen::VectorXd tau_expanded(6 + njnt);
     tau_expanded << Eigen::VectorXd::Zero(6), output.tau;
@@ -1140,9 +886,9 @@ WalkingManager::update(
   v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
   v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-  fl_log_file_ << fl.transpose() << std::endl;
-  fr_log_file_ << fr.transpose() << std::endl;
-  cop_computed_log_file_ << xc_computed << " " << yc_computed << std::endl;
+//  fl_log_file_ << fl.transpose() << std::endl;
+//  fr_log_file_ << fr.transpose() << std::endl;
+//  cop_computed_log_file_ << xc_computed << " " << yc_computed << std::endl;
   alpha_log_file_ << alpha_ << std::endl;
 }
 
