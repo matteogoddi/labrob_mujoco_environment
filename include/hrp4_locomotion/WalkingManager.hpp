@@ -24,9 +24,11 @@ namespace labrob {
 
 class WalkingManager {
  public:
-  WalkingManager() = default;
+  WalkingManager();
 
   bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
+
+  ISMPCState updateKF(ISMPCState filtered, ISMPCState current, const Eigen::Vector3d &input);
 
   void update(
       const labrob::RobotState& robot_state,
@@ -60,6 +62,11 @@ class WalkingManager {
   Eigen::VectorXd q_next_prev_;
   Eigen::VectorXd v_next_prev_;
   bool open_loop_ = false;
+
+  ISMPCState filtered_state_;
+  Eigen::Matrix3d cov_x, cov_y;
+  double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
+  double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 
   std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
   std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> force_solver_ptr_;

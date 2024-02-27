@@ -46,6 +46,43 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
     robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
   }
 
+  double force[6];
+  double result[3];
+  double sum[3]{0.0, 0.0, 0.0};
+  double zmp[3]{0.0, 0.0, 0.0};
+  for (int i = 0; i < d->ncon; ++i) {
+    mj_contactForce(m, d, i, force);
+    mju_rotVecMatT(result, force, d->contact[i].frame);
+//    std::cout << "force " << i << " = ";
+//    for (int j = 0; j < 3; ++j)
+//      std::cout << result[j] << " ";
+//    std::cout << std::endl;
+//    std::cout << "contact position " << i << " = ";
+//    for (int j = 0; j < 3; ++j)
+//      std::cout << d->contact[i].pos[j] << " ";
+//    std::cout << std::endl;
+    sum[0] += result[0];
+    sum[1] += result[1];
+    sum[2] += result[2];
+    zmp[0] += d->contact[i].pos[0] * result[2];
+    zmp[1] += d->contact[i].pos[1] * result[2];
+  }
+  zmp[0] /= sum[2];
+  zmp[1] /= sum[2];
+//  std::cout << "sum = ";
+//  for (int i = 0; i < 3; ++i) {
+//    std::cout << sum[i] << " ";
+//  }
+//  std::cout << std::endl;
+  std::cout << "zmp = ";
+  for (int i = 0; i < 2; ++i) {
+    std::cout << zmp[i] << " ";
+  }
+  std::cout << std::endl;
+  robot_state.zmp(0) = zmp[0];
+  robot_state.zmp(1) = zmp[1];
+  robot_state.zmp(2) = 0.0;
+
   return robot_state;
 }
 
@@ -264,6 +301,49 @@ int main() {
         Eigen::MatrixXd Jra = Jr.block(0, 6, Jr.rows(), n_act);
 
         mj_mulJacTVec(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, JTf, jvrc1_mj_data_ptr->efc_force);
+
+//        std::cout << "ncon = " << jvrc1_mj_data_ptr->ncon << std::endl;
+//        double force[6];
+//        double position[3];
+//        double frame[9];
+//        double result[3];
+//        double sum[3]{0.0, 0.0, 0.0};
+//        double zmp[3]{0.0, 0.0, 0.0};
+//        for (int i = 0; i < jvrc1_mj_data_ptr->ncon; ++i) {
+//          int address = jvrc1_mj_data_ptr->contact[i].efc_address;
+//          mj_contactForce(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, i, force);
+//          mju_rotVecMatT(result, force, jvrc1_mj_data_ptr->contact[i].frame);
+//          std::cout << "force " << i << " = ";
+//          for (int j = 0; j < 3; ++j)
+//            std::cout << result[j] << " ";
+//          std::cout << std::endl;
+//          std::cout << "contact position " << i << " = ";
+//          for (int j = 0; j < 3; ++j)
+//            std::cout << jvrc1_mj_data_ptr->contact[i].pos[j] << " ";
+//          std::cout << std::endl;
+//          sum[0] += result[0];
+//          sum[1] += result[1];
+//          sum[2] += result[2];
+//          zmp[0] += jvrc1_mj_data_ptr->contact[i].pos[0] * result[2];
+//          zmp[1] += jvrc1_mj_data_ptr->contact[i].pos[1] * result[2];
+//        }
+//        zmp[0] /= sum[2];
+//        zmp[1] /= sum[2];
+//        std::cout << "sum = ";
+//        for (int i = 0; i < 3; ++i) {
+//          std::cout << sum[i] << " ";
+//        }
+//        std::cout << std::endl;
+//        std::cout << "zmp = ";
+//        for (int i = 0; i < 2; ++i) {
+//          std::cout << zmp[i] << " ";
+//        }
+//        std::cout << std::endl;
+//        std::cout << "efc_force = " << std::endl;
+//        for (int i = 0; i < jvrc1_mj_data_ptr->nefc; ++i) {
+//          std::cout << jvrc1_mj_data_ptr->efc_force[i] << " ";
+//        }
+//        std::cout << std::endl;
 
         Eigen::MatrixXd M_eigen = convert_matrix_mujoco_to_eigen(M, jvrc1_mj_model_ptr->nv, jvrc1_mj_model_ptr->nv);
 //        std::cout << "M_mujoco = " << std::endl << M_eigen << std::endl;

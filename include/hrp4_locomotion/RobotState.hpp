@@ -20,6 +20,8 @@ class RobotState {
   Eigen::Vector3d angular_velocity;
 
   labrob::JointState joint_state;
+
+  Eigen::Vector3d zmp;
 }; // end class RobotState
 
 } // end namespace labrob

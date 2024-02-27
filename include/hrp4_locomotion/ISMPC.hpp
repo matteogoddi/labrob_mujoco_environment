@@ -34,6 +34,8 @@ class ISMPC{
 
   const ISMPCState& getState() const;
 
+  const Eigen::Vector3d& getInput() const;
+
   void setCOMTargetHeight(double com_target_height);
 
   void setState(const ISMPCState& state);
@@ -75,6 +77,8 @@ class ISMPC{
 
   // State:
   ISMPCState state_;
+
+  Eigen::Vector3d input_;
 
   // QP solver:
   std::shared_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;

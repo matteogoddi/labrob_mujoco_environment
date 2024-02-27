@@ -26,9 +26,28 @@
 
 namespace labrob {
 
+WalkingManager::WalkingManager() :
+    filtered_state_(Eigen::Vector3d::Zero(),
+                    Eigen::Vector3d::Zero(),
+                    Eigen::Vector3d::Zero())
+{
+
+}
+
 bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state,
                      std::map<std::string, double> &armatures) {
+  cov_x = Eigen::Matrix3d::Identity();
+  cov_y = Eigen::Matrix3d::Identity();
+
+  cov_meas_pos = 1.0e1;
+  cov_meas_vel = 1.0e2;
+  cov_meas_zmp = 1.0e6;
+
+  cov_mod_pos = 1.0;
+  cov_mod_vel = 1.0;
+  cov_mod_zmp = 1.0;
+
   // Read URDF from file:
   std::string robot_description_filename = "../jvrc_description/urdf/jvrc1.urdf";
 
@@ -273,6 +292,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       Eigen::Vector3d::Zero(),
       p_ZMP
   );
+  filtered_state_.com_pos_ = p_CoM;
+  filtered_state_.zmp_pos_ = p_ZMP;
   ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
       mpc_prediction_horizon_msec,
       mpc_timestep_msec,
@@ -322,6 +343,65 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   alpha_log_file_.open("/tmp/alpha.txt");
 
   return true;
+}
+
+ISMPCState WalkingManager::updateKF(ISMPCState filtered, ISMPCState current, const Eigen::Vector3d &input) {
+  double omega = std::sqrt(9.81 / ismpc_ptr_->getCOMTargetHeight());
+  double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
+
+  double ch = cosh(omega*worldTimeStep);
+  double sh = sinh(omega*worldTimeStep);
+  Eigen::MatrixXd A_lip = Eigen::MatrixXd::Zero(3,3);
+  Eigen::VectorXd B_lip = Eigen::VectorXd::Zero(3);
+//  Eigen::VectorXd B_dis = Eigen::VectorXd::Zero(3);
+  A_lip << ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
+  B_lip << worldTimeStep-sh/omega,1-ch,worldTimeStep;
+
+  Eigen::Vector3d x_measure;
+  Eigen::Vector3d y_measure;
+  if (std::isnan(current.zmp_pos_(0))) {
+    x_measure = Eigen::Vector3d(current.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
+    y_measure = Eigen::Vector3d(current.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+  } else {
+    x_measure = Eigen::Vector3d(current.com_pos_(0), current.com_vel_(0), current.zmp_pos_(0));
+    y_measure = Eigen::Vector3d(current.com_pos_(1), current.com_vel_(1), current.zmp_pos_(1));
+  }
+  Eigen::Vector3d x_est = Eigen::Vector3d(filtered.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
+  Eigen::Vector3d y_est = Eigen::Vector3d(filtered.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+
+  Eigen::MatrixXd F_kf = A_lip;
+  Eigen::MatrixXd G_kf = B_lip;
+  Eigen::MatrixXd H_kf = Eigen::Matrix3d::Identity();
+
+  Eigen::MatrixXd R_kf = Eigen::MatrixXd::Identity(3,3);
+  R_kf.diagonal() << cov_meas_pos, cov_meas_vel, cov_meas_zmp;
+  Eigen::MatrixXd Q_kf = Eigen::MatrixXd::Identity(3,3);
+  Q_kf.diagonal() << cov_mod_pos, cov_mod_vel, cov_mod_zmp;
+
+  double input_x = input.x();
+  double input_y = input.y();
+
+  Eigen::VectorXd x_pred = F_kf * x_est + G_kf * input_x;
+  Eigen::MatrixXd cov_x_pred = F_kf * cov_x * F_kf.transpose() + Q_kf;
+
+  Eigen::MatrixXd K_kf = cov_x_pred * H_kf.transpose() * (H_kf * cov_x_pred * H_kf.transpose() + R_kf).inverse();
+
+  x_est = x_pred + K_kf * (x_measure - H_kf * x_pred);
+  cov_x = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_x_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  Eigen::VectorXd y_pred = F_kf * y_est + G_kf * input_y;
+  Eigen::MatrixXd cov_y_pred = F_kf * cov_y * F_kf.transpose() + Q_kf;
+
+  K_kf = cov_y_pred * H_kf.transpose() * (H_kf * cov_y_pred * H_kf.transpose() + R_kf).inverse();
+
+  y_est = y_pred + K_kf * (y_measure - H_kf * y_pred);
+  cov_y = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_y_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  current.com_pos_ = Eigen::Vector3d(x_est(0), y_est(0), filtered.com_pos_(2));
+  current.com_vel_ = Eigen::Vector3d(x_est(1), y_est(1), filtered.com_vel_(2));
+  current.zmp_pos_ = Eigen::Vector3d(x_est(2), y_est(2), filtered.zmp_pos_(2));
+
+  return current;
 }
 
 void
@@ -471,6 +551,15 @@ WalkingManager::update(
 //        << labrob::to_string(walking_state)
 //        << std::endl;
   }
+
+//  ismpc_ptr_->setState(ISMPCState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
+  Eigen::Vector3d measured_zmp = robot_state.zmp;
+  measured_zmp(2) = ismpc_ptr_->getState().zmp_pos_(2);
+  ISMPCState measured_state(p_CoM, J_CoM * qdot, measured_zmp);
+
+  filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
+
+  ismpc_ptr_->setState(filtered_state_);
 
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();

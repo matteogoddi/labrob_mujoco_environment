@@ -13,7 +13,7 @@ ISMPC::ISMPC(
     control_timestep_msec_(control_timestep_msec),
     com_target_height_(com_target_height),
     foot_constraint_square_width_(foot_constraint_square_width),
-    state_(state) {
+    state_(state), input_(Eigen::Vector3d::Zero()) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
@@ -188,6 +188,10 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
   zDotOptimalY = (decisionVariables.segment(    N_, N_));
   zDotOptimalZ = (decisionVariables.segment(2 * N_, N_));
 
+  input_.x() = zDotOptimalX(0);
+  input_.y() = zDotOptimalY(0);
+  input_.z() = zDotOptimalZ(0);
+
   // Update the state based on the result of the QP
   Eigen::Vector3d nextStateX = updateState(zDotOptimalX(0), 0);
   Eigen::Vector3d nextStateY = updateState(zDotOptimalY(0), 1);
@@ -207,6 +211,10 @@ ISMPC::getCOMTargetHeight() const {
 const ISMPCState&
 ISMPC::getState() const {
   return state_;
+}
+
+const Eigen::Vector3d& ISMPC::getInput() const {
+  return input_;
 }
 
 void
