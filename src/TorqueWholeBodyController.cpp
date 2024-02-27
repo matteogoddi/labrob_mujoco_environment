@@ -165,8 +165,18 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
   double desired_torso_yaw = (left_foot_yaw + right_foot_yaw) / 2.0;
   Eigen::Matrix3d torso_orientation_des = labrob::Rz(desired_torso_yaw);
   // TODO: include feedforward for torso orientation
-  Eigen::Vector3d v_torso_orientation_des = Eigen::Vector3d::Zero();
-  Eigen::Vector3d a_torso_orientation_des = Eigen::Vector3d::Zero();
+  Eigen::Vector3d v_torso_orientation_des;
+  Eigen::Vector3d a_torso_orientation_des;
+  if (is_double_support) {
+    v_torso_orientation_des = Eigen::Vector3d::Zero();
+    a_torso_orientation_des = Eigen::Vector3d::Zero();
+  } else if (is_left_support) {
+    v_torso_orientation_des = desired_left_foot_motion.velocity / 2.0;
+    a_torso_orientation_des = desired_left_foot_motion.acceleration / 2.0;
+  } else if (is_right_support) {
+    v_torso_orientation_des = desired_right_foot_motion.velocity / 2.0;
+    a_torso_orientation_des = desired_right_foot_motion.acceleration / 2.0;
+  }
 
   auto err_com = desired_com_motion.position - p_com;
   auto err_com_vel = desired_com_motion.velocity - v_com;
@@ -272,7 +282,6 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
 
   Eigen::MatrixXd T(6, 3 * num_contacts_);
   Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
-  // TODO: consider foot rotation
   T << I3, I3, I3, I3,
       pinocchio::skew(pcis[0]), pinocchio::skew(pcis[1]), pinocchio::skew(pcis[2]), pinocchio::skew(pcis[3]);
 
