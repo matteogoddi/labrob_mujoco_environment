@@ -22,6 +22,7 @@ class RobotState {
   labrob::JointState joint_state;
 
   Eigen::Vector3d zmp;
+  Eigen::Vector3d total_force;
 }; // end class RobotState
 
 } // end namespace labrob

@@ -15,14 +15,15 @@
         rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="1 1"
         reflectance="0.2"/>
-<!--    <hfield name="hf1" size="5 5 5 0.01" nrow="400" ncol="400" />-->
+    <hfield name="hf1" size="5 5 0.0001 0.01" file="texture/heightmap.png" />
   </asset>
 
   <worldbody>
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
 <!--    <geom name="floor" type="plane" pos="0 0 -0.105" size="0 0 0.25" condim="6" friction="0.6 0.005 0.0001" solref="0.015 1" solimp="0.99 0.99 0.001" material="groundplane" />-->
-    <geom name="floor" pos="0 0 -0.105" size="0 0 0.25" type="plane" material="groundplane"/>
-<!--    <geom name="floor1" pos="0 0 -0.105" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" />-->
+<!--    <geom name="step1" pos="0 0 -0.105" size="0.5 0.5 0.01" type="box" friction="0.6 0.005 0.0001" material="groundplane"/>-->
+<!--    <geom name="step2" pos="1.0 0 0.0" size="0.5 0.5 0.01" type="box" material="groundplane"/>-->
+    <geom name="floor1" pos="0 0 -0.105" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
   </worldbody>
 
 </mujoco>

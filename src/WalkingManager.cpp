@@ -164,9 +164,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.05;
-  double step_length_x = 0.05;
+  double step_length_x = 0.2;
   double step_length_y = 0.0;
-  double step_rotation = 0.1;
+  double step_rotation = 0.0;
   int n_steps = 10;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
@@ -565,6 +565,10 @@ WalkingManager::update(
 //  else
 //    ismpc_ptr_->setState(measured_state);
 
+  double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
+  double mass = pinocchio::computeTotalMass(robot_model_);
+  Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
+
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
   ismpc_ptr_->solve(t_msec_, walking_data_);
@@ -576,7 +580,6 @@ WalkingManager::update(
   Eigen::Vector3d p_ZMP_des = ismpc_state.zmp_pos_;
   zmp_position = ismpc_state.zmp_pos_;
 
-  double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
   Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
   Eigen::Vector3d a_CoM_des = eta2 * (p_CoM_des - p_ZMP_des) - g_vector;
 
@@ -708,6 +711,7 @@ WalkingManager::update(
     alpha_ = 0.5;
   }
 
+  WBCOutput output;
   bool torque_wbc = true;
   if (torque_wbc) {
     CoMMotion desired_com_motion;
@@ -723,7 +727,7 @@ WalkingManager::update(
     desired_right_foot_motion.velocity = v_rsole_des;
     desired_right_foot_motion.acceleration = a_rsole_des;
 
-    WBCOutput output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
+    output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
                                                            desired_right_foot_motion, q, qdot,
                                                            is_left_foot_support, is_right_foot_support);
 
@@ -887,9 +891,9 @@ WalkingManager::update(
   v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
   v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-//  fl_log_file_ << fl.transpose() << std::endl;
-//  fr_log_file_ << fr.transpose() << std::endl;
-//  cop_computed_log_file_ << xc_computed << " " << yc_computed << std::endl;
+  fl_log_file_ << output.fl.transpose() << std::endl;
+  fr_log_file_ << output.fr.transpose() << std::endl;
+  cop_computed_log_file_ << robot_state.zmp.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << lip_zmp.transpose() << std::endl;
   alpha_log_file_ << alpha_ << std::endl;
 }
 

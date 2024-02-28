@@ -61,9 +61,13 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
   }
   zmp[0] /= sum[2];
   zmp[1] /= sum[2];
-  robot_state.zmp(0) = zmp[0];
-  robot_state.zmp(1) = zmp[1];
-  robot_state.zmp(2) = 0.0;
+  robot_state.zmp.x()= zmp[0];
+  robot_state.zmp.y() = zmp[1];
+  robot_state.zmp.z() = 0.0;
+
+  robot_state.total_force.x() = sum[0];
+  robot_state.total_force.y() = sum[1];
+  robot_state.total_force.z() = sum[2];
 
   return robot_state;
 }
@@ -86,7 +90,7 @@ int main() {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* jvrc1_mjcf_filepath = "../jvrc_mj_description/scene.xml";
+  const char* jvrc1_mjcf_filepath = "../jvrc_mj_description/stair_steps.xml";
   mjModel* jvrc1_mj_model_ptr = mj_loadXML(jvrc1_mjcf_filepath, nullptr, loadError, kErrorLength);
   mjData* jvrc1_mj_data_ptr = mj_makeData(jvrc1_mj_model_ptr);
 
@@ -179,6 +183,9 @@ int main() {
   mjv_defaultOption(&opt);
   mjr_defaultContext(&con);
 
+  std::cout << "cam.distance = " << cam.distance << std::endl;
+  cam.distance = 4.0;
+
   // create scene and context
   mjv_makeScene(jvrc1_mj_model_ptr, &scn, 1000);
   mjr_makeContext(jvrc1_mj_model_ptr, &con, mjFONTSCALE_100);
@@ -205,6 +212,7 @@ int main() {
     std::cout << jvrc1_mj_model_ptr->dof_armature[i] << " ";
   }
 
+  int timestep_counter = 0;
   // Simulation loop:
   while (!glfwWindowShouldClose(window)) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
@@ -236,8 +244,22 @@ int main() {
 //        std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
 //      }
 
+      double point[3]{0.0, 0.0, 0.0};
+      double force[3]{0.0, 0.0, 0.0};
+      double torque[3]{0.0, 0.0, 0.0};
+      double rate = 1000.0;
       for (int k = 0; k < 1; ++k) {
         mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
+        int torso_id = mj_name2id(jvrc1_mj_model_ptr, mjOBJ_BODY, "PELVIS_S");
+        double time = timestep_counter / rate;
+        if (timestep_counter == 5000) {
+          mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+        }
+        if (timestep_counter == 5100) {
+          force[0] = -force[0];
+          mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+        }
 
         for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
           int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
@@ -273,6 +295,7 @@ int main() {
         joint_vel_des_log_file << std::endl;
         joint_eff_log_file << std::endl;
       }
+      ++timestep_counter;
     }
 
     joint_vel_log_file.flush();

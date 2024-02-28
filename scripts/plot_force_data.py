@@ -34,6 +34,8 @@ if __name__ == '__main__':
 
     fig = plt.figure()
     plt.plot(t, cop[:, 0])
+    plt.plot(t, cop[:, 3])
+    plt.plot(t, cop[:, 6])
     plt.plot(t, zmp[:, 0])
     plt.plot(t, p_lsole[:, 0])
     plt.plot(t, p_rsole[:, 0])
@@ -43,12 +45,14 @@ if __name__ == '__main__':
     # plt.plot(t, alpha)
     plt.xlabel('Time [s]')
     plt.ylabel('Position [m]')
-    plt.legend(['CoP', 'ZMP', 'Left', 'Right'])
+    plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
     plt.grid()
     plt.title('X CoP')
 
     fig = plt.figure()
     plt.plot(t, cop[:, 1])
+    plt.plot(t, cop[:, 4])
+    plt.plot(t, cop[:, 7])
     plt.plot(t, zmp[:, 1])
     plt.plot(t, p_lsole[:, 1])
     plt.plot(t, p_rsole[:, 1])
@@ -58,9 +62,26 @@ if __name__ == '__main__':
     # plt.plot(t, alpha)
     plt.xlabel('Time [s]')
     plt.ylabel('Position [m]')
-    plt.legend(['CoP', 'ZMP', 'Left', 'Right'])
+    plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
     plt.grid()
     plt.title('Y CoP')
+
+    fig = plt.figure()
+    plt.plot(t, cop[:, 2])
+    plt.plot(t, cop[:, 5])
+    plt.plot(t, cop[:, 8])
+    plt.plot(t, zmp[:, 2])
+    plt.plot(t, p_lsole[:, 2])
+    plt.plot(t, p_rsole[:, 2])
+    y_lim = fig.axes[0].get_ylim()
+    for transition in transitions:
+        plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
+    # plt.plot(t, alpha)
+    plt.xlabel('Time [s]')
+    plt.ylabel('Position [m]')
+    plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
+    plt.grid()
+    plt.title('Z CoP')
 
 # figs = []
     # for i in range(num_joints):
