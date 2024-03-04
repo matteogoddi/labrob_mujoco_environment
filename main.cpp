@@ -50,6 +50,8 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
   static double result[3];
   double sum[3]{0.0, 0.0, 0.0};
   double zmp[3]{0.0, 0.0, 0.0};
+  robot_state.contact_points.resize(d->ncon);
+  robot_state.contact_forces.resize(d->ncon);
   for (int i = 0; i < d->ncon; ++i) {
     mj_contactForce(m, d, i, force);
     mju_rotVecMatT(result, force, d->contact[i].frame);
@@ -58,6 +60,10 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
     sum[2] += result[2];
     zmp[0] += d->contact[i].pos[0] * result[2];
     zmp[1] += d->contact[i].pos[1] * result[2];
+    for (int j = 0; j < 3; ++j) {
+      robot_state.contact_points[i](j) = d->contact[i].pos[j];
+      robot_state.contact_forces[i](j) = result[j];
+    }
   }
   zmp[0] /= sum[2];
   zmp[1] /= sum[2];

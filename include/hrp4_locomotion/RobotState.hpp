@@ -23,6 +23,9 @@ class RobotState {
 
   Eigen::Vector3d zmp;
   Eigen::Vector3d total_force;
+
+  std::vector<Eigen::Vector3d> contact_points;
+  std::vector<Eigen::Vector3d> contact_forces;
 }; // end class RobotState
 
 } // end namespace labrob

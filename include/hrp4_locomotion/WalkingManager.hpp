@@ -64,7 +64,7 @@ class WalkingManager {
   bool open_loop_ = false;
 
   ISMPCState filtered_state_;
-  Eigen::Matrix3d cov_x, cov_y;
+  Eigen::Matrix3d cov_x, cov_y, cov_z;
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
   double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 

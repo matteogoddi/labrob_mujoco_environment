@@ -15,7 +15,7 @@
         rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
     <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="1 1"
         reflectance="0.2"/>
-    <hfield name="hf1" size="5 5 0.0001 0.01" file="texture/heightmap.png" />
+    <hfield name="hf1" size="5 5 0.01 0.01" file="texture/heightmap.png" />
   </asset>
 
   <worldbody>

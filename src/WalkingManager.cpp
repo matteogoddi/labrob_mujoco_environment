@@ -39,6 +39,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
                      std::map<std::string, double> &armatures) {
   cov_x = Eigen::Matrix3d::Identity();
   cov_y = Eigen::Matrix3d::Identity();
+  cov_z = Eigen::Matrix3d::Identity();
 
   cov_meas_pos = 1.0e1;
   cov_meas_vel = 1.0e2;
@@ -293,8 +294,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       Eigen::Vector3d::Zero(),
       p_ZMP
   );
-  filtered_state_.com_pos_ = p_CoM;
-  filtered_state_.zmp_pos_ = p_ZMP;
+  filtered_state_ = mpc_init_state;
   ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
       mpc_prediction_horizon_msec,
       mpc_timestep_msec,
@@ -358,17 +358,19 @@ ISMPCState WalkingManager::updateKF(ISMPCState filtered, ISMPCState current, con
   A_lip << ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
   B_lip << worldTimeStep-sh/omega,1-ch,worldTimeStep;
 
-  Eigen::Vector3d x_measure;
-  Eigen::Vector3d y_measure;
+  Eigen::Vector3d x_measure, y_measure, z_measure;
   if (std::isnan(current.zmp_pos_(0))) {
     x_measure = Eigen::Vector3d(current.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
     y_measure = Eigen::Vector3d(current.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+    z_measure = Eigen::Vector3d(current.com_pos_(2), filtered.com_vel_(2), filtered.zmp_pos_(2));
   } else {
     x_measure = Eigen::Vector3d(current.com_pos_(0), current.com_vel_(0), current.zmp_pos_(0));
     y_measure = Eigen::Vector3d(current.com_pos_(1), current.com_vel_(1), current.zmp_pos_(1));
+    z_measure = Eigen::Vector3d(current.com_pos_(2), current.com_vel_(2), current.zmp_pos_(2));
   }
   Eigen::Vector3d x_est = Eigen::Vector3d(filtered.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
   Eigen::Vector3d y_est = Eigen::Vector3d(filtered.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+  Eigen::Vector3d z_est = Eigen::Vector3d(filtered.com_pos_(2), filtered.com_vel_(2), filtered.zmp_pos_(2));
 
   Eigen::MatrixXd F_kf = A_lip;
   Eigen::MatrixXd G_kf = B_lip;
@@ -381,6 +383,7 @@ ISMPCState WalkingManager::updateKF(ISMPCState filtered, ISMPCState current, con
 
   double input_x = input.x();
   double input_y = input.y();
+  double input_z = input.z();
 
   Eigen::VectorXd x_pred = F_kf * x_est + G_kf * input_x;
   Eigen::MatrixXd cov_x_pred = F_kf * cov_x * F_kf.transpose() + Q_kf;
@@ -398,9 +401,17 @@ ISMPCState WalkingManager::updateKF(ISMPCState filtered, ISMPCState current, con
   y_est = y_pred + K_kf * (y_measure - H_kf * y_pred);
   cov_y = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_y_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
 
-  current.com_pos_ = Eigen::Vector3d(x_est(0), y_est(0), filtered.com_pos_(2));
-  current.com_vel_ = Eigen::Vector3d(x_est(1), y_est(1), filtered.com_vel_(2));
-  current.zmp_pos_ = Eigen::Vector3d(x_est(2), y_est(2), filtered.zmp_pos_(2));
+  Eigen::VectorXd z_pred = F_kf * z_est + G_kf * input_z + Eigen::Vector3d(0.0, -9.81 * worldTimeStep, 0.0);
+  Eigen::MatrixXd cov_z_pred = F_kf * cov_z * F_kf.transpose() + Q_kf;
+
+  K_kf = cov_z_pred * H_kf.transpose() * (H_kf * cov_z_pred * H_kf.transpose() + R_kf).inverse();
+
+  z_est = z_pred + K_kf * (z_measure - H_kf * z_pred);
+  cov_z = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_z_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  current.com_pos_ = Eigen::Vector3d(x_est(0), y_est(0), z_est(0));
+  current.com_vel_ = Eigen::Vector3d(x_est(1), y_est(1), z_est(1));
+  current.zmp_pos_ = Eigen::Vector3d(x_est(2), y_est(2), z_est(2));
 
   return current;
 }
@@ -553,21 +564,34 @@ WalkingManager::update(
 //        << std::endl;
   }
 
+
+  double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
+  double mass = pinocchio::computeTotalMass(robot_model_);
+  Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
+  Eigen::Vector3d zmp_3d;
+  zmp_3d.z() = robot_state.position(2) - robot_state.total_force.z() / (mass * eta2);
+
+  zmp_3d.x() = 0.0;
+  zmp_3d.y() = 0.0;
+  for (int i = 0; i < robot_state.contact_points.size(); ++i) {
+    auto &pi = robot_state.contact_points[i];
+    auto &fi = robot_state.contact_forces[i];
+    zmp_3d.x() += (pi.x() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / robot_state.total_force.z());
+    zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
+  }
+
 //  ismpc_ptr_->setState(ISMPCState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
   Eigen::Vector3d measured_zmp = robot_state.zmp;
   measured_zmp(2) = ismpc_ptr_->getState().zmp_pos_(2);
-  ISMPCState measured_state(p_CoM, J_CoM * qdot, measured_zmp);
+  ISMPCState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
 
   filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
+//  filtered_state_.zmp_pos_(2) = ismpc_ptr_->getState().zmp_pos_(2);
 
 //  if (std::isnan(measured_state.zmp_pos_(0)))
   ismpc_ptr_->setState(filtered_state_);
 //  else
 //    ismpc_ptr_->setState(measured_state);
-
-  double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
-  double mass = pinocchio::computeTotalMass(robot_model_);
-  Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
 
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -893,7 +917,7 @@ WalkingManager::update(
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
   fl_log_file_ << output.fl.transpose() << std::endl;
   fr_log_file_ << output.fr.transpose() << std::endl;
-  cop_computed_log_file_ << robot_state.zmp.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << lip_zmp.transpose() << std::endl;
+  cop_computed_log_file_ << robot_state.zmp.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
   alpha_log_file_ << alpha_ << std::endl;
 }
 
