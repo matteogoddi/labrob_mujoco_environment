@@ -89,7 +89,7 @@ class HPIPMQPSolver : public QPSolver<double> {
     d_dense_qp_ipm_solve(&qp_, &qp_sol_, &arg_, &workspace_);
     d_dense_qp_sol_get_v(&qp_sol_, u_);
 
-    std::cout << "Status = " << workspace_.status << std::endl;
+    //std::cout << "Status = " << workspace_.status << std::endl;
   }
 
   const double* get_solution() const override {

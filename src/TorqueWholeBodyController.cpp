@@ -279,10 +279,21 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
   pcis[2] << -params_.foot_length / 2.0, params_.foot_width / 2.0, 0.0;
   pcis[3] << -params_.foot_length / 2.0, -params_.foot_width / 2.0, 0.0;
 
-  Eigen::MatrixXd T(6, 3 * num_contacts_);
+  std::vector<Eigen::Vector3d> pcis_l(4);
+  std::vector<Eigen::Vector3d> pcis_r(4);
+
+  for (int i = 0; i < num_contacts_; ++i) {
+    pcis_l[i] = T_lsole.rotation() * pcis[i];
+    pcis_r[i] = T_rsole.rotation() * pcis[i];
+  }
+
+  Eigen::MatrixXd T_l(6, 3 * num_contacts_);
+  Eigen::MatrixXd T_r(6, 3 * num_contacts_);
   Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
-  T << I3, I3, I3, I3,
-      pinocchio::skew(pcis[0]), pinocchio::skew(pcis[1]), pinocchio::skew(pcis[2]), pinocchio::skew(pcis[3]);
+  T_l << I3, I3, I3, I3,
+         pinocchio::skew(pcis_l[0]), pinocchio::skew(pcis_l[1]), pinocchio::skew(pcis_l[2]), pinocchio::skew(pcis_l[3]);
+  T_r << I3, I3, I3, I3,
+         pinocchio::skew(pcis_r[0]), pinocchio::skew(pcis_r[1]), pinocchio::skew(pcis_r[2]), pinocchio::skew(pcis_r[3]);
 
 //  std::cout << "T_lsole.rotation = " << std::endl << T_lsole.rotation() << std::endl;
 //  std::cout << "T_rsole.rotation = " << std::endl << T_rsole.rotation() << std::endl;
@@ -333,7 +344,7 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
     A_acc.bottomRows(6) = J_rsole;
     b_acc.bottomRows(6) = -J_rsole_dot * q_dot - params_.gamma * J_rsole * q_dot;
     Eigen::MatrixXd A_dyn(6, 6 + num_joints_ + 2 * 3 * num_contacts_);
-    A_dyn << Mu, -Jlu.transpose() * T, -Jru.transpose() * T;
+    A_dyn << Mu, -Jlu.transpose() * T_l, -Jru.transpose() * T_r;
 //    std::cout << "A_acc = " << std::endl << A_acc << std::endl;
 //    std::cout << "b_acc = " << std::endl << b_acc.transpose() << std::endl;
 
@@ -385,12 +396,12 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
     Eigen::VectorXd flr = solution.tail(2 * 3 * num_contacts_);
     Eigen::VectorXd fl = flr.head(3 * num_contacts_);
     Eigen::VectorXd fr = flr.tail(3 * num_contacts_);
-    Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T * fl - Jra.transpose() * T * fr;
+    Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
 
     output.q_ddot = q_ddot;
     output.tau = tau;
-    output.fl = T * fl;
-    output.fr = T * fr;
+    output.fl = T_l * fl;
+    output.fr = T_r * fr;
   } else {
     Eigen::MatrixXd Js, Js_dot, Jsu, Jsa, RsT;
     if (is_left_support) {
@@ -417,7 +428,7 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
     A_acc = Js;
     b_acc = -Js_dot * q_dot - params_.gamma * Js * q_dot;
     Eigen::MatrixXd A_dyn(6, 6 + num_joints_ + 3 * num_contacts_);
-    A_dyn << Mu, -Jsu.transpose() * T;
+    A_dyn << Mu, -Jsu.transpose() * (T_l*is_left_support + T_r*is_right_support);
 
     Eigen::MatrixXd A(A_acc.rows() + A_dyn.rows(), num_variables_single_);
     A << A_acc, Eigen::MatrixXd::Zero(A_acc.rows(), 3 * num_contacts_),
@@ -446,16 +457,16 @@ WBCOutput TorqueWholeBodyController::control(const CoMMotion &desired_com_motion
 
     Eigen::VectorXd q_ddot = solution.head(6 + num_joints_);
     Eigen::VectorXd fs = solution.tail(3 * num_contacts_);
-    Eigen::VectorXd tau = Ma * q_ddot + ca - Jsa.transpose() * T * fs;
+    Eigen::VectorXd tau = Ma * q_ddot + ca - Jsa.transpose() * (T_l*is_left_support + T_r*is_right_support) * fs;
 
     output.q_ddot = q_ddot;
     output.tau = tau;
     if (is_left_support) {
-      output.fl = T * fs;
+      output.fl = (T_l*is_left_support + T_r*is_right_support) * fs;
       output.fr = Eigen::VectorXd::Zero(6);
     } else {
       output.fl = Eigen::VectorXd::Zero(6);
-      output.fr = T * fs;
+      output.fr = (T_l*is_left_support + T_r*is_right_support) * fs;
     }
   }
 
