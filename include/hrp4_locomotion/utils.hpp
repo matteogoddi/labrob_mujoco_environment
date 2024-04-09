@@ -10,6 +10,7 @@
 
 // hrp4_locomotion
 #include <hrp4_locomotion/FootstepPlanElement.hpp>
+#include <hrp4_locomotion/ISMPCState.hpp>
 #include <hrp4_locomotion/WalkingState.hpp>
 
 namespace labrob {
@@ -48,6 +49,16 @@ T
 angle_difference(T alpha, T beta) {
   return wrap_angle(alpha - beta);
 }
+
+
+Eigen::Vector3d
+updateState(
+    const ISMPCState& ismpc_state,
+    double zmpDot,
+    int dim,
+    double com_target_height,
+    int64_t control_timestep_msec
+);
 
 labrob::WalkingState
 walkingStateFromString(

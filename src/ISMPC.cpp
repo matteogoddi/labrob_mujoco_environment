@@ -7,13 +7,12 @@ ISMPC::ISMPC(
     int64_t mpc_timestep_msec,
     int64_t control_timestep_msec,
     double com_target_height,
-    double foot_constraint_square_width,
-    const ISMPCState& state
+    double foot_constraint_square_width
 ) : mpc_timestep_msec_(mpc_timestep_msec),
     control_timestep_msec_(control_timestep_msec),
     com_target_height_(com_target_height),
     foot_constraint_square_width_(foot_constraint_square_width),
-    state_(state), input_(Eigen::Vector3d::Zero()) {
+    input_(Eigen::Vector3d::Zero()) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
@@ -56,7 +55,11 @@ ISMPC::ISMPC(
 }
 
 void
-ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
+ISMPC::solve(
+    int64_t time,
+    const labrob::WalkingData& walking_data,
+    const labrob::ISMPCState& state
+) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
@@ -136,12 +139,12 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
     ++k;
   }
 
-  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state_.zmp_pos_(0)),
-                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state_.zmp_pos_(1)),
-                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state_.zmp_pos_(2));
-  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state_.zmp_pos_(0)),
-                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state_.zmp_pos_(1)),
-                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state_.zmp_pos_(2));
+  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(0)),
+                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(1)),
+                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(2));
+  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(0)),
+                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(1)),
+                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(2));
 
   Eigen::VectorXd b(N_);
   A_eq_.setZero();
@@ -154,18 +157,18 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
   A_eq_.block(1,     N_, 1, N_) = (1.0 / omega) * (1.0 - std::exp(-omega * mpc_timestep))*b.transpose();
   A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / omega) * (1.0 - std::exp(-omega * mpc_timestep))*b.transpose();
 
-  b_eq_ << state_.com_pos_(0) + state_.com_vel_(0) / omega - state_.zmp_pos_(0),
-      state_.com_pos_(1) + state_.com_vel_(1) / omega - state_.zmp_pos_(1),
-      state_.com_pos_(2) + state_.com_vel_(2) / omega - (state_.zmp_pos_(2) + com_target_height_);
+  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / omega - state.zmp_pos_(0),
+      state.com_pos_(1) + state.com_vel_(1) / omega - state.zmp_pos_(1),
+      state.com_pos_(2) + state.com_vel_(2) / omega - (state.zmp_pos_(2) + com_target_height_);
 
   cost_function_H_.setZero();
   cost_function_H_.block(     0,      0, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.block(    N_,     N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
 
-  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.x() - mc_x);
-  cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.y() - mc_y);
-  cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state_.zmp_pos_.z() - mc_z);
+  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.x() - mc_x);
+  cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.y() - mc_y);
+  cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.z() - mc_z);
 
   // Solve QP
   qp_solver_ptr_->solve(
@@ -191,26 +194,11 @@ ISMPC::solve(int64_t time, const labrob::WalkingData& walking_data) {
   input_.x() = zDotOptimalX(0);
   input_.y() = zDotOptimalY(0);
   input_.z() = zDotOptimalZ(0);
-
-  // Update the state based on the result of the QP
-  Eigen::Vector3d nextStateX = updateState(zDotOptimalX(0), 0);
-  Eigen::Vector3d nextStateY = updateState(zDotOptimalY(0), 1);
-  Eigen::Vector3d nextStateZ = updateState(zDotOptimalZ(0), 2);
-
-  state_.com_pos_ << nextStateX(0), nextStateY(0), nextStateZ(0);
-  state_.com_vel_ << nextStateX(1), nextStateY(1), nextStateZ(1);
-  state_.zmp_pos_ << nextStateX(2), nextStateY(2), nextStateZ(2);
 }
 
 double
 ISMPC::getCOMTargetHeight() const {
   return com_target_height_;
-}
-
-
-const ISMPCState&
-ISMPC::getState() const {
-  return state_;
 }
 
 const Eigen::Vector3d& ISMPC::getInput() const {
@@ -220,35 +208,6 @@ const Eigen::Vector3d& ISMPC::getInput() const {
 void
 ISMPC::setCOMTargetHeight(double com_target_height) {
   com_target_height_ = com_target_height;
-}
-
-void
-ISMPC::setState(const ISMPCState& state) {
-  state_ = state;
-}
-
-Eigen::Vector3d
-ISMPC::updateState(double zmpDot, int dim) {
-
-  double control_timestep = 0.001 * static_cast<double>(control_timestep_msec_);
-
-  double omega = std::sqrt(9.81 / com_target_height_);
-
-  // Update the state along the dim-th direction (0,1,2) = (x,y,z)
-
-  double ch = cosh(omega * control_timestep);
-  double sh = sinh(omega * control_timestep);
-
-  Eigen::Matrix3d A_upd = Eigen::Matrix3d::Zero();
-  Eigen::Vector3d B_upd = Eigen::Vector3d::Zero();
-  A_upd<<ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
-  B_upd<<control_timestep-sh/omega,1-ch,control_timestep;
-
-  Eigen::Vector3d currentState = Eigen::Vector3d(state_.com_pos_(dim),state_.com_vel_(dim),state_.zmp_pos_(dim));
-
-  if (dim == 2) return A_upd*(currentState + Eigen::Vector3d(0.0,0.0,com_target_height_)) + B_upd*zmpDot - Eigen::Vector3d(0.0,0.0,com_target_height_);
-
-  return A_upd*currentState + B_upd*zmpDot;
 }
 
 double

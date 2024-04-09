@@ -289,19 +289,17 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 //  std::cerr << "CoM target height: " << com_target_height << std::endl;
   double foot_constraint_square_width = 0.05;
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
-  labrob::ISMPCState mpc_init_state(
+  filtered_state_ = labrob::ISMPCState(
       p_CoM,
       Eigen::Vector3d::Zero(),
       p_ZMP
   );
-  filtered_state_ = mpc_init_state;
   ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
       mpc_prediction_horizon_msec,
       mpc_timestep_msec,
       controller_timestep_msec_,
       com_target_height,
-      foot_constraint_square_width,
-      mpc_init_state
+      foot_constraint_square_width
   );
 
   auto params = TorqueWholeBodyControllerParams::getDefaultParams();
@@ -581,23 +579,27 @@ WalkingManager::update(
   }
 
 //  ismpc_ptr_->setState(ISMPCState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
-  Eigen::Vector3d measured_zmp = robot_state.zmp;
-  measured_zmp(2) = ismpc_ptr_->getState().zmp_pos_(2);
   ISMPCState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
 
   filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
 //  filtered_state_.zmp_pos_(2) = ismpc_ptr_->getState().zmp_pos_(2);
 
-//  if (std::isnan(measured_state.zmp_pos_(0)))
-  ismpc_ptr_->setState(filtered_state_);
-//  else
-//    ismpc_ptr_->setState(measured_state);
-
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
-  ismpc_ptr_->solve(t_msec_, walking_data_);
+  ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
   auto mpc_tf_ms = std::chrono::system_clock::now();
-  const auto& ismpc_state = ismpc_ptr_->getState();
+  const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
+
+  // Update the state based on the result of the QP
+  double com_target_height = ismpc_ptr_->getCOMTargetHeight();
+  Eigen::Vector3d nextStateX = updateState(filtered_state_, ismpc_optimal_control_input.x(), 0, com_target_height, controller_timestep_msec_);
+  Eigen::Vector3d nextStateY = updateState(filtered_state_, ismpc_optimal_control_input.y(), 1, com_target_height, controller_timestep_msec_);
+  Eigen::Vector3d nextStateZ = updateState(filtered_state_, ismpc_optimal_control_input.z(), 2, com_target_height, controller_timestep_msec_);
+
+  auto com_pos = Eigen::Vector3d(nextStateX(0), nextStateY(0), nextStateZ(0));
+  auto com_vel = Eigen::Vector3d(nextStateX(1), nextStateY(1), nextStateZ(1));
+  auto zmp_pos = Eigen::Vector3d(nextStateX(2), nextStateY(2), nextStateZ(2));
+  ISMPCState ismpc_state(com_pos, com_vel, zmp_pos);
 
   Eigen::Vector3d v_CoM_des = ismpc_state.com_vel_;
   Eigen::Vector3d p_CoM_des = ismpc_state.com_pos_;

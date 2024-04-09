@@ -24,23 +24,20 @@ class ISMPC{
       int64_t mpc_timestep_msec,
       int64_t control_timestep_msec,
       double com_target_height,
-      double foot_constraint_square_width,
-      const ISMPCState& state
+      double foot_constraint_square_width
   );
 
-  void solve(int64_t time, const labrob::WalkingData& walking_data);
+  void solve(
+      int64_t time,
+      const labrob::WalkingData& walking_data,
+      const labrob::ISMPCState& state
+  );
 
   double getCOMTargetHeight() const;
-
-  const ISMPCState& getState() const;
 
   const Eigen::Vector3d& getInput() const;
 
   void setCOMTargetHeight(double com_target_height);
-
-  void setState(const ISMPCState& state);
-
-  Eigen::Vector3d updateState(double zmpDot, int dim);
 
  private:
   // NOTE: std::clamp available from C++17
@@ -74,9 +71,6 @@ class ISMPC{
   Eigen::MatrixXd A_zmp_;
   Eigen::VectorXd b_zmp_max_;
   Eigen::VectorXd b_zmp_min_;
-
-  // State:
-  ISMPCState state_;
 
   Eigen::Vector3d input_;
 

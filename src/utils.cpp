@@ -16,6 +16,40 @@
 
 namespace labrob {
 
+Eigen::Vector3d
+updateState(
+    const ISMPCState& ismpc_state,
+    double zmpDot,
+    int dim,
+    double com_target_height,
+    int64_t control_timestep_msec
+) {
+
+  double control_timestep = 0.001 * static_cast<double>(control_timestep_msec);
+
+  double omega = std::sqrt(9.81 / com_target_height);
+
+  // Update the state along the dim-th direction (0,1,2) = (x,y,z)
+
+  double ch = cosh(omega * control_timestep);
+  double sh = sinh(omega * control_timestep);
+
+  Eigen::Matrix3d A_upd = Eigen::Matrix3d::Zero();
+  Eigen::Vector3d B_upd = Eigen::Vector3d::Zero();
+  A_upd<<ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
+  B_upd<<control_timestep-sh/omega,1-ch,control_timestep;
+
+  Eigen::Vector3d currentState = Eigen::Vector3d(
+      ismpc_state.com_pos_(dim),
+      ismpc_state.com_vel_(dim),
+      ismpc_state.zmp_pos_(dim)
+  );
+
+  if (dim == 2) return A_upd*(currentState + Eigen::Vector3d(0.0,0.0,com_target_height)) + B_upd*zmpDot - Eigen::Vector3d(0.0,0.0,com_target_height);
+
+  return A_upd*currentState + B_upd*zmpDot;
+}
+
 labrob::WalkingState
 walkingStateFromString(
     const std::string& walking_state_str
