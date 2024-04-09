@@ -32,11 +32,7 @@ class WalkingManager {
 
   void update(
       const labrob::RobotState& robot_state,
-      labrob::JointCommand& joint_command,
-      labrob::JointState& desired_joint_state,
-      Eigen::VectorXd& desired_base_velocity,
-      Eigen::VectorXd& desired_base_acceleration,
-      Eigen::Vector3d& zmp_position
+      labrob::JointCommand& joint_command
   );
 
   double get_alpha() const;

@@ -4,7 +4,6 @@ from math import ceil, floor, sqrt
 
 if __name__ == '__main__':
     joint_vel: np.ndarray = np.loadtxt('/tmp/joint_vel.txt')
-    joint_vel_des: np.ndarray = np.loadtxt('/tmp/joint_vel_des.txt')
     joint_eff: np.ndarray = np.loadtxt('/tmp/joint_eff.txt')
     joint_names = open('/tmp/joint_names.txt').readlines()
 

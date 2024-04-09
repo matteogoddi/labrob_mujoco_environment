@@ -101,7 +101,6 @@ int main() {
   mjData* jvrc1_mj_data_ptr = mj_makeData(jvrc1_mj_model_ptr);
 
   std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
-  std::ofstream joint_vel_des_log_file("/tmp/joint_vel_des.txt");
   std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
   std::ofstream joint_names_log_file("/tmp/joint_names.txt");
 
@@ -224,31 +223,11 @@ int main() {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
       labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
-      labrob::JointState desired_joint_state;
 
       // Update walking manager:
       labrob::JointCommand joint_command;
-      Eigen::VectorXd desired_base_velocity;
-      Eigen::VectorXd desired_base_acceleration;
       Eigen::Vector3d zmp_position;
-      walking_manager.update(robot_state, joint_command, desired_joint_state, desired_base_velocity, desired_base_acceleration, zmp_position);
-      desired_base_velocity.block(0, 0, 3, 1) = robot_state.orientation.toRotationMatrix() * desired_base_velocity.block(0, 0, 3, 1);
-      desired_base_acceleration.block(0, 0, 3, 1) = robot_state.orientation.toRotationMatrix() * desired_base_acceleration.block(0, 0, 3, 1);
-
-      labrob::RobotState robot_state_mujoco = robot_state;
-      robot_state_mujoco.linear_velocity = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
-
-      double desired_joint_pos[jvrc1_mj_model_ptr->nu];
-      for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
-        int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
-        std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
-        int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
-        desired_joint_pos[i] = jvrc1_mj_data_ptr->qpos[jnt_qpos_idx] + (1.0 / walking_manager.get_controller_frequency()) * joint_command[joint_name];
-      }
-
-//      for (const auto& joint_command_pair : joint_command) {
-//        std::cerr << "joint_command[" << joint_command_pair.first << "]: " << joint_command_pair.second << std::endl;
-//      }
+      walking_manager.update(robot_state, joint_command);
 
       double point[3]{0.0, 0.0, 0.0};
       double force[3]{0.0, 0.0, 0.0};
@@ -270,42 +249,22 @@ int main() {
         for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
           int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
-          int jnt_qpos_idx = jvrc1_mj_model_ptr->jnt_qposadr[joint_id];
           int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-          mjtNum err_q = labrob::wrap_angle(desired_joint_state[joint_name].pos - jvrc1_mj_data_ptr->qpos[jnt_qpos_idx]);
-          mjtNum err_v = desired_joint_state[joint_name].vel - jvrc1_mj_data_ptr->qvel[jnt_qvel_idx];
           jvrc1_mj_data_ptr->ctrl[i] = joint_command[joint_name];
 
           joint_vel_log_file << jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] << " ";
-          joint_vel_des_log_file << desired_joint_state[joint_name].vel << " ";
           joint_eff_log_file << jvrc1_mj_data_ptr->ctrl[i] << " ";
         }
 
         mj_step2(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
-        // For kinematic simulation
-//        for (int i = 0; i < 6; ++i) {
-//          jvrc1_mj_data_ptr->qvel[i] = desired_base_velocity(i);
-////          jvrc1_mj_data_ptr->qvel[i] += 0.001 * qdd(i);
-//        }
-//        for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
-//          int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
-//          std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
-//          int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-//          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] = desired_joint_state[joint_name].vel;
-////          jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] += 0.001 * qdd(jnt_qvel_idx);
-//        }
-//        mj_step(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
-
         joint_vel_log_file << std::endl;
-        joint_vel_des_log_file << std::endl;
         joint_eff_log_file << std::endl;
       }
       ++timestep_counter;
     }
 
     joint_vel_log_file.flush();
-    joint_vel_des_log_file.flush();
     joint_eff_log_file.flush();
 
     // get framebuffer viewport
@@ -333,7 +292,6 @@ int main() {
   mj_deleteModel(jvrc1_mj_model_ptr);
 
   joint_vel_log_file.close();
-  joint_vel_des_log_file.close();
   joint_eff_log_file.close();
 
   return 0;

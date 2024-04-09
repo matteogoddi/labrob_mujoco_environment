@@ -417,11 +417,8 @@ LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eig
 void
 WalkingManager::update(
     const labrob::RobotState& robot_state,
-    labrob::JointCommand& joint_command,
-    labrob::JointState& desired_joint_state,
-    Eigen::VectorXd &desired_base_velocity,
-    Eigen::VectorXd &desired_base_acceleration,
-    Eigen::Vector3d &zmp_position) {
+    labrob::JointCommand& joint_command
+) {
 
   double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
@@ -604,7 +601,6 @@ WalkingManager::update(
   Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
   Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
   Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
-  zmp_position = lip_state.zmp_pos_;
 
   Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
   Eigen::Vector3d a_CoM_des = eta2 * (p_CoM_des - p_ZMP_des) - g_vector;
@@ -738,163 +734,33 @@ WalkingManager::update(
   }
 
   WBCOutput output;
-  bool torque_wbc = true;
-  if (torque_wbc) {
-    CoMMotion desired_com_motion;
-    desired_com_motion.position = p_CoM_des;
-    desired_com_motion.velocity = v_CoM_des;
-    desired_com_motion.acceleration = a_CoM_des;
-    FootMotion desired_left_foot_motion;
-    desired_left_foot_motion.pose = T_lsole_des;
-    desired_left_foot_motion.velocity = v_lsole_des;
-    desired_left_foot_motion.acceleration = a_lsole_des;
-    FootMotion desired_right_foot_motion;
-    desired_right_foot_motion.pose = T_rsole_des;
-    desired_right_foot_motion.velocity = v_rsole_des;
-    desired_right_foot_motion.acceleration = a_rsole_des;
+  CoMMotion desired_com_motion;
+  desired_com_motion.position = p_CoM_des;
+  desired_com_motion.velocity = v_CoM_des;
+  desired_com_motion.acceleration = a_CoM_des;
+  FootMotion desired_left_foot_motion;
+  desired_left_foot_motion.pose = T_lsole_des;
+  desired_left_foot_motion.velocity = v_lsole_des;
+  desired_left_foot_motion.acceleration = a_lsole_des;
+  FootMotion desired_right_foot_motion;
+  desired_right_foot_motion.pose = T_rsole_des;
+  desired_right_foot_motion.velocity = v_rsole_des;
+  desired_right_foot_motion.acceleration = a_rsole_des;
 
-    output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
-                                                           desired_right_foot_motion, q, qdot,
-                                                           is_left_foot_support, is_right_foot_support);
+  output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
+                                                          desired_right_foot_motion, q, qdot,
+                                                          is_left_foot_support, is_right_foot_support);
 
-    Eigen::VectorXd tau_expanded(6 + njnt);
-    tau_expanded << Eigen::VectorXd::Zero(6), output.tau;
+  Eigen::VectorXd tau_expanded(6 + njnt);
+  tau_expanded << Eigen::VectorXd::Zero(6), output.tau;
 
-    desired_base_velocity = output.q_dot.block(0, 0, 6, 1);
-    desired_base_acceleration = output.q_ddot.block(0, 0, 6, 1);
-
-    // Pinocchio representation to labrob::RobotState representation:
-    // TODO: is there a less error-prone way to convert representation?
-    for(pinocchio::JointIndex joint_id = 2;
-        joint_id < (pinocchio::JointIndex) robot_model_.njoints;
-        ++joint_id) {
-      const auto &joint_name = robot_model_.names[joint_id];
-      joint_command[joint_name] = tau_expanded[joint_id + 4];//joint_torques[joint_id + 4];
-      desired_joint_state[joint_name].pos = output.q[joint_id + 5];
-      desired_joint_state[joint_name].vel = output.q_dot[joint_id + 4];
-      desired_joint_state[joint_name].acc = output.q_ddot[joint_id + 4];
-    }
-  } else {
-    Eigen::VectorXd err_posture(6 + njnt);
-    err_posture << Eigen::VectorXd::Zero(6), err_posture_selection_matrix.block(6, 6, njnt, njnt) * (q_jnt_des_ - q.tail(njnt));
-
-    // CLIK-weights:
-    Eigen::Matrix3d K_CoM = 50.0 * Eigen::Matrix3d::Identity();
-    Eigen::Matrix3d K_torso_orientation = Eigen::Vector3d(30.0, 30.0, 30.0).asDiagonal().toDenseMatrix();
-    Eigen::MatrixXd K_lsole = Eigen::MatrixXd::Identity(6, 6);
-    K_lsole.diagonal().head<3>().setConstant(30.0);
-    K_lsole.diagonal().tail<3>().setConstant(10.0);
-    Eigen::MatrixXd K_rsole = Eigen::MatrixXd::Identity(6, 6);
-    K_rsole.diagonal().head<3>().setConstant(30.0);
-    K_rsole.diagonal().tail<3>().setConstant(10.0);
-
-    // QP-based task priority IK:
-    Eigen::MatrixXd cost_function_H = Eigen::MatrixXd::Zero(6 + njnt, 6 + njnt);
-    Eigen::VectorXd cost_function_f = Eigen::VectorXd::Zero(6 + njnt);
-    Eigen::MatrixXd A_eq = Eigen::MatrixXd::Zero(12, 6 + njnt);
-    Eigen::VectorXd b_eq = Eigen::VectorXd::Zero(12);
-    Eigen::MatrixXd C_ineq = Eigen::MatrixXd::Zero(2 * njnt, 6 + njnt);
-    Eigen::VectorXd d_min_ineq(2 * njnt);
-    Eigen::VectorXd d_max_ineq(2 * njnt);
-
-    // Set weights depending on walking state:
-    double weight_q_dot = 0.0;
-    double weight_com_task = 0.1;//1.0;
-    double weight_lsole_task = 1.0;
-    double weight_rsole_task = 1.0;
-    double weight_torso_orientation_task = 0.0;
-    double weight_posture_regulation_task = 0.0;
-    double weight_angular_momentum_task_x = 0.000001;
-    double weight_angular_momentum_task_y = 0.000001;
-    double weight_angular_momentum_task_z = 0.0001;
-
-    if (is_left_foot_support) weight_lsole_task = 100.0;
-    if (is_right_foot_support) weight_rsole_task = 100.0;
-
-    if (walking_data_.footstep_plan.front().getWalkingState() == WalkingState::PostureRegulation) {
-      weight_posture_regulation_task = 1.0;
-    } else {
-      weight_q_dot = 1e-4;
-      weight_torso_orientation_task = 1e-3; // 1e-3
-      weight_posture_regulation_task = 1.0; // 0.01; // (legs not considered)
-    }
-
-    cmm_selection_matrix(0, 3) = weight_angular_momentum_task_x;
-    cmm_selection_matrix(1, 4) = weight_angular_momentum_task_y;
-    cmm_selection_matrix(2, 5) = weight_angular_momentum_task_z;
-
-    cost_function_H += weight_q_dot * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
-    cost_function_H += weight_com_task * (J_CoM.transpose() * J_CoM);
-    cost_function_H += weight_lsole_task * (J_lsole.transpose() * J_lsole);
-    cost_function_H += weight_rsole_task * (J_rsole.transpose() * J_rsole);
-    cost_function_H += weight_torso_orientation_task * (J_torso_orientation.transpose() * J_torso_orientation);
-    cost_function_H += weight_posture_regulation_task * std::pow(controller_timestep, 2.0)
-        * Eigen::MatrixXd::Identity(6 + njnt, 6 + njnt);
-    cost_function_H += centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() * cmm_selection_matrix
-        * centroidal_momentum_matrix;
-    cost_function_f += -weight_com_task * J_CoM.transpose() * (v_CoM_des + K_CoM * err_CoM);
-    cost_function_f += -weight_lsole_task * J_lsole.transpose() * (v_lsole_des + K_lsole * err_lsole);
-    cost_function_f += -weight_rsole_task * J_rsole.transpose() * (v_rsole_des + K_rsole * err_rsole);
-    cost_function_f += -weight_torso_orientation_task * J_torso_orientation.transpose()
-        * (v_torso_orientation_des + K_torso_orientation * err_torso_orientation);
-    cost_function_f += -weight_posture_regulation_task * controller_timestep * err_posture;
-
-    auto q_jnt_dot_min = -robot_model_.velocityLimit.tail(njnt);
-    auto q_jnt_dot_max = robot_model_.velocityLimit.tail(njnt);
-    auto q_jnt_min = robot_model_.lowerPositionLimit.tail(njnt);
-    auto q_jnt_max = robot_model_.upperPositionLimit.tail(njnt);
-    if (is_left_foot_support) {
-      A_eq.topRows(6) = J_lsole;
-      // NOTE: the following is useful to correct kinematic simulation errors.
-      b_eq.topRows(6) = K_lsole * err_lsole;
-    }
-    if (is_right_foot_support) {
-      A_eq.bottomRows(6) = J_rsole;
-      // NOTE: the following is useful to correct kinematic simulation errors.
-      b_eq.bottomRows(6) = K_rsole * err_rsole;
-    }
-    C_ineq.rightCols(njnt).topRows(njnt).diagonal().setConstant(1.0);
-    C_ineq.rightCols(njnt).bottomRows(njnt).diagonal().setConstant(controller_timestep);
-    d_min_ineq << q_jnt_dot_min, q_jnt_min - q.tail(njnt);
-    d_max_ineq << q_jnt_dot_max, q_jnt_max - q.tail(njnt);
-
-    qp_solver_ptr_->solve(
-        cost_function_H,
-        cost_function_f,
-        A_eq,
-        b_eq,
-        C_ineq,
-        d_min_ineq,
-        d_max_ineq
-    );
-
-    Eigen::VectorXd joint_velocity_commands = qp_solver_ptr_->get_solution();
-    desired_base_velocity = joint_velocity_commands.block(0, 0, 6, 1);
-
-    Eigen::VectorXd q_next_des(robot_model_.nq);
-    Eigen::VectorXd v = controller_timestep * joint_velocity_commands;
-    pinocchio::integrate(robot_model_, q, v, q_next_des);
-
-    const auto& joint_torques = pinocchio::rnea(
-        robot_model_,
-        robot_data_,
-        q,
-        joint_velocity_commands,
-        Eigen::VectorXd::Zero(qdot.size())
-    );
-
-    // Pinocchio representation to labrob::RobotState representation:
-    // TODO: is there a less error-prone way to convert representation?
-    for(pinocchio::JointIndex joint_id = 2;
-        joint_id < (pinocchio::JointIndex) robot_model_.njoints;
-        ++joint_id) {
-      const auto& joint_name = robot_model_.names[joint_id];
-      joint_command[joint_name] = joint_torques[joint_id + 4];
-      desired_joint_state[joint_name].pos = q_next_des[joint_id + 5];
-      desired_joint_state[joint_name].vel = joint_velocity_commands[joint_id + 4];
-    }
-
-    desired_base_acceleration = Eigen::VectorXd::Zero(6);
+  // Pinocchio representation to labrob::RobotState representation:
+  // TODO: is there a less error-prone way to convert representation?
+  for(pinocchio::JointIndex joint_id = 2;
+      joint_id < (pinocchio::JointIndex) robot_model_.njoints;
+      ++joint_id) {
+    const auto &joint_name = robot_model_.names[joint_id];
+    joint_command[joint_name] = tau_expanded[joint_id + 4];//joint_torques[joint_id + 4];
   }
 
   // Update timing in milliseconds.
