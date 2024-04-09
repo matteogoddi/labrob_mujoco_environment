@@ -18,7 +18,7 @@ namespace labrob {
 
 Eigen::Vector3d
 updateState(
-    const ISMPCState& ismpc_state,
+    const LIPState& lip_state,
     double zmpDot,
     int dim,
     double com_target_height,
@@ -40,9 +40,9 @@ updateState(
   B_upd<<control_timestep-sh/omega,1-ch,control_timestep;
 
   Eigen::Vector3d currentState = Eigen::Vector3d(
-      ismpc_state.com_pos_(dim),
-      ismpc_state.com_vel_(dim),
-      ismpc_state.zmp_pos_(dim)
+      lip_state.com_pos_(dim),
+      lip_state.com_vel_(dim),
+      lip_state.zmp_pos_(dim)
   );
 
   if (dim == 2) return A_upd*(currentState + Eigen::Vector3d(0.0,0.0,com_target_height)) + B_upd*zmpDot - Eigen::Vector3d(0.0,0.0,com_target_height);

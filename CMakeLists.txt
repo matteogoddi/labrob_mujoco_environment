@@ -22,7 +22,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPCState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotState.cpp

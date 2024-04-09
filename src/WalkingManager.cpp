@@ -289,7 +289,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 //  std::cerr << "CoM target height: " << com_target_height << std::endl;
   double foot_constraint_square_width = 0.05;
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
-  filtered_state_ = labrob::ISMPCState(
+  filtered_state_ = labrob::LIPState(
       p_CoM,
       Eigen::Vector3d::Zero(),
       p_ZMP
@@ -344,7 +344,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   return true;
 }
 
-ISMPCState WalkingManager::updateKF(ISMPCState filtered, ISMPCState current, const Eigen::Vector3d &input) {
+LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
   double omega = std::sqrt(9.81 / ismpc_ptr_->getCOMTargetHeight());
   double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
@@ -527,7 +527,7 @@ WalkingManager::update(
       auto com_target_height = p_CoM.z() - p_support.z();
       Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
       ismpc_ptr_->setCOMTargetHeight(com_target_height);
-      ismpc_ptr_->setState(labrob::ISMPCState(
+      ismpc_ptr_->setState(labrob::LIPState(
           p_CoM,
           Eigen::Vector3d::Zero(),
           p_ZMP
@@ -578,8 +578,8 @@ WalkingManager::update(
     zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
   }
 
-//  ismpc_ptr_->setState(ISMPCState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
-  ISMPCState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
+//  ismpc_ptr_->setState(LIPState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
+  LIPState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
 
   filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
 //  filtered_state_.zmp_pos_(2) = ismpc_ptr_->getState().zmp_pos_(2);
@@ -599,12 +599,12 @@ WalkingManager::update(
   auto com_pos = Eigen::Vector3d(nextStateX(0), nextStateY(0), nextStateZ(0));
   auto com_vel = Eigen::Vector3d(nextStateX(1), nextStateY(1), nextStateZ(1));
   auto zmp_pos = Eigen::Vector3d(nextStateX(2), nextStateY(2), nextStateZ(2));
-  ISMPCState ismpc_state(com_pos, com_vel, zmp_pos);
+  LIPState lip_state(com_pos, com_vel, zmp_pos);
 
-  Eigen::Vector3d v_CoM_des = ismpc_state.com_vel_;
-  Eigen::Vector3d p_CoM_des = ismpc_state.com_pos_;
-  Eigen::Vector3d p_ZMP_des = ismpc_state.zmp_pos_;
-  zmp_position = ismpc_state.zmp_pos_;
+  Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
+  Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
+  Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
+  zmp_position = lip_state.zmp_pos_;
 
   Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
   Eigen::Vector3d a_CoM_des = eta2 * (p_CoM_des - p_ZMP_des) - g_vector;

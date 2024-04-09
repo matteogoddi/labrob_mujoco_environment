@@ -6,7 +6,7 @@
 #include <memory>
 #include <vector>
 
-#include <hrp4_locomotion/ISMPCState.hpp>
+#include <hrp4_locomotion/LIPState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
@@ -30,7 +30,7 @@ class ISMPC{
   void solve(
       int64_t time,
       const labrob::WalkingData& walking_data,
-      const labrob::ISMPCState& state
+      const labrob::LIPState& state
   );
 
   double getCOMTargetHeight() const;

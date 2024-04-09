@@ -1,8 +1,8 @@
-#include <hrp4_locomotion/ISMPCState.hpp>
+#include <hrp4_locomotion/LIPState.hpp>
 
 namespace labrob {
 
-ISMPCState::ISMPCState(
+LIPState::LIPState(
     const Eigen::Vector3d& com_pos,
     const Eigen::Vector3d& com_vel,
     const Eigen::Vector3d& zmp_pos

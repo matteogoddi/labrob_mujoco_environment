@@ -58,7 +58,7 @@ void
 ISMPC::solve(
     int64_t time,
     const labrob::WalkingData& walking_data,
-    const labrob::ISMPCState& state
+    const labrob::LIPState& state
 ) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
