@@ -77,9 +77,6 @@ class WholeBodyController {
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
 
-  pinocchio::SE3 T_lsole_;
-  pinocchio::SE3 T_rsole_;
-
   Eigen::MatrixXd J_torso_;
   Eigen::MatrixXd J_lsole_;
   Eigen::MatrixXd J_rsole_;

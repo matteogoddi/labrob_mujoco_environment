@@ -108,9 +108,6 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::computeJointJacobiansTimeVariation(robot_model, robot_data, q, qdot);
   pinocchio::framesForwardKinematics(robot_model, robot_data, q);
 
-  T_lsole_ = pinocchio::SE3(current.lsole.pos.R, current.lsole.pos.p);
-  T_rsole_ = pinocchio::SE3(current.rsole.pos.R, current.rsole.pos.p);
-
   pinocchio::getFrameJacobian(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_);
@@ -229,8 +226,8 @@ WholeBodyController::compute_inverse_dynamics(
   std::vector<Eigen::Vector3d> pcis_r(4);
 
   for (int i = 0; i < n_contacts_; ++i) {
-    pcis_l[i] = T_lsole_.rotation() * pcis[i];
-    pcis_r[i] = T_rsole_.rotation() * pcis[i];
+    pcis_l[i] = desired.lsole.pos.R * pcis[i];
+    pcis_r[i] = desired.rsole.pos.R * pcis[i];
   }
 
   Eigen::MatrixXd T_l(6, 3 * n_contacts_);
