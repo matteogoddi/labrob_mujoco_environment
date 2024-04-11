@@ -17,8 +17,8 @@
 
 namespace labrob {
 
-WholeBodyController::WholeBodyController(const pinocchio::Model &robot_model,
-                                         const Eigen::VectorXd &q_jnt_reg,
+WholeBodyController::WholeBodyController(const pinocchio::Model& robot_model,
+                                         const Eigen::VectorXd& q_jnt_reg,
                                          double sample_time)
   : robot_model_(robot_model), q_jnt_reg_(q_jnt_reg), sample_time_(sample_time) {
   robot_data_ = pinocchio::Data(robot_model_);
@@ -26,9 +26,17 @@ WholeBodyController::WholeBodyController(const pinocchio::Model &robot_model,
   lsole_idx_ = robot_model_.getFrameId("L_ANKLE_P_S");
   rsole_idx_ = robot_model_.getFrameId("R_ANKLE_P_S");
   torso_idx_ = robot_model_.getFrameId("base_link");
+
+  J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lsole_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rsole_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+
+  J_torso_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 }
 
-void WholeBodyController::computePinocchio(const Eigen::VectorXd &q, const Eigen::VectorXd &q_dot) {
+void WholeBodyController::computePinocchio(const Eigen::VectorXd& q, const Eigen::VectorXd& q_dot) {
   // Perform forward kinematics on the whole tree and update robot data:
   pinocchio::forwardKinematics(robot_model_, robot_data_, q);
 
@@ -40,7 +48,7 @@ void WholeBodyController::computePinocchio(const Eigen::VectorXd &q, const Eigen
   pinocchio::centerOfMass(robot_model_, robot_data_, q, q_dot, 0.0 * q_dot); // This is used to compute the CoM drift (J_com_dot * qdot)
 }
 
-void WholeBodyController::getJacobians(Eigen::MatrixXd &J_torso, Eigen::MatrixXd &J_lsole, Eigen::MatrixXd &J_rsole) {
+void WholeBodyController::getJacobians(Eigen::MatrixXd& J_torso, Eigen::MatrixXd& J_lsole, Eigen::MatrixXd& J_rsole) {
   pinocchio::getFrameJacobian(
       robot_model_,
       robot_data_,
@@ -64,7 +72,7 @@ void WholeBodyController::getJacobians(Eigen::MatrixXd &J_torso, Eigen::MatrixXd
   );
 }
 
-void WholeBodyController::getJacobiansTimeVariation(Eigen::MatrixXd &J_torso_dot, Eigen::MatrixXd &J_lsole_dot, Eigen::MatrixXd &J_rsole_dot) {
+void WholeBodyController::getJacobiansTimeVariation(Eigen::MatrixXd& J_torso_dot, Eigen::MatrixXd& J_lsole_dot, Eigen::MatrixXd& J_rsole_dot) {
   pinocchio::getFrameJacobianTimeVariation(
       robot_model_,
       robot_data_,

@@ -8,9 +8,13 @@
 // Eigen
 #include <Eigen/Core>
 
+// Pinocchio
+#include <pinocchio/multibody/model.hpp>
+
 // hrp4_locomotion
 #include <hrp4_locomotion/FootstepPlanElement.hpp>
 #include <hrp4_locomotion/LIPState.hpp>
+#include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingState.hpp>
 
 namespace labrob {
@@ -50,6 +54,17 @@ angle_difference(T alpha, T beta) {
   return wrap_angle(alpha - beta);
 }
 
+Eigen::VectorXd
+robot_state_to_pinocchio_joint_configuration(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state
+);
+
+Eigen::VectorXd
+robot_state_to_pinocchio_joint_velocity(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state
+);
 
 Eigen::Vector3d
 updateState(

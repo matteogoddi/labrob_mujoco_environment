@@ -20,6 +20,7 @@
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
+#include <hrp4_locomotion/GaitConfiguration.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/TimingLaw.hpp>
 #include <hrp4_locomotion/utils.hpp>
@@ -303,21 +304,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   );
 
   auto params = TorqueWholeBodyControllerParams::getDefaultParams();
-  whole_body_controller_ptr_ = std::make_shared<TorqueWholeBodyController>(params, robot_model_, q_jnt_des_,
-                                                                           0.001 * controller_timestep_msec_,
-                                                                           armatures);
-
-  // Init QP solver:
-  qp_solver_ptr_ = std::make_unique<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(
-          6 + njnt, 12, 2 * njnt
-      )
-  );
-
-  force_solver_ptr_ = std::make_unique<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(
-          3 * 2 * 4, 6, 4 * 4 * 2
-      )
+  whole_body_controller_ptr_ = std::make_shared<TorqueWholeBodyController>(
+      params,
+      robot_model_,
+      q_jnt_des_,
+      0.001 * controller_timestep_msec_,
+      armatures
   );
 
   // Init log files:
@@ -336,10 +328,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
   angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
-  fl_log_file_.open("/tmp/fl.txt");
-  fr_log_file_.open("/tmp/fr.txt");
+  //fl_log_file_.open("/tmp/fl.txt");
+  //fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
-  alpha_log_file_.open("/tmp/alpha.txt");
 
   return true;
 }
@@ -419,18 +410,12 @@ WalkingManager::update(
     const labrob::RobotState& robot_state,
     labrob::JointCommand& joint_command
 ) {
-
   double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
   int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
-
-  if (open_loop_) {
-    q = q_next_prev_;
-    qdot = v_next_prev_;
-  }
 
   // Perform forward kinematics on the whole tree and update robot data:
   pinocchio::forwardKinematics(robot_model_, robot_data_, q);
@@ -508,57 +493,34 @@ WalkingManager::update(
       rsole_idx_,
       pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
       J_rsole_dot
-      );
-
-
-//  std::cerr << "lsole position: " << T_lsole.translation().transpose() << std::endl;
-//  std::cerr << "rsole position: " << T_rsole.translation().transpose() << std::endl;
+  );
 
   // Update walking state:
   walking_data_.updateWalkingState(t_msec_);
-  
-  // Update CoM target height in IS-MPC depending on current configuration
-  // in case of PostureRegulation walking state:
-  /*if (walking_data_.getWalkingState() == labrob::WalkingState::PostureRegulation) {
-      const auto& p_support = walking_data_.footstep_plan.front().getFeetPlacement().getSupportFootConfiguration().p;
-      auto com_target_height = p_CoM.z() - p_support.z();
-      Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
-      ismpc_ptr_->setCOMTargetHeight(com_target_height);
-      ismpc_ptr_->setState(labrob::LIPState(
-          p_CoM,
-          Eigen::Vector3d::Zero(),
-          p_ZMP
-      ));
-  }*/
 
-  // Update first element of footstep plan to make it consistent with 
-  // state estimation module:
-  //walking_data_.updateFootstepPlanWithCurrentStance(
-  //    labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
-  //    labrob::SE3(T_rsole.rotation(), T_rsole.translation())
-  //);
+  // Fill current gait configuration:
+  labrob::GaitConfiguration current_gait_configuration;
+  current_gait_configuration.qjnt = q.tail(njnt);
+  current_gait_configuration.qjntdot = qdot.tail(njnt);
 
-//  std::cerr << "t (msec):" << t_msec_ << std::endl;
-//  std::cerr << "\tWalkingState::" << to_string(walking_data_.getWalkingState()) << std::endl;
-//  std::cerr << "\tFootstep plan size: " << walking_data_.footstep_plan.size() << std::endl;
-  for (const auto& footstep_plan_element : walking_data_.footstep_plan) {
-    const auto& feet_placement = footstep_plan_element.getFeetPlacement();
-    auto duration = footstep_plan_element.getDuration();
-    auto h_z = footstep_plan_element.getSwingFootTrajectoryHeight();
-    auto walking_state = footstep_plan_element.getWalkingState();
-    auto support_foot = footstep_plan_element.getFeetPlacement().getSupportFoot();
-    const auto& left_foot_configuration = feet_placement.getLeftFootConfiguration();
-    const auto& right_foot_configuration = feet_placement.getRightFootConfiguration();
-//    std::cerr << "qL=" << left_foot_configuration.p.transpose()
-//        << ", qR=" << right_foot_configuration.p.transpose()
-//        << ", T=" << duration
-//        << ", h_z=" << h_z
-//        << ", support foot=" << (support_foot == labrob::Foot::LEFT ? "LEFT" : "RIGHT")
-//        << ", walking state="
-//        << labrob::to_string(walking_state)
-//        << std::endl;
+  current_gait_configuration.is_left_foot_support = true;
+  current_gait_configuration.is_right_foot_support = true;
+  if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
+    else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
   }
 
+  current_gait_configuration.com.pos = robot_data_.com[0];
+  current_gait_configuration.com.vel = robot_data_.vcom[0];
+
+  current_gait_configuration.torso.pos = robot_data_.oMf[torso_idx_].rotation();
+  current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
+  
+  current_gait_configuration.lsole.pos = labrob::SE3(robot_data_.oMf[lsole_idx_].rotation(), robot_data_.oMf[lsole_idx_].translation());
+  current_gait_configuration.lsole.vel = J_lsole * qdot;
+
+  current_gait_configuration.rsole.pos = labrob::SE3(robot_data_.oMf[rsole_idx_].rotation(), robot_data_.oMf[rsole_idx_].translation());
+  current_gait_configuration.rsole.vel = J_rsole * qdot;
 
   double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
   double mass = pinocchio::computeTotalMass(robot_model_);
@@ -575,11 +537,9 @@ WalkingManager::update(
     zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
   }
 
-//  ismpc_ptr_->setState(LIPState(p_CoM, J_CoM * qdot, ismpc_ptr_->getState().zmp_pos_));
   LIPState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
 
   filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
-//  filtered_state_.zmp_pos_(2) = ismpc_ptr_->getState().zmp_pos_(2);
 
   // CoM task:
   auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -602,166 +562,64 @@ WalkingManager::update(
   Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
   Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
 
-  Eigen::Vector3d g_vector{0.0, 0.0, 9.81};
-  Eigen::Vector3d a_CoM_des = eta2 * (p_CoM_des - p_ZMP_des) - g_vector;
+  // Fill desired gait configuration:
+  labrob::GaitConfiguration desired_gait_configuration;
+  desired_gait_configuration.qjnt = q_jnt_des_;
+  desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
+  desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
 
-//  std::cerr << "p_CoM_des: " << p_CoM_des.transpose() << std::endl;
-//  std::cerr << "a_CoM_des: " << a_CoM_des.transpose() << std::endl;
+  desired_gait_configuration.com.pos = lip_state.com_pos_;
+  desired_gait_configuration.com.vel = lip_state.com_vel_;
+  desired_gait_configuration.com.acc = eta2 * (lip_state.com_pos_ - lip_state.zmp_pos_) - Eigen::Vector3d(0.0, 0.0, 9.81);
 
-  // CoM task error:
-  auto err_CoM = p_CoM_des - p_CoM;
-  auto err_CoM_vel = v_CoM_des - J_CoM * qdot;
-
-  // Torso orientation task (NOTE: choose orientation as the average of
-  // orientations of feet configuration in the footstep plan, assuming WoS-like
-  // rotation matrix, hence roll=pitch=0.0):
-  double left_foot_orientation = std::atan2(
-      walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().R(1, 0),
-      walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().R(0, 0)
-  );
-  double right_foot_orientation = std::atan2(
-      walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().R(1, 0),
-      walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().R(0, 0)
-  );
-  Eigen::Matrix3d torso_orientation_des =
-      labrob::Rz((left_foot_orientation + right_foot_orientation) / 2.0);
-  // TODO: include feedforward for torso orientation
-  Eigen::Vector3d v_torso_orientation_des = Eigen::Vector3d::Zero();
-  Eigen::Vector3d a_torso_orientation_des = Eigen::Vector3d::Zero();
-  auto err_torso_orientation = err_rotation(torso_orientation_des, torso_orientation);
-  auto err_torso_orientation_vel = v_torso_orientation_des - J_torso_orientation * qdot;
-
-  // Support foot and swing foot tasks:
-  pinocchio::SE3 T_lsole_des(
-      walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().R,
-      walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p
-  );
-  Eigen::VectorXd v_lsole_des = Eigen::VectorXd::Zero(6);
-  Eigen::VectorXd a_lsole_des = Eigen::VectorXd::Zero(6);
-  pinocchio::SE3 T_rsole_des(
-      walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().R,
-      walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p
-  );
-  Eigen::VectorXd v_rsole_des = Eigen::VectorXd::Zero(6);
-  Eigen::VectorXd a_rsole_des = Eigen::VectorXd::Zero(6);
-
-  if (walking_data_.getWalkingState() == labrob::WalkingState::SingleSupport) {
-    pinocchio::SE3 T_support_des(
-        walking_data_.footstep_plan.front().getFeetPlacement().getSupportFootConfiguration().R,
-        walking_data_.footstep_plan.front().getFeetPlacement().getSupportFootConfiguration().p
-    );
-    pinocchio::Motion v_support_des(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
-    pinocchio::Motion a_support_des(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero());
-    pinocchio::SE3 T_swing_des;
-    pinocchio::Motion v_swing_des;
-    pinocchio::Motion a_swing_des;
-    swingFootTrajectory(T_swing_des, v_swing_des, a_swing_des);
-
-    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT) {
-      // lsole is support:
-      T_lsole_des = T_support_des;
-      v_lsole_des << v_support_des.linear(), v_support_des.angular();
-      a_lsole_des << a_support_des.linear(), a_support_des.angular();
-      // rsole is swinging:
-      T_rsole_des = T_swing_des;
-      v_rsole_des << v_swing_des.linear(), v_swing_des.angular();
-      a_rsole_des << a_swing_des.linear(), a_swing_des.angular();
-    } else {
-      // lsole is swinging:
-      T_lsole_des = T_swing_des;
-      v_lsole_des << v_swing_des.linear(), v_swing_des.angular();
-      a_lsole_des << a_swing_des.linear(), a_swing_des.angular();
-      // rsole is support:
-      T_rsole_des = T_support_des;
-      v_rsole_des << v_support_des.linear(), v_support_des.angular();
-      a_rsole_des << a_support_des.linear(), a_support_des.angular();
-    }
-  }
-
-  // Angular momentum task (select angular part from CMM):
-  Eigen::MatrixXd cmm_selection_matrix = Eigen::MatrixXd::Zero(3, 6);
-  cmm_selection_matrix.leftCols<3>().setZero();
-  cmm_selection_matrix.rightCols<3>().setIdentity();
-
-  // lsole task error:
-  auto err_lsole = err_frameplacement(T_lsole_des, T_lsole);
-  auto err_lsole_vel = v_lsole_des - J_lsole * qdot;
-
-  // rsole task error:
-  auto err_rsole = err_frameplacement(T_rsole_des, T_rsole);
-  auto err_rsole_vel = v_rsole_des - J_rsole * qdot;
-
-  // Posture regulation task error (deactivate legs if not doing posture regulation):
-  Eigen::MatrixXd err_posture_selection_matrix = Eigen::MatrixXd::Zero(6 + njnt, 6 + njnt);
-  err_posture_selection_matrix.block(6, 6, njnt, njnt) = Eigen::MatrixXd::Identity(njnt, njnt);
-//  if (walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation) {
-//    const std::vector<std::string> legs_joint_name = {
-//        "R_HIP_Y", "R_HIP_R", "R_HIP_P", "R_KNEE", "R_ANKLE_P", "R_ANKLE_R",
-//        "L_HIP_Y", "L_HIP_R", "L_HIP_P", "L_KNEE", "L_ANKLE_P", "L_ANKLE_R"
-//    };
-//    for (const auto& joint_name : legs_joint_name) {
-//      auto idx = robot_model_.getJointId(joint_name) - 2;
-//      err_posture_selection_matrix(6 + idx, 6 + idx) = 0.0;
-//    }
-//  }
-
-  bool is_left_foot_support = true;
-  bool is_right_foot_support = true;
-  if (walking_data_.getWalkingState() == labrob::WalkingState::SingleSupport) {
-    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT) is_right_foot_support = false;
-    else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == labrob::Foot::RIGHT) is_left_foot_support = false;
-  }
-
-  if (walking_data_.getWalkingState() == WalkingState::DoubleSupport or
-      walking_data_.getWalkingState() == WalkingState::Starting) {
-    if (walking_data_.footstep_plan.size() > 1) {
-      alpha_ = static_cast<double>(t_msec_ - walking_data_.t0)
-          / static_cast<double>(walking_data_.footstep_plan.front().getDuration());
-      if (walking_data_.footstep_plan.at(1).getFeetPlacement().getSupportFoot() == labrob::Foot::LEFT)
-        alpha_ = 1.0 - alpha_;
-    } else {
-      alpha_ = 0.5;
-    }
-    if (walking_data_.getWalkingState() == WalkingState::Starting)
-      alpha_ = 0.5 + alpha_ / 2.0;
-  } else if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    if (is_left_foot_support)
-      alpha_ = -0.1;
-    else if (is_right_foot_support)
-      alpha_ = 1.1;
+  // Feet tasks
+  if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
+    desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+    desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
+    desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
+    desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+    desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
+    desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
+  } else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) {
+    desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+    desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
+    desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
+    pinocchio::SE3 desired_rsole_pose;
+    pinocchio::Motion desired_rsole_vel;
+    pinocchio::Motion desired_rsole_acc;
+    swingFootTrajectory(desired_rsole_pose, desired_rsole_vel, desired_rsole_acc);
+    desired_gait_configuration.rsole.pos.R = desired_rsole_pose.rotation();
+    desired_gait_configuration.rsole.pos.p = desired_rsole_pose.translation();
+    desired_gait_configuration.rsole.vel << desired_rsole_vel.linear(), desired_rsole_vel.angular();
+    desired_gait_configuration.rsole.acc << desired_rsole_acc.linear(), desired_rsole_acc.angular();
   } else {
-    alpha_ = 0.5;
+    pinocchio::SE3 desired_lsole_pose;
+    pinocchio::Motion desired_lsole_vel;
+    pinocchio::Motion desired_lsole_acc;
+    swingFootTrajectory(desired_lsole_pose, desired_lsole_vel, desired_lsole_acc);
+    desired_gait_configuration.lsole.pos.R = desired_lsole_pose.rotation();
+    desired_gait_configuration.lsole.pos.p = desired_lsole_pose.translation();
+    desired_gait_configuration.lsole.vel << desired_lsole_vel.linear(), desired_lsole_vel.angular();
+    desired_gait_configuration.lsole.acc << desired_lsole_acc.linear(), desired_lsole_acc.angular();
+    desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+    desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
+    desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
   }
 
-  WBCOutput output;
-  CoMMotion desired_com_motion;
-  desired_com_motion.position = p_CoM_des;
-  desired_com_motion.velocity = v_CoM_des;
-  desired_com_motion.acceleration = a_CoM_des;
-  FootMotion desired_left_foot_motion;
-  desired_left_foot_motion.pose = T_lsole_des;
-  desired_left_foot_motion.velocity = v_lsole_des;
-  desired_left_foot_motion.acceleration = a_lsole_des;
-  FootMotion desired_right_foot_motion;
-  desired_right_foot_motion.pose = T_rsole_des;
-  desired_right_foot_motion.velocity = v_rsole_des;
-  desired_right_foot_motion.acceleration = a_rsole_des;
+  // Torso task
+  double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
+  double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
+  desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+  desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.lsole.vel.tail(3)) / 2.0;
+  desired_gait_configuration.torso.acc = (desired_gait_configuration.rsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
-  output = whole_body_controller_ptr_->control(desired_com_motion, desired_left_foot_motion,
-                                                          desired_right_foot_motion, q, qdot,
-                                                          is_left_foot_support, is_right_foot_support);
-
-  Eigen::VectorXd tau_expanded(6 + njnt);
-  tau_expanded << Eigen::VectorXd::Zero(6), output.tau;
-
-  // Pinocchio representation to labrob::RobotState representation:
-  // TODO: is there a less error-prone way to convert representation?
-  for(pinocchio::JointIndex joint_id = 2;
-      joint_id < (pinocchio::JointIndex) robot_model_.njoints;
-      ++joint_id) {
-    const auto &joint_name = robot_model_.names[joint_id];
-    joint_command[joint_name] = tau_expanded[joint_id + 4];//joint_torques[joint_id + 4];
-  }
+  joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+      robot_model_,
+      robot_state,
+      robot_data_,
+      current_gait_configuration,
+      desired_gait_configuration
+  );
 
   // Update timing in milliseconds.
   // NOTE: assuming update() is actually called every controller_timestep_msec_
@@ -778,41 +636,14 @@ WalkingManager::update(
   p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
   v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
   v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
-  p_lsole_des_log_file_ << T_lsole_des.translation().transpose() << std::endl;
-  p_rsole_des_log_file_ << T_rsole_des.translation().transpose() << std::endl;
-  v_lsole_des_log_file_ << v_lsole_des.transpose() << std::endl;
-  v_rsole_des_log_file_ << v_rsole_des.transpose() << std::endl;
+  p_lsole_des_log_file_ << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
+  p_rsole_des_log_file_ << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
+  v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
+  v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-  fl_log_file_ << output.fl.transpose() << std::endl;
-  fr_log_file_ << output.fr.transpose() << std::endl;
+  //fl_log_file_ << output.fl.transpose() << std::endl;
+  //fr_log_file_ << output.fr.transpose() << std::endl;
   cop_computed_log_file_ << robot_state.zmp.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
-  alpha_log_file_ << alpha_ << std::endl;
-}
-
-double WalkingManager::get_alpha() const {
-  return alpha_;
-}
-
-Eigen::VectorXd
-WalkingManager::robot_state_to_pinocchio_joint_configuration(
-    const pinocchio::Model& robot_model,
-    const labrob::RobotState& robot_state
-) {
-  // labrob::RobotState representation to Pinocchio representation:
-  // TODO: RobotState also has information about the velocity of the floating base.
-  // TODO: is there a less error-prone way to convert representation?
-  Eigen::VectorXd q(robot_model.nq);
-  q.head<3>() = robot_state.position;
-  q.segment<4>(3) = robot_state.orientation.coeffs();
-  // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
-  for(pinocchio::JointIndex joint_id = 2;
-      joint_id < (pinocchio::JointIndex) robot_model.njoints;
-      ++joint_id) {
-    const auto& joint_name = robot_model.names[joint_id];
-    q[joint_id + 5] = robot_state.joint_state[joint_name].pos;
-  }
-
-  return q;
 }
 
 int64_t
@@ -820,57 +651,11 @@ WalkingManager::get_controller_frequency() const {
   return controller_frequency_;
 }
 
-
-Eigen::VectorXd
-WalkingManager::robot_state_to_pinocchio_joint_velocity(
-    const pinocchio::Model& robot_model,
-    const labrob::RobotState& robot_state
-) {
-  Eigen::VectorXd qdot(robot_model.nv);
-  qdot.head<3>() = robot_state.linear_velocity;
-  qdot.segment<3>(3) = robot_state.angular_velocity;
-  // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
-  for(pinocchio::JointIndex joint_id = 2;
-      joint_id < (pinocchio::JointIndex) robot_model.njoints;
-      ++joint_id) {
-    const auto& joint_name = robot_model.names[joint_id];
-    qdot[joint_id + 4] = robot_state.joint_state[joint_name].vel;
-  }
-  
-  return qdot;
-}
-
 Eigen::MatrixXd
 WalkingManager::pseudoinverse(const Eigen::MatrixXd& J, double damp) const {
   auto J_T = J.transpose();
   auto Id = Eigen::MatrixXd::Identity(J.cols(), J.cols());
   return (J_T * J + damp * Id).inverse() * J_T;
-}
-
-Eigen::Matrix<double, 6, 1>
-WalkingManager::err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb) {
-  // TODO: how do you use pinocchio::log6?
-  Eigen::Matrix<double, 6, 1> err;
-  err << err_translation(Ta.translation(), Tb.translation()),
-         err_rotation(Ta.rotation(), Tb.rotation());
-  return err;
-}
-
-Eigen::Vector3d
-WalkingManager::err_translation(
-    const Eigen::Vector3d& pa,
-    const Eigen::Vector3d& pb) {
-  return pa - pb;
-}
-
-Eigen::Vector3d
-WalkingManager::err_rotation(
-    const Eigen::Matrix3d& Ra,
-    const Eigen::Matrix3d& Rb) {
-  // TODO: how do you use pinocchio::log3?
-  Eigen::Matrix3d Rdiff = Rb.transpose() * Ra;
-  auto aa = Eigen::AngleAxisd(Rdiff);
-  return aa.angle() * Ra * aa.axis();
 }
 
 void

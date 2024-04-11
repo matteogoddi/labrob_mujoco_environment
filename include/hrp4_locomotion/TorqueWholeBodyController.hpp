@@ -5,6 +5,20 @@
 #ifndef LABROB_TORQUEWHOLEBODYCONTROLLER_H_
 #define LABROB_TORQUEWHOLEBODYCONTROLLER_H_
 
+// Pinocchio
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/centroidal.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/algorithm/model.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/parsers/urdf.hpp>
+
+#include <hrp4_locomotion/GaitConfiguration.hpp>
+#include <hrp4_locomotion/JointCommand.hpp>
+#include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WholeBodyController.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
@@ -25,6 +39,10 @@ struct TorqueWholeBodyControllerParams {
   double weight_regulation;
   double weight_angular_momentum;
 
+  double cmm_selection_matrix_x;
+  double cmm_selection_matrix_y;
+  double cmm_selection_matrix_z;
+
   double gamma;
 
   double mu;
@@ -37,50 +55,33 @@ struct TorqueWholeBodyControllerParams {
 
 class TorqueWholeBodyController : public WholeBodyController {
  public:
-  TorqueWholeBodyController(const TorqueWholeBodyControllerParams &params,
-                            const pinocchio::Model &robot_model,
-                            const Eigen::VectorXd &q_jnt_reg,
+  TorqueWholeBodyController(const TorqueWholeBodyControllerParams& params,
+                            const pinocchio::Model& robot_model,
+                            const Eigen::VectorXd& q_jnt_reg,
                             double sample_time,
-                            std::map<std::string, double> &armatures);
+                            std::map<std::string, double>& armature);
 
-  virtual WBCOutput control(const CoMMotion &desired_com_motion,
-                          const FootMotion &desired_left_foot_motion,
-                          const FootMotion &desired_right_foot_motion,
-                          const Eigen::VectorXd &q,
-                          const Eigen::VectorXd &q_dot,
-                          bool is_left_support,
-                          bool is_right_support) override;
+  labrob::JointCommand
+  compute_inverse_dynamics(
+      const pinocchio::Model& robot_model,
+      const labrob::RobotState& robot_state,
+      pinocchio::Data& robot_data,
+      const labrob::GaitConfiguration& current,
+      const labrob::GaitConfiguration& desired
+  );
 
  private:
   TorqueWholeBodyControllerParams params_;
 
   Eigen::VectorXd M_armature_;
 
-  Eigen::MatrixXd Kp_com_;
-  Eigen::MatrixXd Kd_com_;
-  Eigen::Matrix3d Kp_torso_orientation_;
-  Eigen::Matrix3d Kd_torso_orientation_;
-  Eigen::MatrixXd Kp_lsole_;
-  Eigen::MatrixXd Kd_lsole_;
-  Eigen::MatrixXd Kp_rsole_;
-  Eigen::MatrixXd Kd_rsole_;
+  int n_joints_;
+  int n_contacts_;
+  int n_wbc_variables_;
+  int n_wbc_equalities_;
+  int n_wbc_inequalities_;
 
-  double Kp_jnt_;
-  double Kd_jnt_;
-
-  int num_joints_;
-  int num_contacts_;
-
-  int num_variables_single_;
-  int num_equalities_single_;
-  int num_inequalities_single_;
-
-  int num_variables_double_;
-  int num_equalities_double_;
-  int num_inequalities_double_;
-
-  std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> single_support_solver_ptr_;
-  std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> double_support_solver_ptr_;
+  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 
 };
 
