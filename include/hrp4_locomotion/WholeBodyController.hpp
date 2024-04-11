@@ -1,58 +1,75 @@
 //
-// Created by mmaximo on 19/02/24.
+// Created by mmaximo on 20/02/24.
 //
 
-#ifndef LABROB_WHOLE_BODY_CONTROLLER_HPP_
-#define LABROB_WHOLE_BODY_CONTROLLER_HPP_
+#ifndef LABROB_WHOLE_BODY_CONTROLLER_H_
+#define LABROB_WHOLE_BODY_CONTROLLER_H_
 
-#include <pinocchio/multibody/data.hpp>
-#include <pinocchio/multibody/model.hpp>
+// Pinocchio
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/centroidal.hpp>
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/algorithm/model.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/parsers/urdf.hpp>
 
+#include <hrp4_locomotion/GaitConfiguration.hpp>
+#include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
+
+#include <labrob_qpsolvers/qpsolvers.hpp>
 
 namespace labrob {
 
-struct CoMMotion {
-  Eigen::Vector3d position;
-  Eigen::Vector3d velocity;
-  Eigen::Vector3d acceleration;
-};
+struct WholeBodyControllerParams {
+  double Kp_motion;
+  double Kd_motion;
+  double Kp_regulation;
+  double Kd_regulation;
 
-struct FootMotion {
-  pinocchio::SE3 pose;
-  Eigen::VectorXd velocity;
-  Eigen::VectorXd acceleration;
-};
+  double weight_q_ddot;
+  double weight_com;
+  double weight_lsole;
+  double weight_rsole;
+  double weight_torso;
+  double weight_regulation;
+  double weight_angular_momentum;
 
-struct WBCOutput {
-  Eigen::VectorXd q;
-  Eigen::VectorXd q_dot;
-  Eigen::VectorXd q_ddot;
-  Eigen::VectorXd tau;
-  Eigen::VectorXd fl;
-  Eigen::VectorXd fr;
+  double cmm_selection_matrix_x;
+  double cmm_selection_matrix_y;
+  double cmm_selection_matrix_z;
+
+  double gamma;
+
+  double mu;
+
+  double foot_length;
+  double foot_width;
+
+  static WholeBodyControllerParams getDefaultParams();
 };
 
 class WholeBodyController {
  public:
-  WholeBodyController(const pinocchio::Model& robot_model,
-                      const Eigen::VectorXd& q_jnt_reg,
-                      double sample_time);
+  WholeBodyController(const WholeBodyControllerParams& params,
+                            const pinocchio::Model& robot_model,
+                            const Eigen::VectorXd& q_jnt_reg,
+                            double sample_time,
+                            std::map<std::string, double>& armature);
 
- protected:
+  labrob::JointCommand
+  compute_inverse_dynamics(
+      const pinocchio::Model& robot_model,
+      const labrob::RobotState& robot_state,
+      pinocchio::Data& robot_data,
+      const labrob::GaitConfiguration& current,
+      const labrob::GaitConfiguration& desired
+  );
 
-  void computePinocchio(const Eigen::VectorXd& q, const Eigen::VectorXd& q_dot);
-
-  void getJacobians(Eigen::MatrixXd& J_torso, Eigen::MatrixXd& J_lsole, Eigen::MatrixXd& J_rsole);
-
-  void getJacobiansTimeVariation(Eigen::MatrixXd& J_torso_dot, Eigen::MatrixXd& J_lsole_dot, Eigen::MatrixXd& J_rsole_dot);
-
-  Eigen::Matrix<double, 6, 1> err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb);
-
-  Eigen::Vector3d err_translation(const Eigen::Vector3d& pa, const Eigen::Vector3d& pb);
-
-  Eigen::Vector3d err_rotation(const Eigen::Matrix3d& Ra, const Eigen::Matrix3d& Rb);
-
+ private:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
 
@@ -74,8 +91,21 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
 
   double sample_time_;
+
+  WholeBodyControllerParams params_;
+
+  Eigen::VectorXd M_armature_;
+
+  int n_joints_;
+  int n_contacts_;
+  int n_wbc_variables_;
+  int n_wbc_equalities_;
+  int n_wbc_inequalities_;
+
+  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+
 };
 
 }
 
-#endif //LABROB_WHOLE_BODY_CONTROLLER_HOPP_
+#endif //LABROB_WHOLE_BODY_CONTROLLER_H_

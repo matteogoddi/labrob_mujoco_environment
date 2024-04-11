@@ -303,8 +303,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       foot_constraint_square_width
   );
 
-  auto params = TorqueWholeBodyControllerParams::getDefaultParams();
-  whole_body_controller_ptr_ = std::make_shared<TorqueWholeBodyController>(
+  auto params = WholeBodyControllerParams::getDefaultParams();
+  whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
       params,
       robot_model_,
       q_jnt_des_,

@@ -16,6 +16,28 @@
 
 namespace labrob {
 
+Eigen::Matrix<double, 6, 1>
+err_frameplacement(const pinocchio::SE3& Ta, const pinocchio::SE3& Tb) {
+  // TODO: how do you use pinocchio::log6?
+  Eigen::Matrix<double, 6, 1> err;
+  err << err_translation(Ta.translation(), Tb.translation()),
+      err_rotation(Ta.rotation(), Tb.rotation());
+  return err;
+}
+
+Eigen::Vector3d
+err_translation(const Eigen::Vector3d& pa, const Eigen::Vector3d& pb) {
+  return pa - pb;
+}
+
+Eigen::Vector3d
+err_rotation(const Eigen::Matrix3d& Ra, const Eigen::Matrix3d& Rb) {
+  // TODO: how do you use pinocchio::log3?
+  Eigen::Matrix3d Rdiff = Rb.transpose() * Ra;
+  auto aa = Eigen::AngleAxisd(Rdiff);
+  return aa.angle() * Ra * aa.axis();
+}
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,

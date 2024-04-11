@@ -15,7 +15,7 @@
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
-#include <hrp4_locomotion/TorqueWholeBodyController.hpp>
+#include <hrp4_locomotion/WholeBodyController.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -61,7 +61,7 @@ class WalkingManager {
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
   double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 
-  std::shared_ptr<TorqueWholeBodyController> whole_body_controller_ptr_;
+  std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
 
 private:
 
