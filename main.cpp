@@ -48,32 +48,20 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 
   static double force[6];
   static double result[3];
-  double sum[3]{0.0, 0.0, 0.0};
-  double zmp[3]{0.0, 0.0, 0.0};
+  Eigen::Vector3d sum = Eigen::Vector3d::Zero();
   robot_state.contact_points.resize(d->ncon);
   robot_state.contact_forces.resize(d->ncon);
   for (int i = 0; i < d->ncon; ++i) {
     mj_contactForce(m, d, i, force);
     mju_rotVecMatT(result, force, d->contact[i].frame);
-    sum[0] += result[0];
-    sum[1] += result[1];
-    sum[2] += result[2];
-    zmp[0] += d->contact[i].pos[0] * result[2];
-    zmp[1] += d->contact[i].pos[1] * result[2];
+    sum += Eigen::Vector3d(result);
     for (int j = 0; j < 3; ++j) {
       robot_state.contact_points[i](j) = d->contact[i].pos[j];
       robot_state.contact_forces[i](j) = result[j];
     }
   }
-  zmp[0] /= sum[2];
-  zmp[1] /= sum[2];
-  robot_state.zmp.x()= zmp[0];
-  robot_state.zmp.y() = zmp[1];
-  robot_state.zmp.z() = 0.0;
 
-  robot_state.total_force.x() = sum[0];
-  robot_state.total_force.y() = sum[1];
-  robot_state.total_force.z() = sum[2];
+  robot_state.total_force = sum;
 
   return robot_state;
 }
@@ -89,10 +77,6 @@ Eigen::MatrixXd convert_matrix_mujoco_to_eigen(mjtNum *matrix, int num_rows, int
 }
 
 int main() {
-
-  // Paths (to be read from local configuration file):
-  const std::string pd_gains_filepath = "../config/pd_gains.txt";
-
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
@@ -188,7 +172,6 @@ int main() {
   mjv_defaultOption(&opt);
   mjr_defaultContext(&con);
 
-  std::cout << "cam.distance = " << cam.distance << std::endl;
   cam.distance = 4.0;
 
   // create scene and context
@@ -203,19 +186,6 @@ int main() {
 
   joint_names_log_file.flush();
   joint_names_log_file.close();
-
-  std::vector<double> position_gains(jvrc1_mj_model_ptr->nu);
-  std::vector<double> velocity_gains(jvrc1_mj_model_ptr->nu);
-
-  // Read PD gains from file (assuming the size matches):
-  std::ifstream pd_gains_file(pd_gains_filepath);
-  for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
-    pd_gains_file >> position_gains[i] >> velocity_gains[i];
-  }
-
-  for (int i = 0; i < jvrc1_mj_model_ptr->nv; ++i) {
-    std::cout << jvrc1_mj_model_ptr->dof_armature[i] << " ";
-  }
 
   int timestep_counter = 0;
   // Simulation loop:

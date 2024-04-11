@@ -114,8 +114,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     M_armature_(joint_id - 2) = armatures[joint_name];
   }
 
-//  std::cout << "M_armature = " << M_armature << std::endl;
-
   double waist_p_des = 0.0;
   double r_hip_y_des = 0.0;
   double r_hip_r_des = -0.05;
@@ -643,7 +641,7 @@ WalkingManager::update(
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
   //fl_log_file_ << output.fl.transpose() << std::endl;
   //fr_log_file_ << output.fr.transpose() << std::endl;
-  cop_computed_log_file_ << robot_state.zmp.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
+  cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
 }
 
 int64_t

@@ -108,8 +108,8 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::computeJointJacobiansTimeVariation(robot_model, robot_data, q, qdot);
   pinocchio::framesForwardKinematics(robot_model, robot_data, q);
 
-  T_lsole_ = robot_data_.oMf[lsole_idx_];
-  T_rsole_ = robot_data_.oMf[rsole_idx_];
+  T_lsole_ = pinocchio::SE3(current.lsole.pos.R, current.lsole.pos.p);
+  T_rsole_ = pinocchio::SE3(current.rsole.pos.R, current.rsole.pos.p);
 
   pinocchio::getFrameJacobian(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_);

@@ -21,7 +21,6 @@ class RobotState {
 
   labrob::JointState joint_state;
 
-  Eigen::Vector3d zmp;
   Eigen::Vector3d total_force;
 
   std::vector<Eigen::Vector3d> contact_points;
