@@ -1,12 +1,6 @@
 // std
 #include <fstream>
 
-// GLFW
-#include <GLFW/glfw3.h>
-
-// Mujoco
-#include <mujoco/mujoco.h>
-
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
@@ -18,6 +12,8 @@
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingManager.hpp>
 #include <hrp4_locomotion/utils.hpp>
+
+#include "MujocoUI.hpp"
 
 labrob::RobotState
 robot_state_from_mujoco(mjModel* m, mjData* d) {
@@ -154,29 +150,7 @@ int main() {
   labrob::WalkingManager walking_manager;
   walking_manager.init(initial_robot_state, armatures);
 
-  // Mujoco visualization:
-  mjvCamera cam;                      // abstract camera
-  mjvOption opt;                      // visualization options
-  mjvScene scn;                       // abstract scene
-  mjrContext con;                     // custom GPU context
-
-  // init GLFW, create window, make OpenGL context current, request v-sync
-  glfwInit();
-  GLFWwindow* window = glfwCreateWindow(1200, 900, "Demo", NULL, NULL);
-  glfwMakeContextCurrent(window);
-  glfwSwapInterval(1);
-
-  // initialize visualization data structures
-  mjv_defaultCamera(&cam);
-  //mjv_defaultPerturb(&pert);
-  mjv_defaultOption(&opt);
-  mjr_defaultContext(&con);
-
-  cam.distance = 4.0;
-
-  // create scene and context
-  mjv_makeScene(jvrc1_mj_model_ptr, &scn, 1000);
-  mjr_makeContext(jvrc1_mj_model_ptr, &con, mjFONTSCALE_100);
+  auto& mujoco_ui = *labrob::MujocoUI::getInstance(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
   for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
     int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
@@ -189,7 +163,7 @@ int main() {
 
   int timestep_counter = 0;
   // Simulation loop:
-  while (!glfwWindowShouldClose(window)) {
+  while (!mujoco_ui.windowShouldClose()) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
     while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
       labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
@@ -237,25 +211,8 @@ int main() {
     joint_vel_log_file.flush();
     joint_eff_log_file.flush();
 
-    // get framebuffer viewport
-    mjrRect viewport = {0, 0, 0, 0};
-    glfwGetFramebufferSize(window, &viewport.width, &viewport.height);
-
-    // update scene and render
-    mjv_updateScene(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, &opt, NULL, &cam, mjCAT_ALL, &scn);
-    mjr_render(viewport, &scn, &con);
-
-    // swap OpenGL buffers (blocking call due to v-sync)
-    glfwSwapBuffers(window);
-
-    // process pending GUI events, call GLFW callbacks
-    glfwPollEvents();
+    mujoco_ui.render();
   }
-
-  // close GLFW, free visualization storage
-  glfwTerminate();
-  mjv_freeScene(&scn);
-  mjr_freeContext(&con);
 
   // Free memory (Mujoco):
   mj_deleteData(jvrc1_mj_data_ptr);
