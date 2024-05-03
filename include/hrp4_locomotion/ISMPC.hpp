@@ -22,8 +22,7 @@ class ISMPC{
   ISMPC(
       int64_t prediction_horizon_msec,
       int64_t mpc_timestep_msec,
-      int64_t control_timestep_msec,
-      double com_target_height,
+      double omega,
       double foot_constraint_square_width
   );
 
@@ -33,11 +32,9 @@ class ISMPC{
       const labrob::LIPState& state
   );
 
-  double getCOMTargetHeight() const;
-
   const Eigen::Vector3d& getInput() const;
-
-  void setCOMTargetHeight(double com_target_height);
+  
+  double getOmega() const;
 
  private:
   // NOTE: std::clamp available from C++17
@@ -51,7 +48,7 @@ class ISMPC{
 
   int64_t mpc_timestep_msec_;
   int64_t control_timestep_msec_;
-  double com_target_height_;
+  double omega_;
   double foot_constraint_square_width_;
 
   // Matrices for prediction:

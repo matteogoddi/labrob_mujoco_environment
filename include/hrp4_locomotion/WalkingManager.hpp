@@ -9,6 +9,7 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
+#include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/JointState.hpp>
@@ -80,6 +81,8 @@ private:
 
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
+
+  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 

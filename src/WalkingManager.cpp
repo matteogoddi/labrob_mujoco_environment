@@ -296,8 +296,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
       mpc_prediction_horizon_msec,
       mpc_timestep_msec,
-      controller_timestep_msec_,
-      com_target_height,
+      std::sqrt(9.81 / com_target_height),
       foot_constraint_square_width
   );
 
@@ -308,6 +307,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       q_jnt_des_,
       0.001 * controller_timestep_msec_,
       armatures
+  );
+
+  // Init discrete LIP dynamics:
+  discrete_lip_dynamics_ptr_ = std::make_unique<labrob::DiscreteLIPDynamics>(
+      std::sqrt(9.81 / com_target_height),
+      controller_timestep_msec_
   );
 
   // Init log files:
@@ -334,7 +339,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 }
 
 LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
-  double omega = std::sqrt(9.81 / ismpc_ptr_->getCOMTargetHeight());
+  double omega = ismpc_ptr_->getOmega();
   double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
   double ch = cosh(omega*worldTimeStep);
@@ -520,7 +525,7 @@ WalkingManager::update(
   current_gait_configuration.rsole.pos = labrob::SE3(robot_data_.oMf[rsole_idx_].rotation(), robot_data_.oMf[rsole_idx_].translation());
   current_gait_configuration.rsole.vel = J_rsole * qdot;
 
-  double eta2 = 9.81 / ismpc_ptr_->getCOMTargetHeight();
+  double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
   double mass = pinocchio::computeTotalMass(robot_model_);
   Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
   Eigen::Vector3d zmp_3d;
@@ -545,16 +550,8 @@ WalkingManager::update(
   auto mpc_tf_ms = std::chrono::system_clock::now();
   const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
 
-  // Update the state based on the result of the QP
-  double com_target_height = ismpc_ptr_->getCOMTargetHeight();
-  Eigen::Vector3d nextStateX = updateState(filtered_state_, ismpc_optimal_control_input.x(), 0, com_target_height, controller_timestep_msec_);
-  Eigen::Vector3d nextStateY = updateState(filtered_state_, ismpc_optimal_control_input.y(), 1, com_target_height, controller_timestep_msec_);
-  Eigen::Vector3d nextStateZ = updateState(filtered_state_, ismpc_optimal_control_input.z(), 2, com_target_height, controller_timestep_msec_);
-
-  auto com_pos = Eigen::Vector3d(nextStateX(0), nextStateY(0), nextStateZ(0));
-  auto com_vel = Eigen::Vector3d(nextStateX(1), nextStateY(1), nextStateZ(1));
-  auto zmp_pos = Eigen::Vector3d(nextStateX(2), nextStateY(2), nextStateZ(2));
-  LIPState lip_state(com_pos, com_vel, zmp_pos);
+  // Update the state based on the result of the QP:
+  auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
 
   Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
   Eigen::Vector3d p_CoM_des = lip_state.com_pos_;

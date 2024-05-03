@@ -19,9 +19,11 @@ set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 
 add_library(
   WalkingControllerLibrary STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
@@ -57,6 +59,18 @@ target_include_directories(main
 target_link_libraries(main
   glfw
   mujoco::mujoco
+  pinocchio::pinocchio
+  WalkingControllerLibrary
+)
+
+add_executable(lip_simulator_main
+lip_simulator_main.cpp
+)
+target_include_directories(lip_simulator_main
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(lip_simulator_main
   pinocchio::pinocchio
   WalkingControllerLibrary
 )

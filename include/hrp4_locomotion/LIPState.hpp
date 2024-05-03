@@ -7,6 +7,7 @@ namespace labrob {
 
 class LIPState {
  public:
+  LIPState() = default;
   LIPState(
       const Eigen::Vector3d& com_pos,
       const Eigen::Vector3d& com_vel,

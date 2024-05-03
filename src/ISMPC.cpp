@@ -5,12 +5,10 @@ namespace labrob {
 ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
-    int64_t control_timestep_msec,
-    double com_target_height,
+    double omega,
     double foot_constraint_square_width
 ) : mpc_timestep_msec_(mpc_timestep_msec),
-    control_timestep_msec_(control_timestep_msec),
-    com_target_height_(com_target_height),
+    omega_(omega),
     foot_constraint_square_width_(foot_constraint_square_width),
     input_(Eigen::Vector3d::Zero()) {
 
@@ -62,8 +60,6 @@ ISMPC::solve(
 ) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
-
-  double omega = std::sqrt(9.81 / com_target_height_);
 
   //const auto& feet_placement = walking_data.footstep_plan.front().getFeetPlacement();
   //Eigen::Vector3d p_support = feet_placement.getSupportFootConfiguration().p;
@@ -150,16 +146,16 @@ ISMPC::solve(
   A_eq_.setZero();
 
   for(int i = 0; i < N_; ++i){
-    b(i) = std::pow(std::exp(-omega * mpc_timestep),i);
+    b(i) = std::pow(std::exp(-omega_ * mpc_timestep),i);
   }
 
-  A_eq_.block(0,      0, 1, N_) = (1.0 / omega) * (1.0 - std::exp(-omega * mpc_timestep))*b.transpose();
-  A_eq_.block(1,     N_, 1, N_) = (1.0 / omega) * (1.0 - std::exp(-omega * mpc_timestep))*b.transpose();
-  A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / omega) * (1.0 - std::exp(-omega * mpc_timestep))*b.transpose();
+  A_eq_.block(0,      0, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
+  A_eq_.block(1,     N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
+  A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
 
-  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / omega - state.zmp_pos_(0),
-      state.com_pos_(1) + state.com_vel_(1) / omega - state.zmp_pos_(1),
-      state.com_pos_(2) + state.com_vel_(2) / omega - (state.zmp_pos_(2) + com_target_height_);
+  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / omega_ - state.zmp_pos_(0),
+      state.com_pos_(1) + state.com_vel_(1) / omega_ - state.zmp_pos_(1),
+      state.com_pos_(2) + state.com_vel_(2) / omega_ - (state.zmp_pos_(2) + 9.81 / std::pow(omega_, 2.0));
 
   cost_function_H_.setZero();
   cost_function_H_.block(     0,      0, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
@@ -196,18 +192,13 @@ ISMPC::solve(
   input_.z() = zDotOptimalZ(0);
 }
 
-double
-ISMPC::getCOMTargetHeight() const {
-  return com_target_height_;
-}
-
 const Eigen::Vector3d& ISMPC::getInput() const {
   return input_;
 }
 
-void
-ISMPC::setCOMTargetHeight(double com_target_height) {
-  com_target_height_ = com_target_height;
+double
+ISMPC::getOmega() const {
+  return omega_;
 }
 
 double
