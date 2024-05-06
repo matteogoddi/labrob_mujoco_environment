@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.16)
 project(pinocchio_example)
 
+set(CMAKE_CXX_STANDARD 17)
+
 find_package(glfw3 REQUIRED)
+find_package(jsoncpp REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
 
@@ -23,6 +26,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
@@ -47,6 +51,7 @@ target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
+  jsoncpp_lib
 )
 
 add_executable(main

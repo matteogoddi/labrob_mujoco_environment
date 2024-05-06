@@ -1,6 +1,8 @@
 #ifndef LABROB_LIP_SIMULATOR
 #define LABROB_LIP_SIMULATOR
 
+#include <filesystem>
+
 #include <hrp4_locomotion/FootstepPlanElement.hpp>
 #include <hrp4_locomotion/LIPState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
@@ -19,6 +21,8 @@ struct LIPSimulatorOptions {
   int64_t mpc_timestep_msec;
   double mpc_com_target_height;
   double mpc_foot_constraint_square_width;
+  // Log options:
+  std::filesystem::path log_directory_path;
 };
 
 class LIPSimulator {
