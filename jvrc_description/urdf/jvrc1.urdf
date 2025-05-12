@@ -3,1259 +3,1062 @@
 <!-- Copyright (c) 2012-2019, CNRS-UM LIRMM, CNRS-AIST JRL                               -->
 <!-- Copyright (c) 2022, Stéphane Caron                                                  -->
 <!-- =================================================================================== -->
+
 <robot name="jvrc1">
-  <material name="black">
-    <color rgba="0.1 0.1 0.1 1" />
-  </material>
-  <material name="orange">
-    <color rgba="1.0 0.5 0.0 1" />
-  </material>
-  <material name="dark_gray">
-    <color rgba="0.3 0.3 0.3 1" />
-  </material>
-  <material name="light_gray">
-    <color rgba="0.7 0.7 0.7 1" />
-  </material>
-  <link name="base_link"/>
-  <link name="R_HIP_P_S">
+  <mujoco>
+    <compiler meshdir="meshes" discardvisual="false"/>
+  </mujoco>
+
+  <!-- [CAUTION] uncomment when convert to mujoco -->
+  <!-- <link name="world"></link>
+  <joint name="floating_base_joint" type="floating">
+    <parent link="world"/>
+    <child link="pelvis"/>
+  </joint> -->
+
+  <link name="pelvis">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
-    </inertial>
-  </link>
-  <link name="R_HIP_R_S">
-    <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
+      <origin xyz="0 0 -0.07605" rpy="0 0 0"/>
+      <mass value="3.813"/>
+      <inertia ixx="0.010549" ixy="0" ixz="2.1E-06" iyy="0.0093089" iyz="0" izz="0.0079184"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_R_S.dae" />
+        <mesh filename="meshes/pelvis.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
+    </visual>
+  </link>
+  <link name="pelvis_contour_link">
+    <inertial>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/pelvis_contour_link.STL"/>
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_R_S.dae" />
+        <mesh filename="meshes/pelvis_contour_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_HIP_Y_S">
+  <joint name="pelvis_contour_joint" type="fixed">
+    <parent link="pelvis"/>
+    <child link="pelvis_contour_link"/>
+  </joint>
+
+  <!-- Legs -->
+  <link name="left_hip_pitch_link">
     <inertial>
-      <mass value="3.0"/>
-      <origin rpy="0 -0 0" xyz="0.01 0.0 -0.22"/>
-      <inertia ixx="0.031925" ixy="0.0" ixz="0.0" iyy="0.034525" iyz="0.0" izz="0.00865"/>
+      <origin xyz="0.002741 0.047791 -0.02606" rpy="0 0 0"/>
+      <mass value="1.35"/>
+      <inertia ixx="0.001811" ixy="3.68E-05" ixz="-3.44E-05" iyy="0.0014193" iyz="0.000171" izz="0.0012812"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_Y_S.dae" />
+        <mesh filename="meshes/left_hip_pitch_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_HIP_Y_S.dae" />
+        <mesh filename="meshes/left_hip_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_KNEE_S">
+  <joint name="left_hip_pitch_joint" type="revolute">
+    <origin xyz="0 0.064452 -0.1027" rpy="0 0 0"/>
+    <parent link="pelvis"/>
+    <child link="left_hip_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5307" upper="2.8798" effort="88" velocity="32"/>
+  </joint>
+  <link name="left_hip_roll_link">
     <inertial>
-      <mass value="3.0"/>
-      <origin rpy="0 -0 0" xyz="0.04 0.0 -0.16"/>
-      <inertia ixx="0.031925" ixy="0.0" ixz="0.0" iyy="0.034525" iyz="0.0" izz="0.00865"/>
+      <origin xyz="0.029812 -0.001045 -0.087934" rpy="0 0 0"/>
+      <mass value="1.52"/>
+      <inertia ixx="0.0023773" ixy="-3.8E-06" ixz="-0.0003908" iyy="0.0024123" iyz="1.84E-05" izz="0.0016595"/>
     </inertial>
     <visual>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_KNEE_S.dae" />
+        <mesh filename="meshes/left_hip_roll_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_KNEE_S.dae" />
+        <mesh filename="meshes/left_hip_roll_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_ANKLE_R_S">
+  <joint name="left_hip_roll_joint" type="revolute">
+    <origin xyz="0 0.052 -0.030465" rpy="0 -0.1749 0"/>
+    <parent link="left_hip_pitch_link"/>
+    <child link="left_hip_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.5236" upper="2.9671" effort="139" velocity="20"/>
+  </joint>
+  <link name="left_hip_yaw_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00064" ixy="0.0" ixz="0.0" iyy="0.00064" iyz="0.0" izz="0.00064"/>
-    </inertial>
-  </link>
-  <link name="R_ANKLE_P_S">
-    <inertial>
-      <mass value="1.5"/>
-      <origin rpy="0 -0 0" xyz="0.03 0.0 -0.07"/>
-      <inertia ixx="0.00141666666667" ixy="0.0" ixz="0.0" iyy="0.00561666666667" iyz="0.0" izz="0.00621666666667"/>
+      <origin xyz="-0.057709 -0.010981 -0.15078" rpy="0 0 0"/>
+      <mass value="1.702"/>
+      <inertia ixx="0.0057774" ixy="-0.0005411" ixz="-0.0023948" iyy="0.0076124" iyz="-0.0007072" izz="0.003149"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ANKLE_P_S.dae" />
+        <mesh filename="meshes/left_hip_yaw_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ANKLE_P_S.dae" />
+        <mesh filename="meshes/left_hip_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_HIP_P_S">
+  <joint name="left_hip_yaw_joint" type="revolute">
+    <origin xyz="0.025001 0 -0.12412" rpy="0 0 0"/>
+    <parent link="left_hip_roll_link"/>
+    <child link="left_hip_yaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.7576" upper="2.7576" effort="88" velocity="32"/>
+  </joint>
+  <link name="left_knee_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
-    </inertial>
-  </link>
-  <link name="L_HIP_R_S">
-    <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
+      <origin xyz="0.005457 0.003964 -0.12074" rpy="0 0 0"/>
+      <mass value="1.932"/>
+      <inertia ixx="0.011329" ixy="4.82E-05" ixz="-4.49E-05" iyy="0.011277" iyz="-0.0007146" izz="0.0015168"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_R_S.dae" />
+        <mesh filename="meshes/left_knee_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_R_S.dae" />
+        <mesh filename="meshes/left_knee_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_HIP_Y_S">
+  <joint name="left_knee_joint" type="revolute">
+    <origin xyz="-0.078273 0.0021489 -0.17734" rpy="0 0.1749 0"/>
+    <parent link="left_hip_yaw_link"/>
+    <child link="left_knee_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.087267" upper="2.8798" effort="139" velocity="20"/>
+  </joint>
+  <link name="left_ankle_pitch_link">
     <inertial>
-      <mass value="3.0"/>
-      <origin rpy="0 -0 0" xyz="0.01 0.0 -0.22"/>
-      <inertia ixx="0.031925" ixy="0.0" ixz="0.0" iyy="0.034525" iyz="0.0" izz="0.00865"/>
+      <origin xyz="-0.007269 0 0.011137" rpy="0 0 0"/>
+      <mass value="0.074"/>
+      <inertia ixx="8.4E-06" ixy="0" ixz="-2.9E-06" iyy="1.89E-05" iyz="0" izz="1.26E-05"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_Y_S.dae" />
+        <mesh filename="meshes/left_ankle_pitch_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_HIP_Y_S.dae" />
+        <mesh filename="meshes/left_ankle_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_KNEE_S">
+  <joint name="left_ankle_pitch_joint" type="revolute">
+    <origin xyz="0 -9.4445E-05 -0.30001" rpy="0 0 0"/>
+    <parent link="left_knee_link"/>
+    <child link="left_ankle_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.87267" upper="0.5236" effort="35" velocity="30"/>
+  </joint>
+  <link name="left_ankle_roll_link">
     <inertial>
-      <mass value="3.0"/>
-      <origin rpy="0 -0 0" xyz="0.04 0.0 -0.16"/>
-      <inertia ixx="0.031925" ixy="0.0" ixz="0.0" iyy="0.034525" iyz="0.0" izz="0.00865"/>
+      <origin xyz="0.026505 0 -0.016425" rpy="0 0 0"/>
+      <mass value="0.608"/>
+      <inertia ixx="0.0002231" ixy="2E-07" ixz="8.91E-05" iyy="0.0016161" iyz="-1E-07" izz="0.0016667"/>
     </inertial>
     <visual>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_KNEE_S.dae" />
+        <mesh filename="meshes/left_ankle_roll_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="-0.05 0.025 -0.03" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_KNEE_S.dae" />
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.05 -0.025 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.12 0.03 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.12 -0.03 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_ANKLE_R_S">
+  <joint name="left_ankle_roll_joint" type="revolute">
+    <origin xyz="0 0 -0.017558" rpy="0 0 0"/>
+    <parent link="left_ankle_pitch_link"/>
+    <child link="left_ankle_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.2618" upper="0.2618" effort="35" velocity="30"/>
+  </joint>
+  <link name="right_hip_pitch_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00064" ixy="0.0" ixz="0.0" iyy="0.00064" iyz="0.0" izz="0.00064"/>
-    </inertial>
-  </link>
-  <link name="L_ANKLE_P_S">
-    <inertial>
-      <mass value="1.5"/>
-      <origin rpy="0 -0 0" xyz="0.03 0.0 -0.07"/>
-      <inertia ixx="0.00141666666667" ixy="0.0" ixz="0.0" iyy="0.00561666666667" iyz="0.0" izz="0.00621666666667"/>
+      <origin xyz="0.002741 -0.047791 -0.02606" rpy="0 0 0"/>
+      <mass value="1.35"/>
+      <inertia ixx="0.001811" ixy="-3.68E-05" ixz="-3.44E-05" iyy="0.0014193" iyz="-0.000171" izz="0.0012812"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ANKLE_P_S.dae" />
+        <mesh filename="meshes/right_hip_pitch_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ANKLE_P_S.dae" />
+        <mesh filename="meshes/right_hip_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="WAIST_Y_S">
+  <joint name="right_hip_pitch_joint" type="revolute">
+    <origin xyz="0 -0.064452 -0.1027" rpy="0 0 0"/>
+    <parent link="pelvis"/>
+    <child link="right_hip_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.5307" upper="2.8798" effort="88" velocity="32"/>
+  </joint>
+  <link name="right_hip_roll_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.07"/>
-      <inertia ixx="0.00173333333333" ixy="0.0" ixz="0.0" iyy="0.00173333333333" iyz="0.0" izz="0.0032"/>
+      <origin xyz="0.029812 0.001045 -0.087934" rpy="0 0 0"/>
+      <mass value="1.52"/>
+      <inertia ixx="0.0023773" ixy="3.8E-06" ixz="-0.0003908" iyy="0.0024123" iyz="-1.84E-05" izz="0.0016595"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_Y_S.dae" />
+        <mesh filename="meshes/right_hip_roll_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_Y_S.dae" />
+        <mesh filename="meshes/right_hip_roll_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="WAIST_P_S">
+  <joint name="right_hip_roll_joint" type="revolute">
+    <origin xyz="0 -0.052 -0.030465" rpy="0 -0.1749 0"/>
+    <parent link="right_hip_pitch_link"/>
+    <child link="right_hip_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-2.9671" upper="0.5236" effort="139" velocity="20"/>
+  </joint>
+  <link name="right_hip_yaw_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00245" ixy="0.0" ixz="0.0" iyy="0.002425" iyz="0.0" izz="0.002425"/>
-    </inertial>
-  </link>
-  <link name="WAIST_R_S">
-    <inertial>
-      <mass value="10.0"/>
-      <origin rpy="0 -0 0" xyz="0.02 0.0 0.24"/>
-      <inertia ixx="0.157083333333" ixy="0.0" ixz="0.0" iyy="0.101083333333" iyz="0.0" izz="0.136666666667"/>
+      <origin xyz="-0.057709 0.010981 -0.15078" rpy="0 0 0"/>
+      <mass value="1.702"/>
+      <inertia ixx="0.0057774" ixy="0.0005411" ixz="-0.0023948" iyy="0.0076124" iyz="0.0007072" izz="0.003149"/>
     </inertial>
     <visual>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_R_S.dae" />
+        <mesh filename="meshes/right_hip_yaw_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/WAIST_R_S.dae" />
+        <mesh filename="meshes/right_hip_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="NECK_Y_S">
+  <joint name="right_hip_yaw_joint" type="revolute">
+    <origin xyz="0.025001 0 -0.12412" rpy="0 0 0"/>
+    <parent link="right_hip_roll_link"/>
+    <child link="right_hip_yaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.7576" upper="2.7576" effort="88" velocity="32"/>
+  </joint>
+  <link name="right_knee_link">
     <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.05"/>
-      <inertia ixx="0.000729166666667" ixy="0.0" ixz="0.0" iyy="0.000729166666667" iyz="0.0" izz="0.000625"/>
+      <origin xyz="0.005457 -0.003964 -0.12074" rpy="0 0 0"/>
+      <mass value="1.932"/>
+      <inertia ixx="0.011329" ixy="-4.82E-05" ixz="4.49E-05" iyy="0.011277" iyz="0.0007146" izz="0.0015168"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_Y_S.dae" />
+        <mesh filename="meshes/right_knee_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_Y_S.dae" />
+        <mesh filename="meshes/right_knee_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="NECK_R_S">
+  <joint name="right_knee_joint" type="revolute">
+    <origin xyz="-0.078273 -0.0021489 -0.17734" rpy="0 0.1749 0"/>
+    <parent link="right_hip_yaw_link"/>
+    <child link="right_knee_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.087267" upper="2.8798" effort="139" velocity="20"/>
+  </joint>
+  <link name="right_ankle_pitch_link">
     <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.0005" ixy="0.0" ixz="0.0" iyy="0.0005" iyz="0.0" izz="0.0005"/>
-    </inertial>
-  </link>
-  <link name="NECK_P_S">
-    <inertial>
-      <mass value="2.0"/>
-      <origin rpy="0 -0 0" xyz="0.01 0.0 0.11"/>
-      <inertia ixx="0.00968" ixy="0.0" ixz="0.0" iyy="0.00968" iyz="0.0" izz="0.00968"/>
+      <origin xyz="-0.007269 0 0.011137" rpy="0 0 0"/>
+      <mass value="0.074"/>
+      <inertia ixx="8.4E-06" ixy="0" ixz="-2.9E-06" iyy="1.89E-05" iyz="0" izz="1.26E-05"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_P_S.dae" />
+        <mesh filename="meshes/right_ankle_pitch_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 0.0 0.0" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/NECK_P_S.dae" />
+        <mesh filename="meshes/right_ankle_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_SHOULDER_P_S">
+  <joint name="right_ankle_pitch_joint" type="revolute">
+    <origin xyz="0 9.4445E-05 -0.30001" rpy="0 0 0"/>
+    <parent link="right_knee_link"/>
+    <child link="right_ankle_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.87267" upper="0.5236" effort="35" velocity="30"/>
+  </joint>
+  <link name="right_ankle_roll_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
+      <origin xyz="0.026505 0 -0.016425" rpy="0 0 0"/>
+      <mass value="0.608"/>
+      <inertia ixx="0.0002231" ixy="-2E-07" ixz="8.91E-05" iyy="0.0016161" iyz="1E-07" izz="0.0016667"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/right_ankle_roll_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="-0.05 0.025 -0.03" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_P_S.dae" />
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="-0.05 -0.025 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.12 0.03 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
+      </geometry>
+    </collision>
+    <collision>
+      <origin xyz="0.12 -0.03 -0.03" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.005"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_SHOULDER_R_S">
+  <joint name="right_ankle_roll_joint" type="revolute">
+    <origin xyz="0 0 -0.017558" rpy="0 0 0"/>
+    <parent link="right_ankle_pitch_link"/>
+    <child link="right_ankle_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.2618" upper="0.2618" effort="35" velocity="30"/>
+  </joint>
+
+  <!-- Torso -->
+  <link name="waist_yaw_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
-    </inertial>
-  </link>
-  <link name="R_SHOULDER_Y_S">
-    <inertial>
-      <mass value="2.0"/>
-      <origin rpy="0 -0 0" xyz="-0.01 0.0 -0.19"/>
-      <inertia ixx="0.01365" ixy="0.0" ixz="0.0" iyy="0.0146" iyz="0.0" izz="0.00635"/>
+      <origin xyz="0.003494 0.000233 0.018034" rpy="0 0 0"/>
+      <mass value="0.214"/>
+      <inertia ixx="0.00010673" ixy="2.703E-06" ixz="-7.631E-06" iyy="0.00010422" iyz="-2.01E-07" izz="0.0001625"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/waist_yaw_link_rev_1_0.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="waist_yaw_joint" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="pelvis"/>
+    <child link="waist_yaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.618" upper="2.618" effort="88" velocity="32"/>
+  </joint>
+  <link name="waist_roll_link">
+    <inertial>
+      <origin xyz="0 2.3E-05 0" rpy="0 0 0"/>
+      <mass value="0.086"/>
+      <inertia ixx="7.079E-06" ixy="0" ixz="0" iyy="6.339E-06" iyz="0" izz="8.245E-06"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/waist_roll_link_rev_1_0.STL"/>
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
+    </visual>
+  </link>
+  <joint name="waist_roll_joint" type="revolute">
+    <origin xyz="-0.0039635 0 0.044" rpy="0 0 0"/>
+    <parent link="waist_yaw_link"/>
+    <child link="waist_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-0.52" upper="0.52" effort="35" velocity="30"/>
+  </joint>
+  <link name="torso_link">
+    <inertial>
+      <origin xyz="0.000931 0.000346 0.15082" rpy="0 0 0"/>
+      <mass value="6.78"/>
+      <inertia ixx="0.05905" ixy="3.3302E-05" ixz="-0.0017715" iyy="0.047014" iyz="-2.2399E-05" izz="0.025652"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/torso_link_rev_1_0.STL"/>
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/torso_link_rev_1_0.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_ELBOW_P_S">
+  <joint name="waist_pitch_joint" type="revolute">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="waist_roll_link"/>
+    <child link="torso_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-0.52" upper="0.52" effort="35" velocity="30"/>
+  </joint>
+
+  <!-- LOGO -->
+  <joint name="logo_joint" type="fixed">
+    <origin xyz="0.0039635 0 -0.044" rpy="0 0 0"/>
+    <parent link="torso_link"/>
+    <child link="logo_link"/>
+  </joint>
+  <link name="logo_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="-0.02 0.0 -0.1"/>
-      <inertia ixx="0.010675" ixy="0.0" ixz="0.0" iyy="0.010675" iyz="0.0" izz="0.0027"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <mass value="0.001"/>
+      <inertia ixx="1e-7" ixy="0" ixz="0" iyy="1e-7" iyz="0" izz="1e-7"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_P_S.dae" />
+        <mesh filename="meshes/logo_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_P_S.dae" />
+        <mesh filename="meshes/logo_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_ELBOW_Y_S">
+
+  <!-- Head -->
+  <link name="head_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00064" ixy="0.0" ixz="0.0" iyy="0.00064" iyz="0.0" izz="0.00064"/>
+      <origin xyz="0.005267 0.000299 0.449869" rpy="0 0 0"/>
+      <mass value="1.036"/>
+      <inertia ixx="0.004085051" ixy="-2.543E-06" ixz="-6.9455E-05" iyy="0.004185212" iyz="-3.726E-06" izz="0.001807911"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/head_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="dark">
+        <color rgba="0.2 0.2 0.2 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/head_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_WRIST_R_S">
+  <joint name="head_joint" type="fixed">
+    <origin xyz="0.0039635 0 -0.044" rpy="0 0 0"/>
+    <parent link="torso_link"/>
+    <child link="head_link"/>
+  </joint>
+
+
+  <!-- IMU -->
+  <link name="imu_in_torso"></link>
+  <joint name="imu_in_torso_joint" type="fixed">
+    <origin xyz="-0.03959 -0.00224 0.14792" rpy="0 0 0"/>
+    <parent link="torso_link"/>
+    <child link="imu_in_torso"/>
+  </joint>
+
+  <link name="imu_in_pelvis"></link>
+  <joint name="imu_in_pelvis_joint" type="fixed">
+    <origin xyz="0.04525 0 -0.08339" rpy="0 0 0"/>
+    <parent link="pelvis"/>
+    <child link="imu_in_pelvis"/>
+  </joint>
+
+  <!-- d435 -->
+  <link name="d435_link"></link>
+  <joint name="d435_joint" type="fixed">
+    <origin xyz="0.0576235 0.01753 0.42987" rpy="0 0.8307767239493009 0"/>
+    <parent link="torso_link"/>
+    <child link="d435_link"/>
+  </joint>
+
+  <!-- mid360 -->
+  <link name="mid360_link"></link>
+  <joint name="mid360_joint" type="fixed">
+    <origin xyz="0.0002835 0.00003 0.41618" rpy="0 0.04014257279586953 0"/>
+    <parent link="torso_link"/>
+    <child link="mid360_link"/>
+  </joint>
+
+  <!-- Arm -->
+  <link name="left_shoulder_pitch_link">
     <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00032" ixy="0.0" ixz="0.0" iyy="0.00032" iyz="0.0" izz="0.00032"/>
-    </inertial>
-  </link>
-  <link name="R_WRIST_Y_S">
-    <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.01 -0.06"/>
-      <inertia ixx="0.0004625" ixy="0.0" ixz="0.0" iyy="0.0007625" iyz="0.0" izz="0.0004625"/>
+      <origin xyz="0 0.035892 -0.011628" rpy="0 0 0"/>
+      <mass value="0.718"/>
+      <inertia ixx="0.0004291" ixy="-9.2E-06" ixz="6.4E-06" iyy="0.000453" iyz="2.26E-05" izz="0.000423"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_WRIST_Y_S.dae" />
+        <mesh filename="meshes/left_shoulder_pitch_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0.04 -0.01" rpy="0 1.5707963267948966 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_WRIST_Y_S.dae" />
+        <cylinder radius="0.03" length="0.05"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_UTHUMB_S">
+  <joint name="left_shoulder_pitch_joint" type="revolute">
+    <origin xyz="0.0039563 0.10022 0.24778" rpy="0.27931 5.4949E-05 -0.00019159"/>
+    <parent link="torso_link"/>
+    <child link="left_shoulder_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.0892" upper="2.6704" effort="25" velocity="37"/>
+  </joint>
+  <link name="left_shoulder_roll_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="-0.000227 0.00727 -0.063243" rpy="0 0 0"/>
+      <mass value="0.643"/>
+      <inertia ixx="0.0006177" ixy="-1E-06" ixz="8.7E-06" iyy="0.0006912" iyz="-5.3E-06" izz="0.0003894"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UTHUMB_S.dae" />
+        <mesh filename="meshes/left_shoulder_roll_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="-0.004 0.006 -0.053" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UTHUMB_S.dae" />
+        <cylinder radius="0.03" length="0.03"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_LTHUMB_S">
+  <joint name="left_shoulder_roll_joint" type="revolute">
+    <origin xyz="0 0.038 -0.013831" rpy="-0.27925 0 0"/>
+    <parent link="left_shoulder_pitch_link"/>
+    <child link="left_shoulder_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-1.5882" upper="2.2515" effort="25" velocity="37"/>
+  </joint>
+  <link name="left_shoulder_yaw_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.010773 -0.002949 -0.072009" rpy="0 0 0"/>
+      <mass value="0.734"/>
+      <inertia ixx="0.0009988" ixy="7.9E-06" ixz="0.0001412" iyy="0.0010605" iyz="-2.86E-05" izz="0.0004354"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LTHUMB_S.dae" />
+        <mesh filename="meshes/left_shoulder_yaw_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LTHUMB_S.dae" />
+        <mesh filename="meshes/left_shoulder_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_UINDEX_S">
+  <joint name="left_shoulder_yaw_joint" type="revolute">
+    <origin xyz="0 0.00624 -0.1032" rpy="0 0 0"/>
+    <parent link="left_shoulder_roll_link"/>
+    <child link="left_shoulder_yaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.618" upper="2.618" effort="25" velocity="37"/>
+  </joint>
+  <link name="left_elbow_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.064956 0.004454 -0.010062" rpy="0 0 0"/>
+      <mass value="0.6"/>
+      <inertia ixx="0.0002891" ixy="6.53E-05" ixz="1.72E-05" iyy="0.0004152" iyz="-5.6E-06" izz="0.0004197"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UINDEX_S.dae" />
+        <mesh filename="meshes/left_elbow_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_UINDEX_S.dae" />
+        <mesh filename="meshes/left_elbow_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_LINDEX_S">
+  <joint name="left_elbow_joint" type="revolute">
+    <origin xyz="0.015783 0 -0.080518" rpy="0 0 0"/>
+    <parent link="left_shoulder_yaw_link"/>
+    <child link="left_elbow_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.0472" upper="2.0944" effort="25" velocity="37"/>
+  </joint>
+  <joint name="left_wrist_roll_joint" type="revolute">
+    <origin xyz="0.100 0.00188791 -0.010" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <parent link="left_elbow_link"/>
+    <child link="left_wrist_roll_link"/>
+    <limit effort="25" velocity="37" lower="-1.972222054" upper="1.972222054"/>
+  </joint>
+  <link name="left_wrist_roll_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.01713944778 0.00053759094 0.00000048864" rpy="0 0 0"/>
+      <mass value="0.08544498"/>
+      <inertia ixx="0.00004821544023" ixy="-0.00000424511021" ixz="0.00000000510599" iyy="0.00003722899093" iyz="-0.00000000123525" izz="0.00005482106541"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LINDEX_S.dae" />
+        <mesh filename="meshes/left_wrist_roll_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LINDEX_S.dae" />
+        <mesh filename="meshes/left_wrist_roll_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_ULITTLE_S">
+  <joint name="left_wrist_pitch_joint" type="revolute">
+    <origin xyz="0.038 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <parent link="left_wrist_roll_link"/>
+    <child link="left_wrist_pitch_link"/>
+    <limit effort="5" velocity="22" lower="-1.614429558" upper="1.614429558"/>
+  </joint>
+  <link name="left_wrist_pitch_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.02299989837 -0.00111685314 -0.00111658096" rpy="0 0 0"/>
+      <mass value="0.48404956"/>
+      <inertia ixx="0.00016579646273" ixy="-0.00001231206746" ixz="0.00001231699194" iyy="0.00042954057410" iyz="0.00000081417712" izz="0.00042953697654"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ULITTLE_S.dae" />
+        <mesh filename="meshes/left_wrist_pitch_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_ULITTLE_S.dae" />
+        <mesh filename="meshes/left_wrist_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="R_LLITTLE_S">
+  <joint name="left_wrist_yaw_joint" type="revolute">
+    <origin xyz="0.046 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <parent link="left_wrist_pitch_link"/>
+    <child link="left_wrist_yaw_link"/>
+    <limit effort="5" velocity="22" lower="-1.614429558" upper="1.614429558"/>
+  </joint>
+  <link name="left_wrist_yaw_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.02200381568 0.00049485096 0.00053861123" rpy="0 0 0"/>
+      <mass value="0.08457647"/>
+      <inertia ixx="0.00004929128828" ixy="-0.00000045735494" ixz="0.00000445867591" iyy="0.00005973338134" iyz="0.00000043217198" izz="0.00003928083826"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LLITTLE_S.dae" />
+        <mesh filename="meshes/left_wrist_yaw_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/R_LLITTLE_S.dae" />
+        <mesh filename="meshes/left_wrist_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_SHOULDER_P_S">
+  <joint name="left_hand_palm_joint" type="fixed">
+    <origin xyz="0.0415 0.003 0" rpy="0 0 0"/>
+    <parent link="left_wrist_yaw_link"/>
+    <child link="left_rubber_hand"/>
+  </joint>
+  <link name="left_rubber_hand">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
+      <origin xyz="0.05361310808 -0.00295905240 0.00215413091" rpy="0 0 0"/>
+      <mass value="0.170"/>
+      <inertia ixx="0.00010099485234748" ixy="0.00003618590790516" ixz="-0.00000074301518642" iyy="0.00028135871571621" iyz="0.00000330189743286" izz="0.00021894770413514"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_P_S.dae" />
+        <mesh filename="meshes/left_rubber_hand.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
+    </visual>
+  </link>
+  <link name="right_shoulder_pitch_link">
+    <inertial>
+      <origin xyz="0 -0.035892 -0.011628" rpy="0 0 0"/>
+      <mass value="0.718"/>
+      <inertia ixx="0.0004291" ixy="9.2E-06" ixz="6.4E-06" iyy="0.000453" iyz="-2.26E-05" izz="0.000423"/>
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="meshes/right_shoulder_pitch_link.STL"/>
+      </geometry>
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 -0.04 -0.01" rpy="0 1.5707963267948966 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_P_S.dae" />
+        <cylinder radius="0.03" length="0.05"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_SHOULDER_R_S">
+  <joint name="right_shoulder_pitch_joint" type="revolute">
+    <origin xyz="0.0039563 -0.10021 0.24778" rpy="-0.27931 5.4949E-05 0.00019159"/>
+    <parent link="torso_link"/>
+    <child link="right_shoulder_pitch_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-3.0892" upper="2.6704" effort="25" velocity="37"/>
+  </joint>
+  <link name="right_shoulder_roll_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00196" ixy="0.0" ixz="0.0" iyy="0.00196" iyz="0.0" izz="0.00196"/>
-    </inertial>
-  </link>
-  <link name="L_SHOULDER_Y_S">
-    <inertial>
-      <mass value="2.0"/>
-      <origin rpy="0 -0 0" xyz="-0.01 0.0 -0.19"/>
-      <inertia ixx="0.01365" ixy="0.0" ixz="0.0" iyy="0.0146" iyz="0.0" izz="0.00635"/>
+      <origin xyz="-0.000227 -0.00727 -0.063243" rpy="0 0 0"/>
+      <mass value="0.643"/>
+      <inertia ixx="0.0006177" ixy="1E-06" ixz="8.7E-06" iyy="0.0006912" iyz="5.3E-06" izz="0.0003894"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_Y_S.dae" />
+        <mesh filename="meshes/right_shoulder_roll_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="-0.004 -0.006 -0.053" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_SHOULDER_Y_S.dae" />
+        <cylinder radius="0.03" length="0.03"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_ELBOW_P_S">
+  <joint name="right_shoulder_roll_joint" type="revolute">
+    <origin xyz="0 -0.038 -0.013831" rpy="0.27925 0 0"/>
+    <parent link="right_shoulder_pitch_link"/>
+    <child link="right_shoulder_roll_link"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-2.2515" upper="1.5882" effort="25" velocity="37"/>
+  </joint>
+  <link name="right_shoulder_yaw_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="-0.02 0.0 -0.1"/>
-      <inertia ixx="0.010675" ixy="0.0" ixz="0.0" iyy="0.010675" iyz="0.0" izz="0.0027"/>
+      <origin xyz="0.010773 0.002949 -0.072009" rpy="0 0 0"/>
+      <mass value="0.734"/>
+      <inertia ixx="0.0009988" ixy="-7.9E-06" ixz="0.0001412" iyy="0.0010605" iyz="2.86E-05" izz="0.0004354"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_P_S.dae" />
+        <mesh filename="meshes/right_shoulder_yaw_link.STL"/>
       </geometry>
-      <material name="dark_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_P_S.dae" />
+        <mesh filename="meshes/right_shoulder_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_ELBOW_Y_S">
+  <joint name="right_shoulder_yaw_joint" type="revolute">
+    <origin xyz="0 -0.00624 -0.1032" rpy="0 0 0"/>
+    <parent link="right_shoulder_roll_link"/>
+    <child link="right_shoulder_yaw_link"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.618" upper="2.618" effort="25" velocity="37"/>
+  </joint>
+  <link name="right_elbow_link">
     <inertial>
-      <mass value="1.0"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00064" ixy="0.0" ixz="0.0" iyy="0.00064" iyz="0.0" izz="0.00064"/>
+      <origin xyz="0.064956 -0.004454 -0.010062" rpy="0 0 0"/>
+      <mass value="0.6"/>
+      <inertia ixx="0.0002891" ixy="-6.53E-05" ixz="1.72E-05" iyy="0.0004152" iyz="5.6E-06" izz="0.0004197"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/right_elbow_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ELBOW_Y_S.dae" />
+        <mesh filename="meshes/right_elbow_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_WRIST_R_S">
+  <joint name="right_elbow_joint" type="revolute">
+    <origin xyz="0.015783 0 -0.080518" rpy="0 0 0"/>
+    <parent link="right_shoulder_yaw_link"/>
+    <child link="right_elbow_link"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.0472" upper="2.0944" effort="25" velocity="37"/>
+  </joint>
+  <joint name="right_wrist_roll_joint" type="revolute">
+    <origin xyz="0.100 -0.00188791 -0.010" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <parent link="right_elbow_link"/>
+    <child link="right_wrist_roll_link"/>
+    <limit effort="25" velocity="37" lower="-1.972222054" upper="1.972222054"/>
+  </joint>
+  <link name="right_wrist_roll_link">
     <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 0.0"/>
-      <inertia ixx="0.00032" ixy="0.0" ixz="0.0" iyy="0.00032" iyz="0.0" izz="0.00032"/>
-    </inertial>
-  </link>
-  <link name="L_WRIST_Y_S">
-    <inertial>
-      <mass value="0.5"/>
-      <origin rpy="0 -0 0" xyz="0.0 -0.01 -0.06"/>
-      <inertia ixx="0.0004625" ixy="0.0" ixz="0.0" iyy="0.0007625" iyz="0.0" izz="0.0004625"/>
+      <origin xyz="0.01713944778 -0.00053759094 0.00000048864" rpy="0 0 0"/>
+      <mass value="0.08544498"/>
+      <inertia ixx="0.00004821544023" ixy="0.00000424511021" ixz="0.00000000510599" iyy="0.00003722899093" iyz="0.00000000123525" izz="0.00005482106541"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_WRIST_Y_S.dae" />
+        <mesh filename="meshes/right_wrist_roll_link.STL"/>
       </geometry>
-      <material name="orange" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_WRIST_Y_S.dae" />
+        <mesh filename="meshes/right_wrist_roll_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_UTHUMB_S">
+  <joint name="right_wrist_pitch_joint" type="revolute">
+    <origin xyz="0.038 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <parent link="right_wrist_roll_link"/>
+    <child link="right_wrist_pitch_link"/>
+    <limit effort="5" velocity="22" lower="-1.614429558" upper="1.614429558"/>
+  </joint>
+  <link name="right_wrist_pitch_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.02299989837 0.00111685314 -0.00111658096" rpy="0 0 0"/>
+      <mass value="0.48404956"/>
+      <inertia ixx="0.00016579646273" ixy="0.00001231206746" ixz="0.00001231699194" iyy="0.00042954057410" iyz="-0.00000081417712" izz="0.00042953697654"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UTHUMB_S.dae" />
+        <mesh filename="meshes/right_wrist_pitch_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UTHUMB_S.dae" />
+        <mesh filename="meshes/right_wrist_pitch_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_LTHUMB_S">
+  <joint name="right_wrist_yaw_joint" type="revolute">
+    <origin xyz="0.046 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <parent link="right_wrist_pitch_link"/>
+    <child link="right_wrist_yaw_link"/>
+    <limit effort="5" velocity="22" lower="-1.614429558" upper="1.614429558"/>
+  </joint>
+  <link name="right_wrist_yaw_link">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.02200381568 -0.00049485096 0.00053861123" rpy="0 0 0"/>
+      <mass value="0.08457647"/>
+      <inertia ixx="0.00004929128828" ixy="0.00000045735494" ixz="0.00000445867591" iyy="0.00005973338134" iyz="-0.00000043217198" izz="0.00003928083826"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LTHUMB_S.dae" />
+        <mesh filename="meshes/right_wrist_yaw_link.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
     <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LTHUMB_S.dae" />
+        <mesh filename="meshes/right_wrist_yaw_link.STL"/>
       </geometry>
     </collision>
   </link>
-  <link name="L_UINDEX_S">
+  <joint name="right_hand_palm_joint" type="fixed">
+    <origin xyz="0.0415 -0.003 0" rpy="0 0 0"/>
+    <parent link="right_wrist_yaw_link"/>
+    <child link="right_rubber_hand"/>
+  </joint>
+  <link name="right_rubber_hand">
     <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
+      <origin xyz="0.05361310808 0.00295905240 0.00215413091" rpy="0 0 0"/>
+      <mass value="0.170"/>
+      <inertia ixx="0.00010099485234748" ixy="-0.00003618590790516" ixz="-0.00000074301518642" iyy="0.00028135871571621" iyz="-0.00000330189743286" izz="0.00021894770413514"/>
     </inertial>
     <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UINDEX_S.dae" />
+        <mesh filename="meshes/right_rubber_hand.STL"/>
       </geometry>
-      <material name="light_gray" />
+      <material name="white">
+        <color rgba="0.7 0.7 0.7 1"/>
+      </material>
     </visual>
-    <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_UINDEX_S.dae" />
-      </geometry>
-    </collision>
   </link>
-  <link name="L_LINDEX_S">
-    <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
-    </inertial>
-    <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LINDEX_S.dae" />
-      </geometry>
-      <material name="light_gray" />
-    </visual>
-    <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LINDEX_S.dae" />
-      </geometry>
-    </collision>
-  </link>
-  <link name="L_ULITTLE_S">
-    <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
-    </inertial>
-    <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ULITTLE_S.dae" />
-      </geometry>
-      <material name="light_gray" />
-    </visual>
-    <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_ULITTLE_S.dae" />
-      </geometry>
-    </collision>
-  </link>
-  <link name="L_LLITTLE_S">
-    <inertial>
-      <mass value="0.2"/>
-      <origin rpy="0 -0 0" xyz="0.0 0.0 -0.015"/>
-      <inertia ixx="6.16666666667e-05" ixy="0.0" ixz="0.0" iyy="6.16666666667e-05" iyz="0.0" izz="2.66666666667e-05"/>
-    </inertial>
-    <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LLITTLE_S.dae" />
-      </geometry>
-      <material name="light_gray" />
-    </visual>
-    <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/L_LLITTLE_S.dae" />
-      </geometry>
-    </collision>
-  </link>
-  <link name="PELVIS_S">
-    <inertial>
-      <mass value="10.0"/>
-      <origin rpy="0 -0 0" xyz="-0.01 0.0 0.034"/>
-      <inertia ixx="0.0895833333333" ixy="0.0" ixz="0.0" iyy="0.0895833333333" iyz="0.0" izz="0.1125"/>
-    </inertial>
-    <visual>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/PELVIS_S.dae" />
-      </geometry>
-      <material name="orange" />
-    </visual>
-    <collision>
-      <origin rpy="-0.0 -0.0 1.5708" xyz="0.0 0.0 0.0"/>
-      <geometry>
-        <mesh filename="package://jvrc_description/meshes/PELVIS_S.dae" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="waist" type="fixed">
-    <parent link="base_link"/>
-    <child link="PELVIS_S"/>
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-  </joint>
-  <joint name="R_HIP_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -0.096 0.0"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="PELVIS_S"/>
-    <child link="R_HIP_P_S"/>
-    <limit effort="100.0" lower="-2.09439510239" upper="0.785398163397" velocity="12.56636"/>
-  </joint>
-  <joint name="R_HIP_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-17 0.0"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_HIP_P_S"/>
-    <child link="R_HIP_R_S"/>
-    <limit effort="100.0" lower="-0.785398163397" upper="0.349065850399" velocity="8.90117"/>
-  </joint>
-  <joint name="R_HIP_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-17 0.0"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="R_HIP_R_S"/>
-    <child link="R_HIP_Y_S"/>
-    <limit effort="100.0" lower="-0.523598775598" upper="0.785398163397" velocity="8.90117"/>
-  </joint>
-  <joint name="R_KNEE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.02 2.77555756156e-17 -0.389"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="R_HIP_Y_S"/>
-    <child link="R_KNEE_S"/>
-    <limit effort="100.0" lower="0.0" upper="2.61799387799" velocity="14.66075"/>
-  </joint>
-  <joint name="R_ANKLE_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.04 1.11022302463e-16 -0.357"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_KNEE_S"/>
-    <child link="R_ANKLE_R_S"/>
-    <limit effort="100.0" lower="-0.610865238198" upper="0.785398163397" velocity="15.18435"/>
-  </joint>
-  <joint name="R_ANKLE_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-1.73472347598e-17 -4.4408920985e-16 -1.11022302463e-16"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="R_ANKLE_R_S"/>
-    <child link="R_ANKLE_P_S"/>
-    <limit effort="100.0" lower="-1.4835298642" upper="0.959931088597" velocity="14.18435"/>
-  </joint>
-  <joint name="L_HIP_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.096 0.0"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="PELVIS_S"/>
-    <child link="L_HIP_P_S"/>
-    <limit effort="100.0" lower="-2.09439510239" upper="0.785398163397" velocity="12.56636"/>
-  </joint>
-  <joint name="L_HIP_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-17 0.0"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_HIP_P_S"/>
-    <child link="L_HIP_R_S"/>
-    <limit effort="100.0" lower="-0.349065850399" upper="0.785398163397" velocity="8.90117"/>
-  </joint>
-  <joint name="L_HIP_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-17 0.0"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="L_HIP_R_S"/>
-    <child link="L_HIP_Y_S"/>
-    <limit effort="100.0" lower="-0.785398163397" upper="0.523598775598" velocity="8.90117"/>
-  </joint>
-  <joint name="L_KNEE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.02 -2.77555756156e-17 -0.389"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="L_HIP_Y_S"/>
-    <child link="L_KNEE_S"/>
-    <limit effort="100.0" lower="0.0" upper="2.61799387799" velocity="14.66075"/>
-  </joint>
-  <joint name="L_ANKLE_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.04 1.52655665886e-16 -0.357"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_KNEE_S"/>
-    <child link="L_ANKLE_R_S"/>
-    <limit effort="100.0" lower="-0.785398163397" upper="0.610865238198" velocity="15.18435"/>
-  </joint>
-  <joint name="L_ANKLE_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-4.85722573274e-17 3.60822483003e-16 -2.22044604925e-16"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="L_ANKLE_R_S"/>
-    <child link="L_ANKLE_P_S"/>
-    <limit effort="100.0" lower="-1.4835298642" upper="0.959931088597" velocity="14.18435"/>
-  </joint>
-  <joint name="WAIST_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.192"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="PELVIS_S"/>
-    <child link="WAIST_Y_S"/>
-    <limit effort="100.0" lower="-0.785398163397" upper="0.785398163397" velocity="8.90117"/>
-  </joint>
-  <joint name="WAIST_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 -1.11022302463e-16"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="WAIST_Y_S"/>
-    <child link="WAIST_P_S"/>
-    <limit effort="100.0" lower="-0.523598775598" upper="1.0471975512" velocity="8.90117"/>
-  </joint>
-  <joint name="WAIST_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 -1.11022302463e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="WAIST_P_S"/>
-    <child link="WAIST_R_S"/>
-    <limit effort="100.0" lower="-0.872664625997" upper="0.872664625997" velocity="9.42477"/>
-  </joint>
-  <joint name="NECK_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.003 0.0 0.453"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="WAIST_R_S"/>
-    <child link="NECK_Y_S"/>
-    <limit effort="100.0" lower="-1.2217304764" upper="1.2217304764" velocity="5.23598"/>
-  </joint>
-  <joint name="NECK_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="8.23993651089e-18 0.0 2.22044604925e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="NECK_Y_S"/>
-    <child link="NECK_R_S"/>
-    <limit effort="100.0" lower="-0.872664625997" upper="0.872664625997" velocity="5.75958"/>
-  </joint>
-  <joint name="NECK_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="8.23993651089e-18 0.0 2.22044604925e-16"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="NECK_R_S"/>
-    <child link="NECK_P_S"/>
-    <limit effort="100.0" lower="-0.872664625997" upper="1.0471975512" velocity="5.75958"/>
-  </joint>
-  <joint name="R_SHOULDER_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -0.24 0.33"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="WAIST_R_S"/>
-    <child link="R_SHOULDER_P_S"/>
-    <limit effort="100.0" lower="-3.14159265359" upper="1.0471975512" velocity="8.90117"/>
-  </joint>
-  <joint name="R_SHOULDER_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-17 -7.77156117238e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_SHOULDER_P_S"/>
-    <child link="R_SHOULDER_R_S"/>
-    <limit effort="100.0" lower="-1.74532925199" upper="0.174532925199" velocity="8.90117"/>
-  </joint>
-  <joint name="R_SHOULDER_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-17 -7.77156117238e-16"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="R_SHOULDER_R_S"/>
-    <child link="R_SHOULDER_Y_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="1.57079632679" velocity="4.18879"/>
-  </joint>
-  <joint name="R_ELBOW_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.004 2.77555756156e-17 -0.305"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="R_SHOULDER_Y_S"/>
-    <child link="R_ELBOW_P_S"/>
-    <limit effort="100.0" lower="-2.53072741539" upper="0.0" velocity="9.42477"/>
-  </joint>
-  <joint name="R_ELBOW_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.004 -4.99600361081e-16 -0.239"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="R_ELBOW_P_S"/>
-    <child link="R_ELBOW_Y_S"/>
-    <limit effort="100.0" lower="-1.91986217719" upper="1.91986217719" velocity="3.66519"/>
-  </joint>
-  <joint name="R_WRIST_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-16 -1.80411241502e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_ELBOW_Y_S"/>
-    <child link="R_WRIST_R_S"/>
-    <limit effort="100.0" lower="-1.91986217719" upper="1.91986217719" velocity="5.75958"/>
-  </joint>
-  <joint name="R_WRIST_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-16 -1.80411241502e-16"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="R_WRIST_R_S"/>
-    <child link="R_WRIST_Y_S"/>
-    <limit effort="100.0" lower="-2.61799387799" upper="2.61799387799" velocity="3.66519"/>
-  </joint>
-  <joint name="R_UTHUMB" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.023 -0.084"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_WRIST_Y_S"/>
-    <child link="R_UTHUMB_S"/>
-    <limit effort="100.0" lower="-0.785398163397" upper="0.0" velocity="6.80678"/>
-  </joint>
-  <joint name="R_LTHUMB" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.47024622979e-15 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_UTHUMB_S"/>
-    <child link="R_LTHUMB_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="0.0" velocity="13.6135"/>
-    <mimic joint="R_UTHUMB" multiplier="2" offset="0"/>
-  </joint>
-  <joint name="R_UINDEX" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.025 -0.006 -0.102"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_WRIST_Y_S"/>
-    <child link="R_UINDEX_S"/>
-    <limit effort="100.0" lower="0.0" upper="1.57079632679" velocity="9.42477"/>
-    <mimic joint="R_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="R_LINDEX" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="3.46944695195e-17 -2.77555756156e-17 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_UINDEX_S"/>
-    <child link="R_LINDEX_S"/>
-    <limit effort="100.0" lower="0.0" upper="1.57079632679" velocity="5.75958"/>
-    <mimic joint="R_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="R_ULITTLE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.025 -0.006 -0.102"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_WRIST_Y_S"/>
-    <child link="R_ULITTLE_S"/>
-    <limit effort="100.0" lower="0.0" upper="1.57079632679" velocity="9.42477"/>
-    <mimic joint="R_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="R_LLITTLE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-3.46944695195e-17 -1.38777878078e-16 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="R_ULITTLE_S"/>
-    <child link="R_LLITTLE_S"/>
-    <limit effort="100.0" lower="0.0" upper="1.57079632679" velocity="5.75958"/>
-    <mimic joint="R_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="L_SHOULDER_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.24 0.33"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="WAIST_R_S"/>
-    <child link="L_SHOULDER_P_S"/>
-    <limit effort="100.0" lower="-3.14159265359" upper="1.0471975512" velocity="8.90117"/>
-  </joint>
-  <joint name="L_SHOULDER_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-17 -5.55111512313e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_SHOULDER_P_S"/>
-    <child link="L_SHOULDER_R_S"/>
-    <limit effort="100.0" lower="-0.174532925199" upper="1.74532925199" velocity="8.90117"/>
-  </joint>
-  <joint name="L_SHOULDER_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.77555756156e-17 -5.55111512313e-16"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="L_SHOULDER_R_S"/>
-    <child link="L_SHOULDER_Y_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="1.57079632679" velocity="4.18879"/>
-  </joint>
-  <joint name="L_ELBOW_P" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.004 -2.77555756156e-17 -0.305"/>
-    <axis xyz="0.0 1.0 0.0"/>
-    <parent link="L_SHOULDER_Y_S"/>
-    <child link="L_ELBOW_P_S"/>
-    <limit effort="100.0" lower="-2.53072741539" upper="0.0" velocity="9.42477"/>
-  </joint>
-  <joint name="L_ELBOW_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.004 3.88578058619e-16 -0.239"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="L_ELBOW_P_S"/>
-    <child link="L_ELBOW_Y_S"/>
-    <limit effort="100.0" lower="-1.91986217719" upper="1.91986217719" velocity="3.66519"/>
-  </joint>
-  <joint name="L_WRIST_R" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-16 -1.80411241502e-16"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_ELBOW_Y_S"/>
-    <child link="L_WRIST_R_S"/>
-    <limit effort="100.0" lower="-1.91986217719" upper="1.91986217719" velocity="5.75958"/>
-  </joint>
-  <joint name="L_WRIST_Y" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -2.77555756156e-16 -1.80411241502e-16"/>
-    <axis xyz="0.0 0.0 1.0"/>
-    <parent link="L_WRIST_R_S"/>
-    <child link="L_WRIST_Y_S"/>
-    <limit effort="100.0" lower="-2.61799387799" upper="2.61799387799" velocity="3.66519"/>
-  </joint>
-  <joint name="L_UTHUMB" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 -0.023 -0.084"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_WRIST_Y_S"/>
-    <child link="L_UTHUMB_S"/>
-    <limit effort="100.0" lower="-0.0" upper="0.785398163397" velocity="6.80678"/>
-  </joint>
-  <joint name="L_LTHUMB" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 2.16493489802e-15 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_UTHUMB_S"/>
-    <child link="L_LTHUMB_S"/>
-    <limit effort="100.0" lower="-0.0" upper="1.57079632679" velocity="13.6135"/>
-    <mimic joint="L_UTHUMB" multiplier="2" offset="0"/>
-  </joint>
-  <joint name="L_UINDEX" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.025 0.006 -0.102"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_WRIST_Y_S"/>
-    <child link="L_UINDEX_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="0.0" velocity="9.42477"/>
-    <mimic joint="L_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="L_LINDEX" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="3.46944695195e-17 1.38777878078e-16 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_UINDEX_S"/>
-    <child link="L_LINDEX_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="0.0" velocity="5.75958"/>
-    <mimic joint="L_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="L_ULITTLE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-0.025 0.006 -0.102"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_WRIST_Y_S"/>
-    <child link="L_ULITTLE_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="0.0" velocity="9.42477"/>
-    <mimic joint="L_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <joint name="L_LLITTLE" type="revolute">
-    <origin rpy="0.0 -0.0 0.0" xyz="-3.46944695195e-17 2.77555756156e-17 -0.045"/>
-    <axis xyz="1.0 0.0 0.0"/>
-    <parent link="L_ULITTLE_S"/>
-    <child link="L_LLITTLE_S"/>
-    <limit effort="100.0" lower="-1.57079632679" upper="0.0" velocity="5.75958"/>
-    <mimic joint="L_UTHUMB" multiplier="-2" offset="0"/>
-  </joint>
-  <link name="gsensor">
-  </link>
-  <joint name="gsensor_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="PELVIS_S"/>
-    <child link="gsensor"/>
-  </joint>
-  <sensor name="gsensor_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="PELVIS_S"/>
-  </sensor>
-  <link name="gyrometer">
-  </link>
-  <joint name="gyrometer_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="PELVIS_S"/>
-    <child link="gyrometer"/>
-  </joint>
-  <sensor name="gyrometer_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="PELVIS_S"/>
-  </sensor>
-  <link name="rfsensor">
-  </link>
-  <joint name="rfsensor_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="R_ANKLE_P_S"/>
-    <child link="rfsensor"/>
-  </joint>
-  <sensor name="rfsensor_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="R_ANKLE_P_S"/>
-  </sensor>
-  <link name="lfsensor">
-  </link>
-  <joint name="lfsensor_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="L_ANKLE_P_S"/>
-    <child link="lfsensor"/>
-  </joint>
-  <sensor name="lfsensor_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="L_ANKLE_P_S"/>
-  </sensor>
-  <link name="rcamera">
-  </link>
-  <joint name="rcamera_JOINT" type="fixed">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 -0.03 0.09"/>
-    <parent link="NECK_P_S"/>
-    <child link="rcamera"/>
-  </joint>
-  <sensor name="rcamera_SENSOR" update_rate="30.0">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 -0.03 0.09"/>
-    <parent link="NECK_P_S"/>
-    <camera>
-      <image far="10.0" format="RGB8" height="480.0" hfov="1.0" near="0.0500000007451" width="640.0"/>
-    </camera>
-  </sensor>
-  <link name="lcamera">
-  </link>
-  <joint name="lcamera_JOINT" type="fixed">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 0.03 0.09"/>
-    <parent link="NECK_P_S"/>
-    <child link="lcamera"/>
-  </joint>
-  <sensor name="lcamera_SENSOR" update_rate="30.0">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 0.03 0.09"/>
-    <parent link="NECK_P_S"/>
-    <camera>
-      <image far="10.0" format="RGB8" height="480.0" hfov="1.0" near="0.0500000007451" width="640.0"/>
-    </camera>
-  </sensor>
-  <link name="dcamera">
-  </link>
-  <joint name="dcamera_JOINT" type="fixed">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 0.0 0.09"/>
-    <parent link="NECK_P_S"/>
-    <child link="dcamera"/>
-  </joint>
-  <sensor name="dcamera_SENSOR" update_rate="30.0">
-    <origin rpy="-2.09440867144 1.64830267294e-05 -1.57082487668" xyz="0.1 0.0 0.09"/>
-    <parent link="NECK_P_S"/>
-    <camera>
-      <image far="10.0" format="RGB8" height="480.0" hfov="1.0" near="0.0500000007451" width="640.0"/>
-    </camera>
-  </sensor>
-  <link name="ranger">
-  </link>
-  <joint name="ranger_JOINT" type="fixed">
-    <origin rpy="1.90331089466e-05 0.523612344569 -1.9033108947e-05" xyz="0.1 0.0 0.0"/>
-    <parent link="NECK_P_S"/>
-    <child link="ranger"/>
-  </joint>
-  <sensor name="ranger_SENSOR" update_rate="100.0">
-    <origin rpy="1.90331089466e-05 0.523612344569 -1.9033108947e-05" xyz="0.1 0.0 0.0"/>
-    <parent link="NECK_P_S"/>
-    <ray>
-      <horizontal max_angle="" min_angle="" resolution="1" samples="100"/>
-      <vertical max_angle="0" min_angle="0" resolution="1" samples="1"/>
-    </ray>
-  </sensor>
-  <link name="rhsensor">
-  </link>
-  <joint name="rhsensor_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="R_WRIST_Y_S"/>
-    <child link="rhsensor"/>
-  </joint>
-  <sensor name="rhsensor_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="R_WRIST_Y_S"/>
-  </sensor>
-  <link name="lhsensor">
-  </link>
-  <joint name="lhsensor_JOINT" type="fixed">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="L_WRIST_Y_S"/>
-    <child link="lhsensor"/>
-  </joint>
-  <sensor name="lhsensor_SENSOR" update_rate="20">
-    <origin rpy="0.0 -0.0 0.0" xyz="0.0 0.0 0.0"/>
-    <parent link="L_WRIST_Y_S"/>
-  </sensor>
-  <!-- Virtual links -->
-  <joint name="r_wrist_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="R_WRIST_Y_S"/>
-    <child link="r_wrist"/>
-  </joint>
-  <link name="r_wrist"/>
-  <joint name="l_wrist_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="L_WRIST_Y_S"/>
-    <child link="l_wrist"/>
-  </joint>
-  <link name="l_wrist"/>
-  <joint name="r_ankle_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="R_ANKLE_P_S"/>
-    <child link="r_ankle"/>
-  </joint>
-  <link name="r_ankle"/>
-  <joint name="l_ankle_joint" type="fixed">
-    <origin rpy="0 0 0" xyz="0 0 0"/>
-    <parent link="L_ANKLE_P_S"/>
-    <child link="l_ankle"/>
-  </joint>
-  <link name="l_ankle"/>
 </robot>

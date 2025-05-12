@@ -78,6 +78,10 @@ int main() {
   char loadError[kErrorLength] = "";
   const char* jvrc1_mjcf_filepath = "../jvrc_mj_description/stair_steps.xml";
   mjModel* jvrc1_mj_model_ptr = mj_loadXML(jvrc1_mjcf_filepath, nullptr, loadError, kErrorLength);
+  if (!jvrc1_mj_model_ptr) {
+    std::cerr << "Error loading model: " << loadError << std::endl;
+    return -1;
+  }
   mjData* jvrc1_mj_data_ptr = mj_makeData(jvrc1_mj_model_ptr);
 
   std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
@@ -86,6 +90,8 @@ int main() {
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
+  mjtNum waist_y_init = 0.0;
+  mjtNum waist_r_init = 0.0;
   mjtNum r_hip_y_init = 0.0;
   mjtNum r_hip_r_init = -0.05;
   mjtNum r_hip_p_init = -0.44;
@@ -110,29 +116,36 @@ int main() {
   for (int i = 0; i < jvrc1_mj_model_ptr->nq; ++i) {
     jvrc1_mj_data_ptr->qpos[i] = 0.0;
   }
-  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263;
+
+  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.0665;
+  std::cerr << "CoM z position: " << jvrc1_mj_data_ptr->qpos[2] << std::endl;
   jvrc1_mj_data_ptr->qpos[3] = 1.0;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "WAIST_P")]] = waist_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_HIP_Y")]] = r_hip_y_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_HIP_R")]] = r_hip_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_HIP_P")]] = r_hip_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_KNEE")]] = r_knee_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_ANKLE_P")]] = r_ankle_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_ANKLE_R")]] = r_ankle_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_HIP_Y")]] = l_hip_y_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_HIP_R")]] = l_hip_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_HIP_P")]] = l_hip_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_KNEE")]] = l_knee_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_ANKLE_P")]] = l_ankle_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_ANKLE_R")]] = l_ankle_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_SHOULDER_P")]] = r_shoulder_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_SHOULDER_R")]] = r_shoulder_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_SHOULDER_Y")]] = r_shoulder_y_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "R_ELBOW_P")]] = r_elbow_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_SHOULDER_P")]] = l_shoulder_p_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_SHOULDER_R")]] = l_shoulder_r_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_SHOULDER_Y")]] = l_shoulder_y_init;
-  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "L_ELBOW_P")]] = l_elbow_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_roll_joint")]] = waist_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_hip_pitch_joint")]] = r_hip_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_knee_joint")]] = r_knee_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_ankle_pitch_joint")]] = r_ankle_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_ankle_roll_joint")]] = r_ankle_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_hip_yaw_joint")]] = l_hip_y_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_hip_roll_joint")]] = l_hip_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_hip_pitch_joint")]] = l_hip_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_knee_joint")]] = l_knee_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_ankle_pitch_joint")]] = l_ankle_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_ankle_roll_joint")]] = l_ankle_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_shoulder_pitch_joint")]] = r_shoulder_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_shoulder_roll_joint")]] = r_shoulder_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_shoulder_yaw_joint")]] = r_shoulder_y_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "right_elbow_joint")]] = r_elbow_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_shoulder_pitch_joint")]] = l_shoulder_p_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_shoulder_roll_joint")]] = l_shoulder_r_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
+  jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
+
+  //print wolrd frame position
+  std::cerr << "World frame position: " << jvrc1_mj_data_ptr->qpos[0] << " " << jvrc1_mj_data_ptr->qpos[1] << " " << jvrc1_mj_data_ptr->qpos[2] << std::endl;
 
   mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * jvrc1_mj_model_ptr->nq);
   memcpy(qpos0, jvrc1_mj_data_ptr->qpos, jvrc1_mj_model_ptr->nq * sizeof(mjtNum));
@@ -161,52 +174,69 @@ int main() {
   joint_names_log_file.flush();
   joint_names_log_file.close();
 
+
   int timestep_counter = 0;
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
     mjtNum simstart = jvrc1_mj_data_ptr->time;
-    while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
-      labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+    try {
+      while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
 
-      // Update walking manager:
-      labrob::JointCommand joint_command;
-      Eigen::Vector3d zmp_position;
-      walking_manager.update(robot_state, joint_command);
+        // stop at first iteration
+        // if (timestep_counter >= 1) {
+        //   break;
+        // }
+        
+        labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
-      double point[3]{0.0, 0.0, 0.0};
-      double force[3]{0.0, 0.0, 0.0};
-      double torque[3]{0.0, 0.0, 0.0};
-      double rate = 1000.0;
-      for (int k = 0; k < 1; ++k) {
-        mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+        // Update walking manager:
+        labrob::JointCommand joint_command;
+        Eigen::Vector3d zmp_position;
+        walking_manager.update(robot_state, joint_command);
 
-        int torso_id = mj_name2id(jvrc1_mj_model_ptr, mjOBJ_BODY, "PELVIS_S");
-        double time = timestep_counter / rate;
-        if (timestep_counter == 5000) {
-          mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+        double point[3]{0.0, 0.0, 0.0};
+        double force[3]{0.0, 0.0, 0.0};
+        double torque[3]{0.0, 0.0, 0.0};
+        double rate = 1000.0;
+        for (int k = 0; k < 1; ++k) {
+          mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
+          int torso_id = mj_name2id(jvrc1_mj_model_ptr, mjOBJ_BODY, "pelvis");
+          double time = timestep_counter / rate;
+          if (timestep_counter == 5000) {
+            mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+          }
+          if (timestep_counter == 5100) {
+            force[0] = -force[0];
+            mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+          }
+
+          for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
+            int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
+            int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
+            jvrc1_mj_data_ptr->ctrl[i] = joint_command[joint_name];
+
+            joint_vel_log_file << jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] << " ";
+            joint_eff_log_file << jvrc1_mj_data_ptr->ctrl[i] << " ";
+          }
+
+          mj_step2(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
+
+          joint_vel_log_file << std::endl;
+          joint_eff_log_file << std::endl;
         }
-        if (timestep_counter == 5100) {
-          force[0] = -force[0];
-          mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
-        }
+        ++timestep_counter;
 
-        for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
-          int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(jvrc1_mj_model_ptr, mjOBJ_JOINT, joint_id));
-          int jnt_qvel_idx = jvrc1_mj_model_ptr->jnt_dofadr[joint_id];
-          jvrc1_mj_data_ptr->ctrl[i] = joint_command[joint_name];
-
-          joint_vel_log_file << jvrc1_mj_data_ptr->qvel[jnt_qvel_idx] << " ";
-          joint_eff_log_file << jvrc1_mj_data_ptr->ctrl[i] << " ";
-        }
-
-        mj_step2(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
-
-        joint_vel_log_file << std::endl;
-        joint_eff_log_file << std::endl;
+        // if (timestep_counter>=1){
+        //   break;
+        // }
       }
-      ++timestep_counter;
+    } catch (const std::exception& e) {
+      std::cerr << "Exception: " << e.what() << std::endl;
+      break;
     }
+
 
     joint_vel_log_file.flush();
     joint_eff_log_file.flush();

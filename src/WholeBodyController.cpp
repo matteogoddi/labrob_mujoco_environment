@@ -41,6 +41,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.foot_length = 0.16;
   params.foot_width = 0.06;
+  // params.foot_length = 0.03;
+  // params.foot_width = 0.03; 
 
   return params;
 }
@@ -58,9 +60,9 @@ WholeBodyController::WholeBodyController(
 
   robot_data_ = pinocchio::Data(robot_model_);
 
-  lsole_idx_ = robot_model_.getFrameId("L_ANKLE_P_S");
-  rsole_idx_ = robot_model_.getFrameId("R_ANKLE_P_S");
-  torso_idx_ = robot_model_.getFrameId("base_link");
+  lsole_idx_ = robot_model_.getFrameId("left_ankle_pitch_link");
+  rsole_idx_ = robot_model_.getFrameId("right_ankle_pitch_link");
+  torso_idx_ = robot_model_.getFrameId("torso_link");
 
   J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_lsole_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
