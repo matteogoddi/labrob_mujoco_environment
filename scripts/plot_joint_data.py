@@ -45,4 +45,8 @@ if __name__ == '__main__':
         plt.grid()
         plt.tight_layout()
 
-    plt.show()
+    i=1
+    for fig in figs:
+        fig.savefig(f"images/joints/joint_data{i}.png", bbox_inches='tight')
+        i+=1
+    #plt.show()

@@ -39,10 +39,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = params.Kd_motion;
   params.mu = 0.5;
 
+  // params.foot_length = 0.16;
+  // params.foot_width = 0.06;
   params.foot_length = 0.16;
-  params.foot_width = 0.06;
-  // params.foot_length = 0.03;
-  // params.foot_width = 0.03; 
+  params.foot_width = 0.06; 
 
   return params;
 }

@@ -3,34 +3,34 @@ import numpy as np
 from math import ceil, floor, sqrt
 
 if __name__ == '__main__':
-    fl: np.ndarray = np.loadtxt('/tmp/fl.txt')
-    fr: np.ndarray = np.loadtxt('/tmp/fr.txt')
+    # fl: np.ndarray = np.loadtxt('/tmp/fl.txt')
+    # fr: np.ndarray = np.loadtxt('/tmp/fr.txt')
     cop: np.ndarray = np.loadtxt('/tmp/cop_computed.txt')
     zmp: np.ndarray = np.loadtxt('/tmp/mpc_zmp.txt')
     p_lsole: np.ndarray = np.loadtxt('/tmp/p_lsole.txt')
     p_rsole: np.ndarray = np.loadtxt('/tmp/p_rsole.txt')
-    alpha: np.ndarray = np.loadtxt('/tmp/alpha.txt')
+    # alpha: np.ndarray = np.loadtxt('/tmp/alpha.txt')
 
     delta = 1e-3
-    num_samples = fl.shape[0]
+    num_samples = cop.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
-    transitions = delta * np.array(np.where(np.abs(np.diff(alpha)) > 0.05))
+    # transitions = delta * np.array(np.where(np.abs(np.diff(alpha)) > 0.05))
 
-    plt.figure()
-    plt.plot(t, fl)
-    plt.xlabel('Time [s]')
-    plt.ylabel('Force [N]')
-    plt.legend(['fx', 'fy', 'fz', 'taux', 'tauy', 'tauz'])
-    plt.title('Left Foot')
-    plt.grid()
+    # plt.figure()
+    # plt.plot(t, fl)
+    # plt.xlabel('Time [s]')
+    # plt.ylabel('Force [N]')
+    # plt.legend(['fx', 'fy', 'fz', 'taux', 'tauy', 'tauz'])
+    # plt.title('Left Foot')
+    # plt.grid()
 
-    plt.figure()
-    plt.plot(t, fr)
-    plt.xlabel('Time [s]')
-    plt.ylabel('Force [N]')
-    plt.legend(['fx', 'fy', 'fz', 'taux', 'tauy', 'tauz'])
-    plt.grid()
-    plt.title('Right Foot')
+    # plt.figure()
+    # plt.plot(t, fr)
+    # plt.xlabel('Time [s]')
+    # plt.ylabel('Force [N]')
+    # plt.legend(['fx', 'fy', 'fz', 'taux', 'tauy', 'tauz'])
+    # plt.grid()
+    # plt.title('Right Foot')
 
     fig = plt.figure()
     plt.plot(t, cop[:, 0])
@@ -40,14 +40,16 @@ if __name__ == '__main__':
     plt.plot(t, p_lsole[:, 0])
     plt.plot(t, p_rsole[:, 0])
     y_lim = fig.axes[0].get_ylim()
-    for transition in transitions:
-        plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
+    # for transition in transitions:
+    #     plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
     # plt.plot(t, alpha)
     plt.xlabel('Time [s]')
     plt.ylabel('Position [m]')
     plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
     plt.grid()
     plt.title('X CoP')
+
+    fig.savefig(f"images/forces/X_CoP.png", bbox_inches='tight')
 
     fig = plt.figure()
     plt.plot(t, cop[:, 1])
@@ -57,14 +59,15 @@ if __name__ == '__main__':
     plt.plot(t, p_lsole[:, 1])
     plt.plot(t, p_rsole[:, 1])
     y_lim = fig.axes[0].get_ylim()
-    for transition in transitions:
-        plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
+    # for transition in transitions:
+    #     plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
     # plt.plot(t, alpha)
     plt.xlabel('Time [s]')
     plt.ylabel('Position [m]')
     plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
     plt.grid()
     plt.title('Y CoP')
+    fig.savefig(f"images/forces/Y_CoP.png", bbox_inches='tight')
 
     fig = plt.figure()
     plt.plot(t, cop[:, 2])
@@ -74,14 +77,15 @@ if __name__ == '__main__':
     plt.plot(t, p_lsole[:, 2])
     plt.plot(t, p_rsole[:, 2])
     y_lim = fig.axes[0].get_ylim()
-    for transition in transitions:
-        plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
+    # for transition in transitions:
+    #     plt.plot(np.array([transition, transition]), np.array([y_lim[0], y_lim[1]]), 'k--')
     # plt.plot(t, alpha)
     plt.xlabel('Time [s]')
     plt.ylabel('Position [m]')
     plt.legend(['CoP Measured', 'CoP Filtered', 'ZMP Lip', 'ZMP', 'Left', 'Right'])
     plt.grid()
     plt.title('Z CoP')
+    fig.savefig(f"images/forces/Z_CoP.png", bbox_inches='tight')
 
 # figs = []
     # for i in range(num_joints):
@@ -95,4 +99,4 @@ if __name__ == '__main__':
     #     plt.grid()
     #     plt.tight_layout()
 
-    plt.show()
+    # plt.show()

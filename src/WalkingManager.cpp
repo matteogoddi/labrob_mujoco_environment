@@ -51,7 +51,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   cov_mod_zmp = 1.0;
 
   // Read URDF from file:
-  std::string robot_description_filename = "../jvrc_description/urdf/jvrc1.urdf";
+  std::string robot_description_filename = "../jvrc_description/urdf/unitreeg1.urdf";
 
   // Build Pinocchio model and data from URDF:
   pinocchio::Model full_robot_model;
@@ -342,8 +342,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
   angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
-  //fl_log_file_.open("/tmp/fl.txt");
-  //fr_log_file_.open("/tmp/fr.txt");
+  // fl_log_file_.open("/tmp/fl.txt");
+  // fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
 
   return true;
@@ -666,8 +666,8 @@ WalkingManager::update(
   v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
   v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
   angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-  //fl_log_file_ << output.fl.transpose() << std::endl;
-  //fr_log_file_ << output.fr.transpose() << std::endl;
+  // fl_log_file_ << output.fl.transpose() << std::endl;
+  // fr_log_file_ << output.fr.transpose() << std::endl;
   cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
 
 }

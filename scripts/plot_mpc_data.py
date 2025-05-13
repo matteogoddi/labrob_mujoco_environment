@@ -60,14 +60,14 @@ if __name__ == '__main__':
     v_rsole_des_trajectory = read_position_file(v_rsole_des_file_path)
     angular_momentum_trajectory = read_position_file(angular_momentum_file_path)
 
-    delta_t = 0.01
+    delta_t = 1e-3
     samples = mpc_com_trajectory.x.shape[0]
     tt = np.linspace(0.0, delta_t * samples, samples)
 
     fig = plt.figure()
 
     ### Subplot CoM/ZMP ###
-    ax1 = fig.add_subplot(4, 1, 1)
+    ax1 = fig.add_subplot(2, 2, 1)
     ax1.set_xlabel('x')
     ax1.set_ylabel('y')
 
@@ -80,19 +80,19 @@ if __name__ == '__main__':
     ax1.axis('equal')
 
     ### Subplot ZMP.x ###
-    ax3 = fig.add_subplot(4, 1, 2)
-    ax3.set_xlabel('t')
-    ax3.set_ylabel('x')
+    ax2 = fig.add_subplot(2, 2, 2)
+    ax2.set_xlabel('t')
+    ax2.set_ylabel('x')
 
-    ax3.plot(tt, mpc_com_trajectory.x, label='CoM.x ref')
-    ax3.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x ref')
-    ax3.plot(tt, com_trajectory.x, label='CoM.x')
+    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x ref')
+    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x ref')
+    ax2.plot(tt, com_trajectory.x, label='CoM.x')
 
-    ax3.legend()
-    ax3.grid()
+    ax2.legend()
+    ax2.grid()
     
     ### Subplot ZMP.y ###
-    ax3 = fig.add_subplot(4, 1, 3)
+    ax3 = fig.add_subplot(2, 2, 3)
     ax3.set_xlabel('t')
     ax3.set_ylabel('y')
 
@@ -104,9 +104,9 @@ if __name__ == '__main__':
     ax3.grid()
 
     ### Subplot ZMP.z ###
-    ax4 = fig.add_subplot(4, 1, 4)
+    ax4 = fig.add_subplot(2, 2, 4)
     ax4.set_xlabel('t')
-    ax4.set_ylabel('y')
+    ax4.set_ylabel('z')
 
     ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z ref')
     ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z ref')
@@ -114,6 +114,8 @@ if __name__ == '__main__':
 
     ax4.legend()
     ax4.grid()
+
+    fig.savefig(f"images/mpc/CoM_ZMP.png", bbox_inches='tight')
 
     # Figure soles:
     fig_soles = plt.figure()
@@ -166,6 +168,8 @@ if __name__ == '__main__':
     ax_rsole_z.legend()
     ax_rsole_z.grid()
 
+    fig_soles.savefig(f"images/mpc/soles.png", bbox_inches='tight')
+
     # Figure soles (velocity):
     fig_v_soles = plt.figure()
     # v_lsole.x:
@@ -217,6 +221,8 @@ if __name__ == '__main__':
     ax_v_rsole_z.legend()
     ax_v_rsole_z.grid()
 
+    fig_v_soles.savefig(f"images/mpc/soles_velocity.png", bbox_inches='tight')
+
     # Angular momentum:
     fig_angular_momentum = plt.figure()
     # Angular momentum (x):
@@ -241,4 +247,6 @@ if __name__ == '__main__':
     ax_angular_momentum_z.legend()
     ax_angular_momentum_z.grid()
 
-    plt.show()
+    fig_angular_momentum.savefig(f"images/mpc/angular_momentum.png", bbox_inches='tight')
+
+    # plt.show()
