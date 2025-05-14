@@ -54,6 +54,11 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 
 1. Dependencies listed in `requirements.txt`, needed when trying to run files in /scripts
 
+2. Create a folder named 'images' and inside the following folders:
+    1. forces
+    2. joints
+    3. mpc
+
 ### Installation
 
 0. install and activate virtual environment
