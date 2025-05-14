@@ -24,3 +24,51 @@ sudo make install
 ```
 
 To install HPIPM (together with Blasfeo), follow the instructions under the section "C" at: https://github.com/giaf/hpipm
+
+### Connect to github
+
+0. clone the repository
+    ```bash
+    git clone 'repository_link'
+    ```
+
+1. pull changes
+   ```bash
+    git pull 'remote_name' main
+   ```
+   
+2. push changes
+   ```bash
+    git add .
+    git commit -m "Explain changes"
+    git push 'remote_name' main
+   ```
+
+4. usually 'remote_name' is origin, to add another remote for personal changes
+    ```bash
+    git remote add 'new_remote_name' 'new_repository_link'
+    git remote -v
+    ```
+   
+### Prerequisites 
+
+1. Dependencies listed in `requirements.txt`, needed when trying to run files in /scripts
+
+### Installation
+
+0. install and activate virtual environment
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+
+1. install dependencies:
+   ```bash
+    pip install -r requirements.txt
+   ```
+### How to run the code
+1. run python scripts:
+   ```bash
+    python3 scripts/'file_name'
+   ```
+
