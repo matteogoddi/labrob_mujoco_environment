@@ -51,7 +51,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   cov_mod_zmp = 1.0;
 
   // Read URDF from file:
-  std::string robot_description_filename = "../jvrc_description/urdf/unitreeg1.urdf";
+  std::string robot_description_filename = "../jvrc_description/unitreeg1.urdf";
 
   // Build Pinocchio model and data from URDF:
   pinocchio::Model full_robot_model;
@@ -297,7 +297,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
   std::cerr << "CoM target height: " << com_target_height << std::endl;
-  double foot_constraint_square_width = 0.03; //0.05;
+  double foot_constraint_square_width = 0.0049; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,
