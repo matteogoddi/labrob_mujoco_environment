@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import matplotlib.pyplot as plt
 import numpy as np
+import seaborn as sns
 
 class Trajectory:
     def __init__(self, x, y, z, roll=None, pitch=None, yaw=None):
@@ -62,60 +63,85 @@ if __name__ == '__main__':
 
     delta_t = 1e-3
     samples = mpc_com_trajectory.x.shape[0]
-    tt = np.linspace(0.0, delta_t * samples, samples)
+    tt = np.linspace(0.0, delta_t * samples, samples)    
 
-    fig = plt.figure()
+    sns.set(style='whitegrid')
+    plt.rcParams.update({
+        'font.size': 12,
+        'lines.linewidth': 2,
+        'axes.labelsize': 14,
+        'axes.titlesize': 16,
+        'legend.fontsize': 12,
+        'xtick.labelsize': 12,
+        'ytick.labelsize': 12
+    })
 
-    ### Subplot CoM/ZMP ###
-    ax1 = fig.add_subplot(2, 2, 1)
-    ax1.set_xlabel('x')
-    ax1.set_ylabel('y')
+    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
 
-    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM ref')
-    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP ref')
-    ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM')
+    # Combinazione di colori e marker
+    ref_color = 'tab:red'
+    actual_color = 'tab:green'
+    zmp_color = 'tab:orange'
 
-    ax1.legend()
-    ax1.grid()
+    ### 1. CoM/ZMP in XY ###
+    ax1 = axs[0, 0]
+    ax1.set_title("CoM and ZMP Trajectories (X-Y)")
+    ax1.set_xlabel("X [m]")
+    ax1.set_ylabel("Y [m]")
+
+
+    ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM', color=actual_color, marker='o', markersize=4)
+    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP Ref', linestyle='-.', color=zmp_color)
+   
+
     ax1.axis('equal')
+    ax1.legend()
+    ax1.grid(True)
 
-    ### Subplot ZMP.x ###
-    ax2 = fig.add_subplot(2, 2, 2)
-    ax2.set_xlabel('t')
-    ax2.set_ylabel('x')
+    ### 2. CoM/ZMP X ###
+    ax2 = axs[0, 1]
+    ax2.set_title("X Trajectory Over Time")
+    ax2.set_xlabel("Time [s]")
+    ax2.set_ylabel("X [m]")
 
-    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x ref')
-    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x ref')
-    ax2.plot(tt, com_trajectory.x, label='CoM.x')
+    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
 
     ax2.legend()
-    ax2.grid()
-    
-    ### Subplot ZMP.y ###
-    ax3 = fig.add_subplot(2, 2, 3)
-    ax3.set_xlabel('t')
-    ax3.set_ylabel('y')
+    ax2.grid(True)
 
-    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y ref')
-    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y ref')
-    ax3.plot(tt, com_trajectory.y, label='CoM.y')
+    ### 3. CoM/ZMP Y ###
+    ax3 = axs[1, 0]
+    ax3.set_title("Y Trajectory Over Time")
+    ax3.set_xlabel("Time [s]")
+    ax3.set_ylabel("Y [m]")
+
+    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
 
     ax3.legend()
-    ax3.grid()
+    ax3.grid(True)
 
-    ### Subplot ZMP.z ###
-    ax4 = fig.add_subplot(2, 2, 4)
-    ax4.set_xlabel('t')
-    ax4.set_ylabel('z')
+    ### 4. CoM/ZMP Z ###
+    ax4 = axs[1, 1]
+    ax4.set_title("Z Trajectory Over Time")
+    ax4.set_xlabel("Time [s]")
+    ax4.set_ylabel("Z [m]")
 
-    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z ref')
-    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z ref')
-    ax4.plot(tt, com_trajectory.z, label='CoM.z')
+    ax4.plot(tt, com_trajectory.z, label='CoM.z', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z Ref', linestyle='-.', color=zmp_color)
 
     ax4.legend()
-    ax4.grid()
+    ax4.grid(True)
 
-    fig.savefig(f"images/mpc/CoM_ZMP.png", bbox_inches='tight')
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig("images/mpc/CoM_ZMP.png", dpi=300, bbox_inches='tight')
+
 
     # Figure soles:
     fig_soles = plt.figure()

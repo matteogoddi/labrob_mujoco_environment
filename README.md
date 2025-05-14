@@ -77,3 +77,9 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
     python3 scripts/'file_name'
    ```
 
+### Visualization 
+
+1. Install vscode extension "URDF Visualizer"
+
+2. Open "unitreeg1.urdf" and press ```CTRL+SHIFT*P```, then press 'URDF Visualizer: Preview URDF/Xacro'
+
