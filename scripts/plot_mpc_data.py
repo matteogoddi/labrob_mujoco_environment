@@ -143,136 +143,280 @@ if __name__ == '__main__':
     fig.savefig("images/mpc/CoM_ZMP.png", dpi=300, bbox_inches='tight')
 
 
-    # Figure soles:
-    fig_soles = plt.figure()
-    # lsole.x:
-    ax_lsole_x = fig_soles.add_subplot(3, 2, 1)
-    ax_lsole_x.set_xlabel('t')
-    ax_lsole_x.set_ylabel('x')
-    ax_lsole_x.plot(tt, p_lsole_des_trajectory.x, label='p_lsole_des.x')
-    ax_lsole_x.plot(tt, p_lsole_trajectory.x, label='p_lsole.x')
-    ax_lsole_x.legend()
-    ax_lsole_x.grid()
-    # lsole.y:
-    ax_lsole_y = fig_soles.add_subplot(3, 2, 3)
-    ax_lsole_y.set_xlabel('t')
-    ax_lsole_y.set_ylabel('y')
-    ax_lsole_y.plot(tt, p_lsole_des_trajectory.y, label='p_lsole_des.y')
-    ax_lsole_y.plot(tt, p_lsole_trajectory.y, label='p_lsole.y')
-    ax_lsole_y.legend()
-    ax_lsole_y.grid()
-    # lsole.z:
-    ax_lsole_z = fig_soles.add_subplot(3, 2, 5)
-    ax_lsole_z.set_xlabel('t')
-    ax_lsole_z.set_ylabel('z')
-    ax_lsole_z.plot(tt, p_lsole_des_trajectory.z, label='p_lsole_des.z')
-    ax_lsole_z.plot(tt, p_lsole_trajectory.z, label='p_lsole.z')
-    ax_lsole_z.legend()
-    ax_lsole_z.grid()
-    # rsole.x:
-    ax_rsole_x = fig_soles.add_subplot(3, 2, 2)
-    ax_rsole_x.set_xlabel('t')
-    ax_rsole_x.set_ylabel('x')
-    ax_rsole_x.plot(tt, p_rsole_des_trajectory.x, label='p_rsole_des.x')
-    ax_rsole_x.plot(tt, p_rsole_trajectory.x, label='p_rsole.x')
-    ax_rsole_x.legend()
-    ax_rsole_x.grid()
-    # rsole.y:
-    ax_rsole_y = fig_soles.add_subplot(3, 2, 4)
-    ax_rsole_y.set_xlabel('t')
-    ax_rsole_y.set_ylabel('y')
-    ax_rsole_y.plot(tt, p_rsole_des_trajectory.y, label='p_rsole_des.y')
-    ax_rsole_y.plot(tt, p_rsole_trajectory.y, label='p_rsole.y')
-    ax_rsole_y.legend()
-    ax_rsole_y.grid()
-    # rsole.z:
-    ax_rsole_z = fig_soles.add_subplot(3, 2, 6)
-    ax_rsole_z.set_xlabel('t')
-    ax_rsole_z.set_ylabel('z')
-    ax_rsole_z.plot(tt, p_rsole_des_trajectory.z, label='p_rsole_des.z')
-    ax_rsole_z.plot(tt, p_rsole_trajectory.z, label='p_rsole.z')
-    ax_rsole_z.legend()
-    ax_rsole_z.grid()
+    fig_soles, axs = plt.subplots(3, 2, figsize=(14, 9))
+    fig_soles.suptitle("Left and Right Sole Positions Over Time", fontsize=16)
 
-    fig_soles.savefig(f"images/mpc/soles.png", bbox_inches='tight')
+    # Color/style settings
+    des_style = {'linestyle': '--', 'linewidth': 2, 'alpha': 0.7}
+    real_style = {'linestyle': '-', 'linewidth': 3, 'alpha': 0.7}
+
+    # Left sole
+    axs[0, 0].set_title("Left Sole - X")
+    axs[0, 0].plot(tt, p_lsole_des_trajectory.x, label='Desired X', color='tab:blue', **des_style)
+    axs[0, 0].plot(tt, p_lsole_trajectory.x, label='Actual X', color='tab:green', **real_style)
+    axs[0, 0].set_xlabel('Time [s]')
+    axs[0, 0].set_ylabel('X [m]')
+    axs[0, 0].legend()
+    axs[0, 0].grid(True)
+
+    axs[1, 0].set_title("Left Sole - Y")
+    axs[1, 0].plot(tt, p_lsole_des_trajectory.y, label='Desired Y', color='tab:blue', **des_style)
+    axs[1, 0].plot(tt, p_lsole_trajectory.y, label='Actual Y', color='tab:green', **real_style)
+    axs[1, 0].set_xlabel('Time [s]')
+    axs[1, 0].set_ylabel('Y [m]')
+    axs[1, 0].legend()
+    axs[1, 0].grid(True)
+
+    axs[2, 0].set_title("Left Sole - Z")
+    axs[2, 0].plot(tt, p_lsole_des_trajectory.z, label='Desired Z', color='tab:blue', **des_style)
+    axs[2, 0].plot(tt, p_lsole_trajectory.z, label='Actual Z', color='tab:green', **real_style)
+    axs[2, 0].set_xlabel('Time [s]')
+    axs[2, 0].set_ylabel('Z [m]')
+    axs[2, 0].legend()
+    axs[2, 0].grid(True)
+
+    # Right sole
+    axs[0, 1].set_title("Right Sole - X")
+    axs[0, 1].plot(tt, p_rsole_des_trajectory.x, label='Desired X', color='tab:orange', **des_style)
+    axs[0, 1].plot(tt, p_rsole_trajectory.x, label='Actual X', color='tab:red', **real_style)
+    axs[0, 1].set_xlabel('Time [s]')
+    axs[0, 1].set_ylabel('X [m]')
+    axs[0, 1].legend()
+    axs[0, 1].grid(True)
+
+    axs[1, 1].set_title("Right Sole - Y")
+    axs[1, 1].plot(tt, p_rsole_des_trajectory.y, label='Desired Y', color='tab:orange', **des_style)
+    axs[1, 1].plot(tt, p_rsole_trajectory.y, label='Actual Y', color='tab:red', **real_style)
+    axs[1, 1].set_xlabel('Time [s]')
+    axs[1, 1].set_ylabel('Y [m]')
+    axs[1, 1].legend()
+    axs[1, 1].grid(True)
+
+    axs[2, 1].set_title("Right Sole - Z")
+    axs[2, 1].plot(tt, p_rsole_des_trajectory.z, label='Desired Z', color='tab:orange', **des_style)
+    axs[2, 1].plot(tt, p_rsole_trajectory.z, label='Actual Z', color='tab:red', **real_style)
+    axs[2, 1].set_xlabel('Time [s]')
+    axs[2, 1].set_ylabel('Z [m]')
+    axs[2, 1].legend()
+    axs[2, 1].grid(True)
+
+    # Final layout
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig_soles.savefig("images/mpc/soles.png", dpi=300, bbox_inches='tight')
+
+
+
+
+
+    fig, axs = plt.subplots(2, 1, figsize=(14, 10))
+    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
+
+    # Combinazione di colori e marker
+    ref_color = 'tab:red'
+    actual_color = 'tab:green'
+    zmp_color = 'tab:orange'
+
+    ### 2. CoM/ZMP X ###
+    ax2 = axs[0]
+    ax2.set_title("X Trajectory Over Time")
+    ax2.set_xlabel("Time [s]")
+    ax2.set_ylabel("X [m]")
+
+    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
+    ax2.plot(tt, p_lsole_trajectory.x, label='L Sole.x', linestyle=':', color='tab:blue')
+    ax2.plot(tt, p_rsole_trajectory.x, label='R Sole.x', linestyle=':', color='tab:orange')
+    ax2.plot(tt, p_lsole_des_trajectory.x, label='L Sole.x Ref', linestyle=':', color='tab:blue', alpha=0.5)
+    ax2.plot(tt, p_rsole_des_trajectory.x, label='R Sole.x Ref', linestyle=':', color='tab:orange', alpha=0.5)
+
+    ax2.legend()
+    ax2.grid(True)
+
+    ### 3. CoM/ZMP Y ###
+    ax3 = axs[1]
+    ax3.set_title("Y Trajectory Over Time")
+    ax3.set_xlabel("Time [s]")
+    ax3.set_ylabel("Y [m]")
+
+    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
+    ax3.plot(tt, p_lsole_trajectory.y, label='L Sole.y', linestyle=':', color='tab:blue')
+    ax3.plot(tt, p_rsole_trajectory.y, label='R Sole.y', linestyle=':', color='tab:orange')
+    ax3.plot(tt, p_lsole_des_trajectory.y, label='L Sole.y Ref', linestyle=':', color='tab:blue', alpha=0.5)
+    ax3.plot(tt, p_rsole_des_trajectory.y, label='R Sole.y Ref', linestyle=':', color='tab:orange', alpha=0.5)
+
+    ax3.legend()
+    ax3.grid(True)
+
+    fig.savefig("images/mpc/mpc+soles(x).png", dpi=300, bbox_inches='tight')
+
+
+    
+
+
+    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
+
+    # Combinazione di colori e marker
+    ref_color = 'tab:red'
+    actual_color = 'tab:green'
+    zmp_color = 'tab:orange'
+
+    ### 1. CoM/ZMP in XY ###
+    ax1 = axs[0, 0]
+    ax1.set_title("CoM and ZMP Trajectories (X-Y)")
+    ax1.set_xlabel("X [m]")
+    ax1.set_ylabel("Y [m]")
+
+
+    ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM', color=actual_color, marker='o', markersize=4)
+    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP Ref', linestyle='-.', color=zmp_color)
+   
+
+    ax1.axis('equal')
+    ax1.legend()
+    ax1.grid(True)
+
+    ### 2. CoM/ZMP X ###
+    ax2 = axs[0, 1]
+    ax2.set_title("X Trajectory Over Time")
+    ax2.set_xlabel("Time [s]")
+    ax2.set_ylabel("X [m]")
+
+    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
+    ax2.plot(tt, p_lsole_trajectory.x, label='L Sole.x', linestyle=':', color='tab:blue')
+    ax2.plot(tt, p_rsole_trajectory.x, label='R Sole.x', linestyle=':', color='tab:orange')
+    ax2.plot(tt, p_lsole_des_trajectory.x, label='L Sole.x Ref', linestyle=':', color='tab:blue', alpha=0.5)
+    ax2.plot(tt, p_rsole_des_trajectory.x, label='R Sole.x Ref', linestyle=':', color='tab:orange', alpha=0.5)
+
+    ax2.legend()
+    ax2.grid(True)
+
+    ### 3. CoM/ZMP Y ###
+    ax3 = axs[1, 0]
+    ax3.set_title("Y Trajectory Over Time")
+    ax3.set_xlabel("Time [s]")
+    ax3.set_ylabel("Y [m]")
+
+    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
+    ax3.plot(tt, p_lsole_trajectory.y, label='L Sole.y', linestyle=':', color='tab:blue')
+    ax3.plot(tt, p_rsole_trajectory.y, label='R Sole.y', linestyle=':', color='tab:orange')
+    ax3.plot(tt, p_lsole_des_trajectory.y, label='L Sole.y Ref', linestyle=':', color='tab:blue', alpha=0.5)
+    ax3.plot(tt, p_rsole_des_trajectory.y, label='R Sole.y Ref', linestyle=':', color='tab:orange', alpha=0.5)
+
+    ax3.legend()
+    ax3.grid(True)
+
+    ### 4. CoM/ZMP Z ###
+    ax4 = axs[1, 1]
+    ax4.set_title("Z Trajectory Over Time")
+    ax4.set_xlabel("Time [s]")
+    ax4.set_ylabel("Z [m]")
+
+    ax4.plot(tt, com_trajectory.z, label='CoM.z', linestyle='-', color=actual_color, marker='o', markersize=4)
+    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
+    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z Ref', linestyle='-.', color=zmp_color)
+    ax4.plot(tt, p_lsole_trajectory.z, label='L Sole.z', linestyle=':', color='tab:blue')
+    ax4.plot(tt, p_rsole_trajectory.z, label='R Sole.z', linestyle=':', color='tab:orange')
+    ax4.plot(tt, p_lsole_des_trajectory.z, label='L Sole.z Ref', linestyle=':', color='tab:blue', alpha=0.5)
+    ax4.plot(tt, p_rsole_des_trajectory.z, label='R Sole.z Ref', linestyle=':', color='tab:orange', alpha=0.5)
+
+    ax4.legend()
+    ax4.grid(True)
+
+    # Final layout
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig("images/mpc/mpc+soles.png", dpi=300, bbox_inches='tight')
+
+
 
     # Figure soles (velocity):
-    fig_v_soles = plt.figure()
-    # v_lsole.x:
-    ax_v_lsole_x = fig_v_soles.add_subplot(3, 2, 1)
-    ax_v_lsole_x.set_xlabel('t')
-    ax_v_lsole_x.set_ylabel('x')
-    ax_v_lsole_x.plot(tt, v_lsole_des_trajectory.x, label='v_lsole_des.x')
-    ax_v_lsole_x.plot(tt, v_lsole_trajectory.x, label='v_lsole.x')
-    ax_v_lsole_x.legend()
-    ax_v_lsole_x.grid()
-    # v_lsole.y:
-    ax_v_lsole_y = fig_v_soles.add_subplot(3, 2, 3)
-    ax_v_lsole_y.set_xlabel('t')
-    ax_v_lsole_y.set_ylabel('y')
-    ax_v_lsole_y.plot(tt, v_lsole_des_trajectory.y, label='v_lsole_des.y')
-    ax_v_lsole_y.plot(tt, v_lsole_trajectory.y, label='v_lsole.y')
-    ax_v_lsole_y.legend()
-    ax_v_lsole_y.grid()
-    # v_lsole.z:
-    ax_v_lsole_z = fig_v_soles.add_subplot(3, 2, 5)
-    ax_v_lsole_z.set_xlabel('t')
-    ax_v_lsole_z.set_ylabel('z')
-    ax_v_lsole_z.plot(tt, v_lsole_des_trajectory.z, label='v_lsole_des.z')
-    ax_v_lsole_z.plot(tt, v_lsole_trajectory.z, label='v_lsole.z')
-    ax_v_lsole_z.legend()
-    ax_v_lsole_z.grid()
-    # v_rsole.x:
-    ax_v_rsole_x = fig_v_soles.add_subplot(3, 2, 2)
-    ax_v_rsole_x.set_xlabel('t')
-    ax_v_rsole_x.set_ylabel('x')
-    ax_v_rsole_x.plot(tt, v_rsole_des_trajectory.x, label='v_rsole_des.x')
-    ax_v_rsole_x.plot(tt, v_rsole_trajectory.x, label='v_rsole.x')
-    ax_v_rsole_x.legend()
-    ax_v_rsole_x.grid()
-    # v_rsole.y:
-    ax_v_rsole_y = fig_v_soles.add_subplot(3, 2, 4)
-    ax_v_rsole_y.set_xlabel('t')
-    ax_v_rsole_y.set_ylabel('y')
-    ax_v_rsole_y.plot(tt, v_rsole_des_trajectory.y, label='v_rsole_des.y')
-    ax_v_rsole_y.plot(tt, v_rsole_trajectory.y, label='v_rsole.y')
-    ax_v_rsole_y.legend()
-    ax_v_rsole_y.grid()
-    # v_rsole.z:
-    ax_v_rsole_z = fig_v_soles.add_subplot(3, 2, 6)
-    ax_v_rsole_z.set_xlabel('t')
-    ax_v_rsole_z.set_ylabel('z')
-    ax_v_rsole_z.plot(tt, v_rsole_des_trajectory.z, label='v_rsole_des.z')
-    ax_v_rsole_z.plot(tt, v_rsole_trajectory.z, label='v_rsole.z')
-    ax_v_rsole_z.legend()
-    ax_v_rsole_z.grid()
+    fig_v_soles, axs = plt.subplots(3, 2, figsize=(14, 9))
+    fig_v_soles.suptitle("Left and Right Sole Velocities", fontsize=16)
 
-    fig_v_soles.savefig(f"images/mpc/soles_velocity.png", bbox_inches='tight')
+    # Left sole velocity
+    axs[0, 0].set_title("Left Sole Velocity - X")
+    axs[0, 0].plot(tt, v_lsole_des_trajectory.x, label='Desired', color='tab:blue', **des_style)
+    axs[0, 0].plot(tt, v_lsole_trajectory.x, label='Actual', color='tab:green', **real_style)
+    axs[0, 0].set_xlabel('Time [s]')
+    axs[0, 0].set_ylabel('X [m/s]')
+    axs[0, 0].legend()
+    axs[0, 0].grid(True)
 
-    # Angular momentum:
-    fig_angular_momentum = plt.figure()
-    # Angular momentum (x):
-    ax_angular_momentum_x = fig_angular_momentum.add_subplot(3, 1, 1)
-    ax_angular_momentum_x.set_xlabel('t')
-    ax_angular_momentum_x.set_xlabel('angular momentum (x)')
-    ax_angular_momentum_x.plot(tt, angular_momentum_trajectory.x, label='ang. momentum (x)')
-    ax_angular_momentum_x.legend()
-    ax_angular_momentum_x.grid()
-    # Angular momentum (y):
-    ax_angular_momentum_y = fig_angular_momentum.add_subplot(3, 1, 2)
-    ax_angular_momentum_y.set_xlabel('t')
-    ax_angular_momentum_y.set_xlabel('angular momentum (y)')
-    ax_angular_momentum_y.plot(tt, angular_momentum_trajectory.y, label='ang. momentum (y)')
-    ax_angular_momentum_y.legend()
-    ax_angular_momentum_y.grid()
-    # Angular momentum (z):
-    ax_angular_momentum_z = fig_angular_momentum.add_subplot(3, 1, 3)
-    ax_angular_momentum_z.set_xlabel('t')
-    ax_angular_momentum_z.set_xlabel('angular momentum (z)')
-    ax_angular_momentum_z.plot(tt, angular_momentum_trajectory.z, label='ang. momentum (z)')
-    ax_angular_momentum_z.legend()
-    ax_angular_momentum_z.grid()
+    axs[1, 0].set_title("Left Sole Velocity - Y")
+    axs[1, 0].plot(tt, v_lsole_des_trajectory.y, label='Desired', color='tab:blue', **des_style)
+    axs[1, 0].plot(tt, v_lsole_trajectory.y, label='Actual', color='tab:green', **real_style)
+    axs[1, 0].set_xlabel('Time [s]')
+    axs[1, 0].set_ylabel('Y [m/s]')
+    axs[1, 0].legend()
+    axs[1, 0].grid(True)
 
-    fig_angular_momentum.savefig(f"images/mpc/angular_momentum.png", bbox_inches='tight')
+    axs[2, 0].set_title("Left Sole Velocity - Z")
+    axs[2, 0].plot(tt, v_lsole_des_trajectory.z, label='Desired', color='tab:blue', **des_style)
+    axs[2, 0].plot(tt, v_lsole_trajectory.z, label='Actual', color='tab:green', **real_style)
+    axs[2, 0].set_xlabel('Time [s]')
+    axs[2, 0].set_ylabel('Z [m/s]')
+    axs[2, 0].legend()
+    axs[2, 0].grid(True)
 
-    # plt.show()
+    # Right sole velocity
+    axs[0, 1].set_title("Right Sole Velocity - X")
+    axs[0, 1].plot(tt, v_rsole_des_trajectory.x, label='Desired', color='tab:orange', **des_style)
+    axs[0, 1].plot(tt, v_rsole_trajectory.x, label='Actual', color='tab:red', **real_style)
+    axs[0, 1].set_xlabel('Time [s]')
+    axs[0, 1].set_ylabel('X [m/s]')
+    axs[0, 1].legend()
+    axs[0, 1].grid(True)
+
+    axs[1, 1].set_title("Right Sole Velocity - Y")
+    axs[1, 1].plot(tt, v_rsole_des_trajectory.y, label='Desired', color='tab:orange', **des_style)
+    axs[1, 1].plot(tt, v_rsole_trajectory.y, label='Actual', color='tab:red', **real_style)
+    axs[1, 1].set_xlabel('Time [s]')
+    axs[1, 1].set_ylabel('Y [m/s]')
+    axs[1, 1].legend()
+    axs[1, 1].grid(True)
+
+    axs[2, 1].set_title("Right Sole Velocity - Z")
+    axs[2, 1].plot(tt, v_rsole_des_trajectory.z, label='Desired', color='tab:orange', **des_style)
+    axs[2, 1].plot(tt, v_rsole_trajectory.z, label='Actual', color='tab:red', **real_style)
+    axs[2, 1].set_xlabel('Time [s]')
+    axs[2, 1].set_ylabel('Z [m/s]')
+    axs[2, 1].legend()
+    axs[2, 1].grid(True)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig_v_soles.savefig("images/mpc/soles_velocity.png", dpi=300, bbox_inches='tight')
+
+    fig_ang_momentum, axs = plt.subplots(3, 1, figsize=(12, 7))
+    fig_ang_momentum.suptitle("Angular Momentum Trajectory", fontsize=16)
+
+    axs[0].set_title("Angular Momentum - X")
+    axs[0].plot(tt, angular_momentum_trajectory.x, color='tab:purple', label='X')
+    axs[0].set_xlabel('Time [s]')
+    axs[0].set_ylabel('Momentum [kg·m²/s]')
+    axs[0].legend()
+    axs[0].grid(True)
+
+    axs[1].set_title("Angular Momentum - Y")
+    axs[1].plot(tt, angular_momentum_trajectory.y, color='tab:cyan', label='Y')
+    axs[1].set_xlabel('Time [s]')
+    axs[1].set_ylabel('Momentum [kg·m²/s]')
+    axs[1].legend()
+    axs[1].grid(True)
+
+    axs[2].set_title("Angular Momentum - Z")
+    axs[2].plot(tt, angular_momentum_trajectory.z, color='tab:brown', label='Z')
+    axs[2].set_xlabel('Time [s]')
+    axs[2].set_ylabel('Momentum [kg·m²/s]')
+    axs[2].legend()
+    axs[2].grid(True)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+    fig_ang_momentum.savefig("images/mpc/angular_momentum.png", dpi=300, bbox_inches='tight')

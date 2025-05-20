@@ -187,7 +187,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
           labrob::Foot::RIGHT
       ),
       0.0,
-      2000,
+      50000,
       labrob::WalkingState::Standing
   ));
 

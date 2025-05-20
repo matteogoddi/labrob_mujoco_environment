@@ -118,7 +118,6 @@ int main() {
   }
 
   jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.0667;
-  std::cerr << "CoM z position: " << jvrc1_mj_data_ptr->qpos[2] << std::endl;
   jvrc1_mj_data_ptr->qpos[3] = 1.0;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
@@ -182,10 +181,9 @@ int main() {
     try {
       while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
 
-        // stop at first iteration
-        // if (timestep_counter >= 1) {
-        //   break;
-        // }
+        if (timestep_counter >= 10) {
+          break;
+        }
         
         labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 

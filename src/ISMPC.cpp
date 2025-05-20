@@ -131,6 +131,12 @@ ISMPC::solve(
     mc_x.segment(n, varying_x.rows()) = varying_x;
     mc_y.segment(n, varying_y.rows()) = varying_y;
     mc_z.segment(n, varying_z.rows()) = varying_z;
+
+    // print mc_x, mc_y and mc_z
+    std::cerr << "mc_x: " << mc_x.transpose() << std::endl;
+    std::cerr << "mc_y: " << mc_y.transpose() << std::endl;
+    std::cerr << "mc_z: " << mc_z.transpose() << std::endl;
+
     n += n_bar;
     ++k;
   }
