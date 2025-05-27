@@ -49,7 +49,14 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
   robot_state.contact_forces.resize(d->ncon);
   for (int i = 0; i < d->ncon; ++i) {
     mj_contactForce(m, d, i, force);
-    mju_rotVecMatT(result, force, d->contact[i].frame);
+    //mju_rotVecMatT(result, force, d->contact[i].frame);
+    mju_mulMatVec(result, d->contact[i].frame, force, 3, 3);
+    for (int row = 0; row < 3; ++row) {
+        result[row] = 0;
+        for (int col = 0; col < 3; ++col) {
+            result[row] += d->contact[i].frame[3 * col + row] * force[col];
+        }
+    }
     sum += Eigen::Vector3d(result);
     for (int j = 0; j < 3; ++j) {
       robot_state.contact_points[i](j) = d->contact[i].pos[j];
