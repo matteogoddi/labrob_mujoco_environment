@@ -61,16 +61,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     root_joint,
     full_robot_model
   );
-  const std::vector<std::string> joint_to_lock_names{
-    // "waist_roll_joint",
-    // "waist_yaw_joint",
-    "left_wrist_yaw_joint",
-    "left_wrist_pitch_joint",
-    "left_wrist_roll_joint",
-    "right_wrist_yaw_joint",
-    "right_wrist_pitch_joint",
-    "right_wrist_roll_joint"
-  };
+  const std::vector<std::string> joint_to_lock_names{};
   std::vector<pinocchio::JointIndex> joint_ids_to_lock;
   for (const auto& joint_name : joint_to_lock_names) {
     if (full_robot_model.existJointName(joint_name)) {
@@ -136,30 +127,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   double l_shoulder_y_des = 0.0;
   double l_elbow_p_des = r_elbow_p_des;
 
-  q_jnt_des_ = Eigen::VectorXd::Zero(njnt);
-  q_jnt_des_(robot_model_.getJointId("waist_pitch_joint") - 2) = waist_p_des;
-  q_jnt_des_(robot_model_.getJointId("waist_yaw_joint") - 2) = waist_y_des;
-  q_jnt_des_(robot_model_.getJointId("waist_roll_joint") - 2) = waist_r_des;
-  q_jnt_des_(robot_model_.getJointId("right_hip_yaw_joint") - 2) = r_hip_y_des;
-  q_jnt_des_(robot_model_.getJointId("right_hip_roll_joint") - 2) = r_hip_r_des;
-  q_jnt_des_(robot_model_.getJointId("right_hip_pitch_joint") - 2) = r_hip_p_des;
-  q_jnt_des_(robot_model_.getJointId("right_knee_joint") - 2) = r_knee_p_des;
-  q_jnt_des_(robot_model_.getJointId("right_ankle_pitch_joint") - 2) = r_ankle_p_des;
-  q_jnt_des_(robot_model_.getJointId("right_ankle_roll_joint") - 2) = r_ankle_r_des;
-  q_jnt_des_(robot_model_.getJointId("left_hip_yaw_joint") - 2) = l_hip_y_des;
-  q_jnt_des_(robot_model_.getJointId("left_hip_roll_joint") - 2) = l_hip_r_des;
-  q_jnt_des_(robot_model_.getJointId("left_hip_pitch_joint") - 2) = l_hip_p_des;
-  q_jnt_des_(robot_model_.getJointId("left_knee_joint") - 2) = l_knee_p_des;
-  q_jnt_des_(robot_model_.getJointId("left_ankle_pitch_joint") - 2) = l_ankle_p_des;
-  q_jnt_des_(robot_model_.getJointId("left_ankle_roll_joint") - 2) = l_ankle_r_des;
-  q_jnt_des_(robot_model_.getJointId("right_shoulder_pitch_joint") - 2) = r_shoulder_p_des;
-  q_jnt_des_(robot_model_.getJointId("right_shoulder_roll_joint") - 2) = r_shoulder_r_des;
-  q_jnt_des_(robot_model_.getJointId("right_shoulder_yaw_joint") - 2) = r_shoulder_y_des;
-  q_jnt_des_(robot_model_.getJointId("right_elbow_joint") - 2) = r_elbow_p_des;
-  q_jnt_des_(robot_model_.getJointId("left_shoulder_pitch_joint") - 2) = l_shoulder_p_des;
-  q_jnt_des_(robot_model_.getJointId("left_shoulder_roll_joint") - 2) = l_shoulder_r_des;
-  q_jnt_des_(robot_model_.getJointId("left_shoulder_yaw_joint") - 2) = l_shoulder_y_des;
-  q_jnt_des_(robot_model_.getJointId("left_elbow_joint") - 2) = l_elbow_p_des;
+  q_jnt_des_ = q_init.tail(njnt);
 
   // TODO: init using node handle.
   controller_frequency_ = 1000;
@@ -297,7 +265,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
   std::cerr << "CoM target height: " << com_target_height << std::endl;
-  double foot_constraint_square_width = 0.0045; // 0.0049; //0.05
+  double foot_constraint_square_width = 0.1; //0.0045; // 0.0049; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,
