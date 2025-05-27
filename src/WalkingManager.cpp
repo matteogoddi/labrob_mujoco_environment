@@ -85,8 +85,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   );
   robot_data_ = pinocchio::Data(robot_model_);
 
-  q_next_prev_ = robot_state_to_pinocchio_joint_configuration(robot_model_, initial_robot_state);
-  v_next_prev_ = robot_state_to_pinocchio_joint_velocity(robot_model_, initial_robot_state);
+  // q_next_prev_ = robot_state_to_pinocchio_joint_configuration(robot_model_, initial_robot_state);
+  // v_next_prev_ = robot_state_to_pinocchio_joint_velocity(robot_model_, initial_robot_state);
 
   // Init desired lsole and rsole poses:
   auto q_init = robot_state_to_pinocchio_joint_configuration(
@@ -187,7 +187,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
           labrob::Foot::RIGHT
       ),
       0.0,
-      50000,
+      5000,
       labrob::WalkingState::Standing
   ));
 
@@ -297,7 +297,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
   std::cerr << "CoM target height: " << com_target_height << std::endl;
-  double foot_constraint_square_width = 0.0049; //0.05
+  double foot_constraint_square_width = 0.0045; // 0.0049; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,
@@ -522,6 +522,7 @@ WalkingManager::update(
   current_gait_configuration.is_left_foot_support = true;
   current_gait_configuration.is_right_foot_support = true;
   if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    std::cout << "Single support" << std::endl;
     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
   }
@@ -640,11 +641,6 @@ WalkingManager::update(
       current_gait_configuration,
       desired_gait_configuration
   );
-  //print joint command
-
-
-
-
   // Update timing in milliseconds.
   // NOTE: assuming update() is actually called every controller_timestep_msec_
   //       milliseconds.

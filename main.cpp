@@ -181,15 +181,15 @@ int main() {
     try {
       while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
 
-        if (timestep_counter >= 10) {
-          break;
-        }
+        // if (timestep_counter >= 10) {
+        //   break;
+        // }
         
         labrob::RobotState robot_state = robot_state_from_mujoco(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
         // Update walking manager:
         labrob::JointCommand joint_command;
-        Eigen::Vector3d zmp_position;
+        // Eigen::Vector3d zmp_position;
         walking_manager.update(robot_state, joint_command);
 
         double point[3]{0.0, 0.0, 0.0};
@@ -234,7 +234,6 @@ int main() {
       std::cerr << "Exception: " << e.what() << std::endl;
       break;
     }
-
 
     joint_vel_log_file.flush();
     joint_eff_log_file.flush();

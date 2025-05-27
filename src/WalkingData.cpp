@@ -6,7 +6,7 @@ namespace labrob {
 
 const labrob::WalkingState&
 WalkingData::getWalkingState() const {
-  return footstep_plan.front().getWalkingState();
+  return footstep_plan.front().getWalkingState();  
 }
 
 void
@@ -59,11 +59,11 @@ WalkingData::updateWalkingState(int64_t t) {
       footstep_plan.pop_front();
       t0 = t;
     }
-  } else if (getWalkingState() == labrob::WalkingState::Standing &&
-             footstep_plan.size() == 1) {
+  } else if (getWalkingState() == labrob::WalkingState::Standing) {
     // Update t0 to keep robot in standing position.
     t0 = t;
-  } else if (t >= t0 + footstep_plan.front().getDuration()) {
+  } 
+  else if (t >= t0 + footstep_plan.front().getDuration()) {
     footstep_plan.pop_front();
     t0 = t;
   }
