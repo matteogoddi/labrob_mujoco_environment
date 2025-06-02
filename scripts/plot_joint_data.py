@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from math import ceil, floor, sqrt
+from collections import defaultdict
 
 if __name__ == '__main__':
     joint_vel: np.ndarray = np.loadtxt('/tmp/joint_vel.txt')
@@ -45,8 +46,30 @@ if __name__ == '__main__':
         plt.grid()
         plt.tight_layout()
 
-    i=1
-    for fig in figs:
-        fig.savefig(f"images/joints/joint_data{i}.png", bbox_inches='tight')
-        i+=1
+    grouped_indices = defaultdict(list)
+
+    for idx, name in enumerate(joint_names):
+        base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
+        grouped_indices[base_name].append(idx)
+    # Stampa i gruppi
+    # for group_name, indices in grouped_indices.items():
+    #     print(f"{group_name}: {indices}")
+
+    # Crea un plot per ogni gruppo
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, joint_eff[:, i], label=joint_names[i])
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Torque [Nm]')
+        ax.set_title(group_name.replace('_', ' ').title())
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        figs.append(fig)
+
+        fig.savefig(f"images/joints/{group_name}_torque_plot.png")
+        plt.close(fig)
+
     #plt.show()

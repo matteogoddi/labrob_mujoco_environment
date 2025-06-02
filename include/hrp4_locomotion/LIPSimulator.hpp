@@ -20,7 +20,8 @@ struct LIPSimulatorOptions {
   int64_t mpc_prediction_horizon_msec;
   int64_t mpc_timestep_msec;
   double mpc_com_target_height;
-  double mpc_foot_constraint_square_width;
+  double mpc_foot_constraint_square_length;
+  double mpc_foot_constraint_square_height;
   // Log options:
   std::filesystem::path log_directory_path;
 };

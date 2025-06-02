@@ -32,6 +32,7 @@ struct GaitConfiguration {
   labrob::ee3 com;
   labrob::ee6 lsole, rsole;
   labrob::ee_rot torso;
+  labrob::ee_rot pelvis;
 
   bool is_left_foot_support, is_right_foot_support;
 };

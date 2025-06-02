@@ -90,6 +90,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   lsole_idx_ = robot_model_.getFrameId("left_ankle_pitch_link");
   rsole_idx_ = robot_model_.getFrameId("right_ankle_pitch_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
+  pelvis_idx_ = robot_model_.getFrameId("pelvis");
   const auto& T_lsole_init = robot_data_.oMf[lsole_idx_];
   const auto& T_rsole_init = robot_data_.oMf[rsole_idx_];
 
@@ -171,7 +172,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       double_support_duration,
       labrob::WalkingState::Starting
   ));
-  
+
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -253,19 +254,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
   // Init MPC:
   Eigen::Vector3d p_CoM = robot_data_.com[0];
-  // print CoM position:
-    std::cerr << "CoM position: " << p_CoM.transpose() << std::endl;
-  // print z position
-    std::cerr << "CoM z position: " << p_CoM.z() << std::endl;
-    std::cerr << "CoM x position: " << T_lsole_init.translation().z() << std::endl;
-
-    //print world frame position
-
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-  std::cerr << "CoM target height: " << com_target_height << std::endl;
-  double foot_constraint_square_width = 0.1; //0.0045; // 0.0049; //0.05
+  double foot_constraint_square_length = 0.21; //0.0045; // 0.0049; //0.05
+  double foot_constraint_square_height = 0.08; //0.0045; // 0.0049; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,
@@ -276,7 +269,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       mpc_prediction_horizon_msec,
       mpc_timestep_msec,
       std::sqrt(9.81 / com_target_height),
-      foot_constraint_square_width
+      foot_constraint_square_length,
+      foot_constraint_square_height
   );
 
   auto params = WholeBodyControllerParams::getDefaultParams();
@@ -421,7 +415,9 @@ WalkingManager::update(
     //  std::cout << "CoM_drift = " << a_CoM_drift.transpose() << std::endl;
   const auto& J_CoM = robot_data_.Jcom;
   const auto& T_torso = robot_data_.oMf[torso_idx_];
+  const auto& T_pelvis = robot_data_.oMf[pelvis_idx_];
   auto torso_orientation = T_torso.rotation();
+  auto pelvis_orientation = T_pelvis.rotation();
   Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   pinocchio::getFrameJacobian(
       robot_model_,
@@ -441,6 +437,30 @@ WalkingManager::update(
       J_torso_dot
   );
   auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
+
+
+  Eigen::MatrixXd J_pelvis = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  pinocchio::getFrameJacobian(
+      robot_model_,
+      robot_data_,
+      pelvis_idx_,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+      J_pelvis
+  );
+
+  auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
+  Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  pinocchio::getFrameJacobianTimeVariation(
+      robot_model_,
+      robot_data_,
+      pelvis_idx_,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+      J_pelvis_dot
+  );
+  auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
+
+
+
   const auto& T_lsole = robot_data_.oMf[lsole_idx_];
   Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   pinocchio::getFrameJacobian(
@@ -500,7 +520,11 @@ WalkingManager::update(
 
   current_gait_configuration.torso.pos = robot_data_.oMf[torso_idx_].rotation();
   current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
-  
+
+  current_gait_configuration.pelvis.pos = robot_data_.oMf[pelvis_idx_].rotation();
+//   std::cout << "Pelvis orientation: " << current_gait_configuration.pelvis.pos.transpose() << std::endl;
+  current_gait_configuration.pelvis.vel = J_pelvis.bottomRows<3>() * qdot;
+
   current_gait_configuration.lsole.pos = labrob::SE3(robot_data_.oMf[lsole_idx_].rotation(), robot_data_.oMf[lsole_idx_].translation());
   current_gait_configuration.lsole.vel = J_lsole * qdot;
 
@@ -598,8 +622,16 @@ WalkingManager::update(
   double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
   double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
   desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-  desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.lsole.vel.tail(3)) / 2.0;
-  desired_gait_configuration.torso.acc = (desired_gait_configuration.rsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+  desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+  desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+
+  // Pelvis task
+  // double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
+  // double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
+  desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+//   std::cout << "Pelvis orientation desired: " << desired_gait_configuration.pelvis.pos.transpose() << std::endl;
+  desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+  desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
 
   joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
@@ -746,7 +778,7 @@ WalkingManager::swingFootTrajectoryBezier(
 
   pinocchio::SE3 desired_swing_foot_pose;
   desired_swing_foot_pose.translation() =
-      std::pow(1.0 - s, 3.0) * p0 + 
+      std::pow(1.0 - s, 3.0) * p0 +
       3.0 * std::pow(1.0 - s, 2.0) * s * p1 +
       3.0 * (1.0 - s) * std::pow(s, 2.0) * p2 +
       std::pow(s, 3.0) * pf;

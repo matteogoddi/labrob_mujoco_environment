@@ -45,6 +45,7 @@ class WalkingManager {
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
+  pinocchio::FrameIndex pelvis_idx_;
 
   Eigen::VectorXd q_jnt_des_;
 

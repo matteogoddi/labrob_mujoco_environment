@@ -23,7 +23,8 @@ class ISMPC{
       int64_t prediction_horizon_msec,
       int64_t mpc_timestep_msec,
       double omega,
-      double foot_constraint_square_width
+      double foot_constraint_square_length,
+      double foot_constraint_square_height
   );
 
   void solve(
@@ -49,7 +50,8 @@ class ISMPC{
   int64_t mpc_timestep_msec_;
   int64_t control_timestep_msec_;
   double omega_;
-  double foot_constraint_square_width_;
+  double foot_constraint_square_length_;
+  double foot_constraint_square_height_;
 
   // Matrices for prediction:
   Eigen::VectorXd p_;

@@ -188,7 +188,7 @@ int main() {
     try {
       while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
 
-        // if (timestep_counter >= 10) {
+        // if (timestep_counter >= 20) {
         //   break;
         // }
         

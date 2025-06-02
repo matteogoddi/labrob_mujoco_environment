@@ -27,7 +27,8 @@ LIPSimulator::run() {
       options_.mpc_prediction_horizon_msec,
       options_.mpc_timestep_msec,
       std::sqrt(9.81 / options_.mpc_com_target_height),
-      options_.mpc_foot_constraint_square_width
+      options_.mpc_foot_constraint_square_length,
+      options_.mpc_foot_constraint_square_height
   );
   for (int k = 0; k < options_.duration_msec / options_.timestep_msec; ++k) {
     int64_t t_msec = k * options_.timestep_msec;

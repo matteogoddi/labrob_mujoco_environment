@@ -16,7 +16,8 @@ int main() {
   lip_simulator_options.mpc_prediction_horizon_msec = 2000;
   lip_simulator_options.mpc_timestep_msec = 100;
   lip_simulator_options.mpc_com_target_height = p_CoM.z() - p_ZMP.z();
-  lip_simulator_options.mpc_foot_constraint_square_width = 0.05;
+  lip_simulator_options.mpc_foot_constraint_square_length = 0.05;
+  lip_simulator_options.mpc_foot_constraint_square_height = 0.05;
   lip_simulator_options.log_directory_path = "/tmp/labrob/lip_simulator";
   // TODO: read footstep plan from .json file.
   auto R_lsole_init = Eigen::Matrix3d::Identity();

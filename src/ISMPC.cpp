@@ -6,10 +6,12 @@ ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
     double omega,
-    double foot_constraint_square_width
+    double foot_constraint_square_length,
+    double foot_constraint_square_height
 ) : mpc_timestep_msec_(mpc_timestep_msec),
     omega_(omega),
-    foot_constraint_square_width_(foot_constraint_square_width),
+    foot_constraint_square_length_(foot_constraint_square_length),
+    foot_constraint_square_height_(foot_constraint_square_height),
     input_(Eigen::Vector3d::Zero()) {
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
@@ -141,12 +143,12 @@ ISMPC::solve(
     ++k;
   }
 
-  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(0)),
-                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(1)),
-                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(2));
-  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(0)),
-                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(1)),
-                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(2));
+  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(0)),
+                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_height_ / 2.0 + state.zmp_pos_(1)),
+                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_height_ / 2.0 + state.zmp_pos_(2));
+  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(0)),
+                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_height_ / 2.0 - state.zmp_pos_(1)),
+                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_height_ / 2.0 - state.zmp_pos_(2));
 
   Eigen::VectorXd b(N_);
   A_eq_.setZero();
