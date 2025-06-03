@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from math import ceil, floor, sqrt
+import os
 
 if __name__ == '__main__':
     # fl: np.ndarray = np.loadtxt('/tmp/fl.txt')
@@ -14,6 +15,9 @@ if __name__ == '__main__':
     delta = 1e-3
     num_samples = cop.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
+
+    if not os.path.exists('images/mpc'):
+        os.makedirs('images/mpc') 
     # transitions = delta * np.array(np.where(np.abs(np.diff(alpha)) > 0.05))
 
     # plt.figure()

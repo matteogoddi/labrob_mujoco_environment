@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import os
 
 class Trajectory:
     def __init__(self, x, y, z, roll=None, pitch=None, yaw=None):
@@ -63,7 +64,10 @@ if __name__ == '__main__':
 
     delta_t = 1e-3
     samples = mpc_com_trajectory.x.shape[0]
-    tt = np.linspace(0.0, delta_t * samples, samples)    
+    tt = np.linspace(0.0, delta_t * samples, samples)   
+
+    if not os.path.exists('images/mpc'):
+        os.makedirs('images/mpc') 
 
     sns.set(style='whitegrid')
     plt.rcParams.update({

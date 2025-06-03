@@ -124,7 +124,7 @@ int main() {
     jvrc1_mj_data_ptr->qpos[i] = 0.0;
   }
 
-  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.0667;
+  jvrc1_mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.07;//- 0.0667;
   jvrc1_mj_data_ptr->qpos[3] = 1.0;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
   jvrc1_mj_data_ptr->qpos[jvrc1_mj_model_ptr->jnt_qposadr[mj_name2id(jvrc1_mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
@@ -188,7 +188,7 @@ int main() {
     try {
       while( jvrc1_mj_data_ptr->time - simstart < 1.0/60.0 ) {
 
-        // if (timestep_counter >= 20) {
+        // if (timestep_counter >= 30) {
         //   break;
         // }
         
@@ -206,15 +206,15 @@ int main() {
         for (int k = 0; k < 1; ++k) {
           mj_step1(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr);
 
-          int torso_id = mj_name2id(jvrc1_mj_model_ptr, mjOBJ_BODY, "pelvis");
-          double time = timestep_counter / rate;
-          if (timestep_counter == 5000) {
-            mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
-          }
-          if (timestep_counter == 5100) {
-            force[0] = -force[0];
-            mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
-          }
+          // int torso_id = mj_name2id(jvrc1_mj_model_ptr, mjOBJ_BODY, "pelvis");
+          // double time = timestep_counter / rate;
+          // if (timestep_counter == 5000) {
+          //   mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+          // }
+          // if (timestep_counter == 5100) {
+          //   force[0] = -force[0];
+          //   mj_applyFT(jvrc1_mj_model_ptr, jvrc1_mj_data_ptr, force, torque, point, torso_id, jvrc1_mj_data_ptr->qfrc_applied);
+          // }
 
           for (int i = 0; i < jvrc1_mj_model_ptr->nu; ++i) {
             int joint_id = jvrc1_mj_model_ptr->actuator_trnid[i * 2];

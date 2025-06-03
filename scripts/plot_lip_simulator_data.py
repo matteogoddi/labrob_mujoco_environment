@@ -2,6 +2,7 @@
 import json
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 class LIPSimulatorLog:
     def __init__(self, lip_states=[], timings=[]):

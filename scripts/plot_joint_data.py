@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from math import ceil, floor, sqrt
 from collections import defaultdict
+import os
 
 if __name__ == '__main__':
     joint_vel: np.ndarray = np.loadtxt('/tmp/joint_vel.txt')
@@ -11,6 +12,9 @@ if __name__ == '__main__':
     delta = 1e-3
     num_samples = joint_vel.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
+
+    if not os.path.exists('images/joints'):
+        os.makedirs('images/joints')
 
     num_joints = joint_vel.shape[1]
 
@@ -51,9 +55,10 @@ if __name__ == '__main__':
     for idx, name in enumerate(joint_names):
         base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
         grouped_indices[base_name].append(idx)
-    # Stampa i gruppi
-    # for group_name, indices in grouped_indices.items():
-    #     print(f"{group_name}: {indices}")
+    
+    #crea una directory per salvare le immagini se non esiste
+    
+    
 
     # Crea un plot per ogni gruppo
     figs = []

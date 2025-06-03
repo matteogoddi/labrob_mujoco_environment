@@ -28,8 +28,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_com = 0.1;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
-  params.weight_torso = 1e-2;
-  params.weight_pelvis = 1e-4;
+  params.weight_torso = 1e-3;
+  params.weight_pelvis = 0;
   params.weight_angular_momentum = 0.0001;
   params.weight_regulation = 1e-4;
 
@@ -59,8 +59,8 @@ WholeBodyController::WholeBodyController(
 
   robot_data_ = pinocchio::Data(robot_model_);
 
-  lsole_idx_ = robot_model_.getFrameId("left_ankle_pitch_link");
-  rsole_idx_ = robot_model_.getFrameId("right_ankle_pitch_link");
+  lsole_idx_ = robot_model_.getFrameId("left_ankle_roll_link");
+  rsole_idx_ = robot_model_.getFrameId("right_ankle_roll_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
   pelvis_idx_ = robot_model_.getFrameId("pelvis");
 

@@ -24,7 +24,7 @@ class ISMPC{
       int64_t mpc_timestep_msec,
       double omega,
       double foot_constraint_square_length,
-      double foot_constraint_square_height
+      double foot_constraint_square_width
   );
 
   void solve(
@@ -51,7 +51,7 @@ class ISMPC{
   int64_t control_timestep_msec_;
   double omega_;
   double foot_constraint_square_length_;
-  double foot_constraint_square_height_;
+  double foot_constraint_square_width_;
 
   // Matrices for prediction:
   Eigen::VectorXd p_;
