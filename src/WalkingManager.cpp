@@ -87,8 +87,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   pinocchio::forwardKinematics(robot_model_, robot_data_, q_init);
   pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q_init);
   pinocchio::framesForwardKinematics(robot_model_, robot_data_, q_init);
-  lsole_idx_ = robot_model_.getFrameId("left_ankle_roll_link");
-  rsole_idx_ = robot_model_.getFrameId("right_ankle_roll_link");
+  lsole_idx_ = robot_model_.getFrameId("left_foot_link");
+  rsole_idx_ = robot_model_.getFrameId("right_foot_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
   pelvis_idx_ = robot_model_.getFrameId("pelvis");
   const auto& T_lsole_init = robot_data_.oMf[lsole_idx_];
@@ -134,8 +134,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   controller_frequency_ = 1000;
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
-  double swing_foot_trajectory_height = 0.05;
-  double step_length_x = 0.2;
+  double swing_foot_trajectory_height = 0;
+  double step_length_x = 0;
   double step_length_y = 0.0;
   double step_rotation = 0.0;
   int n_steps = 10;
@@ -257,8 +257,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-  double foot_constraint_square_length = 0.19; //0.05
-  double foot_constraint_square_width = 0.06; //0.05
+  double foot_constraint_square_length = 0.20; //0.05
+  double foot_constraint_square_width = 0.07; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,

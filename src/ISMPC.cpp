@@ -145,10 +145,10 @@ ISMPC::solve(
 
   b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(0)),
                 mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(1)),
-                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(2));
+                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(2));
   b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(0)),
                 mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(1)),
-                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(2));
+                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(2));
 
   Eigen::VectorXd b(N_);
   A_eq_.setZero();
