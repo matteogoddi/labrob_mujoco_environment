@@ -41,7 +41,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.mu = 0.5;
 
   params.foot_length = 0.20;
-  params.foot_width = 0.07; 
+  params.foot_width = 0.06; 
 
   return params;
 }

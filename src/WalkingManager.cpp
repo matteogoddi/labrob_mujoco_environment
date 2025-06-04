@@ -257,8 +257,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-  double foot_constraint_square_length = 0.20; //0.05
-  double foot_constraint_square_width = 0.07; //0.05
+  double foot_constraint_square_length = 100; //0.20; //0.05
+  double foot_constraint_square_width = 100; //0.07; //0.05
   Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
   filtered_state_ = labrob::LIPState(
       p_CoM,
@@ -509,11 +509,11 @@ WalkingManager::update(
 
   current_gait_configuration.is_left_foot_support = true;
   current_gait_configuration.is_right_foot_support = true;
-  if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    // std::cout << "Single support" << std::endl;
-    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
-    else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
-  }
+  //if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+  //  // std::cout << "Single support" << std::endl;
+  //  if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
+  //  else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
+  //}
 
   current_gait_configuration.com.pos = robot_data_.com[0];
   current_gait_configuration.com.vel = robot_data_.vcom[0];

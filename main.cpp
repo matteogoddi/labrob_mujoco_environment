@@ -114,7 +114,7 @@ int main() {
   mjtNum r_shoulder_p_init = 0.07;
   mjtNum r_shoulder_r_init = -0.14;
   mjtNum r_shoulder_y_init = 0.0;
-  mjtNum r_elbow_p_init = -0.44;
+  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
   mjtNum l_shoulder_p_init = r_shoulder_p_init;
   mjtNum l_shoulder_r_init = -r_shoulder_r_init;
   mjtNum l_shoulder_y_init = 0.0;
