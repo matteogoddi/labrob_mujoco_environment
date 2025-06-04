@@ -80,13 +80,14 @@ if __name__ == '__main__':
         'ytick.labelsize': 12
     })
 
-    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
-    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
-
     # Combinazione di colori e marker
     ref_color = 'tab:red'
     actual_color = 'tab:green'
     zmp_color = 'tab:orange'
+
+    #FIGURE: CoM and ZMP Trajectories
+    fig, axs = plt.subplots(2, 2, figsize=(18, 10))
+    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
 
     ### 1. CoM/ZMP in XY ###
     ax1 = axs[0, 0]
@@ -94,11 +95,9 @@ if __name__ == '__main__':
     ax1.set_xlabel("X [m]")
     ax1.set_ylabel("Y [m]")
 
-
     ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM', color=actual_color, marker='o', markersize=4)
     ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
     ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP Ref', linestyle='-.', color=zmp_color)
-   
 
     ax1.axis('equal')
     ax1.legend()
@@ -147,7 +146,10 @@ if __name__ == '__main__':
     fig.savefig("images/mpc/CoM_ZMP.png", dpi=300, bbox_inches='tight')
 
 
-    fig_soles, axs = plt.subplots(3, 2, figsize=(14, 9))
+
+    #FIGURE: Left and Right Sole Positions
+
+    fig_soles, axs = plt.subplots(3, 2, figsize=(18, 10))
     fig_soles.suptitle("Left and Right Sole Positions Over Time", fontsize=16)
 
     # Color/style settings
@@ -206,11 +208,11 @@ if __name__ == '__main__':
 
     # Final layout
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_soles.savefig("images/mpc/soles.png", dpi=300, bbox_inches='tight')
+    fig_soles.savefig("images/mpc/soles_position.png", dpi=300, bbox_inches='tight')
 
 
 
-
+    #FIGURE: CoM and ZMP Trajectories with Sole Positions (X + Y)
 
     fig, axs = plt.subplots(2, 1, figsize=(14, 10))
     fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
@@ -254,13 +256,13 @@ if __name__ == '__main__':
     ax3.legend()
     ax3.grid(True)
 
-    fig.savefig("images/mpc/mpc+soles(x).png", dpi=300, bbox_inches='tight')
+    fig.savefig("images/mpc/CoM_ZMP_soles.png", dpi=300, bbox_inches='tight')
 
 
     
 
-
-    fig, axs = plt.subplots(2, 2, figsize=(14, 10))
+    #FIGURE: CoM and ZMP Trajectories with Sole Positions (XY + X + Y + Z)
+    fig, axs = plt.subplots(3, 1, figsize=(14, 10))
     fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
 
     # Combinazione di colori e marker
@@ -268,24 +270,8 @@ if __name__ == '__main__':
     actual_color = 'tab:green'
     zmp_color = 'tab:orange'
 
-    ### 1. CoM/ZMP in XY ###
-    ax1 = axs[0, 0]
-    ax1.set_title("CoM and ZMP Trajectories (X-Y)")
-    ax1.set_xlabel("X [m]")
-    ax1.set_ylabel("Y [m]")
-
-
-    ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM', color=actual_color, marker='o', markersize=4)
-    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP Ref', linestyle='-.', color=zmp_color)
-   
-
-    ax1.axis('equal')
-    ax1.legend()
-    ax1.grid(True)
-
-    ### 2. CoM/ZMP X ###
-    ax2 = axs[0, 1]
+    ### 1. CoM/ZMP X ###
+    ax2 = axs[0]
     ax2.set_title("X Trajectory Over Time")
     ax2.set_xlabel("Time [s]")
     ax2.set_ylabel("X [m]")
@@ -301,8 +287,8 @@ if __name__ == '__main__':
     ax2.legend()
     ax2.grid(True)
 
-    ### 3. CoM/ZMP Y ###
-    ax3 = axs[1, 0]
+    ### 2. CoM/ZMP Y ###
+    ax3 = axs[1]
     ax3.set_title("Y Trajectory Over Time")
     ax3.set_xlabel("Time [s]")
     ax3.set_ylabel("Y [m]")
@@ -318,8 +304,8 @@ if __name__ == '__main__':
     ax3.legend()
     ax3.grid(True)
 
-    ### 4. CoM/ZMP Z ###
-    ax4 = axs[1, 1]
+    ### 3. CoM/ZMP Z ###
+    ax4 = axs[2]
     ax4.set_title("Z Trajectory Over Time")
     ax4.set_xlabel("Time [s]")
     ax4.set_ylabel("Z [m]")
@@ -337,11 +323,11 @@ if __name__ == '__main__':
 
     # Final layout
     plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig("images/mpc/mpc+soles.png", dpi=300, bbox_inches='tight')
+    fig.savefig("images/mpc/CoM_soles.png", dpi=300, bbox_inches='tight')
 
 
 
-    # Figure soles (velocity):
+    #FIGURE: Left and Right Sole Velocities
     fig_v_soles, axs = plt.subplots(3, 2, figsize=(14, 9))
     fig_v_soles.suptitle("Left and Right Sole Velocities", fontsize=16)
 
@@ -397,6 +383,9 @@ if __name__ == '__main__':
 
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     fig_v_soles.savefig("images/mpc/soles_velocity.png", dpi=300, bbox_inches='tight')
+
+
+    #FIGURE: Angular Momentum Trajectory    
 
     fig_ang_momentum, axs = plt.subplots(3, 1, figsize=(12, 7))
     fig_ang_momentum.suptitle("Angular Momentum Trajectory", fontsize=16)
