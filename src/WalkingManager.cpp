@@ -51,7 +51,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   cov_mod_zmp = 1.0;
 
   // Read URDF from file:
-  std::string robot_description_filename = "../jvrc_description/unitreeg1.urdf";
+  std::string robot_description_filename = "../g1_description/unitreeg1.urdf";
 
   // Build Pinocchio model and data from URDF:
   pinocchio::Model full_robot_model;
@@ -131,7 +131,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   q_jnt_des_ = q_init.tail(njnt);
 
   // TODO: init using node handle.
-  controller_frequency_ = 1000;
+  controller_frequency_ = 600;
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.1;
@@ -386,285 +386,281 @@ WalkingManager::update(
     const labrob::RobotState& robot_state,
     labrob::JointCommand& joint_command
 ) {
-  double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
-  int njnt = robot_model_.nv - 6; // size of configuration space without floating base
+    auto start_time = std::chrono::system_clock::now();
 
-  auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
-  auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
+    double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
-  // Perform forward kinematics on the whole tree and update robot data:
-  pinocchio::forwardKinematics(robot_model_, robot_data_, q);
+    int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
-  // NOTE: jacobianCenterOfMass calls forwardKinematics and
-  //       computeJointJacobians.
-  pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
-  pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
-  pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
-  pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
-  const auto& centroidal_momentum_matrix = pinocchio::ccrba(
-      robot_model_,
-      robot_data_,
-      q,
-      qdot
-  );
-  auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
+    auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
+    auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
-  const auto& p_CoM = robot_data_.com[0];
-  const auto& a_CoM_drift = robot_data_.acom[0];
-    //  std::cout << "CoM_drift = " << a_CoM_drift.transpose() << std::endl;
-  const auto& J_CoM = robot_data_.Jcom;
-  const auto& T_torso = robot_data_.oMf[torso_idx_];
-  const auto& T_pelvis = robot_data_.oMf[pelvis_idx_];
-  auto torso_orientation = T_torso.rotation();
-  auto pelvis_orientation = T_pelvis.rotation();
-  Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobian(
-      robot_model_,
-      robot_data_,
-      torso_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_torso
-  );
+    // Perform forward kinematics on the whole tree and update robot data:
+    pinocchio::forwardKinematics(robot_model_, robot_data_, q);
 
-  auto J_torso_orientation = J_torso.bottomRows<3>();
-  Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobianTimeVariation(
-      robot_model_,
-      robot_data_,
-      torso_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_torso_dot
-  );
-  auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
+    // NOTE: jacobianCenterOfMass calls forwardKinematics and
+    //       computeJointJacobians.
+    pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
+    pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
+    pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+    pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+    const auto& centroidal_momentum_matrix = pinocchio::ccrba(
+        robot_model_,
+        robot_data_,
+        q,
+        qdot
+    );
+    auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
 
+    const auto& p_CoM = robot_data_.com[0];
+    const auto& a_CoM_drift = robot_data_.acom[0];
+    const auto& J_CoM = robot_data_.Jcom;
+    const auto& T_torso = robot_data_.oMf[torso_idx_];
+    const auto& T_pelvis = robot_data_.oMf[pelvis_idx_];
+    auto torso_orientation = T_torso.rotation();
+    auto pelvis_orientation = T_pelvis.rotation();
+    Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobian(
+        robot_model_,
+        robot_data_,
+        torso_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_torso
+    );
 
-  Eigen::MatrixXd J_pelvis = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobian(
-      robot_model_,
-      robot_data_,
-      pelvis_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_pelvis
-  );
-
-  auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
-  Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobianTimeVariation(
-      robot_model_,
-      robot_data_,
-      pelvis_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_pelvis_dot
-  );
-  auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
+    auto J_torso_orientation = J_torso.bottomRows<3>();
+    Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobianTimeVariation(
+        robot_model_,
+        robot_data_,
+        torso_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_torso_dot
+    );
+    auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
 
 
+    Eigen::MatrixXd J_pelvis = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobian(
+        robot_model_,
+        robot_data_,
+        pelvis_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_pelvis
+    );
 
-  const auto& T_lsole = robot_data_.oMf[lsole_idx_];
-  Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobian(
-      robot_model_,
-      robot_data_,
-      lsole_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_lsole
-  );
-
-  const auto& v_lsole = J_lsole * qdot;
-  Eigen::MatrixXd J_lsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobianTimeVariation(
-      robot_model_,
-      robot_data_,
-      lsole_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_lsole_dot
-      );
-  const auto& T_rsole = robot_data_.oMf[rsole_idx_];
-  Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobian(
-      robot_model_,
-      robot_data_,
-      rsole_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_rsole
-  );
-  const auto& v_rsole = J_rsole * qdot;
-  Eigen::MatrixXd J_rsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-  pinocchio::getFrameJacobianTimeVariation(
-      robot_model_,
-      robot_data_,
-      rsole_idx_,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_rsole_dot
-  );
-
-  // Update walking state:
-  walking_data_.updateWalkingState(t_msec_);
-
-  // Fill current gait configuration:
-  labrob::GaitConfiguration current_gait_configuration;
-  current_gait_configuration.qjnt = q.tail(njnt);
-  current_gait_configuration.qjntdot = qdot.tail(njnt);
-
-  current_gait_configuration.is_left_foot_support = true;
-  current_gait_configuration.is_right_foot_support = true;
-  if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-   // std::cout << "Single support" << std::endl;
-   if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
-   else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
-  }
-
-  current_gait_configuration.com.pos = robot_data_.com[0];
-  current_gait_configuration.com.vel = robot_data_.vcom[0];
-
-  current_gait_configuration.torso.pos = robot_data_.oMf[torso_idx_].rotation();
-  current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
-
-  current_gait_configuration.pelvis.pos = robot_data_.oMf[pelvis_idx_].rotation();
-//   std::cout << "Pelvis orientation: " << current_gait_configuration.pelvis.pos.transpose() << std::endl;
-  current_gait_configuration.pelvis.vel = J_pelvis.bottomRows<3>() * qdot;
-
-  current_gait_configuration.lsole.pos = labrob::SE3(robot_data_.oMf[lsole_idx_].rotation(), robot_data_.oMf[lsole_idx_].translation());
-  current_gait_configuration.lsole.vel = J_lsole * qdot;
-
-  current_gait_configuration.rsole.pos = labrob::SE3(robot_data_.oMf[rsole_idx_].rotation(), robot_data_.oMf[rsole_idx_].translation());
-  current_gait_configuration.rsole.vel = J_rsole * qdot;
-
-  double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
-  double mass = pinocchio::computeTotalMass(robot_model_);
-  Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
-  Eigen::Vector3d zmp_3d;
-  zmp_3d.z() = robot_state.position(2) - robot_state.total_force.z() / (mass * eta2);
-
-  zmp_3d.x() = 0.0;
-  zmp_3d.y() = 0.0;
-  for (int i = 0; i < robot_state.contact_points.size(); ++i) {
-    auto &pi = robot_state.contact_points[i];
-    auto &fi = robot_state.contact_forces[i];
-    zmp_3d.x() += (pi.x() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / robot_state.total_force.z());
-    zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
-  }
-
-  LIPState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
-
-  filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
-
-  // std::cout << "Filtered CoM: " << filtered_state_.com_pos_.transpose() << std::endl;
+    auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
+    Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobianTimeVariation(
+        robot_model_,
+        robot_data_,
+        pelvis_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_pelvis_dot
+    );
+    auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
 
 
-  // CoM task:
-  auto mpc_t0_ms = std::chrono::system_clock::now();
-  ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
-  // std::cout << "IS-MPC input: " << ismpc_ptr_->getInput().transpose() << std::endl;
-  auto mpc_tf_ms = std::chrono::system_clock::now();
-  const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
 
-  // Update the state based on the result of the QP:
-  auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
-  // std::cout << "lip_state.com_pos_: " << lip_state.com_pos_.transpose() << std::endl;
+    const auto& T_lsole = robot_data_.oMf[lsole_idx_];
+    Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobian(
+        robot_model_,
+        robot_data_,
+        lsole_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_lsole
+    );
+
+    const auto& v_lsole = J_lsole * qdot;
+    Eigen::MatrixXd J_lsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobianTimeVariation(
+        robot_model_,
+        robot_data_,
+        lsole_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_lsole_dot
+        );
+    const auto& T_rsole = robot_data_.oMf[rsole_idx_];
+    Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobian(
+        robot_model_,
+        robot_data_,
+        rsole_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_rsole
+    );
+    const auto& v_rsole = J_rsole * qdot;
+    Eigen::MatrixXd J_rsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    pinocchio::getFrameJacobianTimeVariation(
+        robot_model_,
+        robot_data_,
+        rsole_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_rsole_dot
+    );
+
+    // Update walking state:
+    walking_data_.updateWalkingState(t_msec_);
+
+    // Fill current gait configuration:
+    labrob::GaitConfiguration current_gait_configuration;
+    current_gait_configuration.qjnt = q.tail(njnt);
+    current_gait_configuration.qjntdot = qdot.tail(njnt);
+
+    current_gait_configuration.is_left_foot_support = true;
+    current_gait_configuration.is_right_foot_support = true;
+    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
+    else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
+    }
+
+    current_gait_configuration.com.pos = robot_data_.com[0];
+    current_gait_configuration.com.vel = robot_data_.vcom[0];
+
+    current_gait_configuration.torso.pos = robot_data_.oMf[torso_idx_].rotation();
+    current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
+
+    current_gait_configuration.pelvis.pos = robot_data_.oMf[pelvis_idx_].rotation();
+    current_gait_configuration.pelvis.vel = J_pelvis.bottomRows<3>() * qdot;
+
+    current_gait_configuration.lsole.pos = labrob::SE3(robot_data_.oMf[lsole_idx_].rotation(), robot_data_.oMf[lsole_idx_].translation());
+    current_gait_configuration.lsole.vel = J_lsole * qdot;
+
+    current_gait_configuration.rsole.pos = labrob::SE3(robot_data_.oMf[rsole_idx_].rotation(), robot_data_.oMf[rsole_idx_].translation());
+    current_gait_configuration.rsole.vel = J_rsole * qdot;
+
+    double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
+    double mass = pinocchio::computeTotalMass(robot_model_);
+    Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
+    Eigen::Vector3d zmp_3d;
+    zmp_3d.z() = robot_state.position(2) - robot_state.total_force.z() / (mass * eta2);
+
+    zmp_3d.x() = 0.0;
+    zmp_3d.y() = 0.0;
+    for (int i = 0; i < robot_state.contact_points.size(); ++i) {
+        auto &pi = robot_state.contact_points[i];
+        auto &fi = robot_state.contact_forces[i];
+        zmp_3d.x() += (pi.x() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / robot_state.total_force.z());
+        zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
+    }
+
+    LIPState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
+
+    filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
+    
+
+    // CoM task:
+    auto mpc_t0_ms = std::chrono::system_clock::now();
+    ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
+    // std::cout << "IS-MPC input: " << ismpc_ptr_->getInput().transpose() << std::endl;
+    auto mpc_tf_ms = std::chrono::system_clock::now();
+    const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
+
+    // Update the state based on the result of the QP:
+    auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
 
 
-  Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
-  Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
-  Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
+    Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
+    Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
+    Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
 
-  // Fill desired gait configuration:
-  labrob::GaitConfiguration desired_gait_configuration;
-  desired_gait_configuration.qjnt = q_jnt_des_;
-  desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
-  desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
+    // Fill desired gait configuration:
+    labrob::GaitConfiguration desired_gait_configuration;
+    desired_gait_configuration.qjnt = q_jnt_des_;
+    desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
+    desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
 
-  desired_gait_configuration.com.pos = lip_state.com_pos_;
-  desired_gait_configuration.com.vel = lip_state.com_vel_;
-  desired_gait_configuration.com.acc = eta2 * (lip_state.com_pos_ - lip_state.zmp_pos_) - Eigen::Vector3d(0.0, 0.0, 9.81);
+    desired_gait_configuration.com.pos = lip_state.com_pos_;
+    desired_gait_configuration.com.vel = lip_state.com_vel_;
+    desired_gait_configuration.com.acc = eta2 * (lip_state.com_pos_ - lip_state.zmp_pos_) - Eigen::Vector3d(0.0, 0.0, 9.81);
 
-  // std::cout << "Desired CoM: " << desired_gait_configuration.com.pos.transpose() << std::endl;
-  // std::cout << "L foot pos: " << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
-  // std::cout << "R foot pos: " << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
-
-  // Feet tasks
-  if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
-    desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
-    desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
-    desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
-    desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
-    desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
-    desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
-  } else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) {
-    desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
-    desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
-    desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
-    pinocchio::SE3 desired_rsole_pose;
-    pinocchio::Motion desired_rsole_vel;
-    pinocchio::Motion desired_rsole_acc;
-    swingFootTrajectory(desired_rsole_pose, desired_rsole_vel, desired_rsole_acc);
-    desired_gait_configuration.rsole.pos.R = desired_rsole_pose.rotation();
-    desired_gait_configuration.rsole.pos.p = desired_rsole_pose.translation();
-    desired_gait_configuration.rsole.vel << desired_rsole_vel.linear(), desired_rsole_vel.angular();
-    desired_gait_configuration.rsole.acc << desired_rsole_acc.linear(), desired_rsole_acc.angular();
-  } else {
-    desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
-    desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
-    desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
-    pinocchio::SE3 desired_lsole_pose;
-    pinocchio::Motion desired_lsole_vel;
-    pinocchio::Motion desired_lsole_acc;
-    swingFootTrajectory(desired_lsole_pose, desired_lsole_vel, desired_lsole_acc);
-    desired_gait_configuration.lsole.pos.R = desired_lsole_pose.rotation();
-    desired_gait_configuration.lsole.pos.p = desired_lsole_pose.translation();
-    desired_gait_configuration.lsole.vel << desired_lsole_vel.linear(), desired_lsole_vel.angular();
-    desired_gait_configuration.lsole.acc << desired_lsole_acc.linear(), desired_lsole_acc.angular();
-  }
+    // Feet tasks
+    if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
+        desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+        desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
+        desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
+        desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+        desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
+        desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
+    } else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) {
+        desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+        desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
+        desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
+        pinocchio::SE3 desired_rsole_pose;
+        pinocchio::Motion desired_rsole_vel;
+        pinocchio::Motion desired_rsole_acc;
+        swingFootTrajectory(desired_rsole_pose, desired_rsole_vel, desired_rsole_acc);
+        desired_gait_configuration.rsole.pos.R = desired_rsole_pose.rotation();
+        desired_gait_configuration.rsole.pos.p = desired_rsole_pose.translation();
+        desired_gait_configuration.rsole.vel << desired_rsole_vel.linear(), desired_rsole_vel.angular();
+        desired_gait_configuration.rsole.acc << desired_rsole_acc.linear(), desired_rsole_acc.angular();
+    } else {
+        desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+        desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
+        desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
+        pinocchio::SE3 desired_lsole_pose;
+        pinocchio::Motion desired_lsole_vel;
+        pinocchio::Motion desired_lsole_acc;
+        swingFootTrajectory(desired_lsole_pose, desired_lsole_vel, desired_lsole_acc);
+        desired_gait_configuration.lsole.pos.R = desired_lsole_pose.rotation();
+        desired_gait_configuration.lsole.pos.p = desired_lsole_pose.translation();
+        desired_gait_configuration.lsole.vel << desired_lsole_vel.linear(), desired_lsole_vel.angular();
+        desired_gait_configuration.lsole.acc << desired_lsole_acc.linear(), desired_lsole_acc.angular();
+    }
 
 
-  // Torso task
-  double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
-  double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
-  desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-  desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
-  desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    // Torso task
+    double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
+    double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
+    desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
-  // Pelvis task
-  // double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
-  // double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
-  desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-//   std::cout << "Pelvis orientation desired: " << desired_gait_configuration.pelvis.pos.transpose() << std::endl;
-  desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
-  desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    // Pelvis task
+    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
 
-  joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-      robot_model_,
-      robot_state,
-      robot_data_,
-      current_gait_configuration,
-      desired_gait_configuration
-  );
-  // Update timing in milliseconds.
-  // NOTE: assuming update() is actually called every controller_timestep_msec_
-  //       milliseconds.
-  t_msec_ += controller_timestep_msec_;
-  prev_angular_momentum_ = angular_momentum;
+    joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+        robot_model_,
+        robot_state,
+        robot_data_,
+        current_gait_configuration,
+        desired_gait_configuration
+    );
+
+    auto end_time = std::chrono::system_clock::now();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+    std::cout << "WalkingManager::update() took " << elapsed_time << " us" << std::endl;
 
 
-  // Log:
-  mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
-  mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
-  mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
-  com_log_file_ << p_CoM.transpose() << std::endl;
-  p_lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
-  p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
-  v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
-  v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
-  p_lsole_des_log_file_ << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
-  p_rsole_des_log_file_ << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
-  v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
-  v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
-  angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-  // fl_log_file_ << output.fl.transpose() << std::endl;
-  // fr_log_file_ << output.fr.transpose() << std::endl;
-  cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
+    // Update timing in milliseconds.
+    // NOTE: assuming update() is actually called every controller_timestep_msec_
+    //       milliseconds.
+    t_msec_ += controller_timestep_msec_;
+    prev_angular_momentum_ = angular_momentum;
+
+
+    // Log:
+    mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
+    mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
+    mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
+    com_log_file_ << p_CoM.transpose() << std::endl;
+    p_lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
+    p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
+    v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
+    v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
+    p_lsole_des_log_file_ << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
+    p_rsole_des_log_file_ << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
+    v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
+    v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
+    angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
+    // fl_log_file_ << output.fl.transpose() << std::endl;
+    // fr_log_file_ << output.fr.transpose() << std::endl;
+    cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
 
 }
 

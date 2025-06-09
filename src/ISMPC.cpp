@@ -1,4 +1,5 @@
 #include <hrp4_locomotion/ISMPC.hpp>
+#include <chrono> 
 
 namespace labrob {
 
@@ -60,6 +61,8 @@ ISMPC::solve(
     const labrob::WalkingData& walking_data,
     const labrob::LIPState& state
 ) {
+
+  auto start_time = std::chrono::system_clock::now(); 
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
@@ -198,6 +201,10 @@ ISMPC::solve(
   input_.x() = zDotOptimalX(0);
   input_.y() = zDotOptimalY(0);
   input_.z() = zDotOptimalZ(0);
+
+  auto end_time = std::chrono::system_clock::now();
+  auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  std::cerr << "ISMPC solve time: " << elapsed_time << " microsecondi" << std::endl;
 }
 
 const Eigen::Vector3d& ISMPC::getInput() const {

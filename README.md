@@ -19,7 +19,7 @@ Then, install Mujoco using:
 mkdir build
 cd build
 cmake ..
-make -j
+make -j(nproc)
 sudo make install
 ```
 
@@ -71,10 +71,62 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    ```bash
     python3 scripts/'file_name'
    ```
+2. execute main:
+   ```bash
+    cd build
+    make -j('nproc')
+    ./main
+   ```
 
 ### Visualization 
 
 1. Install vscode extension "URDF Visualizer"
 
 2. Open "unitreeg1.urdf" and press ```CTRL+SHIFT*P```, then press 'URDF Visualizer: Preview URDF/Xacro'
+
+
+### Laboratory simulation
+
+In order to perform a laboratory simulation with the unitree G1 robot it is essential to download the 
+official SDK from the git repo "unitreerobotics" suited for the G1 humanoid. Generally Unitree SDK2 is 
+based on CycloneDDS, which will be installed in the requirements.
+Once done we need to establish a connection between the machine and the G1, which may be via Ethernet
+or Wi-fi.
+The set-up is ready and the experiment may be perfomed (make sure to have a main suited for the task).
+
+0. Intall requirements:
+   ```bash
+    sudo apt update
+    sudo apt install build-essential cmake git
+
+    git clone https://github.com/eclipse-cyclonedds/cyclonedds.git
+    cd cyclonedds
+    mkdir build && cd build
+    cmake ..
+    make -j$(nproc)
+    sudo make install
+    echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+    source ~/.bashrc
+   ```
+
+1. Install Unitree SDK:
+   ```bash
+    git clone https://github.com/unitreerobotics/unitree_sdk2.git
+    cd unitree_sdk2
+    mkdir build && cd build
+    cmake .. -DCMAKE_INSTALL_PREFIX=/opt/unitree_robotics
+    make -j$(nproc)
+    sudo make install
+   ```
+
+   To install examples
+   ```bash
+    mkdir build && cd build
+    cmake .. 
+    make 
+   ```
+
+2. Net configuration:
+
+3. Run simulation:
 
