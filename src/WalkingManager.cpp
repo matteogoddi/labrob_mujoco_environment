@@ -396,15 +396,15 @@ WalkingManager::update(
     auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
     auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
-    // Perform forward kinematics on the whole tree and update robot data:
-    pinocchio::forwardKinematics(robot_model_, robot_data_, q);
+    // // Perform forward kinematics on the whole tree and update robot data:
+    // pinocchio::forwardKinematics(robot_model_, robot_data_, q);
 
-    // NOTE: jacobianCenterOfMass calls forwardKinematics and
-    //       computeJointJacobians.
-    pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
-    pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
-    pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
-    pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+    // // NOTE: jacobianCenterOfMass calls forwardKinematics and
+    // //       computeJointJacobians.
+    // pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
+    // pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
+    // pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+    // pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
     const auto& centroidal_momentum_matrix = pinocchio::ccrba(
         robot_model_,
         robot_data_,
@@ -429,16 +429,16 @@ WalkingManager::update(
         J_torso
     );
 
-    auto J_torso_orientation = J_torso.bottomRows<3>();
-    Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    pinocchio::getFrameJacobianTimeVariation(
-        robot_model_,
-        robot_data_,
-        torso_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_torso_dot
-    );
-    auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
+    // auto J_torso_orientation = J_torso.bottomRows<3>();
+    // Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    // pinocchio::getFrameJacobianTimeVariation(
+    //     robot_model_,
+    //     robot_data_,
+    //     torso_idx_,
+    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+    //     J_torso_dot
+    // );
+    // auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
 
 
     Eigen::MatrixXd J_pelvis = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -450,16 +450,16 @@ WalkingManager::update(
         J_pelvis
     );
 
-    auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
-    Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    pinocchio::getFrameJacobianTimeVariation(
-        robot_model_,
-        robot_data_,
-        pelvis_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_pelvis_dot
-    );
-    auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
+    // auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
+    // Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    // pinocchio::getFrameJacobianTimeVariation(
+    //     robot_model_,
+    //     robot_data_,
+    //     pelvis_idx_,
+    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+    //     J_pelvis_dot
+    // );
+    // auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
 
 
 
@@ -474,14 +474,14 @@ WalkingManager::update(
     );
 
     const auto& v_lsole = J_lsole * qdot;
-    Eigen::MatrixXd J_lsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    pinocchio::getFrameJacobianTimeVariation(
-        robot_model_,
-        robot_data_,
-        lsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_lsole_dot
-        );
+    // Eigen::MatrixXd J_lsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    // pinocchio::getFrameJacobianTimeVariation(
+    //     robot_model_,
+    //     robot_data_,
+    //     lsole_idx_,
+    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+    //     J_lsole_dot
+    //     );
     const auto& T_rsole = robot_data_.oMf[rsole_idx_];
     Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
     pinocchio::getFrameJacobian(
@@ -492,14 +492,14 @@ WalkingManager::update(
         J_rsole
     );
     const auto& v_rsole = J_rsole * qdot;
-    Eigen::MatrixXd J_rsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    pinocchio::getFrameJacobianTimeVariation(
-        robot_model_,
-        robot_data_,
-        rsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_rsole_dot
-    );
+    // Eigen::MatrixXd J_rsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+    // pinocchio::getFrameJacobianTimeVariation(
+    //     robot_model_,
+    //     robot_data_,
+    //     rsole_idx_,
+    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+    //     J_rsole_dot
+    // );
 
     // Update walking state:
     walking_data_.updateWalkingState(t_msec_);
@@ -533,10 +533,9 @@ WalkingManager::update(
 
     double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
     double mass = pinocchio::computeTotalMass(robot_model_);
-    Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
+    // Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
     Eigen::Vector3d zmp_3d;
     zmp_3d.z() = robot_state.position(2) - robot_state.total_force.z() / (mass * eta2);
-
     zmp_3d.x() = 0.0;
     zmp_3d.y() = 0.0;
     for (int i = 0; i < robot_state.contact_points.size(); ++i) {
@@ -556,7 +555,7 @@ WalkingManager::update(
     ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
     // std::cout << "IS-MPC input: " << ismpc_ptr_->getInput().transpose() << std::endl;
     auto mpc_tf_ms = std::chrono::system_clock::now();
-    const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
+    // const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
 
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());

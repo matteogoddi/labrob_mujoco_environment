@@ -194,7 +194,7 @@ int main() {
 
       // Update walking manager:
       labrob::JointCommand joint_command;
-      walking_manager.update(robot_state, joint_command);      
+      walking_manager.update(robot_state, joint_command);
       
       mj_step1(mj_model_ptr, mj_data_ptr);
 

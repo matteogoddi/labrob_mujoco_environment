@@ -29,26 +29,26 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 
 0. clone the repository
     ```bash
-    git clone 'repository_link'
+   git clone 'repository_link'
     ```
 
 1. pull changes
    ```bash
-    git pull 'remote_name' main
+   git pull 'remote_name' main
    ```
    
 2. push changes
    ```bash
-    git add .
-    git commit -m "Explain changes"
-    git push 'remote_name' main
+   git add .
+   git commit -m "Explain changes"
+   git push 'remote_name' main
    ```
 
 4. usually 'remote_name' is origin, to add another remote for personal changes
-    ```bash
-    git remote add 'new_remote_name' 'new_repository_link'
-    git remote -v
-    ```
+   ```bash
+   git remote add 'new_remote_name' 'new_repository_link'
+   git remote -v
+   ```
    
 ### Prerequisites 
 
@@ -57,25 +57,25 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 ### Installation
 
 0. install and activate virtual environment
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
 
 1. install dependencies:
    ```bash
-    pip install -r requirements.txt
+   pip install -r requirements.txt
    ```
 ### How to run the code
 1. run python scripts:
    ```bash
-    python3 scripts/'file_name'
+   python3 scripts/'file_name'
    ```
 2. execute main:
    ```bash
-    cd build
-    make -j('nproc')
-    ./main
+   cd build
+   make -j('nproc')
+   ./main
    ```
 
 ### Visualization 
@@ -94,36 +94,36 @@ Once done we need to establish a connection between the machine and the G1, whic
 or Wi-fi.
 The set-up is ready and the experiment may be perfomed (make sure to have a main suited for the task).
 
-0. Intall requirements:
+0. Install requirements:
    ```bash
-    sudo apt update
-    sudo apt install build-essential cmake git
+   sudo apt update
+   sudo apt install build-essential cmake git
 
-    git clone https://github.com/eclipse-cyclonedds/cyclonedds.git
-    cd cyclonedds
-    mkdir build && cd build
-    cmake ..
-    make -j$(nproc)
-    sudo make install
-    echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-    source ~/.bashrc
+   git clone https://github.com/eclipse-cyclonedds/cyclonedds.git
+   cd cyclonedds
+   mkdir build && cd build
+   cmake ..
+   make -j$(nproc)
+   sudo make install
+   echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
+   source ~/.bashrc
    ```
 
 1. Install Unitree SDK:
    ```bash
-    git clone https://github.com/unitreerobotics/unitree_sdk2.git
-    cd unitree_sdk2
-    mkdir build && cd build
-    cmake .. -DCMAKE_INSTALL_PREFIX=/opt/unitree_robotics
-    make -j$(nproc)
-    sudo make install
+   git clone https://github.com/unitreerobotics/unitree_sdk2.git
+   cd unitree_sdk2
+   mkdir build && cd build
+   cmake .. -DCMAKE_INSTALL_PREFIX=/opt/unitree_robotics
+   make -j$(nproc)
+   sudo make install
    ```
 
    To install examples
    ```bash
-    mkdir build && cd build
-    cmake .. 
-    make 
+   mkdir build && cd build
+   cmake .. 
+   make 
    ```
 
 2. Net configuration:

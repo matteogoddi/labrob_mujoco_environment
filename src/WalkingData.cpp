@@ -54,11 +54,6 @@ WalkingData::updateWalkingState(int64_t t) {
   if (getWalkingState() == labrob::WalkingState::Init) {
     footstep_plan.front().setWalkingState(labrob::WalkingState::PostureRegulation);
     t0 = t;
-  } else if (getWalkingState() == labrob::WalkingState::PostureRegulation) {
-    if (t >= t0 + footstep_plan.front().getDuration()) {
-      footstep_plan.pop_front();
-      t0 = t;
-    }
   } else if (getWalkingState() == labrob::WalkingState::Standing && footstep_plan.size() == 1) {
     // Update t0 to keep robot in standing position.
     t0 = t;
@@ -68,7 +63,5 @@ WalkingData::updateWalkingState(int64_t t) {
     t0 = t;
   }
 }
-
-// footstep_plan.size() == 1
 
 } // end namespace labrob
