@@ -35,7 +35,6 @@ struct WholeBodyControllerParams {
   double weight_lsole;
   double weight_rsole;
   double weight_torso;
-  double weight_pelvis;
   double weight_regulation;
   double weight_angular_momentum;
 
@@ -77,15 +76,12 @@ class WholeBodyController {
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
-  pinocchio::FrameIndex pelvis_idx_;
 
   Eigen::MatrixXd J_torso_;
-  Eigen::MatrixXd J_pelvis_;
   Eigen::MatrixXd J_lsole_;
   Eigen::MatrixXd J_rsole_;
 
   Eigen::MatrixXd J_torso_dot_;
-  Eigen::MatrixXd J_pelvis_dot_;
   Eigen::MatrixXd J_lsole_dot_;
   Eigen::MatrixXd J_rsole_dot_;
 

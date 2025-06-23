@@ -13,6 +13,11 @@
 #include <hrp4_locomotion/WalkingManager.hpp>
 #include <hrp4_locomotion/utils.hpp>
 
+#include <unitree/robot/channel/channel_publisher.hpp>
+#include <unitree/robot/channel/channel_subscriber.hpp>
+#include <unitree/idl/hg/LowCmd_.hpp>
+#include <unitree/idl/hg/LowState_.hpp>
+
 #include "MujocoUI.hpp"
 
 labrob::RobotState
@@ -189,6 +194,8 @@ int main() {
 
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
+
+      auto start_second = std::chrono::high_resolution_clock::now();
       
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 

@@ -9,7 +9,6 @@ JointCommand WalkingManager::compute_inverse_dynamics(
   const auto a_lsole_drift = J_lsole_dot * current.qdot;
   const auto a_rsole_drift = J_rsole_dot * current.qdot;
   const auto a_torso_orientation_drift = J_torso_dot.bottomRows<3>() * current.qdot;
-  const auto a_pelvis_orientation_drift = J_pelvis_dot.bottomRows<3>() * current.qdot;
 
   // Compute desired accelerations
   auto err_com = desired.com.pos - current.com.pos;
@@ -23,9 +22,6 @@ JointCommand WalkingManager::compute_inverse_dynamics(
 
   auto err_torso_orientation = err_rotation(desired.torso.pos, current.torso.pos);
   auto err_torso_orientation_vel = desired.torso.vel - current.torso.vel;
-
-  auto err_pelvis_orientation = err_rotation(desired.pelvis.pos, current.pelvis.pos);
-  auto err_pelvis_orientation_vel = desired.pelvis.vel - current.pelvis.vel;
 
   Eigen::VectorXd err_posture = (desired.q - current.q).tail(6 + n_joints); // q vector is 6 + n_joints + 1, for some reason
   Eigen::VectorXd err_posture_vel = (desired.qdot - current.qdot).tail(6 + n_joints);
@@ -42,7 +38,6 @@ JointCommand WalkingManager::compute_inverse_dynamics(
   Eigen::VectorXd a_lsole_total = desired.lsole.acc + Kp_motion * err_lsole + Kd_motion * err_lsole_vel;
   Eigen::VectorXd a_rsole_total = desired.rsole.acc + Kp_motion * err_rsole + Kd_motion * err_rsole_vel;
   Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + Kp_motion * err_torso_orientation + Kd_motion * err_torso_orientation_vel;
-  Eigen::VectorXd a_pelvis_orientation_total = desired.pelvis.acc + Kp_motion * err_pelvis_orientation + Kd_motion * err_pelvis_orientation_vel;
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints, 6 + n_joints);
@@ -53,7 +48,6 @@ JointCommand WalkingManager::compute_inverse_dynamics(
   H_acc += weight_lsole * (J_lsole.transpose() * J_lsole);
   H_acc += weight_rsole * (J_rsole.transpose() * J_rsole);
   H_acc += weight_torso * (J_torso.bottomRows<3>().transpose() * J_torso.bottomRows<3>());
-  H_acc += weight_pelvis * (J_pelvis.bottomRows<3>().transpose() * J_pelvis.bottomRows<3>());
   H_acc += weight_regulation * (err_posture_selection_matrix.transpose() * err_posture_selection_matrix);
   H_acc += weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       std::pow(control_timestep, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
@@ -62,7 +56,6 @@ JointCommand WalkingManager::compute_inverse_dynamics(
   f_acc += weight_lsole * J_lsole.transpose() * (a_lsole_drift - a_lsole_total);
   f_acc += weight_rsole * J_rsole.transpose() * (a_rsole_drift - a_rsole_total);
   f_acc += weight_torso * J_torso.bottomRows<3>().transpose() * (a_torso_orientation_drift - a_torso_orientation_total);
-  f_acc += weight_pelvis * J_pelvis.bottomRows<3>().transpose() * (a_pelvis_orientation_drift - a_pelvis_orientation_total);
   f_acc += -weight_regulation * err_posture_selection_matrix.transpose() * err_posture_selection_matrix * a_jnt_total;
   f_acc += weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       control_timestep * cmm_selection_matrix * centroidal_momentum_matrix * current.qdot;

@@ -24,6 +24,7 @@
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/TimingLaw.hpp>
 #include <hrp4_locomotion/utils.hpp>
+#include <hrp4_locomotion/DdpSolver.hpp>
 
 namespace labrob {
 
@@ -76,9 +77,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   );
   robot_data_ = pinocchio::Data(robot_model_);
 
-  // q_next_prev_ = robot_state_to_pinocchio_joint_configuration(robot_model_, initial_robot_state);
-  // v_next_prev_ = robot_state_to_pinocchio_joint_velocity(robot_model_, initial_robot_state);
-
   // Init desired lsole and rsole poses:
   auto q_init = robot_state_to_pinocchio_joint_configuration(
       robot_model_,
@@ -90,7 +88,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   lsole_idx_ = robot_model_.getFrameId("left_foot_link");
   rsole_idx_ = robot_model_.getFrameId("right_foot_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
-  pelvis_idx_ = robot_model_.getFrameId("pelvis");
   const auto& T_lsole_init = robot_data_.oMf[lsole_idx_];
   const auto& T_rsole_init = robot_data_.oMf[rsole_idx_];
 
@@ -131,7 +128,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   q_jnt_des_ = q_init.tail(njnt);
 
   // TODO: init using node handle.
-  controller_frequency_ = 600;
+  controller_frequency_ = 1000;
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.1;
@@ -272,6 +269,35 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       foot_constraint_square_length,
       foot_constraint_square_width
   );
+
+  DdpSolver ddpsolver = DdpSolver();
+
+  // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
+  Eigen::Vector<double, NX> x0;
+  x0 <<
+      filtered_state_.com_pos_(0),
+      filtered_state_.com_pos_(1),
+      filtered_state_.com_pos_(2),
+      filtered_state_.com_vel_(0),
+      filtered_state_.com_vel_(1),
+      filtered_state_.com_vel_(2),
+      filtered_state_.zmp_pos_(0),
+      filtered_state_.zmp_pos_(1),
+      filtered_state_.zmp_pos_(2);
+  std::array<Eigen::Vector<double, NX>, NH+1> x_traj;
+  x_traj[0] = x0;
+  std::array<Eigen::Vector<double, NU>, NH> u_traj;
+
+  // set warm-start trajectories
+  std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
+  for (int i = 0; i < NH+1; ++i)
+    x_guess[i] = x0;
+  std::array<Eigen::Vector<double, NU>, NH> u_guess;
+  for (int i = 0; i < NH; ++i)
+    u_guess[i].setZero();
+  ddpsolver.set_initial_state(x0);
+  ddpsolver.set_x_warmstart(x_guess);
+  ddpsolver.set_u_warmstart(u_guess);
 
   auto params = WholeBodyControllerParams::getDefaultParams();
   whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
@@ -417,9 +443,7 @@ WalkingManager::update(
     const auto& a_CoM_drift = robot_data_.acom[0];
     const auto& J_CoM = robot_data_.Jcom;
     const auto& T_torso = robot_data_.oMf[torso_idx_];
-    const auto& T_pelvis = robot_data_.oMf[pelvis_idx_];
     auto torso_orientation = T_torso.rotation();
-    auto pelvis_orientation = T_pelvis.rotation();
     Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model_.nv);
     pinocchio::getFrameJacobian(
         robot_model_,
@@ -439,28 +463,6 @@ WalkingManager::update(
     //     J_torso_dot
     // );
     // auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
-
-
-    Eigen::MatrixXd J_pelvis = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    pinocchio::getFrameJacobian(
-        robot_model_,
-        robot_data_,
-        pelvis_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_pelvis
-    );
-
-    // auto J_pelvis_orientation = J_pelvis.bottomRows<3>();
-    // Eigen::MatrixXd J_pelvis_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    // pinocchio::getFrameJacobianTimeVariation(
-    //     robot_model_,
-    //     robot_data_,
-    //     pelvis_idx_,
-    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-    //     J_pelvis_dot
-    // );
-    // auto J_pelvis_orientation_dot = J_pelvis_dot.bottomRows<3>();
-
 
 
     const auto& T_lsole = robot_data_.oMf[lsole_idx_];
@@ -522,9 +524,6 @@ WalkingManager::update(
     current_gait_configuration.torso.pos = robot_data_.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
 
-    current_gait_configuration.pelvis.pos = robot_data_.oMf[pelvis_idx_].rotation();
-    current_gait_configuration.pelvis.vel = J_pelvis.bottomRows<3>() * qdot;
-
     current_gait_configuration.lsole.pos = labrob::SE3(robot_data_.oMf[lsole_idx_].rotation(), robot_data_.oMf[lsole_idx_].translation());
     current_gait_configuration.lsole.vel = J_lsole * qdot;
 
@@ -557,8 +556,40 @@ WalkingManager::update(
     auto mpc_tf_ms = std::chrono::system_clock::now();
     // const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
 
+    DdpSolver ddpsolver = DdpSolver();
+
+    // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
+    Eigen::Vector<double, NX> x0;
+    x0 <<
+        filtered_state_.com_pos_(0),
+        filtered_state_.com_pos_(1),
+        filtered_state_.com_pos_(2),
+        filtered_state_.com_vel_(0),
+        filtered_state_.com_vel_(1),
+        filtered_state_.com_vel_(2),
+        filtered_state_.zmp_pos_(0),
+        filtered_state_.zmp_pos_(1),
+        filtered_state_.zmp_pos_(2);
+    std::array<Eigen::Vector<double, NX>, NH+1> x_traj;
+    x_traj[0] = x0;
+    std::array<Eigen::Vector<double, NU>, NH> u_traj;
+  
+    // set warm-start trajectories
+    std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
+    for (int i = 0; i < NH+1; ++i)
+      x_guess[i] = x0;
+    std::array<Eigen::Vector<double, NU>, NH> u_guess;
+    for (int i = 0; i < NH; ++i)
+      u_guess[i].setZero();
+    ddpsolver.set_initial_state(x0);
+    ddpsolver.set_x_warmstart(x_guess);
+    ddpsolver.set_u_warmstart(u_guess);
+
+    ddpsolver.solve();
+
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
+    // substitute with ddpsolver.u[0] if you want to use the DDP solver
 
 
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
@@ -616,11 +647,6 @@ WalkingManager::update(
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-
-    // Pelvis task
-    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-    desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
-    desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
 
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(

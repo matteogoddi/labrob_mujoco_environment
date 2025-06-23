@@ -1,11 +1,6 @@
 <mujoco model="unitreeg1">
   <compiler angle="radian" meshdir="meshes"/>
 
-  <!-- parti da old.xml-->
-  <compiler angle="radian" meshdir="meshes" texturedir="meshes" />
-
-  <size njmax="500" nconmax="100" />
-
   <option timestep="0.001" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />
    <!-- <option>-->
   <!--    <flag contact="disable" gravity="disable" />-->

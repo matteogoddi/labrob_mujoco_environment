@@ -3,10 +3,13 @@ project(pinocchio_example)
 
 set(CMAKE_CXX_STANDARD 17)
 
+set(CMAKE_PREFIX_PATH "/opt/unitree_robotics" ${CMAKE_PREFIX_PATH})
+
 find_package(glfw3 REQUIRED)
 find_package(jsoncpp REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
+find_package(unitree_sdk2 REQUIRED)
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   if (NOT CMAKE_BUILD_TYPE)
@@ -66,6 +69,7 @@ target_link_libraries(main
   mujoco::mujoco
   pinocchio::pinocchio
   WalkingControllerLibrary
+  unitree_sdk2
 )
 
 add_executable(lip_simulator_main
