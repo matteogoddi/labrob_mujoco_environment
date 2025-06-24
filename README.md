@@ -96,6 +96,7 @@ Once done we need to establish a connection between the machine and the G1, whic
 or Wi-fi.
 The set-up is ready and the experiment may be perfomed (make sure to have a main suited for the task).
 To clear further doubts the documentation is found in the following site (https://support.unitree.com/home/en/G1_developer/about_G1).
+The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/2025/03/G1-User-Manual_compressed.pdf.)
 
 0. Install requirements:
    ```bash

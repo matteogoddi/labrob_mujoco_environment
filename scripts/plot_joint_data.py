@@ -5,6 +5,7 @@ from collections import defaultdict
 import os
 
 if __name__ == '__main__':
+    joint_pos: np.ndarray = np.loadtxt('/tmp/joint_pos.txt')
     joint_vel: np.ndarray = np.loadtxt('/tmp/joint_vel.txt')
     joint_eff: np.ndarray = np.loadtxt('/tmp/joint_eff.txt')
     joint_names = open('/tmp/joint_names.txt').readlines()
@@ -13,8 +14,10 @@ if __name__ == '__main__':
     num_samples = joint_vel.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
 
-    if not os.path.exists('images/joints'):
-        os.makedirs('images/joints')
+    if not os.path.exists('images/joints/positions'):
+        os.makedirs('images/joints/positions')
+    if not os.path.exists('images/joints/torques'):
+        os.makedirs('images/joints/torques')
 
     num_joints = joint_vel.shape[1]
 
@@ -74,7 +77,24 @@ if __name__ == '__main__':
         fig.tight_layout()
         figs.append(fig)
 
-        fig.savefig(f"images/joints/{group_name}_torque_plot.png")
+        fig.savefig(f"images/joints/torques/{group_name}_torque_plot.png")
         plt.close(fig)
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, joint_pos[:, i], label=joint_names[i])
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Position [rad]')
+        ax.set_title(group_name.replace('_', ' ').title())
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        figs.append(fig)
+
+        fig.savefig(f"images/joints/positions/{group_name}_position_plot.png")
+        plt.close(fig)
+
 
     #plt.show()

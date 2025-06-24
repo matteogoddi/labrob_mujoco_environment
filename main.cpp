@@ -2,11 +2,12 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <mutex>
 #include <string>
 #include <vector>
 #include <csignal>
 #include <chrono>
+#include <mutex>
+#include <shared_mutex>
 
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -30,66 +31,171 @@
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
 
+static const std::string HG_CMD_TOPIC = "rt/lowcmd";
+static const std::string HG_IMU_TORSO = "rt/secondary_imu";
+static const std::string HG_STATE_TOPIC = "rt/lowstate";
+
+template <typename T>
+class DataBuffer {
+ public:
+  void SetData(const T &newData) {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+    data = std::make_shared<T>(newData);
+  }
+
+  std::shared_ptr<const T> GetData() {
+    std::shared_lock<std::shared_mutex> lock(mutex);
+    return data ? data : nullptr;
+  }
+
+  void Clear() {
+    std::unique_lock<std::shared_mutex> lock(mutex);
+    data = nullptr;
+  }
+
+ private:
+  std::shared_ptr<T> data;
+  std::shared_mutex mutex;
+};
+
+const int G1_NUM_MOTOR = 29;
+struct ImuState {
+  std::array<float, 3> rpy = {};
+  std::array<float, 3> omega = {};
+};
+struct MotorCommand {
+  std::array<float, G1_NUM_MOTOR> q_target = {};
+  std::array<float, G1_NUM_MOTOR> dq_target = {};
+  std::array<float, G1_NUM_MOTOR> kp = {};
+  std::array<float, G1_NUM_MOTOR> kd = {};
+  std::array<float, G1_NUM_MOTOR> tau_ff = {};
+};
+struct MotorState {
+  std::array<float, G1_NUM_MOTOR> q = {};
+  std::array<float, G1_NUM_MOTOR> dq = {};
+};
+
+
+// Stiffness for all G1 Joints
+// std::array<float, G1_NUM_MOTOR> Kp{
+//   60, 60, 60, 100, 40, 40,      // legs
+//   60, 60, 60, 100, 40, 40,      // legs
+//   60, 40, 40,                   // waist
+//   40, 40, 40, 40,  40, 40, 40,  // arms
+//   40, 40, 40, 40,  40, 40, 40   // arms
+// };
+
+std::array<float, G1_NUM_MOTOR> Kp{
+  0, 0, 0, 0, 0, 0,      // legs
+  0, 0, 0, 0, 0, 0,     // legs
+  0, 0, 0,                  // waist
+  0, 0, 0, 0, 0, 0, 0,  // arms
+  0, 0, 0, 5,  0, 0, 0  // arms
+};
+
+// Damping for all G1 Joints
+std::array<float, G1_NUM_MOTOR> Kd{
+  1, 1, 1, 2, 1, 1,     // legs
+  1, 1, 1, 2, 1, 1,     // legs
+  1, 1, 1,              // waist
+  1, 1, 1, 1, 1, 1, 1,  // arms
+  1, 1, 1, 1, 1, 1, 1   // arms
+};
+
 std::mutex stateMutex;
+DataBuffer<MotorState> motor_state_buffer_;
+DataBuffer<MotorCommand> motor_command_buffer_;
+std::atomic<int> counter_{0};
 
-struct RobotState{
-  std::vector<double> q;
-  std::vector<double> dq;
+enum class Mode {
+PR = 0,  // Series Control for Ptich/Roll Joints
+AB = 1   // Parallel Control for A/B Joints
 };
 
-RobotState currentState;
-
-struct MotorCommand{
-  std::vector<double> q_target;
-  std::vector<double> dq_target;
-  std::vector<double> tau_ff;
-  std::vector<double> kp;
-  std::vector<double> kd;
+enum G1JointIndex {
+LeftHipPitch = 0,
+LeftHipRoll = 1,
+LeftHipYaw = 2,
+LeftKnee = 3,
+LeftAnklePitch = 4,
+LeftAnkleB = 4,
+LeftAnkleRoll = 5,
+LeftAnkleA = 5,
+RightHipPitch = 6,
+RightHipRoll = 7,
+RightHipYaw = 8,
+RightKnee = 9,
+RightAnklePitch = 10,
+RightAnkleB = 10,
+RightAnkleRoll = 11,
+RightAnkleA = 11,
+WaistYaw = 12,
+WaistRoll = 13,        // NOTE INVALID for g1 23dof/29dof with waist locked
+WaistA = 13,           // NOTE INVALID for g1 23dof/29dof with waist locked
+WaistPitch = 14,       // NOTE INVALID for g1 23dof/29dof with waist locked
+WaistB = 14,           // NOTE INVALID for g1 23dof/29dof with waist locked
+LeftShoulderPitch = 15,
+LeftShoulderRoll = 16,
+LeftShoulderYaw = 17,
+LeftElbow = 18,
+LeftWristRoll = 19,
+LeftWristPitch = 20,   // NOTE INVALID for g1 23dof
+LeftWristYaw = 21,     // NOTE INVALID for g1 23dof
+RightShoulderPitch = 22,
+RightShoulderRoll = 23,
+RightShoulderYaw = 24,
+RightElbow = 25,
+RightWristRoll = 26,
+RightWristPitch = 27,  // NOTE INVALID for g1 23dof
+RightWristYaw = 28     // NOTE INVALID for g1 23dof
 };
 
-MotorCommand currentCommand;
+inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
+  uint32_t xbit = 0;
+  uint32_t data = 0;
+  uint32_t CRC32 = 0xFFFFFFFF;
+  const uint32_t dwPolynomial = 0x04c11db7;
+  for (uint32_t i = 0; i < len; i++) {
+    xbit = 1 << 31;
+    data = ptr[i];
+    for (uint32_t bits = 0; bits < G1_NUM_MOTOR; bits++) {
+      if (CRC32 & 0x80000000) {
+        CRC32 <<= 1;
+        CRC32 ^= dwPolynomial;
+      } else
+        CRC32 <<= 1;
+      if (data & xbit) CRC32 ^= dwPolynomial;
 
-std::map<std::string, int> jointName2Index = {
-  {"waist_pitch_joint", 0},
-  {"waist_yaw_joint", 1},
-  {"waist_roll_joint", 2},
-  {"right_hip_yaw_joint", 3},
-  {"right_hip_roll_joint", 4},
-  {"right_hip_pitch_joint", 5},
-  {"right_knee_joint", 6},
-  {"right_ankle_pitch_joint", 7},
-  {"right_ankle_roll_joint", 8},
-  {"left_hip_yaw_joint", 9},
-  {"left_hip_roll_joint", 10},
-  {"left_hip_pitch_joint", 11},
-  {"left_knee_joint", 12},
-  {"left_ankle_pitch_joint", 13},
-  {"left_ankle_roll_joint", 14},
-  {"right_shoulder_pitch_joint", 15},
-  {"right_shoulder_roll_joint", 16},
-  {"right_shoulder_yaw_joint", 17},
-  {"right_elbow_joint", 18},
-  {"left_shoulder_pitch_joint", 19},
-  {"left_shoulder_roll_joint", 20},
-  {"left_shoulder_yaw_joint", 21},
-  {"left_elbow_joint", 22}
+      xbit >>= 1;
+    }
+  }
+  return CRC32;
 };
 
 void LowStateHandler(const void* msg){
   LowState_ low_state = *(const LowState_*)msg;
   uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
+
   if (low_state.crc() != crc_calc) {
     std::cerr << "CRC32 mismatch in LowState message!" << std::endl;
     return;
-  };
-  std::lock_guard<std::mutex> lock(stateMutex);
-  int NM = G1_NUM_MOTORS;
-  currentState.q.resize(NM);
-  currentState.dq.resize(NM);
-  for (int i = 0; i < NM; ++i) {
-    currentState.q[i] = low_state.motor_state()[i].q();
-    currentState.dq[i] = low_state.motor_state()[i].dq();
   }
+
+  MotorState ms;
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    ms.q[i] = low_state.motor_state()[i].q();
+    ms.dq[i] = low_state.motor_state()[i].dq();
+  }
+
+  motor_state_buffer_.SetData(ms);  // thread-safe update
+}
+
+void imuTorsoHandler(const void *message) {
+  IMUState_ imu_torso = *(const IMUState_ *)message;
+  const auto &rpy = imu_torso.rpy();
+
+  if (++counter_ % 500 == 0)
+    printf("IMU.torso.rpy: %.2f %.2f %.2f\n", rpy[0], rpy[1], rpy[2]);
 }
 
 void signalHandler(int signum) {
@@ -161,7 +267,30 @@ Eigen::MatrixXd convert_matrix_mujoco_to_eigen(mjtNum *matrix, int num_rows, int
   return result;
 }
 
-int main() {
+int main(const int argc, const char* argv[]) {
+
+  bool useRobot = false;
+  bool useSim = false;
+  std::string netInterface;
+
+  for (int i = 1; i < argc; ++i) {
+    std::string a = argv[i];
+    if (a == "--sim") {
+        useSim = true;
+    } else if (a == "--robot" && i + 1 < argc) {
+        useRobot = true;
+        useSim = true;
+        netInterface = argv[++i];
+    }
+  }
+
+  if(!useRobot && !useSim) {
+    std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
+    return -1;
+  }
+
+  signal(SIGINT, signalHandler);
+
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
@@ -173,6 +302,7 @@ int main() {
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
+  std::ofstream joint_pos_log_file("/tmp/joint_pos.txt");
   std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
   std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
   std::ofstream joint_names_log_file("/tmp/joint_names.txt");
@@ -232,9 +362,6 @@ int main() {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
 
-  //print wolrd frame position
-  std::cerr << "World frame position: " << mj_data_ptr->qpos[0] << " " << mj_data_ptr->qpos[1] << " " << mj_data_ptr->qpos[2] << std::endl;
-
   mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * mj_model_ptr->nq);
   memcpy(qpos0, mj_data_ptr->qpos, mj_model_ptr->nq * sizeof(mjtNum));
 
@@ -264,6 +391,21 @@ int main() {
 
   static int framerate = 60.0;
 
+  ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
+  ChannelSubscriberPtr<LowState_> lowstate_subscriber;
+  ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
+
+  if(useRobot) {
+    std::cout << "Using robot with network interface: " << netInterface << std::endl;
+    ChannelFactory::Instance()->Init(0, netInterface);
+    lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
+    lowcmd_publisher->InitChannel();
+    lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
+    lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
+    imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
+    imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
+  }
+
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -291,12 +433,56 @@ int main() {
         int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
         mj_data_ptr->ctrl[i] = joint_command[joint_name];
 
+        joint_pos_log_file << mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] << " ";
         joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
         joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
       }
 
       mj_step2(mj_model_ptr, mj_data_ptr);
 
+      if (useRobot) {
+        MotorCommand motor_command;
+      
+        // Impostazioni di base
+        motor_command.tau_ff.fill(0.0f);
+        motor_command.q_target.fill(0.0f);
+        motor_command.dq_target.fill(0.0f);
+        motor_command.kp = Kp;
+        motor_command.kd = Kd;
+
+        // assegna i valori di controllo per i giunti
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          if (joint_name == "right_elbow_joint"){
+            motor_command.q_target[joint_id] = 3.14/2;
+            motor_command.dq_target[joint_id] = 0;
+          }
+        }
+      
+        // Costruisci comando DDS
+        LowCmd_ dds_low_command;
+        dds_low_command.mode_pr() = static_cast<uint8_t>(Mode::PR);
+        dds_low_command.mode_machine() = 0;
+      
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          auto &cmd = dds_low_command.motor_cmd().at(i);
+          cmd.mode() = 1;
+          cmd.q()    = motor_command.q_target[i];
+          cmd.dq()   = motor_command.dq_target[i];
+          cmd.tau()  = motor_command.tau_ff[i];
+          cmd.kp()   = motor_command.kp[i];
+          cmd.kd()   = motor_command.kd[i];
+        }
+      
+        dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
+        lowcmd_publisher->Write(dds_low_command);
+      
+        // Salva per usi futuri
+        motor_command_buffer_.SetData(motor_command);
+      }
+      
+      joint_pos_log_file << std::endl;
       joint_vel_log_file << std::endl;
       joint_eff_log_file << std::endl;
     
@@ -317,6 +503,7 @@ int main() {
   mj_deleteData(mj_data_ptr);
   mj_deleteModel(mj_model_ptr);
 
+  joint_pos_log_file.close();
   joint_vel_log_file.close();
   joint_eff_log_file.close();
 
