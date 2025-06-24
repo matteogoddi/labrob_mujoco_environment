@@ -3,8 +3,8 @@
 
 namespace labrob {
 
-DiscreteLIPDynamics::DiscreteLIPDynamics(double eta, int64_t timestep_msec)
-  : timestep_(0.001 * static_cast<double>(timestep_msec)), eta_(eta) {
+DiscreteLIPDynamics::DiscreteLIPDynamics(double eta, double timestep_msec)
+  : timestep_(timestep_msec), eta_(eta) {
   double ch = cosh(eta * timestep_);
   double sh = sinh(eta * timestep_);
   A_ << ch, sh / eta, 1.0 - ch, eta * sh, ch, -eta * sh, 0.0, 0.0, 1.0;

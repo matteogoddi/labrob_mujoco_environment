@@ -9,7 +9,7 @@ typedef Eigen::Vector3d LIPControlInput;
 
 class DiscreteLIPDynamics {
  public:
-  DiscreteLIPDynamics(double eta, int64_t timestep_msec);
+  DiscreteLIPDynamics(double eta, double timestep_msec);
   LIPState integrate(const LIPState& lip_state, const LIPControlInput& zmp_vel, const Eigen::Vector3d& disturbance=Eigen::Vector3d::Zero());
  private:
   Eigen::Vector3d updateState(const LIPState& lip_state, double zmpDot, int dim);

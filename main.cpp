@@ -1,5 +1,12 @@
 // std
 #include <fstream>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <string>
+#include <vector>
+#include <csignal>
+#include <chrono>
 
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -19,6 +26,76 @@
 #include <unitree/idl/hg/LowState_.hpp>
 
 #include "MujocoUI.hpp"
+
+using namespace unitree::robot;
+using namespace unitree_hg::msg::dds_;
+
+std::mutex stateMutex;
+
+struct RobotState{
+  std::vector<double> q;
+  std::vector<double> dq;
+};
+
+RobotState currentState;
+
+struct MotorCommand{
+  std::vector<double> q_target;
+  std::vector<double> dq_target;
+  std::vector<double> tau_ff;
+  std::vector<double> kp;
+  std::vector<double> kd;
+};
+
+MotorCommand currentCommand;
+
+std::map<std::string, int> jointName2Index = {
+  {"waist_pitch_joint", 0},
+  {"waist_yaw_joint", 1},
+  {"waist_roll_joint", 2},
+  {"right_hip_yaw_joint", 3},
+  {"right_hip_roll_joint", 4},
+  {"right_hip_pitch_joint", 5},
+  {"right_knee_joint", 6},
+  {"right_ankle_pitch_joint", 7},
+  {"right_ankle_roll_joint", 8},
+  {"left_hip_yaw_joint", 9},
+  {"left_hip_roll_joint", 10},
+  {"left_hip_pitch_joint", 11},
+  {"left_knee_joint", 12},
+  {"left_ankle_pitch_joint", 13},
+  {"left_ankle_roll_joint", 14},
+  {"right_shoulder_pitch_joint", 15},
+  {"right_shoulder_roll_joint", 16},
+  {"right_shoulder_yaw_joint", 17},
+  {"right_elbow_joint", 18},
+  {"left_shoulder_pitch_joint", 19},
+  {"left_shoulder_roll_joint", 20},
+  {"left_shoulder_yaw_joint", 21},
+  {"left_elbow_joint", 22}
+};
+
+void LowStateHandler(const void* msg){
+  LowState_ low_state = *(const LowState_*)msg;
+  uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
+  if (low_state.crc() != crc_calc) {
+    std::cerr << "CRC32 mismatch in LowState message!" << std::endl;
+    return;
+  };
+  std::lock_guard<std::mutex> lock(stateMutex);
+  int NM = G1_NUM_MOTORS;
+  currentState.q.resize(NM);
+  currentState.dq.resize(NM);
+  for (int i = 0; i < NM; ++i) {
+    currentState.q[i] = low_state.motor_state()[i].q();
+    currentState.dq[i] = low_state.motor_state()[i].dq();
+  }
+}
+
+void signalHandler(int signum) {
+  std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
+  exit(signum);
+}
 
 labrob::RobotState
 robot_state_from_mujoco(mjModel* m, mjData* d) {
@@ -195,13 +272,16 @@ int main() {
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
-      auto start_second = std::chrono::high_resolution_clock::now();
-      
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
       // Update walking manager:
       labrob::JointCommand joint_command;
+      // measure the time taken by the walking manager update
+      auto update_start = std::chrono::high_resolution_clock::now();
       walking_manager.update(robot_state, joint_command);
+      auto update_end = std::chrono::high_resolution_clock::now();
+      auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
+      std::cout << "WalkingManager::update() took " << update_duration << " us" << std::endl;
       
       mj_step1(mj_model_ptr, mj_data_ptr);
 

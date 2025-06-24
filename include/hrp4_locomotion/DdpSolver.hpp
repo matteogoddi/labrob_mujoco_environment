@@ -237,19 +237,19 @@ public:
       backward_pass();
       auto end = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed = (end - start) * 1000;
-      std::cout << "Backward Pass: " << (std::chrono::high_resolution_clock::now() - start).count() * 1000 << " ms" << std::endl;
+      // std::cout << "Backward Pass: " << (std::chrono::high_resolution_clock::now() - start).count() * 1000 << " ms" << std::endl;
 
       // line search
       start = std::chrono::high_resolution_clock::now();
       line_search();
       end = std::chrono::high_resolution_clock::now();
       elapsed = (end - start) * 1000;
-      std::cout << "Forward Pass: " << elapsed.count() << " ms" << std::endl;
+      // std::cout << "Forward Pass: " << elapsed.count() << " ms" << std::endl;
     }
 
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = (end_time - start_time) * 1000;
-    std::cout << "Total Time: " << elapsed.count() << " ms" << std::endl;
+    // std::cout << "Total Time: " << elapsed.count() << " ms" << std::endl;
   }
 
   // setters

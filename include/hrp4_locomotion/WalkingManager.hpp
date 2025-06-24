@@ -48,14 +48,12 @@ class WalkingManager {
 
   Eigen::VectorXd q_jnt_des_;
 
-  int64_t controller_timestep_msec_;
+  double controller_timestep_msec_;
 
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
 
   Eigen::VectorXd M_armature_;
-  Eigen::VectorXd q_next_prev_;
-  Eigen::VectorXd v_next_prev_;
 
   LIPState filtered_state_;
   Eigen::Matrix3d cov_x, cov_y, cov_z;

@@ -35,6 +35,8 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 1. pull changes
    ```bash
    git pull 'remote_name' main
+   // to reset the project and copy all 
+   git fetch 'remote_name' && git reset --hard 'remote_name'/main
    ```
    
 2. push changes
@@ -85,14 +87,15 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 2. Open "unitreeg1.urdf" and press ```CTRL+SHIFT*P```, then press 'URDF Visualizer: Preview URDF/Xacro'
 
 
-### Laboratory simulation
+### Laboratory simulation with UNITREE G1
 
 In order to perform a laboratory simulation with the unitree G1 robot it is essential to download the 
-official SDK from the git repo "unitreerobotics" suited for the G1 humanoid. Generally Unitree SDK2 is 
-based on CycloneDDS, which will be installed in the requirements.
+official SDK from the git repo "unitreerobotics" suited for the G1 humanoid. (Generally Unitree SDK2 is 
+based on CycloneDDS, which will be installed in the requirements).
 Once done we need to establish a connection between the machine and the G1, which may be via Ethernet
 or Wi-fi.
 The set-up is ready and the experiment may be perfomed (make sure to have a main suited for the task).
+To clear further doubts the documentation is found in the following site (https://support.unitree.com/home/en/G1_developer/about_G1).
 
 0. Install requirements:
    ```bash
@@ -127,6 +130,26 @@ The set-up is ready and the experiment may be perfomed (make sure to have a main
    ```
 
 2. Net configuration:
+   1. Ethernet connection
+      The robot's onboard computer IP address is 192.168.123.161, so set the computer's USB Ethernet address to the same subnet, such as 192.168.123.222.
+      ADDRESS : 192.168.123.161
+      NETWORK : 255.255.255.0
+      GATEWAY : 192.168.123.222
+      To check if the robot is receiving you can ping 
+      ```bash
+      ping 192.168.123.161
+      ```
+      If any network interface is needed:
+      ```bash
+      ifconfig
+      ```
+      output: list of netwiork interfaces: generally en for ethernet, wl for wifi, connect to the needed one.
+
 
 3. Run simulation:
+   0. Run examples
+      To run examples, inside the folder /build/bin, the executables are found, which can be run by:
+       ```bash
+      ./'example_filename' 'network_interface'
+      ```
 

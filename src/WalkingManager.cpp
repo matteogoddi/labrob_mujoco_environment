@@ -311,7 +311,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   // Init discrete LIP dynamics:
   discrete_lip_dynamics_ptr_ = std::make_unique<labrob::DiscreteLIPDynamics>(
       std::sqrt(9.81 / com_target_height),
-      controller_timestep_msec_
+      0.001 * controller_timestep_msec_
   );
 
   // Init log files:
@@ -339,15 +339,15 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
   double omega = ismpc_ptr_->getOmega();
-  double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
+//   double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
-  double ch = cosh(omega*worldTimeStep);
-  double sh = sinh(omega*worldTimeStep);
+  double ch = cosh(omega*controller_timestep_msec_*0.001);
+  double sh = sinh(omega*controller_timestep_msec_*0.001);
   Eigen::MatrixXd A_lip = Eigen::MatrixXd::Zero(3,3);
   Eigen::VectorXd B_lip = Eigen::VectorXd::Zero(3);
 //  Eigen::VectorXd B_dis = Eigen::VectorXd::Zero(3);
   A_lip << ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
-  B_lip << worldTimeStep-sh/omega,1-ch,worldTimeStep;
+  B_lip << controller_timestep_msec_* 0.001-sh/omega,1-ch,controller_timestep_msec_* 0.001;
 
   Eigen::Vector3d x_measure, y_measure, z_measure;
   if (std::isnan(current.zmp_pos_(0))) {
@@ -392,7 +392,7 @@ LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eig
   y_est = y_pred + K_kf * (y_measure - H_kf * y_pred);
   cov_y = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_y_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
 
-  Eigen::VectorXd z_pred = F_kf * z_est + G_kf * input_z + Eigen::Vector3d(0.0, -9.81 * worldTimeStep, 0.0);
+  Eigen::VectorXd z_pred = F_kf * z_est + G_kf * input_z + Eigen::Vector3d(0.0, -9.81 * controller_timestep_msec_* 0.001, 0.0);
   Eigen::MatrixXd cov_z_pred = F_kf * cov_z * F_kf.transpose() + Q_kf;
 
   K_kf = cov_z_pred * H_kf.transpose() * (H_kf * cov_z_pred * H_kf.transpose() + R_kf).inverse();
@@ -413,24 +413,20 @@ WalkingManager::update(
     labrob::JointCommand& joint_command
 ) {
 
-    auto start_time = std::chrono::system_clock::now();
-
-    double controller_timestep = 0.001 * static_cast<double>(controller_timestep_msec_);
-
     int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
     auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
     auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
-    // // Perform forward kinematics on the whole tree and update robot data:
-    // pinocchio::forwardKinematics(robot_model_, robot_data_, q);
+    // Perform forward kinematics on the whole tree and update robot data:
+    pinocchio::forwardKinematics(robot_model_, robot_data_, q);
 
     // // NOTE: jacobianCenterOfMass calls forwardKinematics and
-    // //       computeJointJacobians.
-    // pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
-    // pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
-    // pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
-    // pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+    //       computeJointJacobians.
+    pinocchio::jacobianCenterOfMass(robot_model_, robot_data_, q);
+    pinocchio::computeJointJacobiansTimeVariation(robot_model_, robot_data_, q, qdot);
+    pinocchio::framesForwardKinematics(robot_model_, robot_data_, q);
+    pinocchio::centerOfMass(robot_model_, robot_data_, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
     const auto& centroidal_momentum_matrix = pinocchio::ccrba(
         robot_model_,
         robot_data_,
@@ -554,7 +550,8 @@ WalkingManager::update(
     ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
     // std::cout << "IS-MPC input: " << ismpc_ptr_->getInput().transpose() << std::endl;
     auto mpc_tf_ms = std::chrono::system_clock::now();
-    // const auto& ismpc_optimal_control_input = ismpc_ptr_->getInput();
+    auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count();
+    std::cout << "IS-MPC solve duration: " << mpc_duration << " us" << std::endl;
 
     DdpSolver ddpsolver = DdpSolver();
 
@@ -585,11 +582,15 @@ WalkingManager::update(
     ddpsolver.set_x_warmstart(x_guess);
     ddpsolver.set_u_warmstart(u_guess);
 
+    auto start = std::chrono::system_clock::now();
     ddpsolver.solve();
+    auto end = std::chrono::system_clock::now();
+    auto solve_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "DdpSolver solve duration: " << solve_duration << " us" << std::endl;
 
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
-    // substitute with ddpsolver.u[0] if you want to use the DDP solver
+    // substitute with ddpsolver.u[0]
 
 
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
@@ -656,10 +657,6 @@ WalkingManager::update(
         current_gait_configuration,
         desired_gait_configuration
     );
-
-    auto end_time = std::chrono::system_clock::now();
-    auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-    std::cout << "WalkingManager::update() took " << elapsed_time << " us" << std::endl;
 
 
     // Update timing in milliseconds.
