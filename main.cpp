@@ -158,7 +158,7 @@ inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
   for (uint32_t i = 0; i < len; i++) {
     xbit = 1 << 31;
     data = ptr[i];
-    for (uint32_t bits = 0; bits < G1_NUM_MOTOR; bits++) {
+    for (uint32_t bits = 0; bits < 32; bits++) {
       if (CRC32 & 0x80000000) {
         CRC32 <<= 1;
         CRC32 ^= dwPolynomial;

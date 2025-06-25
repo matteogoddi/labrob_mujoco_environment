@@ -1,3 +1,4 @@
+### PREREQUISITES 
 You need the following dependencies:
 - glfw3
 - mujoco
@@ -5,12 +6,21 @@ You need the following dependencies:
 - hpipm
 - blasfeo
 
-To install glfw3, use:
-```
-sudo apt install glfw3
-```
+1. GLFW3
+   ```
+   sudo apt install glfw3
+   ```
 
-To install pinocchio, follow the instructions at: https://stack-of-tasks.github.io/pinocchio/download.html
+2. PINOCCHIO
+   ```
+   git clone --recursive https://github.com/stack-of-tasks/pinocchio.git
+   cd pinocchio
+   mkdir build
+   cd build
+   cmake .. -DCMAKE_BUILD_TYPE=Release
+   make -j4
+   sudo make install
+   ```
 
 To install Mujoco, download the source code from: https://github.com/google-deepmind/mujoco/releases
 
@@ -51,12 +61,8 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    git remote add 'new_remote_name' 'new_repository_link'
    git remote -v
    ```
-   
-### Prerequisites 
 
-1. Dependencies listed in `requirements.txt`, needed when trying to run files in /scripts
-
-### Installation
+### Installation to run python scripts
 
 0. install and activate virtual environment
    ```bash
@@ -64,7 +70,7 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    source venv/bin/activate
    ```
 
-1. install dependencies:
+1. install dependencies listed in `requirements.txt`, needed when trying to run files in /scripts:
    ```bash
    pip install -r requirements.txt
    ```
@@ -76,7 +82,7 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 2. execute main:
    ```bash
    cd build
-   make -j('nproc')
+   make -j$(nproc)
    ./main
    ```
 
@@ -90,28 +96,12 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 ### Laboratory simulation with UNITREE G1
 
 In order to perform a laboratory simulation with the unitree G1 robot it is essential to download the 
-official SDK from the git repo "unitreerobotics" suited for the G1 humanoid. (Generally Unitree SDK2 is 
-based on CycloneDDS, which will be installed in the requirements).
+official SDK from the git repo "unitreerobotics" suited for the G1 humanoid.
 Once done we need to establish a connection between the machine and the G1, which may be via Ethernet
 or Wi-fi.
 The set-up is ready and the experiment may be perfomed (make sure to have a main suited for the task).
 To clear further doubts the documentation is found in the following site (https://support.unitree.com/home/en/G1_developer/about_G1).
 The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/2025/03/G1-User-Manual_compressed.pdf.)
-
-0. Install requirements:
-   ```bash
-   sudo apt update
-   sudo apt install build-essential cmake git
-
-   git clone https://github.com/eclipse-cyclonedds/cyclonedds.git
-   cd cyclonedds
-   mkdir build && cd build
-   cmake ..
-   make -j$(nproc)
-   sudo make install
-   echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> ~/.bashrc
-   source ~/.bashrc
-   ```
 
 1. Install Unitree SDK:
    ```bash
@@ -133,18 +123,19 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 2. Net configuration:
    1. Ethernet connection
       The robot's onboard computer IP address is 192.168.123.161, so set the computer's USB Ethernet address to the same subnet, such as 192.168.123.222.
-      ADDRESS : 192.168.123.161
+
+      ADDRESS : 192.168.123.222
       NETWORK : 255.255.255.0
-      GATEWAY : 192.168.123.222
+      GATEWAY : 192.168.123.161
+
       To check if the robot is receiving you can ping 
       ```bash
       ping 192.168.123.161
       ```
-      If any network interface is needed:
+      If any network interface is needed, for either wifi (wl) or ethernet (en), it can be found by typing the following command:
       ```bash
       ifconfig
       ```
-      output: list of netwiork interfaces: generally en for ethernet, wl for wifi, connect to the needed one.
 
 
 3. Run simulation:
