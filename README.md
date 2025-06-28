@@ -38,22 +38,30 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 ### Connect to github
 
 0. clone the repository
-    ```bash
+   ```bash
    git clone 'repository_link'
-    ```
-
-1. pull changes
+   ```
+   
+1. to create another branch different from 'main'
+   ```bash
+   git checkout -b 'new_branch_name'
+   ```
+   and to switch from one branch to another
+   ```bash
+   git checkout 'branch_name'
+   ```
+2. pull changes
    ```bash
    git pull 'remote_name' main
    // to reset the project and copy all 
-   git fetch 'remote_name' && git reset --hard 'remote_name'/main
+   git fetch 'remote_name' && git reset --hard 'remote_name'/'branch_name'
    ```
    
-2. push changes
+3. push changes
    ```bash
    git add .
    git commit -m "Explain changes"
-   git push 'remote_name' main
+   git push 'remote_name' 'branch_name'
    ```
 
 4. usually 'remote_name' is origin, to add another remote for personal changes
@@ -70,20 +78,22 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    source venv/bin/activate
    ```
 
-1. install dependencies listed in `requirements.txt`, needed when trying to run files in /scripts:
+1. install dependencies listed in `requirements.txt`:
    ```bash
    pip install -r requirements.txt
    ```
+
 ### How to run the code
+
 1. run python scripts:
    ```bash
    python3 scripts/'file_name'
    ```
-2. execute main:
+2. execute main in simulation mode:
    ```bash
    cd build
    make -j$(nproc)
-   ./main
+   ./main --sim
    ```
 
 ### Visualization 
@@ -108,7 +118,7 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
    git clone https://github.com/unitreerobotics/unitree_sdk2.git
    cd unitree_sdk2
    mkdir build && cd build
-   cmake .. -DCMAKE_INSTALL_PREFIX=/opt/unitree_robotics
+   cmake ..
    make -j$(nproc)
    sudo make install
    ```
@@ -119,6 +129,9 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
    cmake .. 
    make 
    ```
+
+   NOTE:
+   To run the example "g1_dual_arm_example", yaml-cpp is needed, however its latest version (0.8.0) may cause issue with Ubuntu 24.04.2 LTS, causing segmentation fault when trying to execute every example. For this reason it is recommended to use the version 0.7.0.
 
 2. Net configuration:
    1. Ethernet connection
@@ -140,8 +153,11 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 
 3. Run simulation:
    0. Run examples
-      To run examples, inside the folder /build/bin, the executables are found, which can be run by:
-       ```bash
+      ```bash
       ./'example_filename' 'network_interface'
+      ```
+   1. Execute main:
+      ```bash
+      ./main --robot 'network_interface'
       ```
 

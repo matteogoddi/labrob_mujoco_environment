@@ -100,8 +100,6 @@ WholeBodyController::compute_inverse_dynamics(
     const labrob::GaitConfiguration& desired
 ) {
 
-  auto start_time = std::chrono::high_resolution_clock::now();
-
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
@@ -318,14 +316,6 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
-
-  // Fine misurazione del tempo
-  auto end_time = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
-
-  // Stampa del tempo di esecuzione
-  std::cout << "Tempo di esecuzione del controllore Whole Body: " << duration << " microsecondi" << std::endl;
-
 
   JointCommand joint_command;
   for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {

@@ -153,7 +153,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
           labrob::Foot::RIGHT
       ),
       0.0,
-      5000,
+      2000,
       labrob::WalkingState::Standing
   ));
 
@@ -330,8 +330,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
   angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
-  // fl_log_file_.open("/tmp/fl.txt");
-  // fr_log_file_.open("/tmp/fr.txt");
+  fl_log_file_.open("/tmp/fl.txt");
+  fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
 
   return true;
@@ -449,18 +449,6 @@ WalkingManager::update(
         J_torso
     );
 
-    // auto J_torso_orientation = J_torso.bottomRows<3>();
-    // Eigen::MatrixXd J_torso_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    // pinocchio::getFrameJacobianTimeVariation(
-    //     robot_model_,
-    //     robot_data_,
-    //     torso_idx_,
-    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-    //     J_torso_dot
-    // );
-    // auto J_torso_orientation_dot = J_torso_dot.bottomRows<3>();
-
-
     const auto& T_lsole = robot_data_.oMf[lsole_idx_];
     Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
     pinocchio::getFrameJacobian(
@@ -472,14 +460,7 @@ WalkingManager::update(
     );
 
     const auto& v_lsole = J_lsole * qdot;
-    // Eigen::MatrixXd J_lsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    // pinocchio::getFrameJacobianTimeVariation(
-    //     robot_model_,
-    //     robot_data_,
-    //     lsole_idx_,
-    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-    //     J_lsole_dot
-    //     );
+
     const auto& T_rsole = robot_data_.oMf[rsole_idx_];
     Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, robot_model_.nv);
     pinocchio::getFrameJacobian(
@@ -490,14 +471,6 @@ WalkingManager::update(
         J_rsole
     );
     const auto& v_rsole = J_rsole * qdot;
-    // Eigen::MatrixXd J_rsole_dot = Eigen::MatrixXd::Zero(6, robot_model_.nv);
-    // pinocchio::getFrameJacobianTimeVariation(
-    //     robot_model_,
-    //     robot_data_,
-    //     rsole_idx_,
-    //     pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-    //     J_rsole_dot
-    // );
 
     // Update walking state:
     walking_data_.updateWalkingState(t_msec_);
@@ -548,10 +521,8 @@ WalkingManager::update(
     // CoM task:
     auto mpc_t0_ms = std::chrono::system_clock::now();
     ismpc_ptr_->solve(t_msec_, walking_data_, filtered_state_);
-    // std::cout << "IS-MPC input: " << ismpc_ptr_->getInput().transpose() << std::endl;
     auto mpc_tf_ms = std::chrono::system_clock::now();
     auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count();
-    std::cout << "IS-MPC solve duration: " << mpc_duration << " us" << std::endl;
 
     DdpSolver ddpsolver = DdpSolver();
 
@@ -586,7 +557,6 @@ WalkingManager::update(
     ddpsolver.solve();
     auto end = std::chrono::system_clock::now();
     auto solve_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout << "DdpSolver solve duration: " << solve_duration << " us" << std::endl;
 
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
@@ -649,7 +619,7 @@ WalkingManager::update(
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
-
+    start = std::chrono::system_clock::now();
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
         robot_model_,
         robot_state,
@@ -657,6 +627,8 @@ WalkingManager::update(
         current_gait_configuration,
         desired_gait_configuration
     );
+    end = std::chrono::system_clock::now();
+    auto compute_id_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
 
     // Update timing in milliseconds.
@@ -680,8 +652,12 @@ WalkingManager::update(
     v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
     v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
     angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-    // fl_log_file_ << output.fl.transpose() << std::endl;
-    // fr_log_file_ << output.fr.transpose() << std::endl;
+    // if (robot_state.contact_forces.size() > 0) {
+    //     fl_log_file_ << robot_state.contact_forces[0] << std::endl;
+    // } else {
+    //     std::cerr << "Error: robot_state.contact_forces is empty!" << std::endl;
+    // }
+    // fr_log_file_ << robot_state.contact_forces[1] << std::endl;
     cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
 
 }

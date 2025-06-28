@@ -25,11 +25,14 @@
 #include <unitree/robot/channel/channel_subscriber.hpp>
 #include <unitree/idl/hg/LowCmd_.hpp>
 #include <unitree/idl/hg/LowState_.hpp>
+#include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
 #include "MujocoUI.hpp"
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
+using namespace unitree::common;
+using namespace unitree::robot::b2;
 
 static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
@@ -77,20 +80,12 @@ struct MotorState {
 
 
 // Stiffness for all G1 Joints
-// std::array<float, G1_NUM_MOTOR> Kp{
-//   60, 60, 60, 100, 40, 40,      // legs
-//   60, 60, 60, 100, 40, 40,      // legs
-//   60, 40, 40,                   // waist
-//   40, 40, 40, 40,  40, 40, 40,  // arms
-//   40, 40, 40, 40,  40, 40, 40   // arms
-// };
-
 std::array<float, G1_NUM_MOTOR> Kp{
-  0, 0, 0, 0, 0, 0,      // legs
-  0, 0, 0, 0, 0, 0,     // legs
-  0, 0, 0,                  // waist
-  0, 0, 0, 0, 0, 0, 0,  // arms
-  0, 0, 0, 5,  0, 0, 0  // arms
+  200, 200, 200, 200, 200, 200,      // legs
+  200, 200, 200, 200, 200, 200,      // legs
+  60, 40, 40,                   // waist
+  40, 40, 40, 40,  40, 40, 40,  // arms
+  40, 40, 40, 40,  40, 40, 40   // arms
 };
 
 // Damping for all G1 Joints
@@ -105,7 +100,7 @@ std::array<float, G1_NUM_MOTOR> Kd{
 std::mutex stateMutex;
 DataBuffer<MotorState> motor_state_buffer_;
 DataBuffer<MotorCommand> motor_command_buffer_;
-std::atomic<int> counter_{0};
+uint8_t mode_machine_ = 0;
 
 enum class Mode {
 PR = 0,  // Series Control for Ptich/Roll Joints
@@ -172,6 +167,7 @@ inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
   return CRC32;
 };
 
+MotorState motor_state_data;
 void LowStateHandler(const void* msg){
   LowState_ low_state = *(const LowState_*)msg;
   uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
@@ -181,22 +177,72 @@ void LowStateHandler(const void* msg){
     return;
   }
 
-  MotorState ms;
+  std::lock_guard<std::mutex> lock(stateMutex);
   for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-    ms.q[i] = low_state.motor_state()[i].q();
-    ms.dq[i] = low_state.motor_state()[i].dq();
+    motor_state_data.q[i] = low_state.motor_state()[i].q();
+    motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
 
-  motor_state_buffer_.SetData(ms);  // thread-safe update
+  // motor_state_buffer_.SetData(ms);  // thread-safe update
+
+  
+  if (mode_machine_ != low_state.mode_machine()) {
+    if (mode_machine_ == 0) {
+      std::cout << "G1 type: " << unsigned(low_state.mode_machine()) << std::endl;
+    }
+    mode_machine_ = low_state.mode_machine();
+  }
 }
 
-void imuTorsoHandler(const void *message) {
-  IMUState_ imu_torso = *(const IMUState_ *)message;
-  const auto &rpy = imu_torso.rpy();
+ImuState imu_state_data;
+void imuTorsoHandler(const void* msg) {
+  IMUState_ imu_state = *(const IMUState_*)msg;
 
-  if (++counter_ % 500 == 0)
-    printf("IMU.torso.rpy: %.2f %.2f %.2f\n", rpy[0], rpy[1], rpy[2]);
+  std::lock_guard<std::mutex> lock(stateMutex);
+  imu_state_data.rpy[0] = imu_state.rpy()[0];
+  imu_state_data.rpy[1] = imu_state.rpy()[1];
+  imu_state_data.rpy[2] = imu_state.rpy()[2];
 }
+
+std::string queryServiceName(std::string form,std::string name)
+{
+    if(form == "0")
+    {
+        if(name == "normal" ) return "sport_mode"; 
+        if(name == "ai" ) return "ai_sport"; 
+        if(name == "advanced" ) return "advanced_sport"; 
+    }
+    else
+    {
+        if(name == "ai-w" ) return "wheeled_sport(go2W)"; 
+        if(name == "normal-w" ) return "wheeled_sport(b2W)";
+    }
+    return "";
+}
+
+int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
+{
+    std::string robotForm,motionName;
+    int motionStatus;
+    int32_t ret = msc->CheckMode(robotForm,motionName);
+    if (ret == 0) {
+        std::cout << "CheckMode succeeded." << std::endl;
+    } else {
+        std::cout << "CheckMode failed. Error code: " << ret << std::endl;
+    }
+    if(motionName.empty())
+    {
+        std::cout << "The motion control-related service is deactivated." << std::endl;
+        motionStatus = 0;
+    }
+    else
+    {
+        std::string serviceName = queryServiceName(robotForm,motionName);
+        std::cout << "Service: "<< serviceName<< " is activate" << std::endl;
+        motionStatus = 1;
+    }
+    return motionStatus;
+};
 
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
@@ -255,16 +301,6 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
   robot_state.total_force = sum;
 
   return robot_state;
-}
-
-Eigen::MatrixXd convert_matrix_mujoco_to_eigen(mjtNum *matrix, int num_rows, int num_cols) {
-  Eigen::MatrixXd result(num_rows, num_cols);
-  for (int i = 0; i < num_rows; ++i) {
-    for (int j = 0; j < num_cols; ++j) {
-      result(i, j) = matrix[i * num_cols + j];
-    }
-  }
-  return result;
 }
 
 int main(const int argc, const char* argv[]) {
@@ -362,8 +398,6 @@ int main(const int argc, const char* argv[]) {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
 
-  mjtNum* qpos0 = (mjtNum*) malloc(sizeof(mjtNum) * mj_model_ptr->nq);
-  memcpy(qpos0, mj_data_ptr->qpos, mj_model_ptr->nq * sizeof(mjtNum));
 
   std::map<std::string, double> armatures;
   for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -371,7 +405,11 @@ int main(const int argc, const char* argv[]) {
     std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
     int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
     armatures[joint_name] = mj_model_ptr->dof_armature[dof_id];
+    joint_names_log_file << joint_name << std::endl;
   }
+
+  joint_names_log_file.flush();
+  joint_names_log_file.close();
 
   // Walking Manager:
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
@@ -380,24 +418,32 @@ int main(const int argc, const char* argv[]) {
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
-  for (int i = 0; i < mj_model_ptr->nu; ++i) {
-    int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-    std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-    joint_names_log_file << joint_name << std::endl;
-  }
-
-  joint_names_log_file.flush();
-  joint_names_log_file.close();
-
   static int framerate = 60.0;
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
   ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
+  std::shared_ptr<MotionSwitcherClient> msc;
 
   if(useRobot) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
     ChannelFactory::Instance()->Init(0, netInterface);
+
+    msc.reset(new MotionSwitcherClient());
+    msc->SetTimeout(5.0f);
+    msc->Init();
+
+    while(queryMotionStatus(msc)){
+      std::cout << "try to deactivate the motion control - related service" << std::endl;
+      int32_t ret = msc->ReleaseMode();
+      if (ret == 0) {
+        std::cout << "Motion control service deactivated successfully." << std::endl;
+      } else {
+        std::cerr << "Failed to deactivate motion control service, retrying..." << std::endl;
+        sleep(5);
+      }
+    }
+
     lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
     lowcmd_publisher->InitChannel();
     lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
@@ -409,8 +455,6 @@ int main(const int argc, const char* argv[]) {
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
-    auto start_time = std::chrono::high_resolution_clock::now();
-
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
@@ -418,12 +462,11 @@ int main(const int argc, const char* argv[]) {
 
       // Update walking manager:
       labrob::JointCommand joint_command;
-      // measure the time taken by the walking manager update
+
       auto update_start = std::chrono::high_resolution_clock::now();
       walking_manager.update(robot_state, joint_command);
       auto update_end = std::chrono::high_resolution_clock::now();
       auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
-      std::cout << "WalkingManager::update() took " << update_duration << " us" << std::endl;
       
       mj_step1(mj_model_ptr, mj_data_ptr);
 
@@ -447,23 +490,45 @@ int main(const int argc, const char* argv[]) {
         motor_command.tau_ff.fill(0.0f);
         motor_command.q_target.fill(0.0f);
         motor_command.dq_target.fill(0.0f);
-        motor_command.kp = Kp;
-        motor_command.kd = Kd;
+
+        // impose kp and kd to increase linearly with time
+        if (mj_data_ptr->time < 5.0f) {
+          for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
+            motor_command.kd[i] = Kd[i];
+          }
+        }
+        else{
+          motor_command.kp = Kp;
+          motor_command.kd = Kd;
+        }
+
+        // motor_command.kp = Kp;
+        // motor_command.kd = Kd;
 
         // assegna i valori di controllo per i giunti
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          if (joint_name == "right_elbow_joint"){
-            motor_command.q_target[joint_id] = 3.14/2;
-            motor_command.dq_target[joint_id] = 0;
-          }
+          // if (joint_name == "right_elbow_joint"){
+
+          //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
+          //   motor_command.q_target[25] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
+          //   motor_command.dq_target[25] = 0;
+
+          //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
+          //   motor_command.q_target[18] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
+          //   motor_command.dq_target[18] = 0;
+          // }
+
+          // assign q values to the motor command
+          motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
         }
       
         // Costruisci comando DDS
         LowCmd_ dds_low_command;
         dds_low_command.mode_pr() = static_cast<uint8_t>(Mode::PR);
-        dds_low_command.mode_machine() = 0;
+        dds_low_command.mode_machine() = mode_machine_;
       
         for (int i = 0; i < G1_NUM_MOTOR; ++i) {
           auto &cmd = dds_low_command.motor_cmd().at(i);
@@ -474,27 +539,32 @@ int main(const int argc, const char* argv[]) {
           cmd.kp()   = motor_command.kp[i];
           cmd.kd()   = motor_command.kd[i];
         }
+
+        std::cout << "command given to the elbow" << dds_low_command.motor_cmd().at(25).q() << std::endl;
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
-        lowcmd_publisher->Write(dds_low_command);
-      
-        // Salva per usi futuri
-        motor_command_buffer_.SetData(motor_command);
+        lowcmd_publisher->Write(dds_low_command);      
+
+        std::lock_guard<std::mutex> lock(stateMutex);
+        MotorState low_state_copy = motor_state_data;
+        ImuState imu_state_copy = imu_state_data;
+        std::cout << "ImuState: "
+                  << "RPY: [" << imu_state_data.rpy[0] << ", "
+                  << imu_state_data.rpy[1] << ", "
+                  << imu_state_data.rpy[2] << std::endl;
+        
       }
       
       joint_pos_log_file << std::endl;
       joint_vel_log_file << std::endl;
       joint_eff_log_file << std::endl;
+
+      //sleep from 1 - now to 1 ms
+      auto start_sleep = std::chrono::high_resolution_clock::now();
+      auto end_sleep = start_sleep + std::chrono::milliseconds(1);
+      std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep));
     
     }
-
-    // Fine misurazione del tempo
-    auto end_time = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
-
-    // Stampa del tempo di esecuzione
-    std::cout << "Tempo di esecuzione del main: " << duration << " millisecondi" << std::endl;
-
 
     mujoco_ui.render();
   }
