@@ -330,9 +330,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
   v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
   angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
-  fl_log_file_.open("/tmp/fl.txt");
-  fr_log_file_.open("/tmp/fr.txt");
+//   fl_log_file_.open("/tmp/fl.txt");
+//   fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
+
+  
 
   return true;
 }

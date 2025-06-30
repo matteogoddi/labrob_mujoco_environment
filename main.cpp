@@ -8,6 +8,7 @@
 #include <chrono>
 #include <mutex>
 #include <shared_mutex>
+#include <filesystem>
 
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -81,20 +82,20 @@ struct MotorState {
 
 // Stiffness for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kp{
-  200, 200, 200, 200, 200, 200,      // legs
-  200, 200, 200, 200, 200, 200,      // legs
+  200, 200, 200, 600, 600, 200,      // legs sx
+  200, 200, 200, 600, 600, 200,      // legs dx
   60, 40, 40,                   // waist
-  40, 40, 40, 40,  40, 40, 40,  // arms
-  40, 40, 40, 40,  40, 40, 40   // arms
+  40, 40, 40, 40,  40, 40, 40,  // arms sx
+  40, 40, 40, 40,  40, 40, 40   // arms dx
 };
 
 // Damping for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kd{
-  1, 1, 1, 2, 1, 1,     // legs
-  1, 1, 1, 2, 1, 1,     // legs
-  1, 1, 1,              // waist
-  1, 1, 1, 1, 1, 1, 1,  // arms
-  1, 1, 1, 1, 1, 1, 1   // arms
+  10, 10, 10, 10, 10, 10,     // legs sx
+  10, 10, 10, 10, 10, 10,     // legs dx
+  10, 10, 10,              // waist
+  10, 10, 10, 10, 10, 10, 10,  // arms sx
+  10, 10, 10, 10, 10, 10, 10   // arms dx
 };
 
 std::mutex stateMutex;
@@ -338,10 +339,49 @@ int main(const int argc, const char* argv[]) {
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
-  std::ofstream joint_pos_log_file("/tmp/joint_pos.txt");
-  std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
-  std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
-  std::ofstream joint_names_log_file("/tmp/joint_names.txt");
+  // create a folder experiment in tmp labelled as the number of experiment i made
+  std::ofstream joint_pos_log_file;
+  std::ofstream joint_vel_log_file;
+  std::ofstream joint_eff_log_file;
+  std::ofstream joint_names_log_file;
+  std::ofstream fb_joint_pos_log_file;
+  std::ofstream input_command_log_file;
+
+  if(useRobot) {
+    bool experiment_folder_exists = true;
+    int experiment_counter = 1;
+    std::string experiment_folder;
+    while (experiment_folder_exists) {
+      if (!std::filesystem::exists("../experiments")) {
+        std::filesystem::create_directory("../experiments");
+        std::cout << "Created experiments directory." << std::endl;
+      }
+      experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
+      experiment_folder_exists = std::filesystem::exists(experiment_folder);
+      if (!experiment_folder_exists) {
+        std::filesystem::create_directory(experiment_folder);
+        std::cout << "Created experiment folder: " << experiment_folder << std::endl;
+        break;
+      }
+      ++experiment_counter;
+    }
+
+    // create log files in the experiment folder
+    joint_pos_log_file.open(experiment_folder + "/joint_pos.txt");
+    joint_vel_log_file.open(experiment_folder + "/joint_vel.txt");
+    joint_eff_log_file.open(experiment_folder + "/joint_eff.txt");
+    joint_names_log_file.open(experiment_folder + "/joint_names.txt");
+    fb_joint_pos_log_file.open(experiment_folder + "/fb_joint_pos.txt");
+    input_command_log_file.open(experiment_folder + "/input_command.txt");
+
+  }
+  else if (useSim && !useRobot) {
+    joint_pos_log_file.open("/tmp/joint_pos.txt");
+    joint_vel_log_file.open("/tmp/joint_vel.txt");
+    joint_eff_log_file.open("/tmp/joint_eff.txt");
+    joint_names_log_file.open("/tmp/joint_names.txt");
+    
+  }  
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -514,15 +554,44 @@ int main(const int argc, const char* argv[]) {
 
           //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
           //   motor_command.q_target[25] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
-          //   motor_command.dq_target[25] = 0;
+          //   motor_command.dq_target[25] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
+
+          //   input_command_log_file << motor_command.q_target[25] << " ";
 
           //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
           //   motor_command.q_target[18] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
           //   motor_command.dq_target[18] = 0;
+
+          // }
+
+          // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8 for ankle pitch joints
+          // if (joint_name == "right_ankle_pitch_joint"){
+
+          //   // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8
+          //   motor_command.q_target[10] = 0.2 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 4) - (M_PI / 8);
+          //   motor_command.dq_target[10] = 0.2 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 4));
+
+          //   input_command_log_file << motor_command.q_target[10] << " ";
+
+          //   // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8
+          //   motor_command.q_target[4] = 0.2 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 4) - (M_PI / 8);
+          //   motor_command.dq_target[4] = 0.2 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 4));
+          // }
+          
+          // if (joint_name == "right_knee_joint") {
+          //   // set motor command as a sinusoidal function of time oscillating between 0 and pi/6
+          //   motor_command.q_target[9] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
+          //   motor_command.dq_target[9] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
+          //   input_command_log_file << motor_command.q_target[9] << " ";
+
+          //   motor_command.q_target[3] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
+          //   motor_command.dq_target[3] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
           // }
 
           // assign q values to the motor command
           motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+
+          input_command_log_file << motor_command.q_target[i] << " ";
         }
       
         // Costruisci comando DDS
@@ -539,8 +608,6 @@ int main(const int argc, const char* argv[]) {
           cmd.kp()   = motor_command.kp[i];
           cmd.kd()   = motor_command.kd[i];
         }
-
-        std::cout << "command given to the elbow" << dds_low_command.motor_cmd().at(25).q() << std::endl;
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
         lowcmd_publisher->Write(dds_low_command);      
@@ -548,16 +615,32 @@ int main(const int argc, const char* argv[]) {
         std::lock_guard<std::mutex> lock(stateMutex);
         MotorState low_state_copy = motor_state_data;
         ImuState imu_state_copy = imu_state_data;
-        std::cout << "ImuState: "
-                  << "RPY: [" << imu_state_data.rpy[0] << ", "
-                  << imu_state_data.rpy[1] << ", "
-                  << imu_state_data.rpy[2] << std::endl;
+
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+  
+          //save values in the log files
+          fb_joint_pos_log_file << low_state_copy.q[i] << " ";
+        }
+
+        // //compute com using pinocchio
+        // pinocchio::Model model;
+        // pinocchio::urdf::buildModel(mjcf_filepath, model);
+        // pinocchio::Data data(model);
+        // pinocchio::computeJointJacobians(model, data, low_state_copy.q);
+        // pinocchio::computeCenterOfMass(model, data, low_state_copy.q, false);
+        // Eigen::Vector3d com = data.com;
+        // std::cout << "COM: [" << com[0] << ", " << com[1] << ", " << com[2] << "]" << std::endl;
         
       }
       
       joint_pos_log_file << std::endl;
       joint_vel_log_file << std::endl;
       joint_eff_log_file << std::endl;
+      fb_joint_pos_log_file << std::endl;
+      input_command_log_file << std::endl;
+
 
       //sleep from 1 - now to 1 ms
       auto start_sleep = std::chrono::high_resolution_clock::now();
