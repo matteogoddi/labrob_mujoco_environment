@@ -48,6 +48,8 @@ class WalkingManager {
 
   Eigen::VectorXd q_jnt_des_;
 
+  labrob::GaitConfiguration initial_gait_configuration;
+
   double controller_timestep_msec_;
 
   labrob::WalkingData walking_data_;

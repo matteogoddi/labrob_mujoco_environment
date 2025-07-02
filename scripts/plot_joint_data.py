@@ -6,14 +6,21 @@ import os
 
 if __name__ == '__main__':
     #request input from terminal
-    number = input("Enter the folder path containing the joint data files: ")
-    folder = 'experiments/experiment_' + number
+    number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
+    if number == '0':
+        folder = 'tmp'
+    else:
+        folder = 'experiments/experiment_' + number
     joint_pos: np.ndarray = np.loadtxt(folder + '/joint_pos.txt')
     joint_vel: np.ndarray = np.loadtxt(folder + '/joint_vel.txt')
     joint_eff: np.ndarray = np.loadtxt(folder +'/joint_eff.txt')
     fb_joint_pos: np.ndarray = np.loadtxt(folder +'/fb_joint_pos.txt')
+    fb_joint_vel: np.ndarray = np.loadtxt(folder +'/fb_joint_vel.txt')
     input_command: np.ndarray = np.loadtxt(folder + '/input_command.txt')
-    joint_names = open('/tmp/joint_names.txt').readlines()
+    com_simulation: np.ndarray = np.loadtxt(folder + '/com.txt')
+    com_real: np.ndarray = np.loadtxt(folder + '/real_com.txt')
+    com_desired: np.ndarray = np.loadtxt(folder + '/mpc_com.txt')
+    joint_names = open(folder + '/joint_names.txt').readlines()
 
     delta = 1e-3
     num_samples = fb_joint_pos.shape[0]
@@ -115,21 +122,65 @@ if __name__ == '__main__':
     fig.savefig(f"images/feedback/position_error_plot.png")
     plt.close(fig)
 
+    #plot velocity error between input command and feedback joint velocity, everything in one single plot
+    fig, ax = plt.subplots(figsize=(18, 12))
+    for i in range(fb_joint_vel.shape[1]):
+        error = fb_joint_vel[:, i] - joint_vel[:, i]
+        ax.plot(t, error, label=joint_names[i].strip())
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Velocity Error [rad/s]')
+    ax.set_title('Velocity Error between Input Command and Feedback Joint Velocity')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(f"images/feedback/velocity_error_plot.png")
+    plt.close(fig)
+
     # Create a histogram with the last error value of each joint
     last_errors = [fb_joint_pos[-1, i] - input_command[-1, i] for i in range(fb_joint_pos.shape[1])]
-
     fig, ax = plt.subplots(figsize=(18, 12))
     ax.bar([joint_names[i].strip() for i in range(fb_joint_pos.shape[1])], last_errors)
-
     ax.set_xlabel('Joint')
     ax.set_ylabel('Last Position Error [rad]')
     ax.set_title('Last Position Error for Each Joint')
     ax.grid(True)
-
-    # Improve label visibility
     plt.xticks(rotation=45, ha='right', fontsize=10)
-
     fig.tight_layout()
     fig.savefig("images/feedback/last_position_error_plot.png")
+    plt.close(fig)
+
+    # Plot CoM simulation and real data
+    fig, ax = plt.subplots()
+    ax.plot(t, com_simulation[:, 0], label='CoM Simulation X', color='blue')
+    ax.plot(t, com_simulation[:, 1], label='CoM Simulation Y', color='orange')
+    ax.plot(t, com_simulation[:, 2], label='CoM Simulation Z', color='green')
+    ax.plot(t, com_real[:, 0], label='CoM Real X', color='red', linestyle='--')
+    ax.plot(t, com_real[:, 1], label='CoM Real Y', color='purple', linestyle='--')
+    ax.plot(t, com_real[:, 2], label='CoM Real Z', color='brown', linestyle='--')
+    ax.plot(t, com_desired[:, 0], label='CoM Desired X', color='cyan', linestyle=':')
+    ax.plot(t, com_desired[:, 1], label='CoM Desired Y', color='magenta', linestyle=':')
+    ax.plot(t, com_desired[:, 2], label='CoM Desired Z', color='yellow', linestyle=':')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('CoM Position [m]')
+    ax.set_title('CoM Position: Simulation vs Real')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/feedback/com_plot.png")
+    plt.close(fig)  
+
+    # Plot CoM error
+    com_error = com_simulation - com_real
+    fig, ax = plt.subplots()
+    ax.plot(t, com_error[:, 0], label='CoM Error X', color='blue')
+    ax.plot(t, com_error[:, 1], label='CoM Error Y', color='orange')
+    ax.plot(t, com_error[:, 2], label='CoM Error Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('CoM Error [m]')
+    ax.set_title('CoM Error: Simulation - Real')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/feedback/com_error_plot.png")
     plt.close(fig)
 

@@ -132,7 +132,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
   double swing_foot_trajectory_height = 0.1;
-  double step_length_x = 0.15;
+  double step_length_x = 0.0;
   double step_length_y = 0.0;
   double step_rotation = 0.0;
   int n_steps = 10;
@@ -317,6 +317,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   // Init log files:
   // TODO: may be better to use a proper logging system such as glog.
   mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
+  mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
   mpc_com_log_file_.open("/tmp/mpc_com.txt");
   mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
   //configuration_log_file_.open("/tmp/configuration.txt");
@@ -333,7 +334,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 //   fl_log_file_.open("/tmp/fl.txt");
 //   fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
-
   
 
   return true;
@@ -621,6 +621,36 @@ WalkingManager::update(
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
+
+    // if (t_msec_ == 2000) {
+
+    //     initial_gait_configuration = desired_gait_configuration;
+
+    // }
+    // else if (t_msec_ < 2000) {
+    //     //initial_gait_configuration = desired_gait_configuration;
+    // }
+    // else {
+    //     desired_gait_configuration = initial_gait_configuration;
+    //     double A = 0;
+    //     double f = 3;
+    //     desired_gait_configuration.com.pos = initial_gait_configuration.com.pos + Eigen::Vector3d(
+    //         0.0,
+    //         A * std::sin(f * 0.001 * (t_msec_ - 2000)),
+    //         0.0
+    //     );
+    //     desired_gait_configuration.com.vel = initial_gait_configuration.com.vel + Eigen::Vector3d(
+    //         0.0,
+    //         f * A * std::cos(f *0.001 * (t_msec_ - 2000)),
+    //         0.0
+    //     );
+    //     desired_gait_configuration.com.acc = initial_gait_configuration.com.acc + Eigen::Vector3d(
+    //         0.0,
+    //         - f * f* A * std::sin(f * 0.001 * (t_msec_ - 2000)),
+    //         0.0
+    //     );
+    // }
+
     start = std::chrono::system_clock::now();
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
         robot_model_,
@@ -654,12 +684,6 @@ WalkingManager::update(
     v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
     v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
     angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-    // if (robot_state.contact_forces.size() > 0) {
-    //     fl_log_file_ << robot_state.contact_forces[0] << std::endl;
-    // } else {
-    //     std::cerr << "Error: robot_state.contact_forces is empty!" << std::endl;
-    // }
-    // fr_log_file_ << robot_state.contact_forces[1] << std::endl;
     cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
 
 }

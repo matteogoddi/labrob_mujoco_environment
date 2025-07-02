@@ -82,12 +82,20 @@ struct MotorState {
 
 // Stiffness for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kp{
-  200, 200, 200, 600, 600, 200,      // legs sx
-  200, 200, 200, 600, 600, 200,      // legs dx
+  400, 600, 400, 800, 800, 400,      // legs sx
+  400, 600, 400, 800, 800, 400,      // legs dx
   60, 40, 40,                   // waist
-  40, 40, 40, 40,  40, 40, 40,  // arms sx
-  40, 40, 40, 40,  40, 40, 40   // arms dx
+  80, 80, 80, 80,  80, 80, 80,  // arms sx
+  80, 80, 80, 80,  80, 80, 80   // arms dx
 };
+
+// std::array<float, G1_NUM_MOTOR> Kp = {
+//   25, 25, 25, 25, 25, 25, // legs sx
+//   25, 25, 25, 25, 25, 25, // legs dx
+//   25, 25, 25,                   // waist
+//   25, 25, 25, 25, 25, 25, 25,   // arms sx
+//   25, 25, 25, 25, 25, 25, 25    // arms dx
+// };
 
 // Damping for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kd{
@@ -97,6 +105,15 @@ std::array<float, G1_NUM_MOTOR> Kd{
   10, 10, 10, 10, 10, 10, 10,  // arms sx
   10, 10, 10, 10, 10, 10, 10   // arms dx
 };
+
+//assign at each value of kd twice the square root of the corresponding kp value
+// std::array<float, G1_NUM_MOTOR> Kd = {
+//   2*sqrt(Kp[0]), 2*sqrt(Kp[1]), 2*sqrt(Kp[2]), 2*sqrt(Kp[3]), 2*sqrt(Kp[4]), 2*sqrt(Kp[5]), // legs sx
+//   2*sqrt(Kp[6]), 2*sqrt(Kp[7]), 2*sqrt(Kp[8]), 2*sqrt(Kp[9]), 2*sqrt(Kp[10]), 2*sqrt(Kp[11]), // legs dx
+//   2*sqrt(Kp[12]), 2*sqrt(Kp[13]), 2*sqrt(Kp[14]), // waist
+//   2*sqrt(Kp[15]), 2*sqrt(Kp[16]), 2*sqrt(Kp[17]), 2*sqrt(Kp[18]), 2*sqrt(Kp[19]), 2*sqrt(Kp[20]), 2*sqrt(Kp[21]), // arms sx
+//   2*sqrt(Kp[22]), 2*sqrt(Kp[23]), 2*sqrt(Kp[24]), 2*sqrt(Kp[25]), 2*sqrt(Kp[26]), 2*sqrt(Kp[27]), 2*sqrt(Kp[28]) // arms dx
+// };
 
 std::mutex stateMutex;
 DataBuffer<MotorState> motor_state_buffer_;
@@ -183,9 +200,6 @@ void LowStateHandler(const void* msg){
     motor_state_data.q[i] = low_state.motor_state()[i].q();
     motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
-
-  // motor_state_buffer_.SetData(ms);  // thread-safe update
-
   
   if (mode_machine_ != low_state.mode_machine()) {
     if (mode_machine_ == 0) {
@@ -247,6 +261,46 @@ int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
 
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
+  
+  std::string experiment_folder;
+  bool experiment_folder_exists = true;
+  int experiment_counter = 1;
+  while (experiment_folder_exists) {
+    if (!std::filesystem::exists("../experiments")) {
+      std::filesystem::create_directory("../experiments");
+      std::cout << "Created experiments directory." << std::endl;
+    }
+    experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
+    experiment_folder_exists = std::filesystem::exists(experiment_folder);
+    if (!experiment_folder_exists) {
+      std::filesystem::create_directory(experiment_folder);
+      std::cout << "Created experiment folder: " << experiment_folder << std::endl;
+      break;
+    }
+    ++experiment_counter;
+  }
+  for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
+    if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+        std::filesystem::path destination = experiment_folder / entry.path().filename();
+        std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
+    }
+  }
+  // create a README file in the experiment folder
+  std::ofstream readme_file(experiment_folder + "/README.txt");
+  if (readme_file.is_open()) {
+    readme_file << "This folder contains the results of the experiment.\n";
+    readme_file << "The gains used for the experiment are:\n";
+    readme_file << "Kp: ";
+    for (const auto& kp : Kp) {
+      readme_file << kp << " ";
+    }
+    readme_file << "\nKd: ";
+    for (const auto& kd : Kd) {
+      readme_file << kd << " ";
+    }
+    readme_file << "\n\n";
+    readme_file.close();
+  }
   exit(signum);
 }
 
@@ -326,7 +380,7 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
-  signal(SIGINT, signalHandler);
+  if(useRobot){signal(SIGINT, signalHandler);}
 
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
@@ -340,48 +394,14 @@ int main(const int argc, const char* argv[]) {
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   // create a folder experiment in tmp labelled as the number of experiment i made
-  std::ofstream joint_pos_log_file;
-  std::ofstream joint_vel_log_file;
-  std::ofstream joint_eff_log_file;
-  std::ofstream joint_names_log_file;
-  std::ofstream fb_joint_pos_log_file;
-  std::ofstream input_command_log_file;
-
-  if(useRobot) {
-    bool experiment_folder_exists = true;
-    int experiment_counter = 1;
-    std::string experiment_folder;
-    while (experiment_folder_exists) {
-      if (!std::filesystem::exists("../experiments")) {
-        std::filesystem::create_directory("../experiments");
-        std::cout << "Created experiments directory." << std::endl;
-      }
-      experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
-      experiment_folder_exists = std::filesystem::exists(experiment_folder);
-      if (!experiment_folder_exists) {
-        std::filesystem::create_directory(experiment_folder);
-        std::cout << "Created experiment folder: " << experiment_folder << std::endl;
-        break;
-      }
-      ++experiment_counter;
-    }
-
-    // create log files in the experiment folder
-    joint_pos_log_file.open(experiment_folder + "/joint_pos.txt");
-    joint_vel_log_file.open(experiment_folder + "/joint_vel.txt");
-    joint_eff_log_file.open(experiment_folder + "/joint_eff.txt");
-    joint_names_log_file.open(experiment_folder + "/joint_names.txt");
-    fb_joint_pos_log_file.open(experiment_folder + "/fb_joint_pos.txt");
-    input_command_log_file.open(experiment_folder + "/input_command.txt");
-
-  }
-  else if (useSim && !useRobot) {
-    joint_pos_log_file.open("/tmp/joint_pos.txt");
-    joint_vel_log_file.open("/tmp/joint_vel.txt");
-    joint_eff_log_file.open("/tmp/joint_eff.txt");
-    joint_names_log_file.open("/tmp/joint_names.txt");
-    
-  }  
+  std::ofstream joint_pos_log_file("/tmp/joint_pos.txt");
+  std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
+  std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
+  std::ofstream joint_names_log_file("/tmp/joint_names.txt");
+  std::ofstream fb_joint_pos_log_file("/tmp/fb_joint_pos.txt");
+  std::ofstream fb_joint_vel_log_file("/tmp/fb_joint_vel.txt");
+  std::ofstream input_command_log_file("/tmp/input_command.txt");
+  std::ofstream real_com_log_file("/tmp/real_com.txt");
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -464,6 +484,8 @@ int main(const int argc, const char* argv[]) {
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
   ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
   std::shared_ptr<MotionSwitcherClient> msc;
+  pinocchio::Model real_model;
+  pinocchio::Data real_data;
 
   if(useRobot) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
@@ -490,6 +512,45 @@ int main(const int argc, const char* argv[]) {
     lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
+
+    // Build Pinocchio model and data from URDF:
+    pinocchio::Model full_robot_model;
+    pinocchio::JointModelFreeFlyer root_joint;
+    pinocchio::urdf::buildModel(
+      "../g1_description/unitreeg1.urdf",
+      root_joint,
+      full_robot_model
+    );
+    const std::vector<std::string> joint_to_lock_names{};
+    std::vector<pinocchio::JointIndex> joint_ids_to_lock;
+    for (const auto& joint_name : joint_to_lock_names) {
+      if (full_robot_model.existJointName(joint_name)) {
+        joint_ids_to_lock.push_back(full_robot_model.getJointId(joint_name));
+      }
+    }
+
+    real_model = pinocchio::buildReducedModel(
+        full_robot_model,
+        joint_ids_to_lock,
+        pinocchio::neutral(full_robot_model)
+    );
+    real_data = pinocchio::Data(real_model);
+
+    Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
+      Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
+      Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
+      Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
+    );
+
+    Eigen::VectorXd q_init = Eigen::VectorXd::Zero(real_model.nq);
+    q_init.head<7>() << initial_robot_state.position[0], initial_robot_state.position[1], initial_robot_state.position[2],
+    imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w();
+    for (int i = 7; i < real_model.nq; ++i) {
+      q_init[i] = motor_state_data.q[i - 7];
+    }
+    pinocchio::forwardKinematics(real_model, real_data, q_init);
+    pinocchio::jacobianCenterOfMass(real_model, real_data, q_init);
+    pinocchio::framesForwardKinematics(real_model, real_data, q_init);
   }
 
   // Simulation loop:
@@ -590,6 +651,8 @@ int main(const int argc, const char* argv[]) {
 
           // assign q values to the motor command
           motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+          motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
+          motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
 
           input_command_log_file << motor_command.q_target[i] << " ";
         }
@@ -622,25 +685,59 @@ int main(const int argc, const char* argv[]) {
   
           //save values in the log files
           fb_joint_pos_log_file << low_state_copy.q[i] << " ";
+          fb_joint_vel_log_file << low_state_copy.dq[i] << " ";
         }
 
-        // //compute com using pinocchio
-        // pinocchio::Model model;
-        // pinocchio::urdf::buildModel(mjcf_filepath, model);
-        // pinocchio::Data data(model);
-        // pinocchio::computeJointJacobians(model, data, low_state_copy.q);
-        // pinocchio::computeCenterOfMass(model, data, low_state_copy.q, false);
-        // Eigen::Vector3d com = data.com;
-        // std::cout << "COM: [" << com[0] << ", " << com[1] << ", " << com[2] << "]" << std::endl;
-        
+        // convert imustatecopy from rpy to quaternion
+        Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
+          Eigen::AngleAxisd(imu_state_copy.rpy[0], Eigen::Vector3d::UnitX()) *
+          Eigen::AngleAxisd(imu_state_copy.rpy[1], Eigen::Vector3d::UnitY()) *
+          Eigen::AngleAxisd(imu_state_copy.rpy[2], Eigen::Vector3d::UnitZ())
+        );
+        Eigen::VectorXd q = Eigen::VectorXd::Zero(real_model.nq);
+        q.head<7>() << robot_state.position[0], robot_state.position[1], robot_state.position[2],
+                       imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w();
+        for (int i = 7; i < real_model.nq; ++i) {
+          q[i] = low_state_copy.q[i - 7];
+        }
+        Eigen::VectorXd qdot = Eigen::VectorXd::Zero(real_model.nv);
+        qdot.head<6>() << robot_state.linear_velocity[0], robot_state.linear_velocity[1], robot_state.linear_velocity[2], robot_state.angular_velocity[0], 
+                          robot_state.angular_velocity[1], robot_state.angular_velocity[2];
+        for (int i = 0; i < real_model.nv; ++i) {
+          qdot[i] = low_state_copy.dq[i];
+        }
+
+        // Perform forward kinematics on the whole tree and update robot data:
+        pinocchio::forwardKinematics(real_model, real_data, q);
+
+        // // NOTE: jacobianCenterOfMass calls forwardKinematics and
+        //       computeJointJacobians.
+        pinocchio::jacobianCenterOfMass(real_model, real_data, q);
+        pinocchio::computeJointJacobiansTimeVariation(real_model, real_data, q, qdot);
+        pinocchio::framesForwardKinematics(real_model, real_data, q);
+        pinocchio::centerOfMass(real_model, real_data, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+        const auto& centroidal_momentum_matrix = pinocchio::ccrba(
+            real_model,
+            real_data,
+            q,
+            qdot
+        );
+        auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
+
+        // compute com
+        Eigen::Vector3d com = real_data.com[0];
+
+        // save com in the log file
+        real_com_log_file << com[0] << " " << com[1] << " " << com[2] << " ";        
       }
       
       joint_pos_log_file << std::endl;
       joint_vel_log_file << std::endl;
       joint_eff_log_file << std::endl;
       fb_joint_pos_log_file << std::endl;
+      fb_joint_vel_log_file << std::endl;
       input_command_log_file << std::endl;
-
+      real_com_log_file << std::endl;
 
       //sleep from 1 - now to 1 ms
       auto start_sleep = std::chrono::high_resolution_clock::now();
