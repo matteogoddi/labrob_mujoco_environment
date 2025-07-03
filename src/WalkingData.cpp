@@ -64,4 +64,6 @@ WalkingData::updateWalkingState(int64_t t) {
   }
 }
 
+//&& footstep_plan.size() == 1
+
 } // end namespace labrob

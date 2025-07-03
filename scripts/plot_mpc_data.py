@@ -1,415 +1,253 @@
-#!/usr/bin/env python3
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import os
-
-class Trajectory:
-    def __init__(self, x, y, z, roll=None, pitch=None, yaw=None):
-        self.x = x
-        self.y = y
-        self.z = z
-        self.roll = roll
-        self.pitch = pitch
-        self.yaw = yaw
-
-# Read file composed of one position per line:
-def read_position_file(path):
-    # Init lists:
-    xx = []
-    yy = []
-    zz = []
-
-    # Read file:
-    with open(path) as f:
-        for l in f.readlines():
-            p = l.rstrip('\n').split()
-            xx.append(float(p[0]))
-            yy.append(float(p[1]))
-            zz.append(float(p[2]))
-
-    # Setup np arrays:
-    xx = np.array(xx)
-    yy = np.array(yy)
-    zz = np.array(zz)
-    trajectory = Trajectory(xx, yy, zz)
-    return trajectory
+import matplotlib.animation as animation
+from matplotlib import gridspec
+from mpl_toolkits.mplot3d import Axes3D
 
 if __name__ == '__main__':
-    mpc_com_file_path = '/tmp/mpc_com.txt'
-    mpc_zmp_file_path = '/tmp/mpc_zmp.txt'
-    com_file_path = '/tmp/com.txt'
-    p_lsole_file_path = '/tmp/p_lsole.txt'
-    p_rsole_file_path = '/tmp/p_rsole.txt'
-    v_lsole_file_path = '/tmp/v_lsole.txt'
-    v_rsole_file_path = '/tmp/v_rsole.txt'
-    p_lsole_des_file_path = '/tmp/p_lsole_des.txt'
-    p_rsole_des_file_path = '/tmp/p_rsole_des.txt'
-    v_lsole_des_file_path = '/tmp/v_lsole_des.txt'
-    v_rsole_des_file_path = '/tmp/v_rsole_des.txt'
-    angular_momentum_file_path = '/tmp/angular_momentum.txt'
 
-    mpc_com_trajectory = read_position_file(mpc_com_file_path)
-    mpc_zmp_trajectory = read_position_file(mpc_zmp_file_path)
-    com_trajectory = read_position_file(com_file_path)
-    p_lsole_trajectory = read_position_file(p_lsole_file_path)
-    p_rsole_trajectory = read_position_file(p_rsole_file_path)
-    v_lsole_trajectory = read_position_file(v_lsole_file_path)
-    v_rsole_trajectory = read_position_file(v_rsole_file_path)
-    p_lsole_des_trajectory = read_position_file(p_lsole_des_file_path)
-    p_rsole_des_trajectory = read_position_file(p_rsole_des_file_path)
-    v_lsole_des_trajectory = read_position_file(v_lsole_des_file_path)
-    v_rsole_des_trajectory = read_position_file(v_rsole_des_file_path)
-    angular_momentum_trajectory = read_position_file(angular_momentum_file_path)
+    number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
+    if number == '0':
+        folder = '/tmp'
+    else:
+        folder = 'experiments/experiment_' + number
+    mpc_com_trajectory : np.ndarray = np.loadtxt(folder + '/mpc_com.txt')
+    mpc_zmp_trajectory : np.ndarray = np.loadtxt(folder + '/mpc_zmp.txt')
+    com_trajectory : np.ndarray = np.loadtxt(folder + '/com.txt')
+    p_lsole_trajectory : np.ndarray = np.loadtxt(folder + '/p_lsole.txt')
+    p_rsole_trajectory : np.ndarray = np.loadtxt(folder + '/p_rsole.txt')
+    v_lsole_trajectory : np.ndarray = np.loadtxt(folder + '/v_lsole.txt')
+    v_rsole_trajectory : np.ndarray = np.loadtxt(folder + '/v_rsole.txt')
+    p_lsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/p_lsole_des.txt')
+    p_rsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/p_rsole_des.txt')
+    v_lsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/v_lsole_des.txt')
+    v_rsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/v_rsole_des.txt')
+    angular_momentum_trajectory : np.ndarray = np.loadtxt(folder + '/angular_momentum.txt')
 
-    delta_t = 1e-3
-    samples = mpc_com_trajectory.x.shape[0]
-    tt = np.linspace(0.0, delta_t * samples, samples)   
+    delta = 1e-3
+    num_samples = mpc_com_trajectory.shape[0]
+    t = np.linspace(0.0, delta * num_samples, num_samples)   
 
     if not os.path.exists('images/mpc'):
         os.makedirs('images/mpc') 
 
-    sns.set(style='whitegrid')
-    plt.rcParams.update({
-        'font.size': 12,
-        'lines.linewidth': 2,
-        'axes.labelsize': 14,
-        'axes.titlesize': 16,
-        'legend.fontsize': 12,
-        'xtick.labelsize': 12,
-        'ytick.labelsize': 12
-    })
-
-    # Combinazione di colori e marker
-    ref_color = 'tab:red'
-    actual_color = 'tab:green'
-    zmp_color = 'tab:orange'
-
-    #FIGURE: CoM and ZMP Trajectories
-    fig, axs = plt.subplots(2, 2, figsize=(18, 10))
-    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
-
-    ### 1. CoM/ZMP in XY ###
-    ax1 = axs[0, 0]
-    ax1.set_title("CoM and ZMP Trajectories (X-Y)")
-    ax1.set_xlabel("X [m]")
-    ax1.set_ylabel("Y [m]")
-
-    ax1.plot(com_trajectory.x, com_trajectory.y, label='CoM', color=actual_color, marker='o', markersize=4)
-    ax1.plot(mpc_com_trajectory.x, mpc_com_trajectory.y, label='CoM Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax1.plot(mpc_zmp_trajectory.x, mpc_zmp_trajectory.y, label='ZMP Ref', linestyle='-.', color=zmp_color)
-
-    ax1.axis('equal')
-    ax1.legend()
-    ax1.grid(True)
-
-    ### 2. CoM/ZMP X ###
-    ax2 = axs[0, 1]
-    ax2.set_title("X Trajectory Over Time")
-    ax2.set_xlabel("Time [s]")
-    ax2.set_ylabel("X [m]")
-
-    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
-
-    ax2.legend()
-    ax2.grid(True)
-
-    ### 3. CoM/ZMP Y ###
-    ax3 = axs[1, 0]
-    ax3.set_title("Y Trajectory Over Time")
-    ax3.set_xlabel("Time [s]")
-    ax3.set_ylabel("Y [m]")
-
-    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
-
-    ax3.legend()
-    ax3.grid(True)
-
-    ### 4. CoM/ZMP Z ###
-    ax4 = axs[1, 1]
-    ax4.set_title("Z Trajectory Over Time")
-    ax4.set_xlabel("Time [s]")
-    ax4.set_ylabel("Z [m]")
-
-    ax4.plot(tt, com_trajectory.z, label='CoM.z', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z Ref', linestyle='-.', color=zmp_color)
-
-    ax4.legend()
-    ax4.grid(True)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig("images/mpc/CoM_ZMP.png", dpi=300, bbox_inches='tight')
-
-
-
-    #FIGURE: Left and Right Sole Positions
-
-    fig_soles, axs = plt.subplots(3, 2, figsize=(18, 10))
-    fig_soles.suptitle("Left and Right Sole Positions Over Time", fontsize=16)
-
-    # Color/style settings
-    des_style = {'linestyle': '--', 'linewidth': 2, 'alpha': 0.7}
-    real_style = {'linestyle': '-', 'linewidth': 3, 'alpha': 0.7}
-
-    # Left sole
-    axs[0, 0].set_title("Left Sole - X")
-    axs[0, 0].plot(tt, p_lsole_des_trajectory.x, label='Desired X', color='tab:blue', **des_style)
-    axs[0, 0].plot(tt, p_lsole_trajectory.x, label='Actual X', color='tab:green', **real_style)
-    axs[0, 0].set_xlabel('Time [s]')
-    axs[0, 0].set_ylabel('X [m]')
-    axs[0, 0].legend()
-    axs[0, 0].grid(True)
-
-    axs[1, 0].set_title("Left Sole - Y")
-    axs[1, 0].plot(tt, p_lsole_des_trajectory.y, label='Desired Y', color='tab:blue', **des_style)
-    axs[1, 0].plot(tt, p_lsole_trajectory.y, label='Actual Y', color='tab:green', **real_style)
-    axs[1, 0].set_xlabel('Time [s]')
-    axs[1, 0].set_ylabel('Y [m]')
-    axs[1, 0].legend()
-    axs[1, 0].grid(True)
-
-    axs[2, 0].set_title("Left Sole - Z")
-    axs[2, 0].plot(tt, p_lsole_des_trajectory.z, label='Desired Z', color='tab:blue', **des_style)
-    axs[2, 0].plot(tt, p_lsole_trajectory.z, label='Actual Z', color='tab:green', **real_style)
-    axs[2, 0].set_xlabel('Time [s]')
-    axs[2, 0].set_ylabel('Z [m]')
-    axs[2, 0].legend()
-    axs[2, 0].grid(True)
-
-    # Right sole
-    axs[0, 1].set_title("Right Sole - X")
-    axs[0, 1].plot(tt, p_rsole_des_trajectory.x, label='Desired X', color='tab:orange', **des_style)
-    axs[0, 1].plot(tt, p_rsole_trajectory.x, label='Actual X', color='tab:red', **real_style)
-    axs[0, 1].set_xlabel('Time [s]')
-    axs[0, 1].set_ylabel('X [m]')
-    axs[0, 1].legend()
-    axs[0, 1].grid(True)
-
-    axs[1, 1].set_title("Right Sole - Y")
-    axs[1, 1].plot(tt, p_rsole_des_trajectory.y, label='Desired Y', color='tab:orange', **des_style)
-    axs[1, 1].plot(tt, p_rsole_trajectory.y, label='Actual Y', color='tab:red', **real_style)
-    axs[1, 1].set_xlabel('Time [s]')
-    axs[1, 1].set_ylabel('Y [m]')
-    axs[1, 1].legend()
-    axs[1, 1].grid(True)
-
-    axs[2, 1].set_title("Right Sole - Z")
-    axs[2, 1].plot(tt, p_rsole_des_trajectory.z, label='Desired Z', color='tab:orange', **des_style)
-    axs[2, 1].plot(tt, p_rsole_trajectory.z, label='Actual Z', color='tab:red', **real_style)
-    axs[2, 1].set_xlabel('Time [s]')
-    axs[2, 1].set_ylabel('Z [m]')
-    axs[2, 1].legend()
-    axs[2, 1].grid(True)
-
-    # Final layout
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_soles.savefig("images/mpc/soles_position.png", dpi=300, bbox_inches='tight')
-
-
-
-    #FIGURE: CoM and ZMP Trajectories with Sole Positions (X + Y)
-
-    fig, axs = plt.subplots(2, 1, figsize=(14, 10))
-    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
-
-    # Combinazione di colori e marker
-    ref_color = 'tab:red'
-    actual_color = 'tab:green'
-    zmp_color = 'tab:orange'
-
-    ### 2. CoM/ZMP X ###
-    ax2 = axs[0]
-    ax2.set_title("X Trajectory Over Time")
-    ax2.set_xlabel("Time [s]")
-    ax2.set_ylabel("X [m]")
-
-    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
-    ax2.plot(tt, p_lsole_trajectory.x, label='L Sole.x', linestyle=':', color='tab:blue')
-    ax2.plot(tt, p_rsole_trajectory.x, label='R Sole.x', linestyle=':', color='tab:orange')
-    ax2.plot(tt, p_lsole_des_trajectory.x, label='L Sole.x Ref', linestyle=':', color='tab:blue', alpha=0.5)
-    ax2.plot(tt, p_rsole_des_trajectory.x, label='R Sole.x Ref', linestyle=':', color='tab:orange', alpha=0.5)
-
-    ax2.legend()
-    ax2.grid(True)
-
-    ### 3. CoM/ZMP Y ###
-    ax3 = axs[1]
-    ax3.set_title("Y Trajectory Over Time")
-    ax3.set_xlabel("Time [s]")
-    ax3.set_ylabel("Y [m]")
-
-    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
-    ax3.plot(tt, p_lsole_trajectory.y, label='L Sole.y', linestyle=':', color='tab:blue')
-    ax3.plot(tt, p_rsole_trajectory.y, label='R Sole.y', linestyle=':', color='tab:orange')
-    ax3.plot(tt, p_lsole_des_trajectory.y, label='L Sole.y Ref', linestyle=':', color='tab:blue', alpha=0.5)
-    ax3.plot(tt, p_rsole_des_trajectory.y, label='R Sole.y Ref', linestyle=':', color='tab:orange', alpha=0.5)
-
-    ax3.legend()
-    ax3.grid(True)
-
-    fig.savefig("images/mpc/CoM_ZMP_soles.png", dpi=300, bbox_inches='tight')
-
-
-    
-
-    #FIGURE: CoM and ZMP Trajectories with Sole Positions (XY + X + Y + Z)
-    fig, axs = plt.subplots(3, 1, figsize=(14, 10))
-    fig.suptitle("MPC CoM and ZMP Trajectories", fontsize=18)
-
-    # Combinazione di colori e marker
-    ref_color = 'tab:red'
-    actual_color = 'tab:green'
-    zmp_color = 'tab:orange'
-
-    ### 1. CoM/ZMP X ###
-    ax2 = axs[0]
-    ax2.set_title("X Trajectory Over Time")
-    ax2.set_xlabel("Time [s]")
-    ax2.set_ylabel("X [m]")
-
-    ax2.plot(tt, com_trajectory.x, label='CoM.x', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax2.plot(tt, mpc_com_trajectory.x, label='CoM.x Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax2.plot(tt, mpc_zmp_trajectory.x, label='ZMP.x Ref', linestyle='-.', color=zmp_color)
-    ax2.plot(tt, p_lsole_trajectory.x, label='L Sole.x', linestyle=':', color='tab:blue')
-    ax2.plot(tt, p_rsole_trajectory.x, label='R Sole.x', linestyle=':', color='tab:orange')
-    ax2.plot(tt, p_lsole_des_trajectory.x, label='L Sole.x Ref', linestyle=':', color='tab:blue', alpha=0.5)
-    ax2.plot(tt, p_rsole_des_trajectory.x, label='R Sole.x Ref', linestyle=':', color='tab:orange', alpha=0.5)
-
-    ax2.legend()
-    ax2.grid(True)
-
-    ### 2. CoM/ZMP Y ###
-    ax3 = axs[1]
-    ax3.set_title("Y Trajectory Over Time")
-    ax3.set_xlabel("Time [s]")
-    ax3.set_ylabel("Y [m]")
-
-    ax3.plot(tt, com_trajectory.y, label='CoM.y', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax3.plot(tt, mpc_com_trajectory.y, label='CoM.y Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax3.plot(tt, mpc_zmp_trajectory.y, label='ZMP.y Ref', linestyle='-.', color=zmp_color)
-    ax3.plot(tt, p_lsole_trajectory.y, label='L Sole.y', linestyle=':', color='tab:blue')
-    ax3.plot(tt, p_rsole_trajectory.y, label='R Sole.y', linestyle=':', color='tab:orange')
-    ax3.plot(tt, p_lsole_des_trajectory.y, label='L Sole.y Ref', linestyle=':', color='tab:blue', alpha=0.5)
-    ax3.plot(tt, p_rsole_des_trajectory.y, label='R Sole.y Ref', linestyle=':', color='tab:orange', alpha=0.5)
-
-    ax3.legend()
-    ax3.grid(True)
-
-    ### 3. CoM/ZMP Z ###
-    ax4 = axs[2]
-    ax4.set_title("Z Trajectory Over Time")
-    ax4.set_xlabel("Time [s]")
-    ax4.set_ylabel("Z [m]")
-
-    ax4.plot(tt, com_trajectory.z, label='CoM.z', linestyle='-', color=actual_color, marker='o', markersize=4)
-    ax4.plot(tt, mpc_com_trajectory.z, label='CoM.z Ref', linestyle='--', linewidth=3, alpha=0.6, color=ref_color)
-    ax4.plot(tt, mpc_zmp_trajectory.z, label='ZMP.z Ref', linestyle='-.', color=zmp_color)
-    ax4.plot(tt, p_lsole_trajectory.z, label='L Sole.z', linestyle=':', color='tab:blue')
-    ax4.plot(tt, p_rsole_trajectory.z, label='R Sole.z', linestyle=':', color='tab:orange')
-    ax4.plot(tt, p_lsole_des_trajectory.z, label='L Sole.z Ref', linestyle=':', color='tab:blue', alpha=0.5)
-    ax4.plot(tt, p_rsole_des_trajectory.z, label='R Sole.z Ref', linestyle=':', color='tab:orange', alpha=0.5)
-
-    ax4.legend()
-    ax4.grid(True)
-
-    # Final layout
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig("images/mpc/CoM_soles.png", dpi=300, bbox_inches='tight')
-
-
-
-    #FIGURE: Left and Right Sole Velocities
-    fig_v_soles, axs = plt.subplots(3, 2, figsize=(14, 9))
-    fig_v_soles.suptitle("Left and Right Sole Velocities", fontsize=16)
-
-    # Left sole velocity
-    axs[0, 0].set_title("Left Sole Velocity - X")
-    axs[0, 0].plot(tt, v_lsole_des_trajectory.x, label='Desired', color='tab:blue', **des_style)
-    axs[0, 0].plot(tt, v_lsole_trajectory.x, label='Actual', color='tab:green', **real_style)
-    axs[0, 0].set_xlabel('Time [s]')
-    axs[0, 0].set_ylabel('X [m/s]')
-    axs[0, 0].legend()
-    axs[0, 0].grid(True)
-
-    axs[1, 0].set_title("Left Sole Velocity - Y")
-    axs[1, 0].plot(tt, v_lsole_des_trajectory.y, label='Desired', color='tab:blue', **des_style)
-    axs[1, 0].plot(tt, v_lsole_trajectory.y, label='Actual', color='tab:green', **real_style)
-    axs[1, 0].set_xlabel('Time [s]')
-    axs[1, 0].set_ylabel('Y [m/s]')
-    axs[1, 0].legend()
-    axs[1, 0].grid(True)
-
-    axs[2, 0].set_title("Left Sole Velocity - Z")
-    axs[2, 0].plot(tt, v_lsole_des_trajectory.z, label='Desired', color='tab:blue', **des_style)
-    axs[2, 0].plot(tt, v_lsole_trajectory.z, label='Actual', color='tab:green', **real_style)
-    axs[2, 0].set_xlabel('Time [s]')
-    axs[2, 0].set_ylabel('Z [m/s]')
-    axs[2, 0].legend()
-    axs[2, 0].grid(True)
-
-    # Right sole velocity
-    axs[0, 1].set_title("Right Sole Velocity - X")
-    axs[0, 1].plot(tt, v_rsole_des_trajectory.x, label='Desired', color='tab:orange', **des_style)
-    axs[0, 1].plot(tt, v_rsole_trajectory.x, label='Actual', color='tab:red', **real_style)
-    axs[0, 1].set_xlabel('Time [s]')
-    axs[0, 1].set_ylabel('X [m/s]')
-    axs[0, 1].legend()
-    axs[0, 1].grid(True)
-
-    axs[1, 1].set_title("Right Sole Velocity - Y")
-    axs[1, 1].plot(tt, v_rsole_des_trajectory.y, label='Desired', color='tab:orange', **des_style)
-    axs[1, 1].plot(tt, v_rsole_trajectory.y, label='Actual', color='tab:red', **real_style)
-    axs[1, 1].set_xlabel('Time [s]')
-    axs[1, 1].set_ylabel('Y [m/s]')
-    axs[1, 1].legend()
-    axs[1, 1].grid(True)
-
-    axs[2, 1].set_title("Right Sole Velocity - Z")
-    axs[2, 1].plot(tt, v_rsole_des_trajectory.z, label='Desired', color='tab:orange', **des_style)
-    axs[2, 1].plot(tt, v_rsole_trajectory.z, label='Actual', color='tab:red', **real_style)
-    axs[2, 1].set_xlabel('Time [s]')
-    axs[2, 1].set_ylabel('Z [m/s]')
-    axs[2, 1].legend()
-    axs[2, 1].grid(True)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_v_soles.savefig("images/mpc/soles_velocity.png", dpi=300, bbox_inches='tight')
-
-
-    #FIGURE: Angular Momentum Trajectory    
-
-    fig_ang_momentum, axs = plt.subplots(3, 1, figsize=(12, 7))
-    fig_ang_momentum.suptitle("Angular Momentum Trajectory", fontsize=16)
-
-    axs[0].set_title("Angular Momentum - X")
-    axs[0].plot(tt, angular_momentum_trajectory.x, color='tab:purple', label='X')
-    axs[0].set_xlabel('Time [s]')
-    axs[0].set_ylabel('Momentum [kg·m²/s]')
-    axs[0].legend()
-    axs[0].grid(True)
-
-    axs[1].set_title("Angular Momentum - Y")
-    axs[1].plot(tt, angular_momentum_trajectory.y, color='tab:cyan', label='Y')
-    axs[1].set_xlabel('Time [s]')
-    axs[1].set_ylabel('Momentum [kg·m²/s]')
-    axs[1].legend()
-    axs[1].grid(True)
-
-    axs[2].set_title("Angular Momentum - Z")
-    axs[2].plot(tt, angular_momentum_trajectory.z, color='tab:brown', label='Z')
-    axs[2].set_xlabel('Time [s]')
-    axs[2].set_ylabel('Momentum [kg·m²/s]')
-    axs[2].legend()
-    axs[2].grid(True)
-
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-    fig_ang_momentum.savefig("images/mpc/angular_momentum.png", dpi=300, bbox_inches='tight')
+    # Plot CoM simulation and real data
+    fig, ax = plt.subplots()
+    ax.plot(t, mpc_com_trajectory[:, 0], label='Desired CoM X', color='blue')
+    ax.plot(t, mpc_com_trajectory[:, 1], label='Desired CoM Y', color='orange')
+    ax.plot(t, mpc_com_trajectory[:, 2], label='Desired CoM Z', color='green')
+    ax.plot(t, mpc_zmp_trajectory[:, 0], label='ZMP X', color='red', linestyle='--')
+    ax.plot(t, mpc_zmp_trajectory[:, 1], label='ZMP Y', color='purple', linestyle='--')
+    ax.plot(t, mpc_zmp_trajectory[:, 2], label='ZMP Z', color='brown', linestyle='--')
+    ax.plot(t, com_trajectory[:, 0], label='CoM X', color='cyan', linestyle=':')
+    ax.plot(t, com_trajectory[:, 1], label='CoM Y', color='magenta', linestyle=':')
+    ax.plot(t, com_trajectory[:, 2], label='CoM Z', color='yellow', linestyle=':')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('CoM Position [m]')
+    ax.set_title('CoM Position: Simulation vs Real')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/mpc/com_plot.png")
+    plt.close(fig) 
+
+    # Plot angular momentum
+    fig, ax = plt.subplots()
+    ax.plot(t, angular_momentum_trajectory[:, 0], label='Angular Momentum X', color='blue')
+    ax.plot(t, angular_momentum_trajectory[:, 1], label='Angular Momentum Y', color='orange')
+    ax.plot(t, angular_momentum_trajectory[:, 2], label='Angular Momentum Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Angular Momentum [kg*m^2/s]')
+    ax.set_title('Angular Momentum')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/mpc/angular_momentum_plot.png")
+    plt.close(fig)
+
+    # Plot left sole position
+    fig, ax = plt.subplots()
+    ax.plot(t, p_lsole_trajectory[:, 0], label='Left Sole X', color='blue')
+    ax.plot(t, p_lsole_trajectory[:, 1], label='Left Sole Y', color='orange')
+    ax.plot(t, p_lsole_trajectory[:, 2], label='Left Sole Z', color='green')
+    ax.plot(t, p_lsole_des_trajectory[:, 0], label='Desired Left Sole X', color='red', linestyle='--')
+    ax.plot(t, p_lsole_des_trajectory[:, 1], label='Desired Left Sole Y', color='purple', linestyle='--')
+    ax.plot(t, p_lsole_des_trajectory[:, 2], label='Desired Left Sole Z', color='brown', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Sole Position [m]')
+    ax.set_title('Left Sole Position: Simulation vs Desired')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/mpc/left_sole_position_plot.png")
+    plt.close(fig)
+
+    # Plot right sole position
+    fig, ax = plt.subplots()
+    ax.plot(t, p_rsole_trajectory[:, 0], label='Right Sole X', color='blue')
+    ax.plot(t, p_rsole_trajectory[:, 1], label='Right Sole Y', color='orange')
+    ax.plot(t, p_rsole_trajectory[:, 2], label='Right Sole Z', color='green')
+    ax.plot(t, p_rsole_des_trajectory[:, 0], label='Desired Right Sole X', color='red', linestyle='--')
+    ax.plot(t, p_rsole_des_trajectory[:, 1], label='Desired Right Sole Y', color='purple', linestyle='--')
+    ax.plot(t, p_rsole_des_trajectory[:, 2], label='Desired Right Sole Z', color='brown', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Sole Position [m]')
+    ax.set_title('Right Sole Position: Simulation vs Desired')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/mpc/right_sole_position_plot.png")
+    plt.close(fig)
+
+    if number != '0':
+        print(number)
+        print("ciao")
+
+        # real_com_trajectory : np.ndarray = np.loadtxt(folder + '/real_com.txt')
+        # # Animazione traiettoria CoM sul piano XY
+        # fig, ax = plt.subplots()
+        # ax.set_xlim(np.min(com_trajectory[:, 0]) - 0.1, np.max(com_trajectory[:, 0]) + 0.1)
+        # ax.set_ylim(np.min(com_trajectory[:, 1]) - 0.1, np.max(com_trajectory[:, 1]) + 0.1)
+        # ax.set_xlabel('CoM X [m]')
+        # ax.set_ylabel('CoM Y [m]')
+        # ax.set_title('CoM Trajectory in XY Plane')
+        # ax.grid(True)
+        # simulation_line, = ax.plot([], [], 'b-', label='Simulated CoM Trajectory')
+        # simulation_point, = ax.plot([], [], 'ro')  # Punto attuale
+        # real_line, = ax.plot([], [], 'r-', label='Real CoM Trajectory')
+        # real_point, = ax.plot([], [], 'ro')  # Punto attuale
+        # ax.legend()
+
+        # def init():
+        #     simulation_line.set_data([], [])
+        #     simulation_point.set_data([], [])
+        #     real_line.set_data([], [])
+        #     real_point.set_data([], [])
+        #     return simulation_line, simulation_point, real_line, real_point
+
+        # def update(frame):
+        #     simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
+        #     simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+        #     real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
+        #     real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
+        #     return simulation_line, simulation_point, real_line, real_point
+
+        # skip = 100  # salva un frame ogni 10 step
+        # frames_to_use = range(0, num_samples, skip)
+
+        # ani = animation.FuncAnimation(
+        #     fig, update, frames=frames_to_use, init_func=init,
+        #     blit=True, interval=50, repeat=False
+        # )
+
+        # anim_path = "images/mpc/com_xy_trajectory.mp4"
+        # ani.save(anim_path, writer='ffmpeg', dpi=200)
+        # plt.close(fig)
+
+
+        # anim_path = "images/mpc/com_trajectory_3d.mp4"
+
+        # fig = plt.figure()
+        # ax = fig.add_subplot(111, projection='3d')
+
+        # # Calcolo limiti basati su entrambe le traiettorie
+        # all_x = np.concatenate([com_trajectory[:, 0], real_com_trajectory[:, 0]])
+        # all_y = np.concatenate([com_trajectory[:, 1], real_com_trajectory[:, 1]])
+        # all_z = np.concatenate([com_trajectory[:, 2], real_com_trajectory[:, 2]])
+
+        # ax.set_xlim(np.min(all_x), np.max(all_x))
+        # ax.set_ylim(np.min(all_y), np.max(all_y))
+        # ax.set_zlim(np.min(all_z), np.max(all_z))
+
+        # ax.set_xlabel('X [m]')
+        # ax.set_ylabel('Y [m]')
+        # ax.set_zlabel('Z [m]')
+        # ax.set_title('3D CoM Trajectories')
+
+        # # Linee e punti animati
+        # simulation_line, = ax.plot([], [], [], lw=2, color='blue', label='CoM (Simulation)')
+        # simulation_point, = ax.plot([], [], [], 'o', color='blue')
+
+        # real_line, = ax.plot([], [], [], lw=2, color='green', linestyle='--', label='CoM (Real)')
+        # real_point, = ax.plot([], [], [], 'o', color='green')
+
+        # ax.legend()
+
+        # def init():
+        #     simulation_line.set_data([], [])
+        #     simulation_line.set_3d_properties([])
+        #     simulation_point.set_data([], [])
+        #     simulation_point.set_3d_properties([])
+        #     real_line.set_data([], [])
+        #     real_line.set_3d_properties([])
+        #     real_point.set_data([], [])
+        #     real_point.set_3d_properties([])
+        #     return simulation_line, simulation_point, real_line, real_point
+
+        # def update(frame):
+        #     # CoM simulato
+        #     simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
+        #     simulation_line.set_3d_properties(com_trajectory[:frame, 2])
+        #     simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+        #     simulation_point.set_3d_properties([com_trajectory[frame, 2]])
+
+        #     # CoM reale
+        #     real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
+        #     real_line.set_3d_properties(real_com_trajectory[:frame, 2])
+        #     real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
+        #     real_point.set_3d_properties([real_com_trajectory[frame, 2]])
+
+        #     return simulation_line, simulation_point, real_line, real_point
+
+        # ani = animation.FuncAnimation(
+        #     fig, update, frames=frames_to_use,
+        #     init_func=init, blit=True, interval=50, repeat=False
+        # )
+
+        # ani.save(anim_path, writer='ffmpeg', fps=25, dpi=150)
+        # plt.close(fig)
+    else:
+        # Animazione traiettoria CoM sul piano XY
+        fig, ax = plt.subplots()
+        ax.set_xlim(np.min(com_trajectory[:, 0]) - 0.1, np.max(com_trajectory[:, 0]) + 0.1)
+        ax.set_ylim(np.min(com_trajectory[:, 1]) - 0.1, np.max(com_trajectory[:, 1]) + 0.1)
+        ax.set_xlabel('CoM X [m]')
+        ax.set_ylabel('CoM Y [m]')
+        ax.set_title('CoM Trajectory in XY Plane')
+        ax.grid(True)
+        simulation_line, = ax.plot([], [], 'b-', label='Simulated CoM Trajectory')
+        simulation_point, = ax.plot([], [], 'ro')  # Punto attuale
+        mpc_line, = ax.plot([], [], 'r-', label='mpc CoM Trajectory')
+        mpc_point, = ax.plot([], [], 'ro')  # Punto attuale
+        ax.legend()
+
+        def init():
+            simulation_line.set_data([], [])
+            simulation_point.set_data([], [])
+            mpc_line.set_data([], [])
+            mpc_point.set_data([], [])
+            return simulation_line, simulation_point, mpc_line, mpc_point
+
+        def update(frame):
+            simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
+            simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+            mpc_line.set_data(mpc_com_trajectory[:frame, 0], mpc_com_trajectory[:frame, 1])
+            mpc_point.set_data([mpc_com_trajectory[frame, 0]], [mpc_com_trajectory[frame, 1]])
+            return simulation_line, simulation_point, mpc_line, mpc_point
+
+        skip = 100  # salva un frame ogni 10 step
+        frames_to_use = range(0, num_samples, skip)
+
+        ani = animation.FuncAnimation(
+            fig, update, frames=frames_to_use, init_func=init,
+            blit=True, interval=50, repeat=False
+        )
+
+        anim_path = "images/mpc/com_xy_trajectory.mp4"
+        ani.save(anim_path, writer='ffmpeg', dpi=200)
+        plt.close(fig)
+
+
+

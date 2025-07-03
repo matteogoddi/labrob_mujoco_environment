@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from math import ceil, floor, sqrt
 from collections import defaultdict
+import matplotlib.cm as cm
 import os
 
 if __name__ == '__main__':
@@ -108,19 +109,43 @@ if __name__ == '__main__':
         fig.savefig(f"images/feedback/positions/{group_name}_fb_position_plot.png")
         plt.close(fig)
 
-    #plot position error between input command and feedback joint position, everything in one single plot
+    # #plot position error between input command and feedback joint position, everything in one single plot
+    # fig, ax = plt.subplots(figsize=(18, 12))
+    # for i in range(fb_joint_pos.shape[1]):
+    #     error = fb_joint_pos[:, i] - input_command[:, i]
+    #     ax.plot(t, error, label=joint_names[i].strip())
+    # ax.set_xlabel('Time [s]')
+    # ax.set_ylabel('Position Error [rad]')
+    # ax.set_title('Position Error between Input Command and Feedback Joint Position')
+    # ax.grid(True)
+    # ax.legend()
+    # fig.tight_layout()
+    # fig.savefig(f"images/feedback/position_error_plot.png")
+    # plt.close(fig)
+
+   # Plot position error between input command and feedback joint position
     fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(fb_joint_pos.shape[1]):
+    num_joints = fb_joint_pos.shape[1]
+    colormap = plt.colormaps['tab10'] 
+    line_styles = ['-', '--', '-.', ':']
+    for i in range(num_joints):
         error = fb_joint_pos[:, i] - input_command[:, i]
-        ax.plot(t, error, label=joint_names[i].strip())
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Position Error [rad]')
-    ax.set_title('Position Error between Input Command and Feedback Joint Position')
-    ax.grid(True)
-    ax.legend()
+        color = colormap(i % 10)
+        linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
+        ax.plot(t, error,
+                label=joint_names[i].strip(),
+                color=color,
+                linestyle=linestyle,
+                linewidth=2)
+    ax.set_xlabel('Time [s]', fontsize=14)
+    ax.set_ylabel('Position Error [rad]', fontsize=14)
+    ax.set_title('Position Error between Input Command and Feedback Joint Position', fontsize=16)
+    ax.grid(True, which='both', linestyle='--', alpha=0.5)
+    ax.legend(fontsize=12, loc='upper right', ncol=2)
     fig.tight_layout()
-    fig.savefig(f"images/feedback/position_error_plot.png")
+    fig.savefig("images/feedback/position_error_plot.png")
     plt.close(fig)
+
 
     #plot velocity error between input command and feedback joint velocity, everything in one single plot
     fig, ax = plt.subplots(figsize=(18, 12))

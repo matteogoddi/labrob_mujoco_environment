@@ -131,7 +131,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   controller_frequency_ = 1000;
   controller_timestep_msec_ = 1000 / controller_frequency_;
 
-  double swing_foot_trajectory_height = 0.1;
+  double swing_foot_trajectory_height = 0.05;
   double step_length_x = 0.0;
   double step_length_y = 0.0;
   double step_rotation = 0.0;
@@ -201,6 +201,17 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         single_support_duration,
         labrob::WalkingState::SingleSupport
     ));
+
+    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+            labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+            labrob::Foot::LEFT
+        ),
+        0.0,
+        2000,
+        labrob::WalkingState::Standing
+    ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
@@ -220,6 +231,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         swing_foot_trajectory_height,
         single_support_duration,
         labrob::WalkingState::SingleSupport
+    ));
+    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+            labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+            labrob::Foot::RIGHT
+        ),
+        0.0,
+        2000,
+        labrob::WalkingState::Standing
     ));
   }
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
@@ -632,7 +653,7 @@ WalkingManager::update(
     // }
     // else {
     //     desired_gait_configuration = initial_gait_configuration;
-    //     double A = 0;
+    //     double A = 0.05;
     //     double f = 3;
     //     desired_gait_configuration.com.pos = initial_gait_configuration.com.pos + Eigen::Vector3d(
     //         0.0,

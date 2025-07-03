@@ -205,6 +205,10 @@ const Eigen::Vector3d& ISMPC::getInput() const {
   return input_;
 }
 
+// const Eigen::Matrix3d& ISMPC::getInputSequence() {
+//   return ;
+// }
+
 double
 ISMPC::getOmega() const {
   return omega_;

@@ -82,11 +82,11 @@ struct MotorState {
 
 // Stiffness for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kp{
-  400, 600, 400, 800, 800, 400,      // legs sx
-  400, 600, 400, 800, 800, 400,      // legs dx
-  60, 40, 40,                   // waist
-  80, 80, 80, 80,  80, 80, 80,  // arms sx
-  80, 80, 80, 80,  80, 80, 80   // arms dx
+  600, 700, 500, 1000, 900, 500,      // legs sx
+  600, 700, 500, 1000, 900, 500,      // legs dx
+  400, 400, 400,                   // waist
+  100, 100, 100, 100,  20, 20, 20,  // arms sx
+  100, 100, 100, 100,  20, 20, 20   // arms dx
 };
 
 // std::array<float, G1_NUM_MOTOR> Kp = {
@@ -299,8 +299,16 @@ void signalHandler(int signum) {
       readme_file << kd << " ";
     }
     readme_file << "\n\n";
+
+    //request text input from terminal and write the text on the readme file
+    std::string user_input;
+    std::cout << "Please enter a description of the experiment: ";
+    std::getline(std::cin, user_input);
+    readme_file << "Experiment description: " << user_input << "\n";
+
     readme_file.close();
   }
+
   exit(signum);
 }
 
