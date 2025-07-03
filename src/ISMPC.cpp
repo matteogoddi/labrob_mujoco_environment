@@ -53,6 +53,10 @@ ISMPC::ISMPC(
   A_zmp_.block(     0,      0, N_, N_) = P_;
   A_zmp_.block(    N_,     N_, N_, N_) = P_;
   A_zmp_.block(2 * N_, 2 * N_, N_, N_) = P_;
+
+  zDotOptimalX = Eigen::VectorXd::Zero(N_);
+  zDotOptimalY = Eigen::VectorXd::Zero(N_);
+  zDotOptimalZ = Eigen::VectorXd::Zero(N_);
 }
 
 void
@@ -188,10 +192,6 @@ ISMPC::solve(
   auto decisionVariables = qp_solver_ptr_->get_solution();
 
   // Split the QP solution in ZMP dot and footsteps
-  Eigen::VectorXd zDotOptimalX(N_);
-  Eigen::VectorXd zDotOptimalY(N_);
-  Eigen::VectorXd zDotOptimalZ(N_);
-
   zDotOptimalX = (decisionVariables.segment(     0, N_));
   zDotOptimalY = (decisionVariables.segment(    N_, N_));
   zDotOptimalZ = (decisionVariables.segment(2 * N_, N_));
@@ -205,9 +205,15 @@ const Eigen::Vector3d& ISMPC::getInput() const {
   return input_;
 }
 
-// const Eigen::Matrix3d& ISMPC::getInputSequence() {
-//   return ;
-// }
+const Eigen::VectorXd& ISMPC::getInputSequenceX() const {
+  return zDotOptimalX;
+}
+const Eigen::VectorXd& ISMPC::getInputSequenceY() const {
+  return zDotOptimalY;
+}
+const Eigen::VectorXd& ISMPC::getInputSequenceZ() const {
+  return zDotOptimalZ;
+}
 
 double
 ISMPC::getOmega() const {

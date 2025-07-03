@@ -83,6 +83,7 @@ private:
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
+  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 
@@ -104,6 +105,7 @@ private:
   std::ofstream fl_log_file_;
   std::ofstream fr_log_file_;
   std::ofstream cop_computed_log_file_;
+  std::ofstream mpc_predictions_log_file_;
 
 }; // end class WalkingManager
 

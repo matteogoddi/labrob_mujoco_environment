@@ -34,6 +34,10 @@ class ISMPC{
   );
 
   const Eigen::Vector3d& getInput() const;
+
+  const Eigen::VectorXd& getInputSequenceX() const;
+  const Eigen::VectorXd& getInputSequenceY() const;
+  const Eigen::VectorXd& getInputSequenceZ() const;
   
   double getOmega() const;
 
@@ -72,6 +76,9 @@ class ISMPC{
   Eigen::VectorXd b_zmp_min_;
 
   Eigen::Vector3d input_;
+  Eigen::VectorXd zDotOptimalX;
+  Eigen::VectorXd zDotOptimalY;
+  Eigen::VectorXd zDotOptimalZ;
 
   // QP solver:
   std::shared_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;

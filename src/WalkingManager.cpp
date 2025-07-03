@@ -335,6 +335,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       0.001 * controller_timestep_msec_
   );
 
+  discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
+      std::sqrt(9.81 / com_target_height),
+      0.1 * controller_timestep_msec_
+  );
+
   // Init log files:
   // TODO: may be better to use a proper logging system such as glog.
   mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
@@ -355,6 +360,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 //   fl_log_file_.open("/tmp/fl.txt");
 //   fr_log_file_.open("/tmp/fr.txt");
   cop_computed_log_file_.open("/tmp/cop_computed.txt");
+  mpc_predictions_log_file_.open("/tmp/mpc_predictions.txt");
   
 
   return true;
@@ -584,6 +590,23 @@ WalkingManager::update(
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
     // substitute with ddpsolver.u[0]
+
+    Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
+    Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
+    Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
+
+    LIPState measured_state_mpc(p_CoM, J_CoM * qdot, zmp_3d);
+
+    for (int i = 0; i < 20; ++i) {
+        measured_state_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
+            measured_state_mpc, 
+            Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
+        );
+
+        mpc_predictions_log_file_ << measured_state_mpc.com_pos_.transpose() << " "
+            << measured_state_mpc.com_vel_.transpose() << " "
+            << measured_state_mpc.zmp_pos_.transpose() << std::endl;
+    }
 
 
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
