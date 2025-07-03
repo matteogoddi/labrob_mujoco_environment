@@ -158,7 +158,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
   ));
 
   double double_support_duration = 600;
-  double single_support_duration = 600;
+  double single_support_duration = 800;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -202,16 +202,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::WalkingState::SingleSupport
     ));
 
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::Foot::LEFT
-        ),
-        0.0,
-        2000,
-        labrob::WalkingState::Standing
-    ));
+    // walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
+    //     labrob::DoubleSupportConfiguration(
+    //         labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+    //         labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+    //         labrob::Foot::LEFT
+    //     ),
+    //     0.0,
+    //     2000,
+    //     labrob::WalkingState::Standing
+    // ));
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
@@ -232,16 +232,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         single_support_duration,
         labrob::WalkingState::SingleSupport
     ));
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
-        2000,
-        labrob::WalkingState::Standing
-    ));
+    // walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
+    //     labrob::DoubleSupportConfiguration(
+    //         labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+    //         labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
+    //         labrob::Foot::RIGHT
+    //     ),
+    //     0.0,
+    //     2000,
+    //     labrob::WalkingState::Standing
+    // ));
   }
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
@@ -337,7 +337,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
   discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
       std::sqrt(9.81 / com_target_height),
-      0.1 * controller_timestep_msec_
+      0.1
   );
 
   // Init log files:
@@ -595,7 +595,7 @@ WalkingManager::update(
     Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
     Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
 
-    LIPState measured_state_mpc(p_CoM, J_CoM * qdot, zmp_3d);
+    LIPState measured_state_mpc = filtered_state_;
 
     for (int i = 0; i < 20; ++i) {
         measured_state_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(

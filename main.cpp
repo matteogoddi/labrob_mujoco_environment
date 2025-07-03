@@ -498,6 +498,7 @@ int main(const int argc, const char* argv[]) {
   if(useRobot) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
     ChannelFactory::Instance()->Init(0, netInterface);
+    std::cout << "ChannelFactory initialized with interface: " << netInterface << std::endl;
 
     msc.reset(new MotionSwitcherClient());
     msc->SetTimeout(5.0f);
