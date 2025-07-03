@@ -25,6 +25,7 @@ if __name__ == '__main__':
     v_lsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/v_lsole_des.txt')
     v_rsole_des_trajectory : np.ndarray = np.loadtxt(folder + '/v_rsole_des.txt')
     angular_momentum_trajectory : np.ndarray = np.loadtxt(folder + '/angular_momentum.txt')
+    mpc_predictions_trajectory : np.ndarray = np.loadtxt(folder + '/mpc_predictions.txt')
 
     delta = 1e-3
     num_samples = mpc_com_trajectory.shape[0]
@@ -210,6 +211,9 @@ if __name__ == '__main__':
         # plt.close(fig)
     else:
         # Animazione traiettoria CoM sul piano XY
+        print(mpc_predictions_trajectory.shape)
+        print(num_samples)
+
         fig, ax = plt.subplots()
         ax.set_xlim(np.min(com_trajectory[:, 0]) - 0.1, np.max(com_trajectory[:, 0]) + 0.1)
         ax.set_ylim(np.min(com_trajectory[:, 1]) - 0.1, np.max(com_trajectory[:, 1]) + 0.1)
@@ -221,6 +225,7 @@ if __name__ == '__main__':
         simulation_point, = ax.plot([], [], 'ro')  # Punto attuale
         mpc_line, = ax.plot([], [], 'r-', label='mpc CoM Trajectory')
         mpc_point, = ax.plot([], [], 'ro')  # Punto attuale
+        mpc_predictions_line, = ax.plot([], [], 'g--', label='mpc Predictions Trajectory')
         ax.legend()
 
         def init():
@@ -228,14 +233,36 @@ if __name__ == '__main__':
             simulation_point.set_data([], [])
             mpc_line.set_data([], [])
             mpc_point.set_data([], [])
-            return simulation_line, simulation_point, mpc_line, mpc_point
+            mpc_predictions_line.set_data([], [])
+            return simulation_line, simulation_point, mpc_line, mpc_point, mpc_predictions_line
+
+        # fuori dalla funzione update
+        last_prediction_frame = [-1]  # utilizzo una lista per mutabilità
 
         def update(frame):
+            # Simulazione
             simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
             simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+
+            # MPC reale
             mpc_line.set_data(mpc_com_trajectory[:frame, 0], mpc_com_trajectory[:frame, 1])
             mpc_point.set_data([mpc_com_trajectory[frame, 0]], [mpc_com_trajectory[frame, 1]])
-            return simulation_line, simulation_point, mpc_line, mpc_point
+
+            # Reset predizione visiva
+            mpc_predictions_line.set_data([], [])
+
+            # Estrai predizioni per il frame corrente: righe da 20*frame a 20*(frame+1)
+            start_idx = frame * 20
+            end_idx = start_idx + 20
+            if end_idx <= mpc_predictions_trajectory.shape[0]:
+                prediction = mpc_predictions_trajectory[start_idx:end_idx, :]  # shape (20, 9)
+                com_pred_x = prediction[:, 0]
+                com_pred_y = prediction[:, 1]
+                mpc_predictions_line.set_data(com_pred_x, com_pred_y)
+
+            return simulation_line, simulation_point, mpc_line, mpc_point, mpc_predictions_line
+
+
 
         skip = 100  # salva un frame ogni 10 step
         frames_to_use = range(0, num_samples, skip)
