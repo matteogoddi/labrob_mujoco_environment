@@ -29,8 +29,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-3;
-  params.weight_angular_momentum = 0.0001;
+  params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
+  params.weight_slack = 1e-6;
 
   params.cmm_selection_matrix_x = 1e-6;
   params.cmm_selection_matrix_y = 1e-6;
@@ -39,8 +40,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = params.Kd_motion;
   params.mu = 0.5;
 
-  params.foot_length = 0.15;
-  params.foot_width = 0.04; 
+  params.foot_length = 0.18;
+  params.foot_width = 0.08; 
 
   return params;
 }
@@ -72,9 +73,10 @@ WholeBodyController::WholeBodyController(
 
   n_joints_ = robot_model.nv - 6;
   n_contacts_ = 4;
+  n_slack_ = 90;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 6 + 3 * n_contacts_;
-  n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
+  n_wbc_inequalities_ = 2 * n_slack_; //2 * n_joints_ + 2 * 4 * n_contacts_;
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 2;
@@ -86,7 +88,7 @@ WholeBodyController::WholeBodyController(
 
   wbc_solver_ptr_ = std::make_unique<qpsolvers::QPSolverEigenWrapper<double>>(
       std::make_shared<qpsolvers::HPIPMQPSolver>(
-          n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
+          n_wbc_variables_ + 2 * n_slack_, n_wbc_equalities_ + 2 * n_slack_ , n_wbc_inequalities_
       )
   );
 }
@@ -309,10 +311,58 @@ WholeBodyController::compute_inverse_dynamics(
   d_min << d_min_acc, d_min_force_one, d_min_force_one;
   d_max << d_max_acc, d_max_force_one, d_max_force_one;
 
-  wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
+  // int n_slack_ = C.rows();  // totale slack = numero di vincoli di disuguaglianza
+
+  Eigen::MatrixXd H_extended = Eigen::MatrixXd::Zero(H.rows() + 2 * n_slack_, H.cols() + 2 * n_slack_);
+  Eigen::MatrixXd H_slack = params_.weight_slack * Eigen::MatrixXd::Identity(2 * n_slack_, 2 * n_slack_);
+  H_extended.block(0, 0, H.rows(), H.cols()) = H;
+  H_extended.block(H.rows(), H.cols(), 2 * n_slack_, 2 * n_slack_) = H_slack;
+
+  Eigen::VectorXd f_extended = Eigen::VectorXd::Zero(f.rows() + 2 * n_slack_);
+  f_extended.head(f.rows()) = f;
+  f_extended.tail(2 * n_slack_) = Eigen::VectorXd::Zero(2 * n_slack_);
+
+  Eigen::MatrixXd A_slack = Eigen::MatrixXd::Zero(2 * n_slack_, n_wbc_variables_ + 2 * n_slack_);
+  Eigen::VectorXd b_slack = Eigen::VectorXd::Zero(2 * n_slack_);
+
+  // Parte superiore: Cx + s⁺ = d_max
+  A_slack.block(0, 0, n_slack_, C.cols()) = C;
+  A_slack.block(0, n_wbc_variables_, n_slack_, n_slack_) = Eigen::MatrixXd::Identity(n_slack_, n_slack_);
+  b_slack.head(n_slack_) = d_max;
+
+  // Parte inferiore: Cx - s⁻ = d_min
+  A_slack.block(n_slack_, 0, n_slack_, C.cols()) = C;
+  A_slack.block(n_slack_, n_wbc_variables_ + n_slack_, n_slack_, n_slack_) = -Eigen::MatrixXd::Identity(n_slack_, n_slack_);
+  b_slack.tail(n_slack_) = d_min;
+
+  Eigen::MatrixXd A_extended = Eigen::MatrixXd::Zero(A.rows() + 2 * n_slack_, A.cols() + 2 * n_slack_);
+  A_extended.block(0, 0, A.rows(), A.cols()) = A;
+  A_extended.block(A.rows(), 0, 2 * n_slack_, n_wbc_variables_ + 2 * n_slack_) = A_slack;
+  Eigen::VectorXd b_extended = Eigen::VectorXd::Zero(b.rows() + 2 * n_slack_);
+  b_extended << b, b_slack;
+
+  Eigen::MatrixXd C_slack = Eigen::MatrixXd::Identity(2 * n_slack_, 2 * n_slack_);
+  Eigen::VectorXd d_min_slack = Eigen::VectorXd::Zero(2 * n_slack_);
+  Eigen::VectorXd d_max_slack = Eigen::VectorXd::Constant(2 * n_slack_, std::numeric_limits<double>::infinity());
+
+  Eigen::MatrixXd C_extended = Eigen::MatrixXd::Zero(2 * n_slack_, n_wbc_variables_ + 2 * n_slack_);
+  C_extended.block(0, n_wbc_variables_, 2 * n_slack_, 2 * n_slack_) = C_slack;
+
+  Eigen::VectorXd d_min_total = d_min_slack;
+  Eigen::VectorXd d_max_total = d_max_slack;
+
+  wbc_solver_ptr_->solve(
+      H_extended, f_extended,
+      A_extended, b_extended,
+      C_extended, d_min_total, d_max_total
+  );
+
+  // wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);
-  Eigen::VectorXd flr = solution.tail(2 * 3 * n_contacts_);
+  Eigen::VectorXd flrslack = solution.tail(2 * 3 * n_contacts_ + 2 * n_slack_);
+  Eigen::VectorXd slack = flrslack.tail(2 * n_slack_);
+  Eigen::VectorXd flr = flrslack.tail(2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;

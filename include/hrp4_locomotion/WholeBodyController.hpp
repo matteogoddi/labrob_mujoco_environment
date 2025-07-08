@@ -37,6 +37,7 @@ struct WholeBodyControllerParams {
   double weight_torso;
   double weight_regulation;
   double weight_angular_momentum;
+  double weight_slack;
 
   double cmm_selection_matrix_x;
   double cmm_selection_matrix_y;
@@ -98,6 +99,7 @@ class WholeBodyController {
   int n_wbc_variables_;
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
+  int n_slack_;
 
   std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 

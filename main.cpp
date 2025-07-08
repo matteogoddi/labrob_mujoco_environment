@@ -304,7 +304,14 @@ void signalHandler(int signum) {
     std::string user_input;
     std::cout << "Please enter a description of the experiment: ";
     std::getline(std::cin, user_input);
-    readme_file << "Experiment description: " << user_input << "\n";
+    if (user_input == "delete"){
+      std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
+      std::filesystem::remove_all(experiment_folder);
+      readme_file.close();
+    }
+    else{
+      std::cout << "Experiment description: " << user_input << std::endl;
+    }
 
     readme_file.close();
   }
