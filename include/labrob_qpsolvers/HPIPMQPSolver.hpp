@@ -20,6 +20,7 @@
 #include <hpipm_timing.h>
 
 #include <iostream>
+#include <numeric>
 
 namespace labrob {
 namespace qpsolvers {
@@ -28,12 +29,12 @@ namespace qpsolvers {
 class HPIPMQPSolver : public QPSolver<double> {
  public:
   HPIPMQPSolver(int numVariables, int numEqualityConstraints, int numInequalityConstraints) :
-  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints) {
+  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints), numIneq_(numInequalityConstraints) {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
 
-    d_dense_qp_dim_set_all(numVariables, numEqualityConstraints, 0, numInequalityConstraints, 0, 0, &dim_);
+    d_dense_qp_dim_set_all(numVariables, numEqualityConstraints, 0, numInequalityConstraints, 0, numInequalityConstraints, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = malloc(qp_size);
@@ -54,6 +55,14 @@ class HPIPMQPSolver : public QPSolver<double> {
     int ipm_size = d_dense_qp_ipm_ws_memsize(&dim_, &arg_);
     ipm_mem_ = malloc(ipm_size);
     d_dense_qp_ipm_ws_create(&dim_, &arg_, &workspace_, ipm_mem_);
+
+    idxs_sg_.resize(numIneq_);
+    std::iota(idxs_sg_.begin(), idxs_sg_.end(), 0);
+
+    Zl_ = std::vector<double>(numIneq_, 1e-6);
+    Zu_ = std::vector<double>(numIneq_, 1e-6);
+    zl_ = std::vector<double>(numIneq_, 0.0);
+    zu_ = std::vector<double>(numIneq_, 0.0);
 
     u_ = (double*) malloc(numVariables * sizeof(double));
   }
@@ -85,6 +94,12 @@ class HPIPMQPSolver : public QPSolver<double> {
     d_dense_qp_set_lg((double*) d_min, &qp_);
     d_dense_qp_set_ug((double*) d_max, &qp_);
 
+    d_dense_qp_set_idxs_rev(idxs_sg_.data(), &qp_);
+    d_dense_qp_set_Zl((double*) Zl_.data(), &qp_);
+    d_dense_qp_set_Zu((double*) Zu_.data(), &qp_);
+    d_dense_qp_set_zl((double*) zl_.data(), &qp_);
+    d_dense_qp_set_zu((double*) zu_.data(), &qp_);
+
     // solve QP
     d_dense_qp_ipm_solve(&qp_, &qp_sol_, &arg_, &workspace_);
     d_dense_qp_sol_get_v(&qp_sol_, u_);
@@ -108,6 +123,10 @@ class HPIPMQPSolver : public QPSolver<double> {
   void* ipm_mem_;
   void* qp_sol_mem_;
   void* ipm_arg_mem_;
+
+  int numIneq_;
+  std::vector<int> idxs_sg_;
+  std::vector<double> Zl_, Zu_, zl_, zu_;
 
   double* u_;
 

@@ -40,8 +40,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = params.Kd_motion;
   params.mu = 0.5;
 
-  params.foot_length = 0.18;
-  params.foot_width = 0.08; 
+  params.foot_length = 0.15;
+  params.foot_width = 0.05; 
 
   return params;
 }
@@ -76,7 +76,7 @@ WholeBodyController::WholeBodyController(
   n_slack_ = 90;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 6 + 3 * n_contacts_;
-  n_wbc_inequalities_ = 2 * n_slack_; //2 * n_joints_ + 2 * 4 * n_contacts_;
+  n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 2;
@@ -88,7 +88,7 @@ WholeBodyController::WholeBodyController(
 
   wbc_solver_ptr_ = std::make_unique<qpsolvers::QPSolverEigenWrapper<double>>(
       std::make_shared<qpsolvers::HPIPMQPSolver>(
-          n_wbc_variables_ + 2 * n_slack_, n_wbc_equalities_ + 2 * n_slack_ , n_wbc_inequalities_
+          n_wbc_variables_, n_wbc_equalities_ , n_wbc_inequalities_
       )
   );
 }
@@ -351,18 +351,17 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd d_min_total = d_min_slack;
   Eigen::VectorXd d_max_total = d_max_slack;
 
-  wbc_solver_ptr_->solve(
-      H_extended, f_extended,
-      A_extended, b_extended,
-      C_extended, d_min_total, d_max_total
-  );
+  // wbc_solver_ptr_->solve(
+  //     H_extended, f_extended,
+  //     A_extended, b_extended,
+  //     C_extended, d_min_total, d_max_total
+  // );
 
-  // wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
+  wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);
-  Eigen::VectorXd flrslack = solution.tail(2 * 3 * n_contacts_ + 2 * n_slack_);
-  Eigen::VectorXd slack = flrslack.tail(2 * n_slack_);
-  Eigen::VectorXd flr = flrslack.tail(2 * 3 * n_contacts_);
+  // Eigen::VectorXd slack = solution.tail(2 * n_slack_);
+  Eigen::VectorXd flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;

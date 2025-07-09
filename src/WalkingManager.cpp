@@ -157,8 +157,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       labrob::WalkingState::Standing
   ));
 
-  double double_support_duration = 600;
-  double single_support_duration = 800;
+  double double_support_duration = 8000;
+  double single_support_duration = 8000;
   walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
       labrob::DoubleSupportConfiguration(
           labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -705,6 +705,7 @@ WalkingManager::update(
     );
     end = std::chrono::system_clock::now();
     auto compute_id_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    // std::cout << "compute_inverse_dynamics took " << compute_id_duration << " microseconds." << std::endl;
 
 
     // Update timing in milliseconds.
