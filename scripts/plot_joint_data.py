@@ -23,8 +23,14 @@ if __name__ == '__main__':
     com_desired: np.ndarray = np.loadtxt(folder + '/mpc_com.txt')
     joint_names = open(folder + '/joint_names.txt').readlines()
 
+    # sometimes the number of samples in com_simulation, com_real and com_desired is different
+    # this is a fix to ensure they have the same number of samples
+    if com_simulation.shape[0] != com_real.shape[0] or com_desired.shape[0] != com_real.shape[0]:
+        com_simulation = com_simulation[:min(com_simulation.shape[0], com_real.shape[0], com_desired.shape[0]), :]
+        com_desired = com_desired[:min(com_simulation.shape[0], com_real.shape[0], com_desired.shape[0]), :]
+
     delta = 1e-3
-    num_samples = fb_joint_pos.shape[0]
+    num_samples = joint_pos.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
 
     if not os.path.exists('images/joints/positions'):
@@ -109,70 +115,46 @@ if __name__ == '__main__':
         fig.savefig(f"images/feedback/positions/{group_name}_fb_position_plot.png")
         plt.close(fig)
 
-    # #plot position error between input command and feedback joint position, everything in one single plot
-    # fig, ax = plt.subplots(figsize=(18, 12))
-    # for i in range(fb_joint_pos.shape[1]):
-    #     error = fb_joint_pos[:, i] - input_command[:, i]
-    #     ax.plot(t, error, label=joint_names[i].strip())
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('Position Error [rad]')
-    # ax.set_title('Position Error between Input Command and Feedback Joint Position')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig(f"images/feedback/position_error_plot.png")
-    # plt.close(fig)
+    if number != '0':
 
-   # Plot position error between input command and feedback joint position
-    fig, ax = plt.subplots(figsize=(18, 12))
-    num_joints = fb_joint_pos.shape[1]
-    colormap = plt.colormaps['tab10'] 
-    line_styles = ['-', '--', '-.', ':']
-    for i in range(num_joints):
-        error = fb_joint_pos[:, i] - input_command[:, i]
-        color = colormap(i % 10)
-        linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        ax.plot(t, error,
-                label=joint_names[i].strip(),
-                color=color,
-                linestyle=linestyle,
-                linewidth=2)
-    ax.set_xlabel('Time [s]', fontsize=14)
-    ax.set_ylabel('Position Error [rad]', fontsize=14)
-    ax.set_title('Position Error between Input Command and Feedback Joint Position', fontsize=16)
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12, loc='upper right', ncol=2)
-    fig.tight_layout()
-    fig.savefig("images/feedback/position_error_plot.png")
-    plt.close(fig)
+        # Plot position error between input command and feedback joint position
+        fig, ax = plt.subplots(figsize=(18, 12))
+        num_joints = fb_joint_pos.shape[1]
+        colormap = plt.colormaps['tab10'] 
+        line_styles = ['-', '--', '-.', ':']
+        for i in range(num_joints):
+            error = fb_joint_pos[:, i] - input_command[:, i]
+            color = colormap(i % 10)
+            linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
+            ax.plot(t, error,
+                    label=joint_names[i].strip(),
+                    color=color,
+                    linestyle=linestyle,
+                    linewidth=2)
+        ax.set_xlabel('Time [s]', fontsize=14)
+        ax.set_ylabel('Position Error [rad]', fontsize=14)
+        ax.set_title('Position Error between Input Command and Feedback Joint Position', fontsize=16)
+        ax.grid(True, which='both', linestyle='--', alpha=0.5)
+        ax.legend(fontsize=12, loc='upper right', ncol=2)
+        fig.tight_layout()
+        fig.savefig("images/feedback/position_error_plot.png")
+        plt.close(fig)
 
 
-    #plot velocity error between input command and feedback joint velocity, everything in one single plot
-    fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(fb_joint_vel.shape[1]):
-        error = fb_joint_vel[:, i] - joint_vel[:, i]
-        ax.plot(t, error, label=joint_names[i].strip())
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Velocity Error [rad/s]')
-    ax.set_title('Velocity Error between Input Command and Feedback Joint Velocity')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(f"images/feedback/velocity_error_plot.png")
-    plt.close(fig)
+        #plot velocity error between input command and feedback joint velocity, everything in one single plot
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(fb_joint_vel.shape[1]):
+            error = fb_joint_vel[:, i] - joint_vel[:, i]
+            ax.plot(t, error, label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity Error [rad/s]')
+        ax.set_title('Velocity Error between Input Command and Feedback Joint Velocity')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/feedback/velocity_error_plot.png")
+        plt.close(fig)
 
-    # Create a histogram with the last error value of each joint
-    last_errors = [fb_joint_pos[-1, i] - input_command[-1, i] for i in range(fb_joint_pos.shape[1])]
-    fig, ax = plt.subplots(figsize=(18, 12))
-    ax.bar([joint_names[i].strip() for i in range(fb_joint_pos.shape[1])], last_errors)
-    ax.set_xlabel('Joint')
-    ax.set_ylabel('Last Position Error [rad]')
-    ax.set_title('Last Position Error for Each Joint')
-    ax.grid(True)
-    plt.xticks(rotation=45, ha='right', fontsize=10)
-    fig.tight_layout()
-    fig.savefig("images/feedback/last_position_error_plot.png")
-    plt.close(fig)
 
     # Plot CoM simulation and real data
     fig, ax = plt.subplots()

@@ -103,112 +103,110 @@ if __name__ == '__main__':
     plt.close(fig)
 
     if number != '0':
-        print(number)
-        print("ciao")
 
-        # real_com_trajectory : np.ndarray = np.loadtxt(folder + '/real_com.txt')
-        # # Animazione traiettoria CoM sul piano XY
-        # fig, ax = plt.subplots()
-        # ax.set_xlim(np.min(com_trajectory[:, 0]) - 0.1, np.max(com_trajectory[:, 0]) + 0.1)
-        # ax.set_ylim(np.min(com_trajectory[:, 1]) - 0.1, np.max(com_trajectory[:, 1]) + 0.1)
-        # ax.set_xlabel('CoM X [m]')
-        # ax.set_ylabel('CoM Y [m]')
-        # ax.set_title('CoM Trajectory in XY Plane')
-        # ax.grid(True)
-        # simulation_line, = ax.plot([], [], 'b-', label='Simulated CoM Trajectory')
-        # simulation_point, = ax.plot([], [], 'ro')  # Punto attuale
-        # real_line, = ax.plot([], [], 'r-', label='Real CoM Trajectory')
-        # real_point, = ax.plot([], [], 'ro')  # Punto attuale
-        # ax.legend()
+        real_com_trajectory : np.ndarray = np.loadtxt(folder + '/real_com.txt')
+        # Animazione traiettoria CoM sul piano XY
+        fig, ax = plt.subplots()
+        ax.set_xlim(np.min(com_trajectory[:, 0]) - 0.1, np.max(com_trajectory[:, 0]) + 0.1)
+        ax.set_ylim(np.min(com_trajectory[:, 1]) - 0.1, np.max(com_trajectory[:, 1]) + 0.1)
+        ax.set_xlabel('CoM X [m]')
+        ax.set_ylabel('CoM Y [m]')
+        ax.set_title('CoM Trajectory in XY Plane')
+        ax.grid(True)
+        simulation_line, = ax.plot([], [], 'b-', label='Simulated CoM Trajectory')
+        simulation_point, = ax.plot([], [], 'ro')  # Punto attuale
+        real_line, = ax.plot([], [], 'r-', label='Real CoM Trajectory')
+        real_point, = ax.plot([], [], 'ro')  # Punto attuale
+        ax.legend()
 
-        # def init():
-        #     simulation_line.set_data([], [])
-        #     simulation_point.set_data([], [])
-        #     real_line.set_data([], [])
-        #     real_point.set_data([], [])
-        #     return simulation_line, simulation_point, real_line, real_point
+        def init():
+            simulation_line.set_data([], [])
+            simulation_point.set_data([], [])
+            real_line.set_data([], [])
+            real_point.set_data([], [])
+            return simulation_line, simulation_point, real_line, real_point
 
-        # def update(frame):
-        #     simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
-        #     simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
-        #     real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
-        #     real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
-        #     return simulation_line, simulation_point, real_line, real_point
+        def update(frame):
+            simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
+            simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+            real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
+            real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
+            return simulation_line, simulation_point, real_line, real_point
 
-        # skip = 100  # salva un frame ogni 10 step
-        # frames_to_use = range(0, num_samples, skip)
+        skip = 100  # salva un frame ogni 10 step
+        frames_to_use = range(0, num_samples, skip)
 
-        # ani = animation.FuncAnimation(
-        #     fig, update, frames=frames_to_use, init_func=init,
-        #     blit=True, interval=50, repeat=False
-        # )
+        ani = animation.FuncAnimation(
+            fig, update, frames=frames_to_use, init_func=init,
+            blit=True, interval=50, repeat=False
+        )
 
-        # anim_path = "images/mpc/com_xy_trajectory.mp4"
-        # ani.save(anim_path, writer='ffmpeg', dpi=200)
-        # plt.close(fig)
+        anim_path = "images/mpc/com_xy_trajectory.mp4"
+        ani.save(anim_path, writer='ffmpeg', dpi=200)
+        plt.close(fig)
 
 
-        # anim_path = "images/mpc/com_trajectory_3d.mp4"
+        anim_path = "images/mpc/com_trajectory_3d.mp4"
 
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111, projection='3d')
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
 
-        # # Calcolo limiti basati su entrambe le traiettorie
-        # all_x = np.concatenate([com_trajectory[:, 0], real_com_trajectory[:, 0]])
-        # all_y = np.concatenate([com_trajectory[:, 1], real_com_trajectory[:, 1]])
-        # all_z = np.concatenate([com_trajectory[:, 2], real_com_trajectory[:, 2]])
+        # Calcolo limiti basati su entrambe le traiettorie
+        all_x = np.concatenate([com_trajectory[:, 0], real_com_trajectory[:, 0]])
+        all_y = np.concatenate([com_trajectory[:, 1], real_com_trajectory[:, 1]])
+        all_z = np.concatenate([com_trajectory[:, 2], real_com_trajectory[:, 2]])
 
-        # ax.set_xlim(np.min(all_x), np.max(all_x))
-        # ax.set_ylim(np.min(all_y), np.max(all_y))
-        # ax.set_zlim(np.min(all_z), np.max(all_z))
+        ax.set_xlim(np.min(all_x), np.max(all_x))
+        ax.set_ylim(np.min(all_y), np.max(all_y))
+        ax.set_zlim(np.min(all_z), np.max(all_z))
 
-        # ax.set_xlabel('X [m]')
-        # ax.set_ylabel('Y [m]')
-        # ax.set_zlabel('Z [m]')
-        # ax.set_title('3D CoM Trajectories')
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_zlabel('Z [m]')
+        ax.set_title('3D CoM Trajectories')
 
-        # # Linee e punti animati
-        # simulation_line, = ax.plot([], [], [], lw=2, color='blue', label='CoM (Simulation)')
-        # simulation_point, = ax.plot([], [], [], 'o', color='blue')
+        # Linee e punti animati
+        simulation_line, = ax.plot([], [], [], lw=2, color='blue', label='CoM (Simulation)')
+        simulation_point, = ax.plot([], [], [], 'o', color='blue')
 
-        # real_line, = ax.plot([], [], [], lw=2, color='green', linestyle='--', label='CoM (Real)')
-        # real_point, = ax.plot([], [], [], 'o', color='green')
+        real_line, = ax.plot([], [], [], lw=2, color='green', linestyle='--', label='CoM (Real)')
+        real_point, = ax.plot([], [], [], 'o', color='green')
 
-        # ax.legend()
+        ax.legend()
 
-        # def init():
-        #     simulation_line.set_data([], [])
-        #     simulation_line.set_3d_properties([])
-        #     simulation_point.set_data([], [])
-        #     simulation_point.set_3d_properties([])
-        #     real_line.set_data([], [])
-        #     real_line.set_3d_properties([])
-        #     real_point.set_data([], [])
-        #     real_point.set_3d_properties([])
-        #     return simulation_line, simulation_point, real_line, real_point
+        def init():
+            simulation_line.set_data([], [])
+            simulation_line.set_3d_properties([])
+            simulation_point.set_data([], [])
+            simulation_point.set_3d_properties([])
+            real_line.set_data([], [])
+            real_line.set_3d_properties([])
+            real_point.set_data([], [])
+            real_point.set_3d_properties([])
+            return simulation_line, simulation_point, real_line, real_point
 
-        # def update(frame):
-        #     # CoM simulato
-        #     simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
-        #     simulation_line.set_3d_properties(com_trajectory[:frame, 2])
-        #     simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
-        #     simulation_point.set_3d_properties([com_trajectory[frame, 2]])
+        def update(frame):
+            # CoM simulato
+            simulation_line.set_data(com_trajectory[:frame, 0], com_trajectory[:frame, 1])
+            simulation_line.set_3d_properties(com_trajectory[:frame, 2])
+            simulation_point.set_data([com_trajectory[frame, 0]], [com_trajectory[frame, 1]])
+            simulation_point.set_3d_properties([com_trajectory[frame, 2]])
 
-        #     # CoM reale
-        #     real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
-        #     real_line.set_3d_properties(real_com_trajectory[:frame, 2])
-        #     real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
-        #     real_point.set_3d_properties([real_com_trajectory[frame, 2]])
+            # CoM reale
+            real_line.set_data(real_com_trajectory[:frame, 0], real_com_trajectory[:frame, 1])
+            real_line.set_3d_properties(real_com_trajectory[:frame, 2])
+            real_point.set_data([real_com_trajectory[frame, 0]], [real_com_trajectory[frame, 1]])
+            real_point.set_3d_properties([real_com_trajectory[frame, 2]])
 
-        #     return simulation_line, simulation_point, real_line, real_point
+            return simulation_line, simulation_point, real_line, real_point
 
-        # ani = animation.FuncAnimation(
-        #     fig, update, frames=frames_to_use,
-        #     init_func=init, blit=True, interval=50, repeat=False
-        # )
+        ani = animation.FuncAnimation(
+            fig, update, frames=frames_to_use,
+            init_func=init, blit=True, interval=50, repeat=False
+        )
 
-        # ani.save(anim_path, writer='ffmpeg', fps=25, dpi=150)
-        # plt.close(fig)
+        ani.save(anim_path, writer='ffmpeg', fps=25, dpi=150)
+        plt.close(fig)
     else:
         # Animazione traiettoria CoM sul piano XY
         fig, ax = plt.subplots()
@@ -264,8 +262,6 @@ if __name__ == '__main__':
                 zmp_predictions_line.set_data(zmp_pred_x, zmp_pred_y)
 
             return simulation_line, simulation_point, mpc_line, mpc_point, mpc_predictions_line, zmp_predictions_line
-
-
 
         skip = 100  # salva un frame ogni 10 step
         frames_to_use = range(0, num_samples, skip)

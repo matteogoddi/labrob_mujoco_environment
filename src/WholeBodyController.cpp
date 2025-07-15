@@ -71,9 +71,10 @@ WholeBodyController::WholeBodyController(
   J_lsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_rsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 
+  q_ddot_ = Eigen::VectorXd::Zero(robot_model.nv);
+
   n_joints_ = robot_model.nv - 6;
   n_contacts_ = 4;
-  n_slack_ = 90;
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 6 + 3 * n_contacts_;
   n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
@@ -311,60 +312,13 @@ WholeBodyController::compute_inverse_dynamics(
   d_min << d_min_acc, d_min_force_one, d_min_force_one;
   d_max << d_max_acc, d_max_force_one, d_max_force_one;
 
-  // int n_slack_ = C.rows();  // totale slack = numero di vincoli di disuguaglianza
-
-  Eigen::MatrixXd H_extended = Eigen::MatrixXd::Zero(H.rows() + 2 * n_slack_, H.cols() + 2 * n_slack_);
-  Eigen::MatrixXd H_slack = params_.weight_slack * Eigen::MatrixXd::Identity(2 * n_slack_, 2 * n_slack_);
-  H_extended.block(0, 0, H.rows(), H.cols()) = H;
-  H_extended.block(H.rows(), H.cols(), 2 * n_slack_, 2 * n_slack_) = H_slack;
-
-  Eigen::VectorXd f_extended = Eigen::VectorXd::Zero(f.rows() + 2 * n_slack_);
-  f_extended.head(f.rows()) = f;
-  f_extended.tail(2 * n_slack_) = Eigen::VectorXd::Zero(2 * n_slack_);
-
-  Eigen::MatrixXd A_slack = Eigen::MatrixXd::Zero(2 * n_slack_, n_wbc_variables_ + 2 * n_slack_);
-  Eigen::VectorXd b_slack = Eigen::VectorXd::Zero(2 * n_slack_);
-
-  // Parte superiore: Cx + s⁺ = d_max
-  A_slack.block(0, 0, n_slack_, C.cols()) = C;
-  A_slack.block(0, n_wbc_variables_, n_slack_, n_slack_) = Eigen::MatrixXd::Identity(n_slack_, n_slack_);
-  b_slack.head(n_slack_) = d_max;
-
-  // Parte inferiore: Cx - s⁻ = d_min
-  A_slack.block(n_slack_, 0, n_slack_, C.cols()) = C;
-  A_slack.block(n_slack_, n_wbc_variables_ + n_slack_, n_slack_, n_slack_) = -Eigen::MatrixXd::Identity(n_slack_, n_slack_);
-  b_slack.tail(n_slack_) = d_min;
-
-  Eigen::MatrixXd A_extended = Eigen::MatrixXd::Zero(A.rows() + 2 * n_slack_, A.cols() + 2 * n_slack_);
-  A_extended.block(0, 0, A.rows(), A.cols()) = A;
-  A_extended.block(A.rows(), 0, 2 * n_slack_, n_wbc_variables_ + 2 * n_slack_) = A_slack;
-  Eigen::VectorXd b_extended = Eigen::VectorXd::Zero(b.rows() + 2 * n_slack_);
-  b_extended << b, b_slack;
-
-  Eigen::MatrixXd C_slack = Eigen::MatrixXd::Identity(2 * n_slack_, 2 * n_slack_);
-  Eigen::VectorXd d_min_slack = Eigen::VectorXd::Zero(2 * n_slack_);
-  Eigen::VectorXd d_max_slack = Eigen::VectorXd::Constant(2 * n_slack_, std::numeric_limits<double>::infinity());
-
-  Eigen::MatrixXd C_extended = Eigen::MatrixXd::Zero(2 * n_slack_, n_wbc_variables_ + 2 * n_slack_);
-  C_extended.block(0, n_wbc_variables_, 2 * n_slack_, 2 * n_slack_) = C_slack;
-
-  Eigen::VectorXd d_min_total = d_min_slack;
-  Eigen::VectorXd d_max_total = d_max_slack;
-
-  // wbc_solver_ptr_->solve(
-  //     H_extended, f_extended,
-  //     A_extended, b_extended,
-  //     C_extended, d_min_total, d_max_total
-  // );
-
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
-  Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);
-  // Eigen::VectorXd slack = solution.tail(2 * n_slack_);
+  q_ddot_ = solution.head(6 + n_joints_);
   Eigen::VectorXd flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
-  Eigen::VectorXd tau = Ma * q_ddot + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
+  Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
 
   JointCommand joint_command;
   for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
@@ -375,4 +329,8 @@ WholeBodyController::compute_inverse_dynamics(
   return joint_command;
 }
 
+// each time my q_ddot will be updated, i need it as output
+Eigen::VectorXd WholeBodyController::get_q_ddot() const {
+  return q_ddot_;
+}
 }

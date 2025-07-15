@@ -70,6 +70,8 @@ class WholeBodyController {
       const labrob::GaitConfiguration& desired
   );
 
+  Eigen::VectorXd get_q_ddot() const;
+
  private:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
@@ -87,6 +89,8 @@ class WholeBodyController {
   Eigen::MatrixXd J_rsole_dot_;
 
   Eigen::VectorXd q_jnt_reg_;
+
+  Eigen::VectorXd q_ddot_;
 
   double sample_time_;
 

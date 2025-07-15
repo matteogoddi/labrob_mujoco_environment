@@ -27,13 +27,17 @@ class WalkingManager {
  public:
   WalkingManager();
 
-  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
+  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures, bool useRobot);
 
   LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
+  RobotState updateEKF(RobotState filtered_state, RobotState current_state);
+
   void update(
       const labrob::RobotState& robot_state,
-      labrob::JointCommand& joint_command
+      labrob::JointCommand& joint_command, 
+      const labrob::RobotState& fb_robot_state,
+      bool useRobot
   );
 
   int64_t get_controller_frequency() const;
@@ -41,6 +45,14 @@ class WalkingManager {
  protected:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
+
+  pinocchio::Model real_model_;
+  pinocchio::Data real_data_;
+
+  Eigen::MatrixXd P_;
+  Eigen::MatrixXd Q;
+  Eigen::MatrixXd R;
+  Eigen::VectorXd x_estimate;
 
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;

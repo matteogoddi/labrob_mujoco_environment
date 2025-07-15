@@ -66,6 +66,7 @@ const int G1_NUM_MOTOR = 29;
 struct ImuState {
   std::array<float, 3> rpy = {};
   std::array<float, 3> omega = {};
+  std::array<float, 3> accelerometer = {};
 };
 struct MotorCommand {
   std::array<float, G1_NUM_MOTOR> q_target = {};
@@ -217,6 +218,14 @@ void imuTorsoHandler(const void* msg) {
   imu_state_data.rpy[0] = imu_state.rpy()[0];
   imu_state_data.rpy[1] = imu_state.rpy()[1];
   imu_state_data.rpy[2] = imu_state.rpy()[2];
+
+  imu_state_data.omega[0] = imu_state.gyroscope()[0];
+  imu_state_data.omega[1] = imu_state.gyroscope()[1];
+  imu_state_data.omega[2] = imu_state.gyroscope()[2];
+
+  imu_state_data.accelerometer[0] = imu_state.accelerometer()[0];
+  imu_state_data.accelerometer[1] = imu_state.accelerometer()[1];
+  imu_state_data.accelerometer[2] = imu_state.accelerometer()[2];
 }
 
 std::string queryServiceName(std::string form,std::string name)
@@ -304,7 +313,7 @@ void signalHandler(int signum) {
     std::string user_input;
     std::cout << "Please enter a description of the experiment: ";
     std::getline(std::cin, user_input);
-    if (user_input == "delete"){
+    if (user_input == "delete" || user_input == "remove" || user_input == "erase" || user_input == "trash") {
       std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
       std::filesystem::remove_all(experiment_folder);
       readme_file.close();
@@ -489,7 +498,7 @@ int main(const int argc, const char* argv[]) {
   // Walking Manager:
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   labrob::WalkingManager walking_manager;
-  walking_manager.init(initial_robot_state, armatures);
+  walking_manager.init(initial_robot_state, armatures, useRobot);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -529,44 +538,11 @@ int main(const int argc, const char* argv[]) {
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
 
-    // Build Pinocchio model and data from URDF:
-    pinocchio::Model full_robot_model;
-    pinocchio::JointModelFreeFlyer root_joint;
-    pinocchio::urdf::buildModel(
-      "../g1_description/unitreeg1.urdf",
-      root_joint,
-      full_robot_model
-    );
-    const std::vector<std::string> joint_to_lock_names{};
-    std::vector<pinocchio::JointIndex> joint_ids_to_lock;
-    for (const auto& joint_name : joint_to_lock_names) {
-      if (full_robot_model.existJointName(joint_name)) {
-        joint_ids_to_lock.push_back(full_robot_model.getJointId(joint_name));
-      }
-    }
-
-    real_model = pinocchio::buildReducedModel(
-        full_robot_model,
-        joint_ids_to_lock,
-        pinocchio::neutral(full_robot_model)
-    );
-    real_data = pinocchio::Data(real_model);
-
     Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
       Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
       Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
     );
-
-    Eigen::VectorXd q_init = Eigen::VectorXd::Zero(real_model.nq);
-    q_init.head<7>() << initial_robot_state.position[0], initial_robot_state.position[1], initial_robot_state.position[2],
-    imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w();
-    for (int i = 7; i < real_model.nq; ++i) {
-      q_init[i] = motor_state_data.q[i - 7];
-    }
-    pinocchio::forwardKinematics(real_model, real_data, q_init);
-    pinocchio::jacobianCenterOfMass(real_model, real_data, q_init);
-    pinocchio::framesForwardKinematics(real_model, real_data, q_init);
   }
 
   // Simulation loop:
@@ -577,11 +553,33 @@ int main(const int argc, const char* argv[]) {
 
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
+      labrob::RobotState fb_robot_state = robot_state;
+
+      // if userobot is true, update the robot state from the real robot
+      if (useRobot) {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          fb_robot_state.joint_state[joint_name].pos = motor_state_data.q[i];
+          fb_robot_state.joint_state[joint_name].vel = motor_state_data.dq[i];
+        }
+        fb_robot_state.orientation = Eigen::Quaterniond(
+          Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
+          Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
+          Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
+        );
+        fb_robot_state.angular_velocity[0] = imu_state_data.omega[0];
+        fb_robot_state.angular_velocity[1] = imu_state_data.omega[1];
+        fb_robot_state.angular_velocity[2] = imu_state_data.omega[2];
+
+      }
+
       // Update walking manager:
       labrob::JointCommand joint_command;
 
       auto update_start = std::chrono::high_resolution_clock::now();
-      walking_manager.update(robot_state, joint_command);
+      walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot);
       auto update_end = std::chrono::high_resolution_clock::now();
       auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
       
