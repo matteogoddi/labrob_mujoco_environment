@@ -31,7 +31,6 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_torso = 1e-3;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
-  params.weight_slack = 1e-6;
 
   params.cmm_selection_matrix_x = 1e-6;
   params.cmm_selection_matrix_y = 1e-6;

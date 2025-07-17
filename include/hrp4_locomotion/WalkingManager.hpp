@@ -118,6 +118,16 @@ private:
   std::ofstream fr_log_file_;
   std::ofstream cop_computed_log_file_;
   std::ofstream mpc_predictions_log_file_;
+  std::ofstream ekf_base_position_log_file_;
+  std::ofstream ekf_base_velocity_log_file_;
+  std::ofstream ekf_base_orientation_log_file_;
+  std::ofstream ekf_base_angular_velocity_log_file_;
+  std::ofstream ekf_joint_position_log_file_;
+  std::ofstream ekf_joint_velocity_log_file_;
+  std::ofstream base_position_log_file_;
+  std::ofstream base_velocity_log_file_;
+  std::ofstream base_orientation_log_file_;
+  std::ofstream base_angular_velocity_log_file_;
 
 }; // end class WalkingManager
 

@@ -582,6 +582,7 @@ int main(const int argc, const char* argv[]) {
       walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot);
       auto update_end = std::chrono::high_resolution_clock::now();
       auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
+      // std::cout << "WalkingManager update took: " << update_duration << " microseconds" << std::endl;
       
       mj_step1(mj_model_ptr, mj_data_ptr);
 
