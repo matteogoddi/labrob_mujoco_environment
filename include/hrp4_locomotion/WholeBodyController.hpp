@@ -71,6 +71,7 @@ class WholeBodyController {
   );
 
   Eigen::VectorXd get_q_ddot() const;
+  Eigen::VectorXd get_flr() const;
 
  private:
   pinocchio::Model robot_model_;
@@ -91,6 +92,7 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
 
   Eigen::VectorXd q_ddot_;
+  Eigen::VectorXd flr;
 
   double sample_time_;
 

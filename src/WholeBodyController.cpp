@@ -71,6 +71,7 @@ WholeBodyController::WholeBodyController(
   J_rsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 
   q_ddot_ = Eigen::VectorXd::Zero(robot_model.nv);
+  flr = Eigen::VectorXd::Zero(2 * 3 * 4); // 2 feet, 3 forces per foot, 4 contacts
 
   n_joints_ = robot_model.nv - 6;
   n_contacts_ = 4;
@@ -314,7 +315,7 @@ WholeBodyController::compute_inverse_dynamics(
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   q_ddot_ = solution.head(6 + n_joints_);
-  Eigen::VectorXd flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
+  flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
@@ -328,8 +329,11 @@ WholeBodyController::compute_inverse_dynamics(
   return joint_command;
 }
 
-// each time my q_ddot will be updated, i need it as output
 Eigen::VectorXd WholeBodyController::get_q_ddot() const {
   return q_ddot_;
+}
+
+Eigen::VectorXd WholeBodyController::get_flr() const {
+  return flr;
 }
 }

@@ -392,12 +392,85 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState current_state) {
 
     //compute M matrix from pinocchio model
-    Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, current_state.joint_position);
-    Eigen::MatrixXd M_inv = M.inverse();
+    // Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, current_state.joint_position);
+    // Eigen::MatrixXd M_inv = M.inverse();
 
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nq - 6 + real_model_.nv, real_model_.nq + real_model_.nv);
-    C.block(0, 3, real_model_.nq - 3, real_model_.nq - 3) = Eigen::MatrixXd::Identity(real_model_.nq - 3, real_model_.nq - 3);
-    C.block(real_model_.nq - 3, real_model_.nq + 3, real_model_.nv - 3, real_model_.nv - 3) = Eigen::MatrixXd::Identity(real_model_.nv - 3, real_model_.nv - 3);
+    Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
+    pinocchio::getFrameJacobian(
+        real_model_, 
+        real_data_, 
+        real_model_.getFrameId("imu_in_torso"), 
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+        J_imu
+    );
+    Eigen::MatrixXd J_imu_dot = Eigen::MatrixXd::Zero(6, real_model_.nv);
+    pinocchio::getFrameJacobianTimeVariation(
+        real_model_, 
+        real_data_, 
+        real_model_.getFrameId("imu_in_torso"), 
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+        J_imu_dot
+    );
+
+    // get imu orientation from pinocchio
+    Eigen::Quaterniond imu_orientation(
+        real_data_.oMf[real_model_.getFrameId("imu_in_torso")].rotation()
+    );
+
+    Eigen::Quaterniond imu_orientation_in_base = imu_orientation * current_state.orientation.inverse();
+
+    Eigen::MatrixXd relative_orientation = Eigen::MatrixXd::Zero(4, 4);
+    relative_orientation(0, 0) = imu_orientation_in_base.w();
+    relative_orientation(0, 1) = -imu_orientation_in_base.x();
+    relative_orientation(0, 2) = -imu_orientation_in_base.y();
+    relative_orientation(0, 3) = -imu_orientation_in_base.z();
+    relative_orientation(1, 0) = imu_orientation_in_base.x();
+    relative_orientation(1, 1) = imu_orientation_in_base.w();
+    relative_orientation(1, 2) = imu_orientation_in_base.z();
+    relative_orientation(1, 3) = -imu_orientation_in_base.y();
+    relative_orientation(2, 0) = imu_orientation_in_base.y();
+    relative_orientation(2, 1) = -imu_orientation_in_base.z();
+    relative_orientation(2, 2) = imu_orientation_in_base.w();
+    relative_orientation(2, 3) = imu_orientation_in_base.x();
+    relative_orientation(3, 0) = imu_orientation_in_base.z();
+    relative_orientation(3, 1) = imu_orientation_in_base.y();
+    relative_orientation(3, 2) = -imu_orientation_in_base.x();
+    relative_orientation(3, 3) = imu_orientation_in_base.w();
+
+    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv, real_model_.nq + real_model_.nv);
+    C.block(0, 3, 4, real_model_.nq) = relative_orientation * J_imu;
+    C.block(4, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 3, real_model_.nq - 3);
+    C.block(real_model_.nq , real_model_.nq + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 3, real_model_.nv - 3);
+    C.block(real_model_.nq + real_model_.nv - 6, real_model_.nq, 3, real_model_.nv) = J_imu_dot;
+
+    Eigen::VectorXd input_forces = whole_body_controller_ptr_->get_flr(); 
+
+    //compute J_lsole and J_rsole
+    Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, real_model_.nv);
+    Eigen::MatrixXd J_rsole = Eigen::MatrixXd::Zero(6, real_model_.nv);
+    pinocchio::getFrameJacobian(
+        real_model_, 
+        real_data_, 
+        real_model_.getFrameId("left_foot_link"), 
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+        J_lsole
+    );
+    pinocchio::getFrameJacobian(
+        real_model_, 
+        real_data_, 
+        real_model_.getFrameId("right_foot_link"), 
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+        J_rsole
+    );
+
+    Eigen::MatrixXd J_lrsole = Eigen::MatrixXd::Zero(6, real_model_.nv + real_model_.nv);
+    J_lrsole.block(0, 0, 6, real_model_.nv) = J_lsole;
+    J_lrsole.block(0, real_model_.nv, 6, real_model_.nv) = J_rsole;
+
+    Eigen::MatrixXd J_lr = J_lrsole.transpose().block(0, 0, 3, 3);
+
+    Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv, 2 * 3 * 4);
+    D.block(real_model_.nq - 6 + real_model_.nv, 0, 3, 2 * 3 * 4) = J_imu * M.inverse().block(0,0,3,real_model_.nv) * J_lr;
 
     //compute skewsimm matrix with omega
     Eigen::MatrixXd skew_4x4 = Eigen::MatrixXd::Zero(4, 4);
@@ -445,7 +518,7 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
     Eigen::VectorXd y_pred = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv - 6);
     x_pred.head(real_model_.nq) = pinocchio::integrate(real_model_, x_estimate.head(real_model_.nq), x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001); 
     x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + a * controller_timestep_msec_ * 0.001;
-    y_pred = C * x_pred;
+    y_pred = C * x_pred + D * input_forces;
     Eigen::VectorXd y = Eigen::VectorXd::Zero(real_model_.nq - 6 + real_model_.nv);
     Eigen::VectorXd x = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
     x.head(real_model_.nq) = robot_state_to_pinocchio_joint_configuration(
