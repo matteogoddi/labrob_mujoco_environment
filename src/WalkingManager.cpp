@@ -117,7 +117,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     x_estimate.head(real_model_.nq) = q_init;
     x_estimate.tail(real_model_.nv) = qdot_init;
     Q = Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) * 1;
-    R = Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv - 6, real_model_.nq + real_model_.nv - 6) * 1;
+    R = Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv - 3, real_model_.nq + real_model_.nv - 3) * 1;
 
 
     lsole_idx_ = robot_model_.getFrameId("left_foot_link");
@@ -391,10 +391,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
 RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState current_state) {
 
-    //compute M matrix from pinocchio model
-    // Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, current_state.joint_position);
-    // Eigen::MatrixXd M_inv = M.inverse();
+    auto q = robot_state_to_pinocchio_joint_configuration(real_model_, current_state);
 
+    //compute M matrix from pinocchio model
+    Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, q);
+    // Eigen::MatrixXd M_inv = M.inverse();
     Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
     pinocchio::getFrameJacobian(
         real_model_, 
@@ -411,7 +412,6 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
         J_imu_dot
     );
-
     // get imu orientation from pinocchio
     Eigen::Quaterniond imu_orientation(
         real_data_.oMf[real_model_.getFrameId("imu_in_torso")].rotation()
@@ -438,12 +438,13 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
     relative_orientation(3, 3) = imu_orientation_in_base.w();
 
     Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv, real_model_.nq + real_model_.nv);
-    C.block(0, 3, 4, real_model_.nq) = relative_orientation * J_imu;
-    C.block(4, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 3, real_model_.nq - 3);
-    C.block(real_model_.nq , real_model_.nq + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 3, real_model_.nv - 3);
-    C.block(real_model_.nq + real_model_.nv - 6, real_model_.nq, 3, real_model_.nv) = J_imu_dot;
-
-    Eigen::VectorXd input_forces = whole_body_controller_ptr_->get_flr(); 
+    C.block(0, 3, 4, 4) = relative_orientation;
+    C.block(4, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 7, real_model_.nq - 7);
+    C.block(real_model_.nq - 3, real_model_.nq + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+    C.block(real_model_.nq , real_model_.nq + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
+    C.block(real_model_.nq + real_model_.nv - 6, real_model_.nq, 3, real_model_.nv) = J_imu_dot.block(0, 0, 3, real_model_.nv);
+        
+    Eigen::VectorXd input = whole_body_controller_ptr_->get_q_ddot().head(3);
 
     //compute J_lsole and J_rsole
     Eigen::MatrixXd J_lsole = Eigen::MatrixXd::Zero(6, real_model_.nv);
@@ -462,15 +463,12 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
         J_rsole
     );
-
     Eigen::MatrixXd J_lrsole = Eigen::MatrixXd::Zero(6, real_model_.nv + real_model_.nv);
     J_lrsole.block(0, 0, 6, real_model_.nv) = J_lsole;
     J_lrsole.block(0, real_model_.nv, 6, real_model_.nv) = J_rsole;
-
     Eigen::MatrixXd J_lr = J_lrsole.transpose().block(0, 0, 3, 3);
-
-    Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv, 2 * 3 * 4);
-    D.block(real_model_.nq - 6 + real_model_.nv, 0, 3, 2 * 3 * 4) = J_imu * M.inverse().block(0,0,3,real_model_.nv) * J_lr;
+    Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv, 3);
+    D.block(real_model_.nq - 6 + real_model_.nv, 0, 3, 3) = J_imu.block(0,0,3,real_model_.nv) * M.inverse().block(0,0,real_model_.nv,3) * J_lr;
 
     //compute skewsimm matrix with omega
     Eigen::MatrixXd skew_4x4 = Eigen::MatrixXd::Zero(4, 4);
@@ -512,13 +510,12 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
     Eigen::MatrixXd K = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
     P_ = (Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) - K * C) * Lambda_;
-
     Eigen::VectorXd a = whole_body_controller_ptr_->get_q_ddot();
     Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
     Eigen::VectorXd y_pred = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv - 6);
     x_pred.head(real_model_.nq) = pinocchio::integrate(real_model_, x_estimate.head(real_model_.nq), x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001); 
     x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + a * controller_timestep_msec_ * 0.001;
-    y_pred = C * x_pred + D * input_forces;
+    y_pred = C * x_pred + D *input;
     Eigen::VectorXd y = Eigen::VectorXd::Zero(real_model_.nq - 6 + real_model_.nv);
     Eigen::VectorXd x = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
     x.head(real_model_.nq) = robot_state_to_pinocchio_joint_configuration(
@@ -529,7 +526,8 @@ RobotState WalkingManager::updateEKF(RobotState filtered_state, RobotState curre
         real_model_,
         current_state
     );
-    y = C * x; 
+
+    y = C * x + D * input; 
     x_estimate = x_pred + K * (y - y_pred);
 
     current_state.position = x_estimate.head(3);
@@ -832,7 +830,7 @@ WalkingManager::update(
     RobotState fb_measured_state_;
 
     fb_measured_state_ = robot_state;
-    fb_filtered_state_ = updateEKF(fb_filtered_state_, fb_measured_state_);
+    // fb_filtered_state_ = updateEKF(fb_filtered_state_, fb_measured_state_);
 
     if (useRobot) {
         // Update the filtered state with the robot feedback:
