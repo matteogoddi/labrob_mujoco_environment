@@ -35,12 +35,25 @@ if __name__ == '__main__':
         fb_joint_vel: np.ndarray = np.loadtxt(folder +'/fb_joint_vel.txt')
         fb_com: np.ndarray = np.loadtxt(folder + '/real_com.txt')
         input_command: np.ndarray = np.loadtxt(folder + '/input_command.txt')
+        imu_orientation: np.ndarray = np.loadtxt(folder + '/imu_orientation.txt')
+        imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/imu_angular_velocity.txt')
+        imu_accelerometer: np.ndarray = np.loadtxt(folder + '/imu_accelerometer.txt')
+        predicted_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/predicted_imu_accelerometer.txt')
+        predicted_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/predicted_imu_angular_velocity.txt')
+        predicted_imu_orientation: np.ndarray = np.loadtxt(folder + '/predicted_imu_orientation.txt')
 
         # sometimes the number of samples in com_simulation, fb_com and com_desired is different
         # this is a fix to ensure they have the same number of samples
-        if com_simulation.shape[0] != fb_com.shape[0] or com_desired.shape[0] != fb_com.shape[0]:
-            com_simulation = com_simulation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0]), :]
-            com_desired = com_desired[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0]), :]
+        if com_simulation.shape[0] != joint_pos.shape[0] or com_desired.shape[0] != joint_pos.shape[0] or fb_com.shape[0] != joint_pos.shape[0] or predicted_imu_orientation.shape[0] != joint_pos.shape[0] or predicted_imu_accelerometer.shape[0] != fb_com.shape[0] or predicted_imu_angular_velocity.shape[0] != fb_com.shape[0]:
+            com_simulation = com_simulation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            com_desired = com_desired[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            fb_com = fb_com[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            predicted_imu_accelerometer = predicted_imu_accelerometer[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            predicted_imu_angular_velocity = predicted_imu_angular_velocity[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            predicted_imu_orientation = predicted_imu_orientation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            imu_orientation = imu_orientation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            imu_angular_velocity = imu_angular_velocity[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
+            imu_accelerometer = imu_accelerometer[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
 
     if ekf_base_position.shape[0] != joint_pos.shape[0]:
         min_samples = min(ekf_base_position.shape[0], joint_pos.shape[0])
@@ -136,7 +149,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/ekf/base_position_plot.png")
+    fig.savefig("images/ekf/base_position_error_plot.png")
     plt.close(fig)
 
     # Plot EKF base velocity
@@ -150,7 +163,23 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/ekf/base_velocity_plot.png")
+    fig.savefig("images/ekf/base_velocity_error_plot.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, ekf_base_position[:, 0], label='EKF Base position X', color='blue')
+    ax.plot(t, base_position[:, 0], label='Base position X', color='blue', linestyle = "--")
+    ax.plot(t, ekf_base_position[:, 1], label='EKF Base position Y', color='orange')
+    ax.plot(t, base_position[:, 1], label='Base position Y', color='orange', linestyle = "--")
+    ax.plot(t, ekf_base_position[:, 2] - base_position[:, 2], label='EKF Base position Z', color='green')
+    ax.plot(t, base_position[:, 2] - base_position[:, 2], label='Base position Z', color='green', linestyle = "--")
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('EKF Base Position [m/s]')
+    ax.set_title('Base Position of EKF estimation and Simulation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/ekf/base_position_plot.png")
     plt.close(fig)
 
     # Plot EKF base orientation in quaternion format
@@ -229,6 +258,135 @@ if __name__ == '__main__':
     plt.close(fig)
 
     if number != '0':
+        
+        # plot imu orientation predicted
+        fig, ax = plt.subplots()
+        ax.plot(t, predicted_imu_orientation[:, 0], label='Predicted IMU Orientation W', color='blue')
+        ax.plot(t, predicted_imu_orientation[:, 1], label='Predicted IMU Orientation X', color='orange')
+        ax.plot(t, predicted_imu_orientation[:, 2], label='Predicted IMU Orientation Y', color='green')
+        ax.plot(t, predicted_imu_orientation[:, 3], label='Predicted IMU Orientation Z', color='red')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Predicted IMU Orientation [Quaternion]')
+        ax.set_title('Predicted IMU Orientation')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/predicted_imu_orientation_plot.png")
+        plt.close(fig)
+
+        # plot imu accelerometer predicted
+        fig, ax = plt.subplots()
+        ax.plot(t, predicted_imu_accelerometer[:, 0], label='Predicted IMU Accelerometer X', color='blue')
+        ax.plot(t, predicted_imu_accelerometer[:, 1], label='Predicted IMU Accelerometer Y', color='orange')
+        ax.plot(t, predicted_imu_accelerometer[:, 2], label='Predicted IMU Accelerometer Z', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Predicted IMU Accelerometer [m/s^2]')
+        ax.set_title('Predicted IMU Accelerometer')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/predicted_imu_accelerometer_plot.png")
+        plt.close(fig)
+
+        # plot imu angular velocity predicted
+        fig, ax = plt.subplots()
+        ax.plot(t, predicted_imu_angular_velocity[:, 0], label='Predicted IMU Angular Velocity X', color='blue')
+        ax.plot(t, predicted_imu_angular_velocity[:, 1], label='Predicted IMU Angular Velocity Y', color='orange')
+        ax.plot(t, predicted_imu_angular_velocity[:, 2], label='Predicted IMU Angular Velocity Z', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Predicted IMU Angular Velocity [rad/s]')
+        ax.set_title('Predicted IMU Angular Velocity')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/predicted_imu_angular_velocity_plot.png")
+        plt.close(fig)
+
+        # plot imu orientation
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_orientation[:, 0], label='IMU Orientation W', color='blue')
+        ax.plot(t, imu_orientation[:, 1], label='IMU Orientation X', color='orange')
+        ax.plot(t, imu_orientation[:, 2], label='IMU Orientation Y', color='green')
+        ax.plot(t, imu_orientation[:, 3], label='IMU Orientation Z', color='red')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Orientation [Quaternion]')
+        ax.set_title('IMU Orientation')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_orientation_plot.png")
+        plt.close(fig)
+
+        # plot imu angular velocity
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_angular_velocity[:, 0], label='IMU Angular Velocity X', color='blue')
+        ax.plot(t, imu_angular_velocity[:, 1], label='IMU Angular Velocity Y', color='orange')
+        ax.plot(t, imu_angular_velocity[:, 2], label='IMU Angular Velocity Z', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Angular Velocity [rad/s]')
+        ax.set_title('IMU Angular Velocity')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_angular_velocity_plot.png")
+        plt.close(fig)
+        
+        # plot imu accelerometer
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_accelerometer[:, 0], label='IMU Accelerometer X', color='blue')
+        ax.plot(t, imu_accelerometer[:, 1], label='IMU Accelerometer Y', color='orange')
+        ax.plot(t, imu_accelerometer[:, 2], label='IMU Accelerometer Z', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Accelerometer [m/s^2]')
+        ax.set_title('IMU Accelerometer')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_accelerometer_plot.png")
+        plt.close(fig)
+
+        # plot error between real and predicted imu accelerometer
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_accelerometer[:, 0] - predicted_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
+        ax.plot(t, imu_accelerometer[:, 1] - predicted_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
+        ax.plot(t, imu_accelerometer[:, 2] - predicted_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Accelerometer Error [m/s^2]')
+        ax.set_title('IMU Accelerometer Error: Real - Predicted')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_accelerometer_error_plot.png")
+        plt.close(fig)
+
+        # plot error between real and predicted imu angular velocity
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_angular_velocity[:, 0] - predicted_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
+        ax.plot(t, imu_angular_velocity[:, 1] - predicted_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
+        ax.plot(t, imu_angular_velocity[:, 2] - predicted_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Angular Velocity Error [rad/s]')
+        ax.set_title('IMU Angular Velocity Error: Real - Predicted')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_angular_velocity_error_plot.png")
+        plt.close(fig)
+
+        # plot error between real and predicted imu orientation
+        fig, ax = plt.subplots()
+        ax.plot(t, imu_orientation[:, 0] - predicted_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
+        ax.plot(t, imu_orientation[:, 1] - predicted_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
+        ax.plot(t, imu_orientation[:, 2] - predicted_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
+        ax.plot(t, imu_orientation[:, 3] - predicted_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('IMU Orientation Error [Quaternion]')
+        ax.set_title('IMU Orientation Error: Real - Predicted')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/imu_orientation_error_plot.png")
+        plt.close(fig)
 
         figs = []
         for group_name, indices in grouped_indices.items():
@@ -286,6 +444,34 @@ if __name__ == '__main__':
         fig.savefig(f"images/feedback/velocity_error_plot.png")
         plt.close(fig)
 
+        #plot error between ekf joint pos and fb joint pos
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(ekf_joint_position.shape[1]):
+            error = ekf_joint_position[:, i] - fb_joint_pos[:, i]
+            ax.plot(t, error, label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Position Error [rad]')
+        ax.set_title('Position Error between EKF Joint Position and Feedback Joint Position')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/feedback/ekf_joint_position_error_plot.png")
+        plt.close(fig)
+
+        #plot error between ekf joint vel and fb joint vel
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(ekf_joint_velocity.shape[1]):
+            error = ekf_joint_velocity[:, i] - fb_joint_vel[:, i]
+            ax.plot(t, error, label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity Error [rad/s]')
+        ax.set_title('Velocity Error between EKF Joint Velocity and Feedback Joint Velocity')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/feedback/ekf_joint_velocity_error_plot.png")
+        plt.close(fig)
+
 
         # Plot CoM simulation and real data
         fig, ax = plt.subplots()
@@ -321,4 +507,17 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig("images/feedback/com_error_plot.png")
         plt.close(fig)
+
+        #plot error between feedback orientation and ekf orientation
+        fig, ax = plt.subplots()
+        ax.plot(t, ekf_base_orientation[:, 0] - base_orientation[:, 0], label='EKF Base Orientation W Error', color='blue')
+        ax.plot(t, ekf_base_orientation[:, 1] - base_orientation[:, 1], label='EKF Base Orientation X Error', color='orange')
+        ax.plot(t, ekf_base_orientation[:, 2] - base_orientation[:, 2], label='EKF Base Orientation Y Error', color='green')
+        ax.plot(t, ekf_base_orientation[:, 3] - base_orientation[:, 3], label='EKF Base Orientation Z Error', color='red')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Orientation Error [Quaternion]')
+        ax.set_title('Orientation Error between EKF estimation and Simulation')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
 

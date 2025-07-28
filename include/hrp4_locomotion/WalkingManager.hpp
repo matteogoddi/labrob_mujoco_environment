@@ -31,13 +31,16 @@ class WalkingManager {
 
   LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  RobotState updateEKF(RobotState filtered_state, RobotState current_state);
+  LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
+
+  RobotState updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
 
   void update(
       const labrob::RobotState& robot_state,
       labrob::JointCommand& joint_command, 
-      const labrob::RobotState& fb_robot_state,
-      bool useRobot
+      labrob::RobotState& fb_robot_state,
+      bool useRobot,
+      const Eigen::VectorXd actual_output
   );
 
   int64_t get_controller_frequency() const;
@@ -70,6 +73,7 @@ class WalkingManager {
   Eigen::VectorXd M_armature_;
 
   LIPState filtered_state_;
+  LIPState filtered_state2_;
   Eigen::Matrix3d cov_x, cov_y, cov_z;
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
   double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
@@ -128,6 +132,10 @@ private:
   std::ofstream base_velocity_log_file_;
   std::ofstream base_orientation_log_file_;
   std::ofstream base_angular_velocity_log_file_;
+  std::ofstream real_com_log_file_;
+  std::ofstream predicted_imu_accelerometer_log_file_;
+  std::ofstream predicted_imu_angular_velocity_log_file_;
+  std::ofstream predicted_imu_orientation_log_file_;
 
 }; // end class WalkingManager
 

@@ -425,7 +425,9 @@ int main(const int argc, const char* argv[]) {
   std::ofstream fb_joint_pos_log_file("/tmp/fb_joint_pos.txt");
   std::ofstream fb_joint_vel_log_file("/tmp/fb_joint_vel.txt");
   std::ofstream input_command_log_file("/tmp/input_command.txt");
-  std::ofstream real_com_log_file("/tmp/real_com.txt");
+  std::ofstream imu_accelerometer_log_file("/tmp/imu_accelerometer.txt");
+  std::ofstream imu_angular_velocity_log_file("/tmp/imu_angular_velocity.txt");
+  std::ofstream imu_orientation_log_file("/tmp/imu_orientation.txt");
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -555,6 +557,8 @@ int main(const int argc, const char* argv[]) {
 
       labrob::RobotState fb_robot_state = robot_state;
 
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(4 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 3 + 6);
+
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
         std::lock_guard<std::mutex> lock(stateMutex);
@@ -564,22 +568,47 @@ int main(const int argc, const char* argv[]) {
           fb_robot_state.joint_state[joint_name].pos = motor_state_data.q[i];
           fb_robot_state.joint_state[joint_name].vel = motor_state_data.dq[i];
         }
-        fb_robot_state.orientation = Eigen::Quaterniond(
+
+        Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
           Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
           Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
           Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
         );
-        fb_robot_state.angular_velocity[0] = imu_state_data.omega[0];
-        fb_robot_state.angular_velocity[1] = imu_state_data.omega[1];
-        fb_robot_state.angular_velocity[2] = imu_state_data.omega[2];
 
+        // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
+        actual_output.head<4>() = Eigen::Vector4d(imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w());
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          actual_output[4 + i] = fb_robot_state.joint_state[joint_name].pos;
+          actual_output[4 + mj_model_ptr->nu + i + 3] = fb_robot_state.joint_state[joint_name].vel;
+        }
+        actual_output[4 + mj_model_ptr->nu] = imu_state_data.omega[0];
+        actual_output[4 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
+        actual_output[4 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
+        actual_output[4 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
+        actual_output[4 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
+        actual_output[4 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2] - 9.81;
+
+        imu_accelerometer_log_file << imu_state_data.accelerometer[0] << " "
+                                   << imu_state_data.accelerometer[1] << " "
+                                   << imu_state_data.accelerometer[2] - 9.81<< std::endl;
+        imu_angular_velocity_log_file << imu_state_data.omega[0] << " "
+                                      << imu_state_data.omega[1] << " "
+                                      << imu_state_data.omega[2] << std::endl;
+        imu_orientation_log_file << imu_quat.x() << " "
+                                 << imu_quat.y() << " "
+                                 << imu_quat.z() << " "
+                                 << imu_quat.w() << std::endl;
+
+        
       }
 
       // Update walking manager:
       labrob::JointCommand joint_command;
 
       auto update_start = std::chrono::high_resolution_clock::now();
-      walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot);
+      walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
       auto update_end = std::chrono::high_resolution_clock::now();
       auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
       // std::cout << "WalkingManager update took: " << update_duration << " microseconds" << std::endl;
@@ -618,9 +647,6 @@ int main(const int argc, const char* argv[]) {
           motor_command.kp = Kp;
           motor_command.kd = Kd;
         }
-
-        // motor_command.kp = Kp;
-        // motor_command.kd = Kd;
 
         // assegna i valori di controllo per i giunti
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -664,10 +690,20 @@ int main(const int argc, const char* argv[]) {
           //   motor_command.dq_target[3] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
           // }
 
-          // assign q values to the motor command
-          motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
-          motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
-          motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
+          // if the values are too big in module, give a warning and assign the value to 0
+          if (std::abs(motor_command.q_target[i]) > 3.14 || std::abs(motor_command.dq_target[i]) > 3.14 || std::abs(motor_command.tau_ff[i]) > 100.0) {
+            std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
+                      << "q_target = " << motor_command.q_target[i] << ", "
+                      << "dq_target = " << motor_command.dq_target[i] << std::endl;
+            motor_command.q_target[i] = 0.0;
+            motor_command.dq_target[i] = 0.0;
+            motor_command.tau_ff[i] = 0.0;
+          }
+          else {
+            motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+            motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
+            motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
+          }
 
           input_command_log_file << motor_command.q_target[i] << " ";
         }
@@ -709,41 +745,6 @@ int main(const int argc, const char* argv[]) {
           Eigen::AngleAxisd(imu_state_copy.rpy[1], Eigen::Vector3d::UnitY()) *
           Eigen::AngleAxisd(imu_state_copy.rpy[2], Eigen::Vector3d::UnitZ())
         );
-        Eigen::VectorXd q = Eigen::VectorXd::Zero(real_model.nq);
-        q.head<7>() << robot_state.position[0], robot_state.position[1], robot_state.position[2],
-                       imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w();
-        for (int i = 7; i < real_model.nq; ++i) {
-          q[i] = low_state_copy.q[i - 7];
-        }
-        Eigen::VectorXd qdot = Eigen::VectorXd::Zero(real_model.nv);
-        qdot.head<6>() << robot_state.linear_velocity[0], robot_state.linear_velocity[1], robot_state.linear_velocity[2], robot_state.angular_velocity[0], 
-                          robot_state.angular_velocity[1], robot_state.angular_velocity[2];
-        for (int i = 0; i < real_model.nv; ++i) {
-          qdot[i] = low_state_copy.dq[i];
-        }
-
-        // Perform forward kinematics on the whole tree and update robot data:
-        pinocchio::forwardKinematics(real_model, real_data, q);
-
-        // // NOTE: jacobianCenterOfMass calls forwardKinematics and
-        //       computeJointJacobians.
-        pinocchio::jacobianCenterOfMass(real_model, real_data, q);
-        pinocchio::computeJointJacobiansTimeVariation(real_model, real_data, q, qdot);
-        pinocchio::framesForwardKinematics(real_model, real_data, q);
-        pinocchio::centerOfMass(real_model, real_data, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
-        const auto& centroidal_momentum_matrix = pinocchio::ccrba(
-            real_model,
-            real_data,
-            q,
-            qdot
-        );
-        auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
-
-        // compute com
-        Eigen::Vector3d com = real_data.com[0];
-
-        // save com in the log file
-        real_com_log_file << com[0] << " " << com[1] << " " << com[2] << " ";        
       }
       
       joint_pos_log_file << std::endl;
@@ -752,7 +753,6 @@ int main(const int argc, const char* argv[]) {
       fb_joint_pos_log_file << std::endl;
       fb_joint_vel_log_file << std::endl;
       input_command_log_file << std::endl;
-      real_com_log_file << std::endl;
 
       //sleep from 1 - now to 1 ms
       auto start_sleep = std::chrono::high_resolution_clock::now();
