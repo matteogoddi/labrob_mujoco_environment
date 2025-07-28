@@ -320,6 +320,7 @@ void signalHandler(int signum) {
     }
     else{
       std::cout << "Experiment description: " << user_input << std::endl;
+      readme_file << "Experiment description: " << user_input << "\n\n";
     }
 
     readme_file.close();
@@ -557,7 +558,7 @@ int main(const int argc, const char* argv[]) {
 
       labrob::RobotState fb_robot_state = robot_state;
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(4 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 3 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 3 + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -574,9 +575,15 @@ int main(const int argc, const char* argv[]) {
           Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
           Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
         );
+        // convert quaternion to axis-angle representation
+        Eigen::AngleAxisd angle_axis(imu_quat);
 
         // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
-        actual_output.head<4>() = Eigen::Vector4d(imu_quat.x(), imu_quat.y(), imu_quat.z(), imu_quat.w());
+        actual_output.head<3>() = Eigen::Vector3d(
+          angle_axis.axis().x() * angle_axis.angle(),
+          angle_axis.axis().y() * angle_axis.angle(),
+          angle_axis.axis().z() * angle_axis.angle()
+        );
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));

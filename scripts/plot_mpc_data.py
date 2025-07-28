@@ -34,25 +34,33 @@ if __name__ == '__main__':
     if not os.path.exists('images/mpc'):
         os.makedirs('images/mpc') 
 
-    # Plot CoM simulation and real data
     fig, ax = plt.subplots()
-    ax.plot(t, mpc_com_trajectory[:, 0], label='Desired CoM X', color='blue')
-    ax.plot(t, mpc_com_trajectory[:, 1], label='Desired CoM Y', color='orange')
-    ax.plot(t, mpc_com_trajectory[:, 2], label='Desired CoM Z', color='green')
-    ax.plot(t, mpc_zmp_trajectory[:, 0], label='ZMP X', color='red', linestyle='--')
-    ax.plot(t, mpc_zmp_trajectory[:, 1], label='ZMP Y', color='purple', linestyle='--')
-    ax.plot(t, mpc_zmp_trajectory[:, 2], label='ZMP Z', color='brown', linestyle='--')
-    ax.plot(t, com_trajectory[:, 0], label='CoM X', color='cyan', linestyle=':')
-    ax.plot(t, com_trajectory[:, 1], label='CoM Y', color='magenta', linestyle=':')
-    ax.plot(t, com_trajectory[:, 2], label='CoM Z', color='yellow', linestyle=':')
+
+    # Desired CoM Trajectory
+    ax.plot(t, mpc_com_trajectory[:, 0], label='Desired CoM X', color='blue', linestyle='-', marker='o', markersize=3)
+    ax.plot(t, mpc_com_trajectory[:, 1], label='Desired CoM Y', color='orange', linestyle='-', marker='s', markersize=3)
+    ax.plot(t, mpc_com_trajectory[:, 2], label='Desired CoM Z', color='green', linestyle='-', marker='^', markersize=3)
+
+    # ZMP Trajectory
+    ax.plot(t, mpc_zmp_trajectory[:, 0], label='ZMP X', color='red', linestyle='--', marker='x', markersize=3)
+    ax.plot(t, mpc_zmp_trajectory[:, 1], label='ZMP Y', color='purple', linestyle='--', marker='d', markersize=3)
+    ax.plot(t, mpc_zmp_trajectory[:, 2], label='ZMP Z', color='brown', linestyle='--', marker='v', markersize=3)
+
+    # Real CoM Trajectory
+    ax.plot(t, com_trajectory[:, 0], label='CoM X', color='cyan', linestyle=':', marker='*', markersize=4)
+    ax.plot(t, com_trajectory[:, 1], label='CoM Y', color='magenta', linestyle=':', marker='P', markersize=4)
+    ax.plot(t, com_trajectory[:, 2], label='CoM Z', color='gold', linestyle=':', marker='X', markersize=4)
+
+    # Axis labels and title
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('CoM Position [m]')
     ax.set_title('CoM Position: Simulation vs Real')
     ax.grid(True)
-    ax.legend()
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))  # Move legend outside plot
     fig.tight_layout()
-    fig.savefig("images/mpc/com_plot.png")
-    plt.close(fig) 
+    fig.savefig("images/mpc/com_plot.png", dpi=300)
+    plt.close(fig)
+
 
     # Plot angular momentum
     fig, ax = plt.subplots()

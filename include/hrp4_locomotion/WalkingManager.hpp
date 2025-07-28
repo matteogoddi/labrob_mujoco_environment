@@ -40,7 +40,7 @@ class WalkingManager {
       labrob::JointCommand& joint_command, 
       labrob::RobotState& fb_robot_state,
       bool useRobot,
-      const Eigen::VectorXd actual_output
+      Eigen::VectorXd actual_output
   );
 
   int64_t get_controller_frequency() const;

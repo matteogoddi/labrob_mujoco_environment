@@ -113,15 +113,27 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         real_data_ = robot_data_;
     }
 
-    P_ = Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) * 1;
-    P_.block(0, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1e-4;
-    P_.block(real_model_.nq, real_model_.nq, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1e-4;
-    x_estimate = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
-    x_estimate.head(real_model_.nq) = q_init;
+    P_ = Eigen::MatrixXd::Identity(2 * real_model_.nv, 2 * real_model_.nv) * 1e-3;
+    P_.block(0, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
+    P_.block(real_model_.nv, real_model_.nv, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
+    P_.block(3,3,3,3) = Eigen::MatrixXd::Identity(3, 3) * 1e-2;
+    P_.block(real_model_.nv + 3, real_model_.nv + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1e-2;
+    x_estimate = Eigen::VectorXd::Zero(2 * real_model_.nv);
+    // convert quaternion to axis-angle representation
+    Eigen::Quaterniond q_init_quat(
+        q_init[3], q_init[4], q_init[5], q_init[6]
+    );
+    Eigen::AngleAxisd axis_angle(q_init_quat);
+    x_estimate.head(3) = q_init.head(3);
+    x_estimate.segment(3, 3) = Eigen::Vector3d(
+        axis_angle.axis().x() * axis_angle.angle(),
+        axis_angle.axis().y() * axis_angle.angle(),
+        axis_angle.axis().z() * axis_angle.angle()
+    );
+    x_estimate.segment(3 + 3, real_model_.nv - 6) = q_init.tail(real_model_.nv - 6);
     x_estimate.tail(real_model_.nv) = qdot_init;
-    Q = Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) * 1e-3;
-    R = Eigen::MatrixXd::Identity(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3, real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3) * 1e-3;
-
+    Q = Eigen::MatrixXd::Identity(2 * real_model_.nv, 2 * real_model_.nv) * 1e-2;
+    R = Eigen::MatrixXd::Identity(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 6, real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 6) * 1e-2;
 
     lsole_idx_ = robot_model_.getFrameId("left_foot_link");
     rsole_idx_ = robot_model_.getFrameId("right_foot_link");
@@ -405,9 +417,6 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
 
     auto q = robot_state_to_pinocchio_joint_configuration(real_model_, current_state);
 
-    //compute M matrix from pinocchio model
-    Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, q);
-    // Eigen::MatrixXd M_inv = M.inverse();
     Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
     pinocchio::getFrameJacobian(
         real_model_, 
@@ -454,124 +463,101 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
         }
     }
 
-    // get imu orientation from pinocchio
-    Eigen::Quaterniond imu_orientation(
-        real_data_.oMf[real_model_.getFrameId("imu_in_torso")].rotation()
-    );
+    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 6, 2 * real_model_.nv);
+    C.block(0, 0, 3, real_model_.nv) = J_imu.block(3, 0, 3, real_model_.nv);
+    C.block(3, 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
+    C.block(real_model_.nv - 3, real_model_.nv, 3, real_model_.nv) = J_imu.block(3, 0, 3, real_model_.nv);
+    C.block(real_model_.nv, real_model_.nv + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
+    C.block(2 * real_model_.nv - 6, real_model_.nv, 3, real_model_.nv) = J_imu_dot.block(0, 0, 3, real_model_.nv);
+    C.block(2 * real_model_.nv - 3, real_model_.nv, 3, real_model_.nv) = J_left_foot.block(0,0,3,real_model_.nv)*left_support_check;
+    C.block(2 * real_model_.nv, real_model_.nv, 3, real_model_.nv) = J_right_foot.block(0,0,3,real_model_.nv)*right_support_check;
+    C.block(2 * real_model_.nv + 3, 0, 3, real_model_.nv) = J_left_foot.block(0, 0, 3, real_model_.nv);
+    C.block(2 * real_model_.nv + 6, 0, 3, real_model_.nv) = J_right_foot.block(0, 0, 3, real_model_.nv);
 
-    Eigen::Quaterniond imu_orientation_in_base = imu_orientation * current_state.orientation.inverse();
-
-    Eigen::MatrixXd relative_orientation = Eigen::MatrixXd::Zero(4, 4);
-    relative_orientation(0, 0) = imu_orientation_in_base.w();
-    relative_orientation(0, 1) = -imu_orientation_in_base.x();
-    relative_orientation(0, 2) = -imu_orientation_in_base.y();
-    relative_orientation(0, 3) = -imu_orientation_in_base.z();
-    relative_orientation(1, 0) = imu_orientation_in_base.x();
-    relative_orientation(1, 1) = imu_orientation_in_base.w();
-    relative_orientation(1, 2) = imu_orientation_in_base.z();
-    relative_orientation(1, 3) = -imu_orientation_in_base.y();
-    relative_orientation(2, 0) = imu_orientation_in_base.y();
-    relative_orientation(2, 1) = -imu_orientation_in_base.z();
-    relative_orientation(2, 2) = imu_orientation_in_base.w();
-    relative_orientation(2, 3) = imu_orientation_in_base.x();
-    relative_orientation(3, 0) = imu_orientation_in_base.z();
-    relative_orientation(3, 1) = imu_orientation_in_base.y();
-    relative_orientation(3, 2) = -imu_orientation_in_base.x();
-    relative_orientation(3, 3) = imu_orientation_in_base.w();
-
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3, real_model_.nq + real_model_.nv);
-    C.block(0, 3, 4, 4) = relative_orientation;
-    C.block(4, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 7, real_model_.nq - 7);
-    // C.block(real_model_.nq - 3, real_model_.nq + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
-    C.block(real_model_.nq - 3, real_model_.nq, 3, real_model_.nv) = J_imu.block(3, 0, 3, real_model_.nv);
-    C.block(real_model_.nq , real_model_.nq + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
-    C.block(real_model_.nq + real_model_.nv - 6, real_model_.nq, 3, real_model_.nv) = J_imu_dot.block(0, 0, 3, real_model_.nv);
-    C.block(real_model_.nq + real_model_.nv - 3, real_model_.nq, 3, real_model_.nv) = J_left_foot.block(0,0,3,real_model_.nv)*left_support_check;
-    C.block(real_model_.nq + real_model_.nv, real_model_.nq, 3, real_model_.nv) = J_right_foot.block(0,0,3,real_model_.nv)*right_support_check;
     Eigen::VectorXd input = whole_body_controller_ptr_->get_q_ddot();
 
-    Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3, real_model_.nv);
-    D.block(real_model_.nq - 6 + real_model_.nv, 0, 3, real_model_.nv) = J_imu.block(0, 0, 3, real_model_.nv);
-    //compute skewsimm matrix with omega
-    Eigen::MatrixXd skew_4x4 = Eigen::MatrixXd::Zero(4, 4);
-    skew_4x4(0, 1) = -current_state.angular_velocity(0);
-    skew_4x4(0, 2) = -current_state.angular_velocity(1);
-    skew_4x4(0, 3) = -current_state.angular_velocity(2);
-    skew_4x4(1, 0) = current_state.angular_velocity(0);
-    skew_4x4(1, 2) = current_state.angular_velocity(2);
-    skew_4x4(1, 3) = -current_state.angular_velocity(1);
-    skew_4x4(2, 0) = current_state.angular_velocity(1);
-    skew_4x4(2, 1) = -current_state.angular_velocity(2);
-    skew_4x4(2, 3) = current_state.angular_velocity(0);
-    skew_4x4(3, 0) = current_state.angular_velocity(2);
-    skew_4x4(3, 1) = current_state.angular_velocity(1);
-    skew_4x4(3, 2) = -current_state.angular_velocity(0);
+    Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 6, real_model_.nv);
+    D.block(real_model_.nv - 6 + real_model_.nv, 0, 3, real_model_.nv) = J_imu.block(0, 0, 3, real_model_.nv);
 
-    Eigen::MatrixXd skew_4x3 = Eigen::MatrixXd::Zero(4, 3);
-    skew_4x3(0, 0) = -current_state.orientation.y(); // q2 x y z w -> w x y z
-    skew_4x3(0, 1) = -current_state.orientation.z(); // q3
-    skew_4x3(0, 2) = -current_state.orientation.w(); // q4
-    skew_4x3(1, 0) = current_state.orientation.x(); // q1
-    skew_4x3(1, 1) = -current_state.orientation.w();
-    skew_4x3(1, 2) = current_state.orientation.z();
-    skew_4x3(2, 0) = current_state.orientation.w();
-    skew_4x3(2, 1) = current_state.orientation.x();
-    skew_4x3(2, 2) = -current_state.orientation.y();
-    skew_4x3(3, 0) = -current_state.orientation.z();
-    skew_4x3(3, 1) = current_state.orientation.y();
-    skew_4x3(3, 2) = current_state.orientation.x();
-
-    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv);
+    Eigen::MatrixXd A = Eigen::MatrixXd::Zero(2 * real_model_.nv, 2 * real_model_.nv);
     A.block(0, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
-    A.block(0, real_model_.nq, 3, 3) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(3, 3);
-    A.block(3, 3, 4, 4) = Eigen::MatrixXd::Identity(4, 4) + controller_timestep_msec_ * 0.001 * 0.5 * skew_4x4;
-    A.block(3, real_model_.nq + 3, 4, 3) = controller_timestep_msec_ * 0.001 * 0.5 * skew_4x3;
-    A.block(7, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 7, real_model_.nq - 7);
-    A.block(7, real_model_.nq + 6, real_model_.nv- 6, real_model_.nv- 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(real_model_.nv- 6, real_model_.nv- 6);
-    A.block(real_model_.nq, real_model_.nq, real_model_.nv, real_model_.nv) = Eigen::MatrixXd::Identity(real_model_.nv, real_model_.nv);
+    A.block(0, real_model_.nv, 3, 3) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(3, 3);
+    A.block(3, 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+    A.block(3, real_model_.nv + 3, 3, 3) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(3, 3);
+    A.block(6, 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
+    A.block(6, real_model_.nv + 6, real_model_.nv- 6, real_model_.nv- 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(real_model_.nv- 6, real_model_.nv- 6);
+    A.block(real_model_.nv, real_model_.nv, real_model_.nv, real_model_.nv) = Eigen::MatrixXd::Identity(real_model_.nv, real_model_.nv);
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
     Eigen::MatrixXd K = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
-    P_ = (Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) - K * C) * Lambda_;
-    Eigen::VectorXd a = whole_body_controller_ptr_->get_q_ddot();
-    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
+    P_ = (Eigen::MatrixXd::Identity(2 * real_model_.nv, 2 * real_model_.nv) - K * C) * Lambda_;
+    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * real_model_.nv);
     Eigen::VectorXd y_pred = Eigen::VectorXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3);
-    x_pred.head(real_model_.nq) = pinocchio::integrate(real_model_, x_estimate.head(real_model_.nq), x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001); 
-    x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + a * controller_timestep_msec_ * 0.001;
+    x_pred.head(real_model_.nv) = x_estimate.head(real_model_.nv) + x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001; 
+    x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + input * controller_timestep_msec_ * 0.001;
     y_pred = C * x_pred + D * input;
-    Eigen::VectorXd y = Eigen::VectorXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3);
+    Eigen::VectorXd y = Eigen::VectorXd::Zero(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 6);
     if (useRobot) {
         y = actual_output;
     }
     else{
-        Eigen::VectorXd x = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
-        x.head(real_model_.nq) = robot_state_to_pinocchio_joint_configuration(
+        Eigen::VectorXd x = Eigen::VectorXd::Zero(2 * real_model_.nv);
+        Eigen::VectorXd q = robot_state_to_pinocchio_joint_configuration(
             real_model_,
             current_state
         );
+        Eigen::Quaterniond q_quat(
+            current_state.orientation.x(),
+            current_state.orientation.y(),
+            current_state.orientation.z(),
+            current_state.orientation.w()
+        );
+
+        Eigen::AngleAxisd axis_angle(q_quat);
+        x.head(3) = q.head(3);
+        x.segment(3, 3) = Eigen::Vector3d(
+            axis_angle.axis().x() * axis_angle.angle(),
+            axis_angle.axis().y() * axis_angle.angle(),
+            axis_angle.axis().z() * axis_angle.angle()
+        );
+        x.segment(3 + 3, real_model_.nv - 6) = q.tail(real_model_.nv - 6);
         x.tail(real_model_.nv) = robot_state_to_pinocchio_joint_velocity(
             real_model_,
             current_state
         );
 
         y = C * x + D * input; 
+
     }
     x_estimate = x_pred + K * (y - y_pred);
 
     current_state.position = x_estimate.head(3);
-    current_state.orientation = Eigen::Quaterniond(
-        x_estimate(6),
-        x_estimate(3),
-        x_estimate(4),
-        x_estimate(5)
-    );
+    //convert angle axis representation to quaternion representation
+    //if the angle is too small, use identity quaternion
+    Eigen::Quaterniond orientation;
+    if (std::abs(x_estimate(3)) < 1e-6 &&
+       std::abs(x_estimate(4)) < 1e-6 &&
+       std::abs(x_estimate(5)) < 1e-6) {
+        current_state.orientation = Eigen::Quaterniond::Identity();
+    } else {
+        orientation = Eigen::Quaterniond(
+            Eigen::AngleAxisd(x_estimate(3), Eigen::Vector3d::UnitX()) *
+            Eigen::AngleAxisd(x_estimate(4), Eigen::Vector3d::UnitY()) *
+            Eigen::AngleAxisd(x_estimate(5), Eigen::Vector3d::UnitZ())
+        );
+    }
+    std::cout << "Orientation: " << orientation.coeffs().transpose() << std::endl;
+    current_state.orientation.x() = orientation.w();
+    current_state.orientation.y() = orientation.x(); 
+    current_state.orientation.z() = orientation.y();
+    current_state.orientation.w() = orientation.z();
     current_state.linear_velocity = x_estimate.segment(real_model_.nq, 3);
     current_state.angular_velocity = x_estimate.segment(real_model_.nq + 3, 3);
 
     // assign position and velocity for each joint
     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) real_model_.njoints; ++joint_id) {
         std::string joint_name = real_model_.names[joint_id];
-        current_state.joint_state[joint_name].pos = x_estimate(joint_id - 2 + 7);
-        current_state.joint_state[joint_name].vel = x_estimate(real_model_.nq + joint_id - 2 + 6);
+        current_state.joint_state[joint_name].pos = x_estimate(joint_id - 2 + 6);
+        current_state.joint_state[joint_name].vel = x_estimate(real_model_.nv + joint_id - 2 + 6);
     }
 
     // log the predicted state
@@ -582,15 +568,248 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     return current_state;
 }
 
+// RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output) {
+
+//     auto q = robot_state_to_pinocchio_joint_configuration(real_model_, current_state);
+
+//     //compute M matrix from pinocchio model
+//     Eigen::MatrixXd M = pinocchio::crba(real_model_, real_data_, q);
+//     // Eigen::MatrixXd M_inv = M.inverse();
+//     Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
+//     pinocchio::getFrameJacobian(
+//         real_model_, 
+//         real_data_, 
+//         real_model_.getFrameId("imu_in_torso"), 
+//         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+//         J_imu
+//     );
+//     Eigen::MatrixXd J_imu_dot = Eigen::MatrixXd::Zero(6, real_model_.nv);
+//     pinocchio::getFrameJacobianTimeVariation(
+//         real_model_, 
+//         real_data_, 
+//         real_model_.getFrameId("imu_in_torso"), 
+//         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+//         J_imu_dot
+//     );
+
+//     Eigen::MatrixXd J_left_foot = Eigen::MatrixXd::Zero(6, real_model_.nv);
+//     pinocchio::getFrameJacobian(
+//         real_model_,
+//         real_data_,
+//         real_model_.getFrameId("left_foot_link"),
+//         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+//         J_left_foot
+//     );
+
+//     Eigen::MatrixXd J_right_foot = Eigen::MatrixXd::Zero(6, real_model_.nv);
+//     pinocchio::getFrameJacobian(
+//         real_model_,
+//         real_data_,
+//         real_model_.getFrameId("right_foot_link"),
+//         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+//         J_right_foot
+//     );
+
+//     double left_support_check = 1.0;
+//     double right_support_check = 1.0;
+//     if (walking_data_.getWalkingState() == WalkingState::SingleSupport){
+//         if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+//             right_support_check = 0.0;
+//         }
+//         if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+//             left_support_check = 0.0;
+//         }
+//     }
+
+//     // get imu orientation from pinocchio
+//     Eigen::Quaterniond imu_orientation(
+//         real_data_.oMf[real_model_.getFrameId("imu_in_torso")].rotation()
+//     );
+
+//     Eigen::Quaterniond imu_orientation_in_base = imu_orientation * current_state.orientation.inverse();
+
+//     Eigen::MatrixXd relative_orientation = Eigen::MatrixXd::Zero(4, 4);
+//     relative_orientation(0, 0) = imu_orientation_in_base.w();
+//     relative_orientation(0, 1) = -imu_orientation_in_base.x();
+//     relative_orientation(0, 2) = -imu_orientation_in_base.y();
+//     relative_orientation(0, 3) = -imu_orientation_in_base.z();
+//     relative_orientation(1, 0) = imu_orientation_in_base.x();
+//     relative_orientation(1, 1) = imu_orientation_in_base.w();
+//     relative_orientation(1, 2) = imu_orientation_in_base.z();
+//     relative_orientation(1, 3) = -imu_orientation_in_base.y();
+//     relative_orientation(2, 0) = imu_orientation_in_base.y();
+//     relative_orientation(2, 1) = -imu_orientation_in_base.z();
+//     relative_orientation(2, 2) = imu_orientation_in_base.w();
+//     relative_orientation(2, 3) = imu_orientation_in_base.x();
+//     relative_orientation(3, 0) = imu_orientation_in_base.z();
+//     relative_orientation(3, 1) = imu_orientation_in_base.y();
+//     relative_orientation(3, 2) = -imu_orientation_in_base.x();
+//     relative_orientation(3, 3) = imu_orientation_in_base.w();
+    
+//     // create quaterniond using base orientation
+//     Eigen::Quaterniond base_orientation(
+//         current_state.orientation.w(),
+//         current_state.orientation.x(),
+//         current_state.orientation.y(),
+//         current_state.orientation.z()
+//     );
+//     Eigen::Matrix3d R_qb = base_orientation.toRotationMatrix();
+
+//     Eigen::Matrix<double, 3, 4> dR_v_dq_left;
+//     Eigen::Matrix<double, 3, 4> dR_v_dq_right;
+
+//     double eps = 1e-6;
+//     //forward kinematics to left foot
+//     Eigen::Vector3d v_left = real_data_.oMf[real_model_.getFrameId("left_foot_link")].translation();
+//     Eigen::Vector3d v_right = real_data_.oMf[real_model_.getFrameId("right_foot_link")].translation();
+
+
+//     for (int i = 0; i < 4; ++i) {
+//         Eigen::Vector4d dq = Eigen::Vector4d::Zero();
+//         dq(i) = eps;
+
+//         //create a vector 4d with base orientation
+//         Eigen::Vector4d q_base = Eigen::Vector4d(
+//             base_orientation.w(),
+//             base_orientation.x(),
+//             base_orientation.y(),
+//             base_orientation.z()
+//         );
+
+//         Eigen::Vector4d q_plus = q_base + dq;
+//         Eigen::Vector4d q_minus = q_base - dq;
+//         q_plus.normalize();
+//         q_minus.normalize();
+
+//         Eigen::Quaterniond q_plus_eigen(q_plus(0), q_plus(1), q_plus(2), q_plus(3));
+//         Eigen::Quaterniond q_minus_eigen(q_minus(0), q_minus(1), q_minus(2), q_minus(3));
+
+//         Eigen::Vector3d Rv_plus_left = q_plus_eigen.toRotationMatrix() * v_left;
+//         Eigen::Vector3d Rv_minus_left = q_minus_eigen.toRotationMatrix() * v_left;
+
+//         Eigen::Vector3d Rv_plus_right = q_plus_eigen.toRotationMatrix() * v_right;
+//         Eigen::Vector3d Rv_minus_right = q_minus_eigen.toRotationMatrix() * v_right;
+
+//         dR_v_dq_left.col(i) = (Rv_plus_left - Rv_minus_left) / (2.0 * eps);
+//         dR_v_dq_right.col(i) = (Rv_plus_right - Rv_minus_right) / (2.0 * eps);
+//     }
+
+//     Eigen::MatrixXd C = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3 + 6, real_model_.nq + real_model_.nv);
+//     C.block(0, 3, 4, 4) = relative_orientation;
+//     C.block(4, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 7, real_model_.nq - 7);
+//     // C.block(real_model_.nq - 3, real_model_.nq + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+//     C.block(real_model_.nq - 3, real_model_.nq, 3, real_model_.nv) = J_imu.block(3, 0, 3, real_model_.nv);
+//     C.block(real_model_.nq , real_model_.nq + 6, real_model_.nv - 6, real_model_.nv - 6) = Eigen::MatrixXd::Identity(real_model_.nv - 6, real_model_.nv - 6);
+//     C.block(real_model_.nq + real_model_.nv - 6, real_model_.nq, 3, real_model_.nv) = J_imu_dot.block(0, 0, 3, real_model_.nv);
+//     C.block(real_model_.nq + real_model_.nv - 3, real_model_.nq, 3, real_model_.nv) = J_left_foot.block(0,0,3,real_model_.nv)*left_support_check;
+//     C.block(real_model_.nq + real_model_.nv, real_model_.nq, 3, real_model_.nv) = J_right_foot.block(0,0,3,real_model_.nv)*right_support_check;
+//     C.block(real_model_.nq + real_model_.nv + 3, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+//     C.block(real_model_.nq + real_model_.nv + 3, 3, 3, 4) = dR_v_dq_left;
+//     C.block(real_model_.nq + real_model_.nv + 3, 7, 3, real_model_.nq - 7) = R_qb * J_left_foot.block(0, 6, 3, real_model_.nv - 6);
+//     C.block(real_model_.nq + real_model_.nv + 6, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+//     C.block(real_model_.nq + real_model_.nv + 6, 3, 3, 4) = dR_v_dq_right;
+//     C.block(real_model_.nq + real_model_.nv + 6, 7, 3, real_model_.nq - 7) = R_qb * J_right_foot.block(0, 6, 3, real_model_.nv - 6);
+//     Eigen::VectorXd input = whole_body_controller_ptr_->get_q_ddot();
+
+//     Eigen::MatrixXd D = Eigen::MatrixXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3 + 6, real_model_.nv);
+//     D.block(real_model_.nq - 6 + real_model_.nv, 0, 3, real_model_.nv) = J_imu.block(0, 0, 3, real_model_.nv);
+//     //compute skewsimm matrix with omega
+//     Eigen::MatrixXd skew_4x4 = Eigen::MatrixXd::Zero(4, 4);
+//     skew_4x4(0, 1) = -current_state.angular_velocity(0);
+//     skew_4x4(0, 2) = -current_state.angular_velocity(1);
+//     skew_4x4(0, 3) = -current_state.angular_velocity(2);
+//     skew_4x4(1, 0) = current_state.angular_velocity(0);
+//     skew_4x4(1, 2) = current_state.angular_velocity(2);
+//     skew_4x4(1, 3) = -current_state.angular_velocity(1);
+//     skew_4x4(2, 0) = current_state.angular_velocity(1);
+//     skew_4x4(2, 1) = -current_state.angular_velocity(2);
+//     skew_4x4(2, 3) = current_state.angular_velocity(0);
+//     skew_4x4(3, 0) = current_state.angular_velocity(2);
+//     skew_4x4(3, 1) = current_state.angular_velocity(1);
+//     skew_4x4(3, 2) = -current_state.angular_velocity(0);
+
+//     Eigen::MatrixXd skew_4x3 = Eigen::MatrixXd::Zero(4, 3);
+//     skew_4x3(0, 0) = -current_state.orientation.y(); // q2 x y z w -> w x y z
+//     skew_4x3(0, 1) = -current_state.orientation.z(); // q3
+//     skew_4x3(0, 2) = -current_state.orientation.w(); // q4
+//     skew_4x3(1, 0) = current_state.orientation.x(); // q1
+//     skew_4x3(1, 1) = -current_state.orientation.w();
+//     skew_4x3(1, 2) = current_state.orientation.z();
+//     skew_4x3(2, 0) = current_state.orientation.w();
+//     skew_4x3(2, 1) = current_state.orientation.x();
+//     skew_4x3(2, 2) = -current_state.orientation.y();
+//     skew_4x3(3, 0) = -current_state.orientation.z();
+//     skew_4x3(3, 1) = current_state.orientation.y();
+//     skew_4x3(3, 2) = current_state.orientation.x();
+
+//     Eigen::MatrixXd A = Eigen::MatrixXd::Zero(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv);
+//     A.block(0, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
+//     A.block(0, real_model_.nq, 3, 3) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(3, 3);
+//     A.block(3, 3, 4, 4) = Eigen::MatrixXd::Identity(4, 4) + controller_timestep_msec_ * 0.001 * 0.5 * skew_4x4;
+//     A.block(3, real_model_.nq + 3, 4, 3) = controller_timestep_msec_ * 0.001 * 0.5 * skew_4x3;
+//     A.block(7, 7, real_model_.nq - 7, real_model_.nq - 7) = Eigen::MatrixXd::Identity(real_model_.nq - 7, real_model_.nq - 7);
+//     A.block(7, real_model_.nq + 6, real_model_.nv- 6, real_model_.nv- 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(real_model_.nv- 6, real_model_.nv- 6);
+//     A.block(real_model_.nq, real_model_.nq, real_model_.nv, real_model_.nv) = Eigen::MatrixXd::Identity(real_model_.nv, real_model_.nv);
+//     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
+//     Eigen::MatrixXd K = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
+//     P_ = (Eigen::MatrixXd::Identity(real_model_.nq + real_model_.nv, real_model_.nq + real_model_.nv) - K * C) * Lambda_;
+//     Eigen::VectorXd a = whole_body_controller_ptr_->get_q_ddot();
+//     Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
+//     Eigen::VectorXd y_pred = Eigen::VectorXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3);
+//     x_pred.head(real_model_.nq) = pinocchio::integrate(real_model_, x_estimate.head(real_model_.nq), x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001); 
+//     x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + a * controller_timestep_msec_ * 0.001;
+//     y_pred = C * x_pred + D * input;
+//     Eigen::VectorXd y = Eigen::VectorXd::Zero(real_model_.nq - 3 + real_model_.nv - 3 + 6 + 3);
+//     if (useRobot) {
+//         y = actual_output;
+//     }
+//     else{
+//         Eigen::VectorXd x = Eigen::VectorXd::Zero(real_model_.nq + real_model_.nv);
+//         x.head(real_model_.nq) = robot_state_to_pinocchio_joint_configuration(
+//             real_model_,
+//             current_state
+//         );
+//         x.tail(real_model_.nv) = robot_state_to_pinocchio_joint_velocity(
+//             real_model_,
+//             current_state
+//         );
+
+//         y = C * x + D * input; 
+//     }
+//     x_estimate = x_pred + K * (y - y_pred);
+
+//     current_state.position = x_estimate.head(3);
+//     current_state.orientation = Eigen::Quaterniond(
+//         x_estimate(6),
+//         x_estimate(3),
+//         x_estimate(4),
+//         x_estimate(5)
+//     );
+//     current_state.linear_velocity = x_estimate.segment(real_model_.nq, 3);
+//     current_state.angular_velocity = x_estimate.segment(real_model_.nq + 3, 3);
+
+//     // assign position and velocity for each joint
+//     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) real_model_.njoints; ++joint_id) {
+//         std::string joint_name = real_model_.names[joint_id];
+//         current_state.joint_state[joint_name].pos = x_estimate(joint_id - 2 + 7);
+//         current_state.joint_state[joint_name].vel = x_estimate(real_model_.nq + joint_id - 2 + 6);
+//     }
+
+//     // log the predicted state
+//     predicted_imu_accelerometer_log_file_ << y_pred.segment(real_model_.nq - 3 + real_model_.nv - 3, 3).transpose() << std::endl;
+//     predicted_imu_angular_velocity_log_file_ << y_pred.segment(real_model_.nq - 3, 3).transpose() << std::endl;
+//     predicted_imu_orientation_log_file_ << y_pred.head(4).transpose() << std::endl;
+
+//     return current_state;
+// }
+
 LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
   double omega = ismpc_ptr_->getOmega();
-//   double worldTimeStep = 0.001 * static_cast<double>(controller_timestep_msec_);
 
   double ch = cosh(omega*controller_timestep_msec_*0.001);
   double sh = sinh(omega*controller_timestep_msec_*0.001);
   Eigen::MatrixXd A_lip = Eigen::MatrixXd::Zero(3,3);
   Eigen::VectorXd B_lip = Eigen::VectorXd::Zero(3);
-//  Eigen::VectorXd B_dis = Eigen::VectorXd::Zero(3);
   A_lip << ch,sh/omega,1-ch,omega*sh,ch,-omega*sh,0,0,1;
   B_lip << controller_timestep_msec_* 0.001-sh/omega,1-ch,controller_timestep_msec_* 0.001;
 
@@ -723,7 +942,7 @@ WalkingManager::update(
     labrob::JointCommand& joint_command,
     labrob::RobotState& fb_robot_state,
     bool useRobot,
-    const Eigen::VectorXd actual_output
+    Eigen::VectorXd actual_output
 ) {
 
     int njnt = robot_model_.nv - 6; // size of configuration space without floating base
@@ -875,6 +1094,11 @@ WalkingManager::update(
     );
     const auto& v_rsole = J_rsole * qdot;
 
+    // save left and right foot position in last 6 places of actual output
+    actual_output.segment(real_model_.nv - 3 + real_model_.nv - 3 + 3 + 6, 3) = T_lsole.translation();
+    actual_output.segment(real_model_.nv - 3 + real_model_.nv - 3 + 3 + 6 + 3, 3) = T_rsole.translation();
+
+
     // Update walking state:
     walking_data_.updateWalkingState(t_msec_);
 
@@ -913,18 +1137,22 @@ WalkingManager::update(
     
     RobotState fb_filtered_state_;
 
+    LIPState measured_state;
+
     if(!useRobot) {
         fb_filtered_state_ = updateEKF(robot_state, useRobot, actual_output);
     }
-
-    // RobotState copy_robot_state = updateEKF(robot_state, false, actual_output);
-
-    if (useRobot) {
-        // Update the filtered state with the robot feedback:
+    else{
         fb_filtered_state_ = updateEKF(fb_robot_state, useRobot, actual_output);
         fb_robot_state = fb_filtered_state_;
+    }
+    
+    if (useRobot && t_msec_ > 6000) {
+        if(t_msec_ == 6002){
+            std::cout << "STARTING CLOSED-LOOP SIM"<< std::endl;
+        }
 
-        const auto& p_CoM = real_data_.com[0];
+        const auto& fb_p_CoM = real_data_.com[0];
         const auto& J_CoM = real_data_.Jcom;
         Eigen::Vector3d zmp_3d;
         zmp_3d.z() = fb_filtered_state_.position(2) - fb_filtered_state_.total_force.z() / (mass * eta2);
@@ -939,9 +1167,9 @@ WalkingManager::update(
     
         auto qdot_fb = robot_state_to_pinocchio_joint_velocity(real_model_, fb_filtered_state_);
     
-        LIPState measured_state(p_CoM, J_CoM * qdot_fb, zmp_3d);
+        measured_state = LIPState(fb_p_CoM, J_CoM * qdot_fb, zmp_3d);
     
-        filtered_state2_ = updateKF2(filtered_state2_, measured_state, ismpc_ptr_->getInput());
+        // filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
     }
 
 
@@ -957,10 +1185,12 @@ WalkingManager::update(
         zmp_3d.x() += (pi.x() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / robot_state.total_force.z());
         zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
     }
+    if(!useRobot || t_msec_ >= 0) {
+        measured_state = LIPState(p_CoM, J_CoM * robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state), zmp_3d);
 
-    LIPState measured_state(p_CoM, J_CoM * qdot, zmp_3d);
+        filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
+    }
 
-    filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
 
 
     // CoM task:
@@ -1127,7 +1357,7 @@ WalkingManager::update(
         // Use the MPC to compute the joint command:
         joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
             robot_model_,
-            fb_filtered_state_,
+            robot_state,
             robot_data_,
             current_gait_configuration,
             desired_gait_configuration

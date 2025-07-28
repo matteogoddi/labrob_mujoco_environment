@@ -30,6 +30,24 @@ if __name__ == '__main__':
     base_orientation = np.loadtxt(folder + '/base_orientation.txt')
     base_angular_velocity = np.loadtxt(folder + '/base_angular_velocity.txt')
 
+    num_samples = joint_pos.shape[0]-1
+    print(f"Number of samples: {num_samples}")
+    joint_pos = joint_pos[:num_samples, :]
+    joint_vel = joint_vel[:num_samples, :]
+    joint_eff = joint_eff[:num_samples, :]
+    com_simulation = com_simulation[:num_samples, :]
+    com_desired = com_desired[:num_samples, :]
+    ekf_base_position = ekf_base_position[:num_samples, :]
+    ekf_base_velocity = ekf_base_velocity[:num_samples, :]
+    ekf_base_orientation = ekf_base_orientation[:num_samples, :]
+    ekf_base_angular_velocity = ekf_base_angular_velocity[:num_samples, :]
+    ekf_joint_position = ekf_joint_position[:num_samples, :]
+    ekf_joint_velocity = ekf_joint_velocity[:num_samples, :]
+    base_position = base_position[:num_samples, :]
+    base_velocity = base_velocity[:num_samples, :]
+    base_orientation = base_orientation[:num_samples, :]
+    base_angular_velocity = base_angular_velocity[:num_samples, :]
+
     if number != '0':
         fb_joint_pos: np.ndarray = np.loadtxt(folder +'/fb_joint_pos.txt')
         fb_joint_vel: np.ndarray = np.loadtxt(folder +'/fb_joint_vel.txt')
@@ -42,33 +60,18 @@ if __name__ == '__main__':
         predicted_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/predicted_imu_angular_velocity.txt')
         predicted_imu_orientation: np.ndarray = np.loadtxt(folder + '/predicted_imu_orientation.txt')
 
-        # sometimes the number of samples in com_simulation, fb_com and com_desired is different
-        # this is a fix to ensure they have the same number of samples
-        if com_simulation.shape[0] != joint_pos.shape[0] or com_desired.shape[0] != joint_pos.shape[0] or fb_com.shape[0] != joint_pos.shape[0] or predicted_imu_orientation.shape[0] != joint_pos.shape[0] or predicted_imu_accelerometer.shape[0] != fb_com.shape[0] or predicted_imu_angular_velocity.shape[0] != fb_com.shape[0]:
-            com_simulation = com_simulation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            com_desired = com_desired[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            fb_com = fb_com[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            predicted_imu_accelerometer = predicted_imu_accelerometer[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            predicted_imu_angular_velocity = predicted_imu_angular_velocity[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            predicted_imu_orientation = predicted_imu_orientation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            imu_orientation = imu_orientation[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            imu_angular_velocity = imu_angular_velocity[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-            imu_accelerometer = imu_accelerometer[:min(com_simulation.shape[0], fb_com.shape[0], com_desired.shape[0], joint_pos.shape[0]), :]
-
-    if ekf_base_position.shape[0] != joint_pos.shape[0]:
-        min_samples = min(ekf_base_position.shape[0], joint_pos.shape[0])
-        ekf_base_position = ekf_base_position[:min_samples, :]
-        ekf_base_velocity = ekf_base_velocity[:min_samples, :]
-        ekf_base_orientation = ekf_base_orientation[:min_samples, :]
-        ekf_base_angular_velocity = ekf_base_angular_velocity[:min_samples, :]
-        ekf_joint_position = ekf_joint_position[:min_samples, :]
-        ekf_joint_velocity = ekf_joint_velocity[:min_samples, :]
-        base_position = base_position[:min_samples, :]
-        base_velocity = base_velocity[:min_samples, :]
-        base_orientation = base_orientation[:min_samples, :]
-        base_angular_velocity = base_angular_velocity[:min_samples, :]
+        fb_joint_pos = fb_joint_pos[:num_samples, :]
+        fb_joint_vel = fb_joint_vel[:num_samples, :]
+        fb_com = fb_com[:num_samples, :]
+        input_command = input_command[:num_samples, :]
+        imu_orientation = imu_orientation[:num_samples, :]
+        imu_angular_velocity = imu_angular_velocity[:num_samples, :]
+        imu_accelerometer = imu_accelerometer[:num_samples, :]
+        predicted_imu_accelerometer = predicted_imu_accelerometer[:num_samples, :]
+        predicted_imu_angular_velocity = predicted_imu_angular_velocity[:num_samples, :]
+        predicted_imu_orientation = predicted_imu_orientation[:num_samples, :]
+        
     delta = 1e-3
-    num_samples = joint_pos.shape[0]
     t = np.linspace(0.0, delta * num_samples, num_samples)
 
     if not os.path.exists('images/joints/positions'):
@@ -257,7 +260,75 @@ if __name__ == '__main__':
     fig.savefig("images/ekf/joint_velocities_plot.png")
     plt.close(fig)
 
+    # plot ekf joint velocity
+    fig, ax = plt.subplots(figsize=(18, 12))
+    for i in range(ekf_joint_velocity.shape[1]):
+        ax.plot(t, ekf_joint_velocity[:, i], label=joint_names[i].strip())
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Velocity [rad/s]')
+    ax.set_title('EKF Joint Velocities')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/ekf/ekf_joint_velocities_plot.png")
+    plt.close(fig)
+
+    #plot simulation joint velocities
+    fig, ax = plt.subplots(figsize=(18, 12))
+    for i in range(joint_vel.shape[1]):
+        ax.plot(t, joint_vel[:, i], label=joint_names[i].strip())
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Velocity [rad/s]')
+    ax.set_title('Simulation Joint Velocities')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/joints/velocities/simulation_joint_velocities_plot.png")
+    plt.close(fig)
+
+
     if number != '0':
+
+        # plot feedback joint velocity
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(fb_joint_vel.shape[1]):
+            ax.plot(t, fb_joint_vel[:, i], label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity [rad/s]')
+        ax.set_title('Feedback Joint Velocities')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/feedback/fb_joint_velocities_plot.png")
+        plt.close(fig)
+
+        #plot error between ekf joint pos and fb joint pos
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(ekf_joint_position.shape[1]):
+            error = ekf_joint_position[:, i] - fb_joint_pos[:, i]
+            ax.plot(t, error, label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Position Error [rad]')
+        ax.set_title('Position Error between EKF Joint Position and Feedback Joint Position')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/ekf/ekf_fb_joint_position_error_plot.png")
+        plt.close(fig)
+
+        #plot error between ekf joint vel and fb joint vel
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(ekf_joint_velocity.shape[1]):
+            error = ekf_joint_velocity[:, i] - fb_joint_vel[:, i]
+            ax.plot(t, error, label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity Error [rad/s]')
+        ax.set_title('Velocity Error between EKF Joint Velocity and Feedback Joint Velocity')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/ekf/ekf_fb_joint_velocity_error_plot.png")
+        plt.close(fig)
         
         # plot imu orientation predicted
         fig, ax = plt.subplots()
