@@ -541,11 +541,13 @@ int main(const int argc, const char* argv[]) {
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
 
+    //convert imustate data from rpy to quaternion
     Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
       Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
       Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
       Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
     );
+    
   }
 
   // Simulation loop:
@@ -603,10 +605,10 @@ int main(const int argc, const char* argv[]) {
         imu_angular_velocity_log_file << imu_state_data.omega[0] << " "
                                       << imu_state_data.omega[1] << " "
                                       << imu_state_data.omega[2] << std::endl;
-        imu_orientation_log_file << imu_quat.x() << " "
+        imu_orientation_log_file << imu_quat.w() << " "
+                                 << imu_quat.x() << " "
                                  << imu_quat.y() << " "
-                                 << imu_quat.z() << " "
-                                 << imu_quat.w() << std::endl;
+                                 << imu_quat.z() << std::endl;
 
         
       }

@@ -56,6 +56,12 @@ class WalkingManager {
   Eigen::MatrixXd Q;
   Eigen::MatrixXd R;
   Eigen::VectorXd x_estimate;
+  Eigen::VectorXd y_pred;
+  Eigen::VectorXd y_actual;
+  Eigen::VectorXd y_estimate;
+  Eigen::VectorXd actual_output;
+  Eigen::VectorXd input;
+  int n_ekf_output;
 
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
