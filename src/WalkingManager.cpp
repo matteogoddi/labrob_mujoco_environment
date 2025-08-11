@@ -124,8 +124,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     x_estimate = Eigen::VectorXd::Zero(2 * real_model_.nv);
     x_estimate.head(3) = q_init.head(3);
     x_estimate.segment(3, 3) = Eigen::AngleAxisd(
-        Eigen::Quaterniond(q_init[3], q_init[4], q_init[5], q_init[6])
-    ).axis() * Eigen::AngleAxisd(Eigen::Quaterniond(q_init[3], q_init[4], q_init[5], q_init[6])).angle();
+        Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5])
+    ).axis() * Eigen::AngleAxisd(Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5])).angle();
     x_estimate.segment(3 + 3, real_model_.nv - 6) = q_init.tail(real_model_.nv - 6);
     x_estimate.tail(real_model_.nv) = qdot_init;
     y_pred = Eigen::VectorXd::Zero(n_ekf_output);
@@ -166,6 +166,14 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d left_foot_position = real_data_.oMf[lsole_idx_].translation();
     Eigen::Vector3d right_foot_position = real_data_.oMf[rsole_idx_].translation();
 
+    // //divide angle by 3.14 and take the integer part and subtract it from the angle
+    // axis_angle_init.angle() = std::fmod(axis_angle_init.angle(), 2 * M_PI);
+    if (axis_angle_init.angle() > M_PI) {
+        axis_angle_init.angle() -= 2 * M_PI;
+    } else if (axis_angle_init.angle() < -M_PI) {
+        axis_angle_init.angle() += 2 * M_PI;
+    }
+
     y_estimate.head(3) = Eigen::Vector3d(
         axis_angle_init.axis().x() * axis_angle_init.angle(),
         axis_angle_init.axis().y() * axis_angle_init.angle(),
@@ -182,14 +190,21 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     input = Eigen::VectorXd::Zero(real_model_.nv);
     // convert quaternion to axis-angle representation
     Eigen::Quaterniond q_init_quat(
-        q_init[3], q_init[4], q_init[5], q_init[6]
+        q_init[6], q_init[3], q_init[4], q_init[5]
     );
     Eigen::AngleAxisd axis_angle(q_init_quat);
+
+    if (axis_angle.angle() > M_PI) {
+        axis_angle.angle() -= 2 * M_PI;
+    } else if (axis_angle.angle() < -M_PI) {
+        axis_angle.angle() += 2 * M_PI;
+    }
+
     x_estimate.head(3) = q_init.head(3);
     x_estimate.segment(3, 3) = Eigen::Vector3d(
-        axis_angle.axis().x() * (axis_angle.angle() - 3.14159),
-        axis_angle.axis().y() * (axis_angle.angle() - 3.14159),
-        axis_angle.axis().z() * (axis_angle.angle() - 3.14159)
+        axis_angle.axis().x() * axis_angle.angle(),
+        axis_angle.axis().y() * axis_angle.angle(),
+        axis_angle.axis().z() * axis_angle.angle()
     );
     x_estimate.segment(3 + 3, real_model_.nv - 6) = q_init.tail(real_model_.nv - 6);
     x_estimate.tail(real_model_.nv) = qdot_init;
@@ -472,7 +487,15 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
 
     Eigen::Quaterniond q_orientation;
     Eigen::Vector3d q_rot_vec = x_estimate.segment<3>(3);  // x_estimate(3), (4), (5)
-    double q_angle = q_rot_vec.norm() - 3.14159;
+    double q_angle = q_rot_vec.norm();
+
+    std::cout << "q_angle: " << q_angle << std::endl;
+
+    if (q_angle > M_PI) {
+        q_angle -= 2 * M_PI;
+    } else if (q_angle < -M_PI) {
+        q_angle += 2 * M_PI;
+    }
 
     if (std::abs(q_angle) < 1e-4) {
         q_orientation = Eigen::Quaterniond(1,0,0,0);  // nessuna rotazione
@@ -551,8 +574,8 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     C.block(2 * real_model_.nv - 6, real_model_.nv, 3, real_model_.nv) = J_imu_dot.block(0, 0, 3, real_model_.nv);
     C.block(2 * real_model_.nv - 3, real_model_.nv, 3, real_model_.nv) = J_left_foot.block(0,0,3,real_model_.nv)*left_support_check;
     C.block(2 * real_model_.nv, real_model_.nv, 3, real_model_.nv) = J_right_foot.block(0,0,3,real_model_.nv)*right_support_check;
-    C.block(2 * real_model_.nv + 3, 0, 3, real_model_.nv) = J_left_foot.block(0, 0, 3, real_model_.nv);
-    C.block(2 * real_model_.nv + 6, 0, 3, real_model_.nv) = J_right_foot.block(0, 0, 3, real_model_.nv);
+    C.block(2 * real_model_.nv + 3, 0, 3, real_model_.nv) = J_left_foot.block(0, 0, 3, real_model_.nv)*left_support_check;
+    C.block(2 * real_model_.nv + 6, 0, 3, real_model_.nv) = J_right_foot.block(0, 0, 3, real_model_.nv)*right_support_check;
 
     //MATRICE D:
 
@@ -597,6 +620,12 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
             imu_orientation.vec()
         );
 
+        if (axis_angle.angle() > M_PI) {
+            axis_angle.angle() -= 2 * M_PI;
+        } else if (axis_angle.angle() < -M_PI) {
+            axis_angle.angle() += 2 * M_PI;
+        }
+
         Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
         pinocchio::getFrameJacobian(
             real_model_, 
@@ -623,22 +652,22 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
         Eigen::Vector3d right_foot_position = real_data_.oMf[rsole_idx_].translation();
 
         y_actual.head(3) = Eigen::Vector3d(
-            axis_angle.axis().x() * (axis_angle.angle() - 3.14159),
-            axis_angle.axis().y() * (axis_angle.angle() - 3.14159),
-            axis_angle.axis().z() * (axis_angle.angle() - 3.14159)
+            axis_angle.axis().x() * axis_angle.angle(),
+            axis_angle.axis().y() * axis_angle.angle(),
+            axis_angle.axis().z() * axis_angle.angle()
         );
         y_actual.segment(3, real_model_.nv - 6) = q.tail(real_model_.nv - 6);
         y_actual.segment(real_model_.nv - 3, 3) = imu_angular_velocity;
         y_actual.segment(real_model_.nv - 3 + 3, real_model_.nv - 6) = qdot.tail(real_model_.nv - 6);
         y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3, 3) = J_imu.block(0, 0, 3, real_model_.nv) * whole_body_controller_ptr_->get_q_ddot() + J_imu_dot.block(0, 0, 3, real_model_.nv) * qdot;
-        y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3, 3) = left_foot_position;
-        y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 3, 3) = right_foot_position;
+        y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3, 3) = left_foot_position*left_support_check;
+        y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 3, 3) = right_foot_position*right_support_check;
     }
 
     //PREDICTED OUTPUT E PREDICTED X
 
     Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * real_model_.nv);
-    x_pred.head(real_model_.nv) = x_estimate.head(real_model_.nv) + x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001 + 0.5 * 0.001*0.001 * whole_body_controller_ptr_->get_q_ddot(); 
+    x_pred.head(real_model_.nv) = x_estimate.head(real_model_.nv) + x_estimate.tail(real_model_.nv) * controller_timestep_msec_ * 0.001; 
     x_pred.tail(real_model_.nv) = x_estimate.tail(real_model_.nv) + whole_body_controller_ptr_->get_q_ddot() * controller_timestep_msec_ * 0.001;
     y_pred = y_estimate + C * (x_pred - x_estimate) + D * (whole_body_controller_ptr_->get_q_ddot() - input);
     std::cout << "y_pred: " << y_pred.tail(6).transpose() << std::endl;
@@ -656,7 +685,14 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
 
     Eigen::Quaterniond orientation;
     Eigen::Vector3d rot_vec = x_estimate.segment<3>(3);  // x_estimate(3), (4), (5)
-    double angle = rot_vec.norm() - 3.14159;
+    double angle = rot_vec.norm();
+
+    if (angle > M_PI) {
+        angle -= 2 * M_PI;
+    } else if (angle < -M_PI) {
+        angle += 2 * M_PI;
+    }
+
     std::cout << "Angle: " << angle << std::endl;
 
     if (std::abs(angle) < 1e-4) {
@@ -686,7 +722,13 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     }
 
     rot_vec = y_pred.head(3);  
-    angle = rot_vec.norm() - 3.14159;
+    angle = rot_vec.norm();
+
+    if (angle > M_PI) {
+        angle -= 2 * M_PI;
+    } else if (angle < -M_PI) {
+        angle += 2 * M_PI;
+    }
 
     Eigen::Quaterniond predicted_imu_orientation;
     if (std::abs(angle) < 1e-4) {
