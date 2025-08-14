@@ -30,7 +30,7 @@ if __name__ == '__main__':
     base_orientation = np.loadtxt(folder + '/base_orientation.txt')
     base_angular_velocity = np.loadtxt(folder + '/base_angular_velocity.txt')
 
-    num_samples = joint_pos.shape[0] - 2000
+    num_samples = joint_pos.shape[0] - 1000
     joint_pos = joint_pos[:num_samples, :]
     joint_vel = joint_vel[:num_samples, :]
     joint_eff = joint_eff[:num_samples, :]

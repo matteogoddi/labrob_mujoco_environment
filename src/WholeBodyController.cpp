@@ -36,11 +36,11 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.gamma = params.Kd_motion;
+  params.gamma = 0;
   params.mu = 0.5;
 
   params.foot_length = 0.14;
-  params.foot_width = 0.04; 
+  params.foot_width = 0.07; 
 
   return params;
 }

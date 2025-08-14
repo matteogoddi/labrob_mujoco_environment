@@ -511,8 +511,8 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     );
     q_estimate.tail(real_model_.nv - 6) = x_estimate.segment(3 + 3, real_model_.nv - 6);
     //create a pinocchio robot model based on x_estimate and data
-    pinocchio::Data data(real_model_);
     pinocchio::Model model(real_model_);
+    pinocchio::Data data(model);
     pinocchio::forwardKinematics(model, data, q_estimate);
     pinocchio::framesForwardKinematics(model, data, q_estimate);
     pinocchio::computeJointJacobians(model, data, q_estimate);
@@ -1542,7 +1542,7 @@ WalkingManager::update(
         // Use the MPC to compute the joint command:
         joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
             robot_model_,
-            robot_state,
+            fb_filtered_state_,
             robot_data_,
             current_gait_configuration,
             desired_gait_configuration
