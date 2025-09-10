@@ -25,10 +25,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_regulation = 10.0;
 
   params.weight_q_ddot = 1e-4;
-  params.weight_com = 0.1;
+  params.weight_com = 1e-1;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
-  params.weight_torso = 1e-3;
+  params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
 
@@ -39,8 +39,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = 0;
   params.mu = 0.5;
 
-  params.foot_length = 0.14;
-  params.foot_width = 0.07; 
+  params.foot_length = 0.10;
+  params.foot_width = 0.06; 
 
   return params;
 }

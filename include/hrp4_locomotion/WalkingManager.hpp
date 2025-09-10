@@ -52,6 +52,9 @@ class WalkingManager {
   pinocchio::Model real_model_;
   pinocchio::Data real_data_;
 
+  pinocchio::Model model;
+  pinocchio::Data data;
+
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
   Eigen::MatrixXd R;
@@ -61,6 +64,7 @@ class WalkingManager {
   Eigen::VectorXd y_estimate;
   Eigen::VectorXd actual_output;
   Eigen::VectorXd input;
+  bool input_initialized = false;
   int n_ekf_output;
 
   pinocchio::FrameIndex lsole_idx_;
@@ -109,6 +113,8 @@ private:
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 
+  Eigen::MatrixXd K; 
+
   // Log files:
   std::ofstream mpc_timings_log_file_;
   std::ofstream mpc_com_log_file_;
@@ -142,6 +148,14 @@ private:
   std::ofstream predicted_imu_accelerometer_log_file_;
   std::ofstream predicted_imu_angular_velocity_log_file_;
   std::ofstream predicted_imu_orientation_log_file_;
+
+  std::ofstream execution_time_wbc_log_file_;
+  std::ofstream execution_time_mpc_log_file_;
+  std::ofstream execution_time_ekf_log_file_;
+  std::ofstream execution_time_kf_log_file_;
+  std::ofstream execution_time_kalman_gain_log_file_;
+
+  std::ofstream kalman_gain_matrix_log_file_;
 
 }; // end class WalkingManager
 

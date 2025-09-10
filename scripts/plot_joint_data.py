@@ -30,7 +30,22 @@ if __name__ == '__main__':
     base_orientation = np.loadtxt(folder + '/base_orientation.txt')
     base_angular_velocity = np.loadtxt(folder + '/base_angular_velocity.txt')
 
-    num_samples = joint_pos.shape[0] - 1000
+    execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
+    execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
+    execution_time_mpc = np.loadtxt(folder + '/execution_time_mpc.txt')
+    execution_time_wbc = np.loadtxt(folder + '/execution_time_wbc.txt')
+    execution_time_update = np.loadtxt(folder + '/execution_time_update.txt')
+    execution_time_kalman_gain = np.loadtxt(folder + '/execution_time_kalman_gain.txt')
+
+    # kalman_gain_matrix = np.loadtxt(folder + '/kalman_gain_matrix.txt')
+
+    # #print the meanfor each value of the kalman gain matrix
+    # #each matrix has 70 rows and 79 columns so take each matrix and compute the mean of each element over all the matrices
+    # kalman_gain_matrix = kalman_gain_matrix.reshape(-1, 70, 79)
+    # kalman_gain_mean = np.mean(kalman_gain_matrix, axis=0)
+    # np.savetxt(folder + '/kalman_gain_mean.txt', kalman_gain_mean)
+
+    num_samples = joint_pos.shape[0] -1000
     joint_pos = joint_pos[:num_samples, :]
     joint_vel = joint_vel[:num_samples, :]
     joint_eff = joint_eff[:num_samples, :]
@@ -46,6 +61,12 @@ if __name__ == '__main__':
     base_velocity = base_velocity[:num_samples, :]
     base_orientation = base_orientation[:num_samples, :]
     base_angular_velocity = base_angular_velocity[:num_samples, :]
+    execution_time_ekf = execution_time_ekf[:num_samples]
+    execution_time_kf = execution_time_kf[:num_samples]
+    execution_time_mpc = execution_time_mpc[:num_samples]
+    execution_time_wbc = execution_time_wbc[:num_samples]
+    execution_time_update = execution_time_update[:num_samples]
+    execution_time_kalman_gain = execution_time_kalman_gain[:num_samples]
 
     if number != '0':
         fb_joint_pos: np.ndarray = np.loadtxt(folder +'/fb_joint_pos.txt')
@@ -70,7 +91,7 @@ if __name__ == '__main__':
         predicted_imu_angular_velocity = predicted_imu_angular_velocity[:num_samples, :]
         predicted_imu_orientation = predicted_imu_orientation[:num_samples, :]
         
-    delta = 1e-3
+    delta = 2e-3
     t = np.linspace(0.0, delta * num_samples, num_samples)
 
     if not os.path.exists('images/joints/positions'):
@@ -83,6 +104,8 @@ if __name__ == '__main__':
         os.makedirs('images/feedback/positions')
     if not os.path.exists('images/ekf'):
         os.makedirs('images/ekf')
+    if not os.path.exists('images/execution_times'):
+        os.makedirs('images/execution_times')
 
     grouped_indices = defaultdict(list)
 
@@ -285,6 +308,59 @@ if __name__ == '__main__':
     fig.savefig("images/joints/velocities/simulation_joint_velocities_plot.png")
     plt.close(fig)
 
+    #plot execution times over the itarations, first in different plots, then summed up in a single plot with a line at 2000
+    figs = []
+    exec_times = {
+        'EKF': execution_time_ekf,
+        'KF': execution_time_kf,
+        'MPC': execution_time_mpc,
+        'WBC': execution_time_wbc,
+        'Update': execution_time_update,
+        'Kalman Gain': execution_time_kalman_gain
+    }
+    for name, times in exec_times.items():
+        fig, ax = plt.subplots()
+        ax.plot(times, label=f'{name} Execution Time', color='blue')
+        if name == 'Update':
+            ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+        ax.set_xlabel('Iteration')
+        ax.set_ylabel('Execution Time [microseconds]')
+        ax.set_title(f'{name} Execution Time per Iteration')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        figs.append(fig)
+
+        fig.savefig(f"images/execution_times/{name}_execution_time_plot.png")
+        plt.close(fig)
+    # Combined plot
+    fig, ax = plt.subplots(figsize=(12, 8))
+    for name, times in exec_times.items():
+        ax.plot(times, label=f'{name} Execution Time')
+    ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+    ax.set_xlabel('Iteration')
+    ax.set_ylabel('Execution Time [microseconds]')
+    ax.set_title('Execution Time per Iteration')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/execution_times/combined_execution_time_plot.png")
+    plt.close(fig)
+
+    #plot the sum of each execution time
+    total_execution_time = (execution_time_ekf + execution_time_kf + execution_time_mpc + execution_time_wbc)
+    fig, ax = plt.subplots(figsize=(12, 8))
+    ax.plot(total_execution_time, label='Total Execution Time', color='blue')
+    ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+    ax.set_xlabel('Iteration')
+    ax.set_ylabel('Total Execution Time [microseconds]')
+    ax.set_title('Total Execution Time per Iteration')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/execution_times/total_execution_time_plot.png")
+    plt.close(fig)
+
 
     if number != '0':
 
@@ -299,34 +375,6 @@ if __name__ == '__main__':
         ax.legend()
         fig.tight_layout()
         fig.savefig("images/feedback/fb_joint_velocities_plot.png")
-        plt.close(fig)
-
-        #plot error between ekf joint pos and fb joint pos
-        fig, ax = plt.subplots(figsize=(18, 12))
-        for i in range(ekf_joint_position.shape[1]):
-            error = ekf_joint_position[:, i] - fb_joint_pos[:, i]
-            ax.plot(t, error, label=joint_names[i].strip())
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Position Error [rad]')
-        ax.set_title('Position Error between EKF Joint Position and Feedback Joint Position')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig(f"images/ekf/ekf_fb_joint_position_error_plot.png")
-        plt.close(fig)
-
-        #plot error between ekf joint vel and fb joint vel
-        fig, ax = plt.subplots(figsize=(18, 12))
-        for i in range(ekf_joint_velocity.shape[1]):
-            error = ekf_joint_velocity[:, i] - fb_joint_vel[:, i]
-            ax.plot(t, error, label=joint_names[i].strip())
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Velocity Error [rad/s]')
-        ax.set_title('Velocity Error between EKF Joint Velocity and Feedback Joint Velocity')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig(f"images/ekf/ekf_fb_joint_velocity_error_plot.png")
         plt.close(fig)
         
         # plot imu orientation predicted

@@ -430,6 +430,8 @@ int main(const int argc, const char* argv[]) {
   std::ofstream imu_angular_velocity_log_file("/tmp/imu_angular_velocity.txt");
   std::ofstream imu_orientation_log_file("/tmp/imu_orientation.txt");
 
+  std::ofstream execution_time_update_log_file("/tmp/execution_time_update.txt");
+
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
   mjtNum waist_y_init = 0.0;
@@ -556,6 +558,8 @@ int main(const int argc, const char* argv[]) {
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
+      auto start_sleep = std::chrono::high_resolution_clock::now();
+
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
       labrob::RobotState fb_robot_state = robot_state;
@@ -589,15 +593,15 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          actual_output[4 + i] = fb_robot_state.joint_state[joint_name].pos;
-          actual_output[4 + mj_model_ptr->nu + i + 3] = fb_robot_state.joint_state[joint_name].vel;
+          actual_output[3 + i] = fb_robot_state.joint_state[joint_name].pos;
+          actual_output[3 + mj_model_ptr->nu + i + 3] = fb_robot_state.joint_state[joint_name].vel;
         }
-        actual_output[4 + mj_model_ptr->nu] = imu_state_data.omega[0];
-        actual_output[4 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
-        actual_output[4 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
-        actual_output[4 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
-        actual_output[4 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        actual_output[4 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2] - 9.81;
+        actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
+        actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
+        actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
+        actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
+        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
+        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2] - 9.81;
 
         imu_accelerometer_log_file << imu_state_data.accelerometer[0] << " "
                                    << imu_state_data.accelerometer[1] << " "
@@ -620,7 +624,7 @@ int main(const int argc, const char* argv[]) {
       walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
       auto update_end = std::chrono::high_resolution_clock::now();
       auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
-      // std::cout << "WalkingManager update took: " << update_duration << " microseconds" << std::endl;
+      execution_time_update_log_file << update_duration << std::endl;
       
       mj_step1(mj_model_ptr, mj_data_ptr);
 
@@ -764,9 +768,12 @@ int main(const int argc, const char* argv[]) {
       input_command_log_file << std::endl;
 
       //sleep from 1 - now to 1 ms
-      auto start_sleep = std::chrono::high_resolution_clock::now();
-      auto end_sleep = start_sleep + std::chrono::milliseconds(1);
-      std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep));
+      auto end_sleep = std::chrono::high_resolution_clock::now();
+      auto sleep = end_sleep - start_sleep;
+      if(sleep < std::chrono::milliseconds(2))
+          std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
+      else
+        std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
     
     }
 
