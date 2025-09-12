@@ -38,6 +38,9 @@ using namespace unitree::robot::b2;
 static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
+labrob::WalkingManager walking_manager;
+bool useRobot = false;
+bool useSim = false;
 
 template <typename T>
 class DataBuffer {
@@ -270,60 +273,66 @@ int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
 
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
-  
-  std::string experiment_folder;
-  bool experiment_folder_exists = true;
-  int experiment_counter = 1;
-  while (experiment_folder_exists) {
-    if (!std::filesystem::exists("../experiments")) {
-      std::filesystem::create_directory("../experiments");
-      std::cout << "Created experiments directory." << std::endl;
-    }
-    experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
-    experiment_folder_exists = std::filesystem::exists(experiment_folder);
-    if (!experiment_folder_exists) {
-      std::filesystem::create_directory(experiment_folder);
-      std::cout << "Created experiment folder: " << experiment_folder << std::endl;
-      break;
-    }
-    ++experiment_counter;
-  }
-  for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
-    if (entry.is_regular_file() && entry.path().extension() == ".txt") {
-        std::filesystem::path destination = experiment_folder / entry.path().filename();
-        std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
-    }
-  }
-  // create a README file in the experiment folder
-  std::ofstream readme_file(experiment_folder + "/README.txt");
-  if (readme_file.is_open()) {
-    readme_file << "This folder contains the results of the experiment.\n";
-    readme_file << "The gains used for the experiment are:\n";
-    readme_file << "Kp: ";
-    for (const auto& kp : Kp) {
-      readme_file << kp << " ";
-    }
-    readme_file << "\nKd: ";
-    for (const auto& kd : Kd) {
-      readme_file << kd << " ";
-    }
-    readme_file << "\n\n";
 
-    //request text input from terminal and write the text on the readme file
-    std::string user_input;
-    std::cout << "Please enter a description of the experiment: ";
-    std::getline(std::cin, user_input);
-    if (user_input == "delete" || user_input == "remove" || user_input == "erase" || user_input == "trash") {
-      std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
-      std::filesystem::remove_all(experiment_folder);
+  std::cout << "Exiting simulation loop." << std::endl;
+  walking_manager.saveLogs();
+  std::cout << "Logs saved." << std::endl;
+  
+  if(useRobot){
+    std::string experiment_folder;
+    bool experiment_folder_exists = true;
+    int experiment_counter = 1;
+    while (experiment_folder_exists) {
+      if (!std::filesystem::exists("../experiments")) {
+        std::filesystem::create_directory("../experiments");
+        std::cout << "Created experiments directory." << std::endl;
+      }
+      experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
+      experiment_folder_exists = std::filesystem::exists(experiment_folder);
+      if (!experiment_folder_exists) {
+        std::filesystem::create_directory(experiment_folder);
+        std::cout << "Created experiment folder: " << experiment_folder << std::endl;
+        break;
+      }
+      ++experiment_counter;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
+      if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+          std::filesystem::path destination = experiment_folder / entry.path().filename();
+          std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
+      }
+    }
+    // create a README file in the experiment folder
+    std::ofstream readme_file(experiment_folder + "/README.txt");
+    if (readme_file.is_open()) {
+      readme_file << "This folder contains the results of the experiment.\n";
+      readme_file << "The gains used for the experiment are:\n";
+      readme_file << "Kp: ";
+      for (const auto& kp : Kp) {
+        readme_file << kp << " ";
+      }
+      readme_file << "\nKd: ";
+      for (const auto& kd : Kd) {
+        readme_file << kd << " ";
+      }
+      readme_file << "\n\n";
+
+      //request text input from terminal and write the text on the readme file
+      std::string user_input;
+      std::cout << "Please enter a description of the experiment: ";
+      std::getline(std::cin, user_input);
+      if (user_input == "delete" || user_input == "remove" || user_input == "erase" || user_input == "trash") {
+        std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
+        std::filesystem::remove_all(experiment_folder);
+        readme_file.close();
+      }
+      else{
+        std::cout << "Experiment description: " << user_input << std::endl;
+        readme_file << "Experiment description: " << user_input << "\n\n";
+      }
+
       readme_file.close();
     }
-    else{
-      std::cout << "Experiment description: " << user_input << std::endl;
-      readme_file << "Experiment description: " << user_input << "\n\n";
-    }
-
-    readme_file.close();
   }
 
   exit(signum);
@@ -385,8 +394,6 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 
 int main(const int argc, const char* argv[]) {
 
-  bool useRobot = false;
-  bool useSim = false;
   std::string netInterface;
 
   for (int i = 1; i < argc; ++i) {
@@ -405,7 +412,7 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
-  if(useRobot){signal(SIGINT, signalHandler);}
+ signal(SIGINT, signalHandler);
 
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
@@ -502,7 +509,7 @@ int main(const int argc, const char* argv[]) {
 
   // Walking Manager:
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  labrob::WalkingManager walking_manager;
+  
   walking_manager.init(initial_robot_state, armatures, useRobot);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
@@ -770,10 +777,10 @@ int main(const int argc, const char* argv[]) {
       //sleep from 1 - now to 1 ms
       auto end_sleep = std::chrono::high_resolution_clock::now();
       auto sleep = end_sleep - start_sleep;
-      if(sleep < std::chrono::milliseconds(2))
-          std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
-      else
-        std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
+      // if(sleep < std::chrono::milliseconds(2))
+      //     std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
+      // else
+      //   std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
     
     }
 

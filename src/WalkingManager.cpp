@@ -54,6 +54,48 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     cov_mod_vel = 1.0;
     cov_mod_zmp = 1.0;
 
+    // Pre-allocation of arrays (maximum size is 50000)
+
+    int64_t max_steps = 50000;
+
+    mpc_timings_log_.reserve(max_steps);
+    mpc_com_log_.reserve(max_steps);
+    mpc_zmp_log_.reserve(max_steps);
+    com_log_.reserve(max_steps);
+    p_lsole_log_.reserve(max_steps);
+    p_rsole_log_.reserve(max_steps);
+    v_lsole_log_.reserve(max_steps);
+    v_rsole_log_.reserve(max_steps);
+    p_lsole_des_log_.reserve(max_steps);
+    p_rsole_des_log_.reserve(max_steps);
+    v_lsole_des_log_.reserve(max_steps);
+    v_rsole_des_log_.reserve(max_steps);
+    angular_momentum_log_.reserve(max_steps);
+    cop_computed_log_.reserve(max_steps);
+    mpc_predictions_log_.reserve(max_steps);
+    ekf_base_position_log_.reserve(max_steps);
+    ekf_base_velocity_log_.reserve(max_steps);
+    ekf_base_orientation_log_.reserve(max_steps);
+    ekf_base_angular_velocity_log_.reserve(max_steps);
+    ekf_joint_position_log_.reserve(max_steps);
+    ekf_joint_velocity_log_.reserve(max_steps);
+    base_position_log_.reserve(max_steps);
+    base_velocity_log_.reserve(max_steps);
+    base_orientation_log_.reserve(max_steps);
+    base_angular_velocity_log_.reserve(max_steps);
+    real_com_log_.reserve(max_steps);
+    predicted_imu_accelerometer_log_.reserve(max_steps);
+    predicted_imu_angular_velocity_log_.reserve(max_steps);
+    predicted_imu_orientation_log_.reserve(max_steps);
+
+    execution_time_wbc_log_.reserve(max_steps);
+    execution_time_mpc_log_.reserve(max_steps);
+    execution_time_ekf_log_.reserve(max_steps);
+    execution_time_kf_log_.reserve(max_steps);
+    execution_time_kalman_gain_log_.reserve(max_steps);
+
+    kalman_gain_matrix_log_.reserve(max_steps);
+
     // Read URDF from file:
     std::string robot_description_filename = "../g1_description/unitreeg1.urdf";
 
@@ -451,7 +493,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     data = real_data_;
 
     K = Eigen::MatrixXd::Zero(2 * real_model_.nv, n_ekf_output);
-    std::ifstream kalman_gain_file("/tmp/mean_kalman_gain.txt");
+    std::ifstream kalman_gain_file("../mean_kalman_gain.txt");
     if (kalman_gain_file.is_open()) {
         for (int i = 0; i < K.rows(); i++) {
             for (int j = 0; j < K.cols(); j++) {
@@ -465,47 +507,47 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init log files:
     // TODO: may be better to use a proper logging system such as glog.
-    mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
-    mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
-    mpc_com_log_file_.open("/tmp/mpc_com.txt");
-    mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
-    //configuration_log_file_.open("/tmp/configuration.txt");
-    com_log_file_.open("/tmp/com.txt");
-    p_lsole_log_file_.open("/tmp/p_lsole.txt");
-    p_rsole_log_file_.open("/tmp/p_rsole.txt");
-    v_lsole_log_file_.open("/tmp/v_lsole.txt");
-    v_rsole_log_file_.open("/tmp/v_rsole.txt");
-    p_lsole_des_log_file_.open("/tmp/p_lsole_des.txt");
-    p_rsole_des_log_file_.open("/tmp/p_rsole_des.txt");
-    v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
-    v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
-    angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
-    //   fl_log_file_.open("/tmp/fl.txt");
-    //   fr_log_file_.open("/tmp/fr.txt");
-    cop_computed_log_file_.open("/tmp/cop_computed.txt");
-    mpc_predictions_log_file_.open("/tmp/mpc_predictions.txt");
-    ekf_base_position_log_file_.open("/tmp/ekf_base_position.txt");
-    ekf_base_velocity_log_file_.open("/tmp/ekf_base_velocity.txt");
-    ekf_base_orientation_log_file_.open("/tmp/ekf_base_orientation.txt");
-    ekf_base_angular_velocity_log_file_.open("/tmp/ekf_base_angular_velocity.txt");
-    ekf_joint_position_log_file_.open("/tmp/ekf_joint_position.txt");
-    ekf_joint_velocity_log_file_.open("/tmp/ekf_joint_velocity.txt");
-    base_position_log_file_.open("/tmp/base_position.txt");
-    base_velocity_log_file_.open("/tmp/base_velocity.txt");
-    base_orientation_log_file_.open("/tmp/base_orientation.txt");
-    base_angular_velocity_log_file_.open("/tmp/base_angular_velocity.txt");
-    real_com_log_file_.open("/tmp/real_com.txt");
-    predicted_imu_accelerometer_log_file_.open("/tmp/predicted_imu_accelerometer.txt");
-    predicted_imu_angular_velocity_log_file_.open("/tmp/predicted_imu_angular_velocity.txt");
-    predicted_imu_orientation_log_file_.open("/tmp/predicted_imu_orientation.txt");
+    // mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
+    // mpc_timings_log_file_.open("/tmp/mpc_timings.txt");
+    // mpc_com_log_file_.open("/tmp/mpc_com.txt");
+    // mpc_zmp_log_file_.open("/tmp/mpc_zmp.txt");
+    // //configuration_log_file_.open("/tmp/configuration.txt");
+    // com_log_file_.open("/tmp/com.txt");
+    // p_lsole_log_file_.open("/tmp/p_lsole.txt");
+    // p_rsole_log_file_.open("/tmp/p_rsole.txt");
+    // v_lsole_log_file_.open("/tmp/v_lsole.txt");
+    // v_rsole_log_file_.open("/tmp/v_rsole.txt");
+    // p_lsole_des_log_file_.open("/tmp/p_lsole_des.txt");
+    // p_rsole_des_log_file_.open("/tmp/p_rsole_des.txt");
+    // v_lsole_des_log_file_.open("/tmp/v_lsole_des.txt");
+    // v_rsole_des_log_file_.open("/tmp/v_rsole_des.txt");
+    // angular_momentum_log_file_.open("/tmp/angular_momentum.txt");
+    // //   fl_log_file_.open("/tmp/fl.txt");
+    // //   fr_log_file_.open("/tmp/fr.txt");
+    // cop_computed_log_file_.open("/tmp/cop_computed.txt");
+    // mpc_predictions_log_file_.open("/tmp/mpc_predictions.txt");
+    // ekf_base_position_log_file_.open("/tmp/ekf_base_position.txt");
+    // ekf_base_velocity_log_file_.open("/tmp/ekf_base_velocity.txt");
+    // ekf_base_orientation_log_file_.open("/tmp/ekf_base_orientation.txt");
+    // ekf_base_angular_velocity_log_file_.open("/tmp/ekf_base_angular_velocity.txt");
+    // ekf_joint_position_log_file_.open("/tmp/ekf_joint_position.txt");
+    // ekf_joint_velocity_log_file_.open("/tmp/ekf_joint_velocity.txt");
+    // base_position_log_file_.open("/tmp/base_position.txt");
+    // base_velocity_log_file_.open("/tmp/base_velocity.txt");
+    // base_orientation_log_file_.open("/tmp/base_orientation.txt");
+    // base_angular_velocity_log_file_.open("/tmp/base_angular_velocity.txt");
+    // real_com_log_file_.open("/tmp/real_com.txt");
+    // predicted_imu_accelerometer_log_file_.open("/tmp/predicted_imu_accelerometer.txt");
+    // predicted_imu_angular_velocity_log_file_.open("/tmp/predicted_imu_angular_velocity.txt");
+    // predicted_imu_orientation_log_file_.open("/tmp/predicted_imu_orientation.txt");
 
-    execution_time_wbc_log_file_.open("/tmp/execution_time_wbc.txt");
-    execution_time_mpc_log_file_.open("/tmp/execution_time_mpc.txt");
-    execution_time_ekf_log_file_.open("/tmp/execution_time_ekf.txt");
-    execution_time_kf_log_file_.open("/tmp/execution_time_kf.txt");
-    execution_time_kalman_gain_log_file_.open("/tmp/execution_time_kalman_gain.txt");
+    // execution_time_wbc_log_file_.open("/tmp/execution_time_wbc.txt");
+    // execution_time_mpc_log_file_.open("/tmp/execution_time_mpc.txt");
+    // execution_time_ekf_log_file_.open("/tmp/execution_time_ekf.txt");
+    // execution_time_kf_log_file_.open("/tmp/execution_time_kf.txt");
+    // execution_time_kalman_gain_log_file_.open("/tmp/execution_time_kalman_gain.txt");
 
-    kalman_gain_matrix_log_file_.open("/tmp/kalman_gain_matrix.txt");
+    // kalman_gain_matrix_log_file_.open("/tmp/kalman_gain_matrix.txt");
 
     return true;
 } 
@@ -513,7 +555,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output) {
 
     //start counting time
-    auto start = std::chrono::high_resolution_clock::now();
+    auto startstart = std::chrono::high_resolution_clock::now();
     Eigen::Quaterniond q_orientation;
     Eigen::Vector3d q_rot_vec = x_estimate.segment<3>(3);  // x_estimate(3), (4), (5)
     double q_angle = q_rot_vec.norm();
@@ -541,6 +583,13 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     q_estimate.tail(real_model_.nv - 6) = x_estimate.segment(3 + 3, real_model_.nv - 6);
     // std::cout << "q_estimate: " << q_estimate.transpose() << std::endl;
     //create a pinocchio robot model based on x_estimate and data
+    auto endstart = std::chrono::high_resolution_clock::now();
+    auto elapsedstart = std::chrono::duration_cast<std::chrono::microseconds>(endstart - startstart).count();
+    if (elapsedstart > 1000){
+        std::cout << "Time taken for pinocchio kinematics: " << elapsedstart << " microseconds" << std::endl;
+    }
+    //start counting time
+    auto startpinocchio = std::chrono::high_resolution_clock::now();
     pinocchio::forwardKinematics(model, data, q_estimate);
     pinocchio::framesForwardKinematics(model, data, q_estimate);
     pinocchio::jacobianCenterOfMass(model, data, q_estimate);
@@ -548,10 +597,15 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     pinocchio::computeCentroidalMomentum(model, data, q_estimate, x_estimate.tail(real_model_.nv));
     pinocchio::updateFramePlacements(model, data);
 
-    auto end = std::chrono::high_resolution_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    //stop counting time
+    //stop counting time
+    auto endpinocchio = std::chrono::high_resolution_clock::now();
+    auto elapsedpinocchio = std::chrono::duration_cast<std::chrono::microseconds>(endpinocchio - startpinocchio).count();
+    if (elapsedpinocchio > 1000){
+        std::cout << "Time taken for pinocchio kinematics: " << elapsedpinocchio << " microseconds" << std::endl;
+    }
     // std::cout << "Time taken for forward kinematics: " << elapsed << " microseconds" << std::endl;
-    start = std::chrono::high_resolution_clock::now();
+    auto startJacobian = std::chrono::high_resolution_clock::now();
 
     Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, real_model_.nv);
     pinocchio::getFrameJacobian(
@@ -599,10 +653,13 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
         }
     }
 
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    auto endjacobian = std::chrono::high_resolution_clock::now();
+    auto elapsedjacobian = std::chrono::duration_cast<std::chrono::microseconds>(endjacobian - startJacobian).count();
+    if (elapsedjacobian > 1000){
+        std::cout << "Time taken for Jacobians: " << elapsedjacobian << " microseconds" << std::endl;
+    }
     // std::cout << "Time taken for Jacobians: " << elapsed << " microseconds" << std::endl;
-    start = std::chrono::high_resolution_clock::now();
+    auto startmatrix = std::chrono::high_resolution_clock::now();
 
     //MATRICE C:
 
@@ -628,10 +685,12 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     A.block(0, real_model_.nv, real_model_.nv, real_model_.nv) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(real_model_.nv, real_model_.nv);
 
     //PREDICTION COVARIANCE E KALMAN GAIN
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    // std::cout << "Matrix C time: " << elapsed << " ms" << std::endl;
-    start = std::chrono::high_resolution_clock::now();
+    auto endmatrix = std::chrono::high_resolution_clock::now();
+    auto elapsedmatrix = std::chrono::duration_cast<std::chrono::microseconds>(endmatrix - startmatrix).count();
+    if (elapsedmatrix > 1000){
+        std::cout << "Time taken for matrix computation: " << elapsedmatrix << " microseconds" << std::endl;
+    }
+    auto start = std::chrono::high_resolution_clock::now();
     // Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
     // Eigen::MatrixXd K = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
 
@@ -656,13 +715,13 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     // P_ = (Eigen::MatrixXd::Identity(2 * real_model_.nv, 2 * real_model_.nv) - K * C) * Lambda_;
 
 
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    auto end = std::chrono::high_resolution_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     //save values in a file
     execution_time_kalman_gain_log_file_ << elapsed << std::endl;
 
 
-    start = std::chrono::high_resolution_clock::now();
+    auto startmid = std::chrono::high_resolution_clock::now();
 
     if (useRobot) {
         y_actual = actual_output;
@@ -735,14 +794,17 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
         y_actual.segment(real_model_.nv - 3 + real_model_.nv - 3 + 6 + 3 + 3, 3) = right_foot_position*right_support_check;
     }
 
-    end = std::chrono::high_resolution_clock::now();
-    elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    auto endmid = std::chrono::high_resolution_clock::now();
+    auto elapsedmid = std::chrono::duration_cast<std::chrono::microseconds>(endmid - startmid).count();
+    if (elapsedmid > 1000){
+        std::cout << "Time taken for y_actual computation: " << elapsedmid << " microseconds" << std::endl;
+    }
     // std::cout << "y_actual time: " << elapsed << " ms" << std::endl;
 
     start = std::chrono::high_resolution_clock::now();
 
     //PREDICTED OUTPUT E PREDICTED X
-
+    auto startpred = std::chrono::high_resolution_clock::now();
     //initialize input if it's the first iteration
     if (!input_initialized){
         input = whole_body_controller_ptr_->get_q_ddot();
@@ -783,7 +845,15 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     y_estimate = y_estimate + C*(x_estimate - x_estimate_prec) + D*(whole_body_controller_ptr_->get_q_ddot() - input);
     input = whole_body_controller_ptr_->get_q_ddot();
     current_state.position = x_estimate.head(3);
+    
+    auto endpred = std::chrono::high_resolution_clock::now();
+    auto elapsedpred = std::chrono::duration_cast<std::chrono::microseconds>(endpred - startpred).count();
+    if (elapsedpred > 1000){
+        std::cout << "Time taken for prediction: " << elapsedpred << " microseconds" << std::endl;
+    }
 
+    //start counting time
+    auto startlast = std::chrono::high_resolution_clock::now();
     //convert angle axis representation to quaternion representation
     //if the angle is too small, use identity quaternion
 
@@ -855,6 +925,14 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     end = std::chrono::high_resolution_clock::now();
     elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     // std::cout << "EKF update time: " << elapsed << " ms" << std::endl;
+
+    //stop counting time
+    auto endlast = std::chrono::high_resolution_clock::now();
+    auto elapsedlast = std::chrono::duration_cast<std::chrono::microseconds>(endlast - startlast).count();
+    if (elapsedlast > 1000){
+        std::cout << "Time taken for last part: " << elapsedlast << " microseconds" << std::endl;
+    }
+
 
     return current_state;
 }
@@ -1001,6 +1079,8 @@ WalkingManager::update(
     Eigen::VectorXd actual_output
 ) {
 
+    //start counting time here
+    auto start1 = std::chrono::high_resolution_clock::now();
     int njnt = robot_model_.nv - 6; // size of configuration space without floating base
 
     auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
@@ -1085,7 +1165,10 @@ WalkingManager::update(
 
         // Update walking state:
         walking_data_.updateWalkingState(t_msec_);
+        
 
+        //start counting time here
+        
         // Fill current gait configuration:
         labrob::GaitConfiguration real_current_gait_configuration;
         real_current_gait_configuration.qjnt = q_fb.tail(njnt);
@@ -1115,7 +1198,15 @@ WalkingManager::update(
         real_com_log_file_ << real_com_pos.transpose() << t_msec_ << std::endl;
 
     }
-
+    //stop counting time here
+    auto end1 = std::chrono::high_resolution_clock::now();
+    auto elapsed1 = std::chrono::duration_cast<std::chrono::microseconds>(end1 - start1).count();
+    //print elapsed1
+    //print elapsed 1 if elapsed1 is greater than 1000
+    if (elapsed1 > 1000){
+        std::cout << "Update walking state time1: " << elapsed1 << " ms" << std::endl;
+    }    
+    auto start2 = std::chrono::high_resolution_clock::now();
     const auto& T_torso = robot_data_.oMf[torso_idx_];
     auto torso_orientation = T_torso.rotation();
     Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -1157,6 +1248,19 @@ WalkingManager::update(
     // std::cout << "T_lsole: " << T_lsole.translation().transpose() << std::endl;
     // std::cout << "T_rsole: " << T_rsole.translation().transpose() << std::endl;
 
+    //stop counting time here
+    auto end2 = std::chrono::high_resolution_clock::now();
+    auto elapsed2 = std::chrono::duration_cast<std::chrono::microseconds>(end2 - start2).count();
+    //print elapsed2
+    if (elapsed2 > 1000){
+        std::cout << "Update walking state time2: " << elapsed2 << " ms" << std::endl;
+    } 
+
+    //start counting time here
+    auto start3 = std::chrono::high_resolution_clock::now();
+
+
+    auto startdio1 = std::chrono::high_resolution_clock::now();
     // Update walking state:
     walking_data_.updateWalkingState(t_msec_);
 
@@ -1196,6 +1300,14 @@ WalkingManager::update(
     RobotState fb_filtered_state_;
 
     LIPState measured_state;
+    
+    auto enddio1 = std::chrono::high_resolution_clock::now();
+    auto elapseddio1 = std::chrono::duration_cast<std::chrono::microseconds>(enddio1 - startdio1).count();
+    if (elapseddio1 > 1000){
+        std::cout << "Time taken for walking state update: " << elapseddio1 << " microseconds" << std::endl;
+    }
+
+    auto startboh = std::chrono::high_resolution_clock::now();
 
     //start measuring time
     auto t_start = std::chrono::high_resolution_clock::now();
@@ -1205,7 +1317,13 @@ WalkingManager::update(
         {
             // EKF
             if(!useRobot) {
+                auto startmatteo = std::chrono::high_resolution_clock::now();
                 fb_filtered_state_ = updateEKF(robot_state, useRobot, actual_output);
+                auto endmatteo = std::chrono::high_resolution_clock::now();
+                auto elapsedmatteo = std::chrono::duration_cast<std::chrono::microseconds>(endmatteo - startmatteo).count();
+                if (elapsedmatteo > 1000){
+                    std::cout << "Time taken for EKF (no robot): " << elapsedmatteo << " microseconds" << std::endl;
+                }
             }
             else{
                 fb_filtered_state_ = updateEKF(fb_robot_state, useRobot, actual_output);
@@ -1245,7 +1363,13 @@ WalkingManager::update(
         // filtered_state_ = updateKF(filtered_state_, measured_state, ismpc_ptr_->getInput());
     }
 
+    auto endboh = std::chrono::high_resolution_clock::now();
+    auto elapsedboh = std::chrono::duration_cast<std::chrono::microseconds>(endboh - startboh).count();
+    if (elapsedboh > 1000){
+        std::cout << "Time taken for EKF: " << elapsedboh << " microseconds" << std::endl;
+    }
 
+    auto starteta = std::chrono::high_resolution_clock::now();
     const auto& p_CoM = robot_data_.com[0];
     const auto& J_CoM = robot_data_.Jcom;
     Eigen::Vector3d zmp_3d;
@@ -1258,6 +1382,11 @@ WalkingManager::update(
         zmp_3d.x() += (pi.x() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / robot_state.total_force.z());
         zmp_3d.y() += (pi.y() * fi.z() / robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / robot_state.total_force.z());
     }
+    auto endeta = std::chrono::high_resolution_clock::now();
+    auto elapsedeta = std::chrono::duration_cast<std::chrono::microseconds>(endeta - starteta).count();
+    if (elapsedeta > 1000){
+        std::cout << "Time taken for ZMP computation: " << elapsedeta << " microseconds" << std::endl;
+    }
     t_start = std::chrono::high_resolution_clock::now();
     if(!useRobot || t_msec_ >= 0) {
         measured_state = LIPState(p_CoM, J_CoM * robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state), zmp_3d);
@@ -1266,9 +1395,24 @@ WalkingManager::update(
     }
     t_end = std::chrono::high_resolution_clock::now();
     t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+    auto startlog = std::chrono::high_resolution_clock::now();
     execution_time_kf_log_file_ << t_duration << std::endl;
+    auto endlog = std::chrono::high_resolution_clock::now();
+    auto elapsedlog = std::chrono::duration_cast<std::chrono::microseconds>(endlog - startlog).count();
+    if (elapsedlog > 1000){
+        std::cout << "Time taken for logging KF time porcacciodue: " << elapsedlog << " microseconds" << std::endl;
+    }
 
+    //stop counting time here
+    auto end3 = std::chrono::high_resolution_clock::now();
+    auto elapsed3 = std::chrono::duration_cast<std::chrono::microseconds>(end3 - start3).count();
+    //print elapsed
+    if (elapsed3 > 1000){
+        std::cout << "Update walking state time3: " << elapsed3 << " ms" << std::endl;
+    }  
 
+    //start counting time here
+    auto start4 = std::chrono::high_resolution_clock::now();
 
     // CoM task:
     auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -1307,6 +1451,7 @@ WalkingManager::update(
     // ddpsolver.set_u_warmstart(u_guess);
     // ddpsolver.solve();
 
+
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
     // substitute with ddpsolver.u[0]
@@ -1317,16 +1462,16 @@ WalkingManager::update(
 
     LIPState measured_state_mpc = filtered_state_;
 
-    for (int i = 0; i < 20; ++i) {
-        measured_state_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
-            measured_state_mpc, 
-            Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
-        );
+    // for (int i = 0; i < 20; ++i) {
+    //     measured_state_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
+    //         measured_state_mpc, 
+    //         Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
+    //     );
 
-        mpc_predictions_log_file_ << measured_state_mpc.com_pos_.transpose() << " "
-            << measured_state_mpc.com_vel_.transpose() << " "
-            << measured_state_mpc.zmp_pos_.transpose() << std::endl;
-    }
+    //     mpc_predictions_log_file_ << measured_state_mpc.com_pos_.transpose() << " "
+    //         << measured_state_mpc.com_vel_.transpose() << " "
+    //         << measured_state_mpc.zmp_pos_.transpose() << std::endl;
+    // }
 
 
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
@@ -1377,14 +1522,21 @@ WalkingManager::update(
         desired_gait_configuration.lsole.acc << desired_lsole_acc.linear(), desired_lsole_acc.angular();
     }
 
-
+    //stop counting time here
+    auto end4 = std::chrono::high_resolution_clock::now();
+    auto elapsed4 = std::chrono::duration_cast<std::chrono::microseconds>(end4 - start4).count();
+    //print elapsed
+    if (elapsed4 > 1000){
+        std::cout << "Update walking state time4: " << elapsed4 << " ms" << std::endl;
+    }  
     // Torso task
     double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
     double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-
+    //start couting time here
+    // auto start5 = std::chrono::high_resolution_clock::now();
 
     // if (t_msec_ == 2000) {
 
@@ -1418,7 +1570,7 @@ WalkingManager::update(
 
 
     auto start = std::chrono::system_clock::now();
-    if (t_msec_ > 2000) {
+    if (t_msec_ > 2000 && false) {
         // Use the robot feedback to compute the joint command:
         if(t_msec_ == 2002){
             std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
@@ -1451,47 +1603,228 @@ WalkingManager::update(
     t_msec_ += controller_timestep_msec_;
     prev_angular_momentum_ = angular_momentum;
 
-
-    // Log:
-    mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
-    mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
-    mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
-    com_log_file_ << p_CoM.transpose() << std::endl;
-    p_lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
-    p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
-    v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
-    v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
-    p_lsole_des_log_file_ << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
-    p_rsole_des_log_file_ << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
-    v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
-    v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
-    angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
-    cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
-
+    mpc_timings_log_.push_back(
+        std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count()
+    );
+    mpc_com_log_.push_back(p_CoM_des);
+    mpc_zmp_log_.push_back(p_ZMP_des);
+    com_log_.push_back(p_CoM);
+    p_lsole_log_.push_back(T_lsole.translation().transpose());
+    p_rsole_log_.push_back(T_rsole.translation().transpose());
+    v_lsole_log_.push_back(v_lsole.head<3>().transpose());
+    v_rsole_log_.push_back(v_rsole.head<3>().transpose());
+    p_lsole_des_log_.push_back(desired_gait_configuration.lsole.pos.p.transpose());
+    p_rsole_des_log_.push_back(desired_gait_configuration.rsole.pos.p.transpose());
+    v_lsole_des_log_.push_back(desired_gait_configuration.lsole.vel.head<3>().transpose());
+    v_rsole_des_log_.push_back(desired_gait_configuration.rsole.vel.head<3>().transpose());
+    angular_momentum_log_.push_back(angular_momentum.transpose());
+    cop_computed_log_.push_back(Eigen::VectorXd(9));
+    cop_computed_log_.back().segment(0, 3) = measured_state.zmp_pos_.transpose();
+    cop_computed_log_.back().segment(3, 3) = filtered_state_.zmp_pos_.transpose();
+    cop_computed_log_.back().segment(6, 3) = zmp_3d.transpose();
     // Log the filtered state:
-    ekf_base_position_log_file_ << fb_filtered_state_.position.transpose() << std::endl;
-    ekf_base_velocity_log_file_ << fb_filtered_state_.linear_velocity.transpose() << std::endl;
-    ekf_base_orientation_log_file_ << fb_filtered_state_.orientation.w() << " "
-        << fb_filtered_state_.orientation.x() << " "
-        << fb_filtered_state_.orientation.y() << " "
-        << fb_filtered_state_.orientation.z() << std::endl;
-    ekf_base_angular_velocity_log_file_ << fb_filtered_state_.angular_velocity.transpose() << std::endl;
+    ekf_base_position_log_.push_back(fb_filtered_state_.position.transpose());
+    ekf_base_velocity_log_.push_back(fb_filtered_state_.linear_velocity.transpose());
+    ekf_base_orientation_log_.push_back(Eigen::Vector4d(
+        fb_filtered_state_.orientation.w(),
+        fb_filtered_state_.orientation.x(),
+        fb_filtered_state_.orientation.y(),
+        fb_filtered_state_.orientation.z()
+    ).transpose());
+    ekf_base_angular_velocity_log_.push_back(fb_filtered_state_.angular_velocity.transpose());
+    ekf_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
+    ekf_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());   
     for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) real_model_.njoints; ++joint_id) {
         std::string joint_name = real_model_.names[joint_id];
-        ekf_joint_position_log_file_ << fb_filtered_state_.joint_state[joint_name].pos << " ";
-        ekf_joint_velocity_log_file_ << fb_filtered_state_.joint_state[joint_name].vel << " ";
+        ekf_joint_position_log_.back()(joint_id - 2) = fb_filtered_state_.joint_state[joint_name].pos;
+        ekf_joint_velocity_log_.back()(joint_id - 2) = fb_filtered_state_.joint_state[joint_name].vel;
     }
-    ekf_joint_position_log_file_ << std::endl;
-    ekf_joint_velocity_log_file_ << std::endl;
+    base_position_log_.push_back(robot_state.position.transpose());
+    base_velocity_log_.push_back(robot_state.linear_velocity.transpose());
+    base_orientation_log_.push_back(Eigen::Vector4d(
+        robot_state.orientation.w(),
+        robot_state.orientation.x(),
+        robot_state.orientation.y(),
+        robot_state.orientation.z()
+    ).transpose());
+    base_angular_velocity_log_.push_back(robot_state.angular_velocity.transpose()); 
 
-    base_position_log_file_ << robot_state.position.transpose() << std::endl;
-    base_velocity_log_file_ << robot_state.linear_velocity.transpose() << std::endl;
-    base_orientation_log_file_ << robot_state.orientation.w() << " "
-        << robot_state.orientation.x() << " "
-        << robot_state.orientation.y() << " "
-        << robot_state.orientation.z() << std::endl;
-    base_angular_velocity_log_file_ << robot_state.angular_velocity.transpose() << std::endl;
+
+    //start counting time here
+    // auto start5 = std::chrono::high_resolution_clock::now();
+
+    // // Log:
+    // mpc_timings_log_file_ << std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count() << std::endl;
+    // mpc_com_log_file_ << p_CoM_des.transpose() << std::endl;
+    // mpc_zmp_log_file_ << p_ZMP_des.transpose() << std::endl;
+    // com_log_file_ << p_CoM.transpose() << std::endl;
+    // p_lsole_log_file_ << T_lsole.translation().transpose() << std::endl;
+    // p_rsole_log_file_ << T_rsole.translation().transpose() << std::endl;
+    // v_lsole_log_file_ << v_lsole.head<3>().transpose() << std::endl;
+    // v_rsole_log_file_ << v_rsole.head<3>().transpose() << std::endl;
+    // p_lsole_des_log_file_ << desired_gait_configuration.lsole.pos.p.transpose() << std::endl;
+    // p_rsole_des_log_file_ << desired_gait_configuration.rsole.pos.p.transpose() << std::endl;
+    // v_lsole_des_log_file_ << desired_gait_configuration.lsole.vel.head<3>().transpose() << std::endl;
+    // v_rsole_des_log_file_ << desired_gait_configuration.rsole.vel.head<3>().transpose() << std::endl;
+    // angular_momentum_log_file_ << angular_momentum.transpose() << std::endl;
+    // cop_computed_log_file_ << measured_state.zmp_pos_.transpose() << " " << filtered_state_.zmp_pos_.transpose() << " " << zmp_3d.transpose() << std::endl;
+
+    // // Log the filtered state:
+    // ekf_base_position_log_file_ << fb_filtered_state_.position.transpose() << std::endl;
+    // ekf_base_velocity_log_file_ << fb_filtered_state_.linear_velocity.transpose() << std::endl;
+    // ekf_base_orientation_log_file_ << fb_filtered_state_.orientation.w() << " "
+    //     << fb_filtered_state_.orientation.x() << " "
+    //     << fb_filtered_state_.orientation.y() << " "
+    //     << fb_filtered_state_.orientation.z() << std::endl;
+    // ekf_base_angular_velocity_log_file_ << fb_filtered_state_.angular_velocity.transpose() << std::endl;
+    // for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) real_model_.njoints; ++joint_id) {
+    //     std::string joint_name = real_model_.names[joint_id];
+    //     ekf_joint_position_log_file_ << fb_filtered_state_.joint_state[joint_name].pos << " ";
+    //     ekf_joint_velocity_log_file_ << fb_filtered_state_.joint_state[joint_name].vel << " ";
+    // }
+    // ekf_joint_position_log_file_ << std::endl;
+    // ekf_joint_velocity_log_file_ << std::endl;
+
+    // base_position_log_file_ << robot_state.position.transpose() << std::endl;
+    // base_velocity_log_file_ << robot_state.linear_velocity.transpose() << std::endl;
+    // base_orientation_log_file_ << robot_state.orientation.w() << " "
+    //     << robot_state.orientation.x() << " "
+    //     << robot_state.orientation.y() << " "
+    //     << robot_state.orientation.z() << std::endl;
+    // base_angular_velocity_log_file_ << robot_state.angular_velocity.transpose() << std::endl;
+    // //stop counting time here
+    // auto end5 = std::chrono::high_resolution_clock::now();
+    // auto elapsed5 = std::chrono::duration_cast<std::chrono::microseconds>(end5 - start5).count();
+    // //print elapsed
+    // if (elapsed5 > 1000){
+    //     std::cout << "Update walking state time5: " << elapsed5 << " ms" << std::endl;
+    // }
 }
+
+void WalkingManager::saveLogs() {
+
+    std::cout << "Saving logs..." << std::endl;
+
+    std::ofstream mpc_timings_file("/tmp/mpc_timings.txt");
+    for (auto& t : mpc_timings_log_) {
+        mpc_timings_file << t << "\n";
+    }
+
+    std::ofstream mpc_com_file("/tmp/mpc_com.txt");
+    for (auto& v : mpc_com_log_) {
+        mpc_com_file << v.transpose() << "\n";
+    }
+
+    std::ofstream mpc_zmp_file("/tmp/mpc_zmp.txt");
+    for (auto& v : mpc_zmp_log_) {
+        mpc_zmp_file << v.transpose() << "\n";
+    }
+
+    std::ofstream com_file("/tmp/com.txt");
+    for (auto& v : com_log_) {
+        com_file << v.transpose() << "\n";
+    }
+
+    std::ofstream p_lsole_file("/tmp/p_lsole.txt");
+    for (auto& v : p_lsole_log_) {
+        p_lsole_file << v.transpose() << "\n";
+    }
+    std::ofstream p_rsole_file("/tmp/p_rsole.txt");
+    for (auto& v : p_rsole_log_) {
+        p_rsole_file << v.transpose() << "\n";
+    }
+    
+    std::ofstream v_lsole_file("/tmp/v_lsole.txt");
+    for (auto& v : v_lsole_log_) {
+        v_lsole_file << v.transpose() << "\n";
+    }
+
+    std::ofstream v_rsole_file("/tmp/v_rsole.txt");
+    for (auto& v : v_rsole_log_) {
+        v_rsole_file << v.transpose() << "\n";
+    }
+
+    std::ofstream p_lsole_des_file("/tmp/p_lsole_des.txt");
+    for (auto& v : p_lsole_des_log_) {
+        p_lsole_des_file << v.transpose() << "\n";
+    }
+
+    std::ofstream p_rsole_des_file("/tmp/p_rsole_des.txt");
+    for (auto& v : p_rsole_des_log_) {
+        p_rsole_des_file << v.transpose() << "\n";
+    }
+
+    std::ofstream v_lsole_des_file("/tmp/v_lsole_des.txt");
+    for (auto& v : v_lsole_des_log_) {
+        v_lsole_des_file << v.transpose() << "\n";
+    }
+
+    std::ofstream v_rsole_des_file("/tmp/v_rsole_des.txt");
+    for (auto& v : v_rsole_des_log_) {
+        v_rsole_des_file << v.transpose() << "\n";  
+    }
+
+    std::ofstream angular_momentum_file("/tmp/angular_momentum.txt");
+    for (auto& v : angular_momentum_log_) {
+        angular_momentum_file << v.transpose() << "\n";
+    }
+
+    std::ofstream cop_computed_file("/tmp/cop_computed.txt");
+    for (auto& v : cop_computed_log_) {
+        cop_computed_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_base_position_file("/tmp/ekf_base_position.txt");
+    for (auto& v : ekf_base_position_log_) {
+        ekf_base_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_base_velocity_file("/tmp/ekf_base_velocity.txt");
+    for (auto& v : ekf_base_velocity_log_) {
+        ekf_base_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_base_orientation_file("/tmp/ekf_base_orientation.txt");
+    for (auto& v : ekf_base_orientation_log_) {
+        ekf_base_orientation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_base_angular_velocity_file("/tmp/ekf_base_angular_velocity.txt");
+    for (auto& v : ekf_base_angular_velocity_log_) {
+        ekf_base_angular_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_joint_position_file("/tmp/ekf_joint_position.txt");
+    for (auto& v : ekf_joint_position_log_) {
+        ekf_joint_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream ekf_joint_velocity_file("/tmp/ekf_joint_velocity.txt");
+    for (auto& v : ekf_joint_velocity_log_) {
+        ekf_joint_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream base_position_file("/tmp/base_position.txt");
+    for (auto& v : base_position_log_) {
+        base_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream base_velocity_file("/tmp/base_velocity.txt");
+    for (auto& v : base_velocity_log_) {
+        base_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream base_orientation_file("/tmp/base_orientation.txt");
+    for (auto& v : base_orientation_log_) {
+        base_orientation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream base_angular_velocity_file("/tmp/base_angular_velocity.txt");  
+    for (auto& v : base_angular_velocity_log_) {
+        base_angular_velocity_file << v.transpose() << "\n";
+    }
+}
+
 
 int64_t
 WalkingManager::get_controller_frequency() const {

@@ -35,6 +35,8 @@ class WalkingManager {
 
   RobotState updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
 
+  void saveLogs();
+
   void update(
       const labrob::RobotState& robot_state,
       labrob::JointCommand& joint_command, 
@@ -156,6 +158,47 @@ private:
   std::ofstream execution_time_kalman_gain_log_file_;
 
   std::ofstream kalman_gain_matrix_log_file_;
+
+
+  std::vector<long long> mpc_timings_log_;
+  std::vector<Eigen::Vector3d> mpc_com_log_;
+  std::vector<Eigen::Vector3d> mpc_zmp_log_;
+  std::vector<Eigen::Vector3d> com_log_;
+  std::vector<Eigen::Vector3d> p_lsole_log_;
+  std::vector<Eigen::Vector3d> p_rsole_log_;
+  std::vector<Eigen::Vector3d> v_lsole_log_;
+  std::vector<Eigen::Vector3d> v_rsole_log_;
+  std::vector<Eigen::Vector3d> p_lsole_des_log_;
+  std::vector<Eigen::Vector3d> p_rsole_des_log_;
+  std::vector<Eigen::Vector3d> v_lsole_des_log_;
+  std::vector<Eigen::Vector3d> v_rsole_des_log_;
+  std::vector<Eigen::Vector3d> angular_momentum_log_;
+  // std::vector<Eigen::VectorXd> fl_log_;
+  // std::vector<Eigen::VectorXd> fr_log_;
+  std::vector<Eigen::VectorXd> cop_computed_log_;
+  std::vector<Eigen::VectorXd> mpc_predictions_log_;
+  std::vector<Eigen::VectorXd> ekf_base_position_log_;
+  std::vector<Eigen::VectorXd> ekf_base_velocity_log_;
+  std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
+  std::vector<Eigen::VectorXd> ekf_base_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> ekf_joint_position_log_;
+  std::vector<Eigen::VectorXd> ekf_joint_velocity_log_;
+  std::vector<Eigen::VectorXd> base_position_log_;
+  std::vector<Eigen::VectorXd> base_velocity_log_;
+  std::vector<Eigen::VectorXd> base_orientation_log_;
+  std::vector<Eigen::VectorXd> base_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> real_com_log_;
+  std::vector<Eigen::VectorXd> predicted_imu_accelerometer_log_;
+  std::vector<Eigen::VectorXd> predicted_imu_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> predicted_imu_orientation_log_;
+
+  std::vector<long long> execution_time_wbc_log_;
+  std::vector<long long> execution_time_mpc_log_;
+  std::vector<long long> execution_time_ekf_log_;
+  std::vector<long long> execution_time_kf_log_;
+  std::vector<long long> execution_time_kalman_gain_log_;
+  
+  std::vector<Eigen::MatrixXd> kalman_gain_matrix_log_;
 
 }; // end class WalkingManager
 
