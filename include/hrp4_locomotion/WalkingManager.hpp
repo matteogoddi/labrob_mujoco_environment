@@ -38,7 +38,7 @@ class WalkingManager {
   void saveLogs();
 
   void update(
-      const labrob::RobotState& robot_state,
+      const labrob::RobotState& sim_robot_state,
       labrob::JointCommand& joint_command, 
       labrob::RobotState& fb_robot_state,
       bool useRobot,
@@ -48,11 +48,11 @@ class WalkingManager {
   int64_t get_controller_frequency() const;
 
  protected:
-  pinocchio::Model robot_model_;
-  pinocchio::Data robot_data_;
+  pinocchio::Model sim_robot_model;
+  pinocchio::Data sim_robot_data;
 
-  pinocchio::Model real_model_;
-  pinocchio::Data real_data_;
+  pinocchio::Model fb_robot_model;
+  pinocchio::Data fb_robot_data;
 
   pinocchio::Model model;
   pinocchio::Data data;
@@ -84,8 +84,12 @@ class WalkingManager {
 
   Eigen::VectorXd M_armature_;
 
-  LIPState filtered_state_;
-  LIPState filtered_state2_;
+  LIPState sim_filt_LIPstate;
+  LIPState sim_filt_LIPstate2;
+
+  LIPState fb_filt_LIPstate;
+  LIPState fb_LIPstate;
+  
   Eigen::Matrix3d cov_x, cov_y, cov_z;
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
   double cov_mod_pos, cov_mod_vel, cov_mod_zmp;

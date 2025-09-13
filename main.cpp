@@ -769,7 +769,7 @@ int main(const int argc, const char* argv[]) {
     
     }
 
-    mujoco_ui.render();
+    // mujoco_ui.render();
   }
 
   // Free memory (Mujoco):
