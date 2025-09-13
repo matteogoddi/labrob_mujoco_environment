@@ -17,6 +17,7 @@
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/WholeBodyController.hpp>
+// #include <hrp4_locomotion/DdpSolver.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -33,7 +34,7 @@ class WalkingManager {
 
   LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  void updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
+  RobotState updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
 
   void saveLogs();
 
@@ -95,6 +96,8 @@ class WalkingManager {
   double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
+
+  Eigen::Vector3d u0 = Eigen::Vector3d::Zero();
 
 private:
 
@@ -163,12 +166,13 @@ private:
   std::vector<Eigen::VectorXd> fb_imu_accelerometer_log_;
   std::vector<Eigen::VectorXd> fb_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> fb_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> input_torque_log_;
 
   std::vector<long long> execution_time_wbc_log_;
   std::vector<long long> execution_time_mpc_log_;
   std::vector<long long> execution_time_ekf_log_;
   std::vector<long long> execution_time_kf_log_;
-  std::vector<long long> execution_time_kalman_gain_log_;
+  std::vector<long long> execution_time_update_log_;
   
   std::vector<Eigen::MatrixXd> kalman_gain_matrix_log_;
 

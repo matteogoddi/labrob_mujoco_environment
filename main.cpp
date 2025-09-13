@@ -275,8 +275,17 @@ void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
 
   std::cout << "Exiting simulation loop." << std::endl;
-  walking_manager.saveLogs();
-  std::cout << "Logs saved." << std::endl;
+  std::cout << "Do you want to save logs? [y/n]" << std::endl;
+  std::string user_input;
+  std::getline(std::cin, user_input);
+  if(user_input == "y" || user_input == "Y" || user_input == "yes" || user_input == "Yes" || user_input == "YES"){
+    std::cout << "Saving logs..." << std::endl;
+    walking_manager.saveLogs();
+    std::cout << "Logs saved." << std::endl;
+  }
+  else{
+    std::cout << "Logs not saved." << std::endl;
+  }
   
   if(useRobot){
     std::string experiment_folder;
@@ -426,14 +435,7 @@ int main(const int argc, const char* argv[]) {
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   // create a folder experiment in tmp labelled as the number of experiment i made
-  std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
   std::ofstream joint_names_log_file("/tmp/joint_names.txt");
-  std::ofstream input_command_log_file("/tmp/input_command.txt");
-  std::ofstream imu_accelerometer_log_file("/tmp/imu_accelerometer.txt");
-  std::ofstream imu_angular_velocity_log_file("/tmp/imu_angular_velocity.txt");
-  std::ofstream imu_orientation_log_file("/tmp/imu_orientation.txt");
-
-  std::ofstream execution_time_update_log_file("/tmp/execution_time_update.txt");
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -516,8 +518,6 @@ int main(const int argc, const char* argv[]) {
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
   ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
   std::shared_ptr<MotionSwitcherClient> msc;
-  pinocchio::Model real_model;
-  pinocchio::Data real_data;
 
   if(useRobot) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
@@ -605,30 +605,13 @@ int main(const int argc, const char* argv[]) {
         actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2] - 9.81;
-
-        imu_accelerometer_log_file << imu_state_data.accelerometer[0] << " "
-                                   << imu_state_data.accelerometer[1] << " "
-                                   << imu_state_data.accelerometer[2] - 9.81<< std::endl;
-        imu_angular_velocity_log_file << imu_state_data.omega[0] << " "
-                                      << imu_state_data.omega[1] << " "
-                                      << imu_state_data.omega[2] << std::endl;
-        imu_orientation_log_file << imu_quat.w() << " "
-                                 << imu_quat.x() << " "
-                                 << imu_quat.y() << " "
-                                 << imu_quat.z() << std::endl;
-
         
       }
 
       // Update walking manager:
       labrob::JointCommand joint_command;
-
-      auto update_start = std::chrono::high_resolution_clock::now();
       walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
-      auto update_end = std::chrono::high_resolution_clock::now();
-      auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
-      execution_time_update_log_file << update_duration << std::endl;
-      
+
       mj_step1(mj_model_ptr, mj_data_ptr);
 
       for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -636,8 +619,6 @@ int main(const int argc, const char* argv[]) {
         std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
         int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
         mj_data_ptr->ctrl[i] = joint_command[joint_name];
-
-        joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
       }
 
       mj_step2(mj_model_ptr, mj_data_ptr);
@@ -718,8 +699,6 @@ int main(const int argc, const char* argv[]) {
             motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
             motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
           }
-
-          input_command_log_file << motor_command.q_target[i] << " ";
         }
       
         // Costruisci comando DDS
@@ -756,8 +735,6 @@ int main(const int argc, const char* argv[]) {
           Eigen::AngleAxisd(imu_state_copy.rpy[2], Eigen::Vector3d::UnitZ())
         );
       }
-      joint_eff_log_file << std::endl;
-      input_command_log_file << std::endl;
 
       //sleep from 1 - now to 1 ms
       auto end_sleep = std::chrono::high_resolution_clock::now();
@@ -769,14 +746,12 @@ int main(const int argc, const char* argv[]) {
     
     }
 
-    // mujoco_ui.render();
+    mujoco_ui.render();
   }
 
   // Free memory (Mujoco):
   mj_deleteData(mj_data_ptr);
   mj_deleteModel(mj_model_ptr);
-
-  joint_eff_log_file.close();
 
   return 0;
 }

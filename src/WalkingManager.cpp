@@ -90,6 +90,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     fb_joint_position_log_.reserve(max_steps);
     fb_joint_velocity_log_.reserve(max_steps);
     real_com_log_.reserve(max_steps);
+
+    fb_imu_accelerometer_log_.reserve(max_steps);
+    fb_imu_angular_velocity_log_.reserve(max_steps);
+    fb_imu_orientation_log_.reserve(max_steps);
     predicted_imu_accelerometer_log_.reserve(max_steps);
     predicted_imu_angular_velocity_log_.reserve(max_steps);
     predicted_imu_orientation_log_.reserve(max_steps);
@@ -98,7 +102,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     execution_time_mpc_log_.reserve(max_steps);
     execution_time_ekf_log_.reserve(max_steps);
     execution_time_kf_log_.reserve(max_steps);
-    execution_time_kalman_gain_log_.reserve(max_steps);
+
+    input_torque_log_.reserve(max_steps);
 
     kalman_gain_matrix_log_.reserve(max_steps);
 
@@ -191,9 +196,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         fb_robot_data.oMf[fb_robot_model.getFrameId("imu_in_torso")].rotation()
     );
 
-    // std::cout << "imu orientation: " << imu_orientation.coeffs().transpose() << std::endl;
-    // std::cout << "imu orientation: " << imu_orientation.vec() << std::endl;
-
     Eigen::AngleAxisd axis_angle_init = Eigen::AngleAxisd(
         imu_orientation.w(),
         imu_orientation.vec()
@@ -229,9 +231,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         axis_angle_init.axis().z() * axis_angle_init.angle()
     );
     y_estimate.segment(3, fb_robot_model.nv - 6) = q_init.tail(fb_robot_model.nv - 6);
-    y_estimate.segment(fb_robot_model.nv - 3, 3) = imu_angular_velocity;
-    y_estimate.segment(fb_robot_model.nv - 3 + 3, fb_robot_model.nv - 6) = qdot_init.tail(fb_robot_model.nv - 6);
-    // y_estimate.segment(fb_robot_model.nv - 3 + fb_robot_model.nv - 3, 3) = J_imu_dot.block(0, 0, 3, fb_robot_model.nv) * qdot_init;
     y_estimate.segment(fb_robot_model.nv - 3 + fb_robot_model.nv - 3 + 6 + 3, 3) = left_foot_position;
     y_estimate.segment(fb_robot_model.nv - 3 + fb_robot_model.nv - 3 + 6 + 3 + 3, 3) = right_foot_position;
     
@@ -420,10 +419,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // Init MPC:
     Eigen::Vector3d p_CoM = sim_robot_data.com[0];
+    Eigen::Vector3d real_CoM = fb_robot_data.com[0];
     // std::cout << "CoM position: " << p_CoM.transpose() << std::endl;
     int64_t mpc_prediction_horizon_msec = 2000;
     int64_t mpc_timestep_msec = 100;
-    double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
+    double com_target_height = real_CoM.z() - T_lsole_init.translation().z();
     // std::cout << "CoM target height: " << com_target_height << std::endl;
     double foot_constraint_square_length = 100; //0.20;
     double foot_constraint_square_width = 100; //0.07;
@@ -438,6 +438,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         Eigen::Vector3d::Zero(),
         p_ZMP
     );
+    fb_filt_LIPstate = labrob::LIPState(
+        p_CoM,
+        Eigen::Vector3d::Zero(),
+        p_ZMP
+    );
     ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
         mpc_prediction_horizon_msec,
         mpc_timestep_msec,
@@ -446,39 +451,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_width
     );
 
-    // DdpSolver ddpsolver = DdpSolver();
-
-    // // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
-    // Eigen::Vector<double, NX> x0;
-    // x0 <<
-    //     sim_filt_LIPstate.com_pos_(0),
-    //     sim_filt_LIPstate.com_pos_(1),
-    //     sim_filt_LIPstate.com_pos_(2),
-    //     sim_filt_LIPstate.com_vel_(0),
-    //     sim_filt_LIPstate.com_vel_(1),
-    //     sim_filt_LIPstate.com_vel_(2),
-    //     sim_filt_LIPstate.zmp_pos_(0),
-    //     sim_filt_LIPstate.zmp_pos_(1),
-    //     sim_filt_LIPstate.zmp_pos_(2);
-    // std::array<Eigen::Vector<double, NX>, NH+1> x_traj;
-    // x_traj[0] = x0;
-    // std::array<Eigen::Vector<double, NU>, NH> u_traj;
-
-    // // set warm-start trajectories
-    // std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
-    // for (int i = 0; i < NH+1; ++i)
-    //     x_guess[i] = x0;
-    // std::array<Eigen::Vector<double, NU>, NH> u_guess;
-    // for (int i = 0; i < NH; ++i)
-    //     u_guess[i].setZero();
-    // ddpsolver.set_initial_state(x0);
-    // ddpsolver.set_x_warmstart(x_guess);
-    // ddpsolver.set_u_warmstart(u_guess);
-
     auto params = WholeBodyControllerParams::getDefaultParams();
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
-        sim_robot_model,
+        fb_robot_model,
         q_jnt_des_,
         0.001 * controller_timestep_msec_,
         armatures
@@ -514,7 +490,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     return true;
 } 
 
-void WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output) {
+RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output) {
 
     Eigen::Quaterniond q_orientation;
     Eigen::Vector3d q_rot_vec = x_estimate.segment<3>(3);  // x_estimate(3), (4), (5)
@@ -771,7 +747,6 @@ void WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::V
         orientation.y(),
         orientation.z()
     );
-
     current_state.linear_velocity = x_estimate.segment(fb_robot_model.nv, 3);
     current_state.angular_velocity = x_estimate.segment(fb_robot_model.nv + 3, 3);
 
@@ -820,19 +795,19 @@ void WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::V
         predicted_imu_orientation.x(),
         predicted_imu_orientation.y(),
         predicted_imu_orientation.z()
-    ));
-    predicted_imu_angular_velocity_log_.push_back(y_pred.segment(3, 3));
-    predicted_imu_accelerometer_log_.push_back(y_pred.segment(2*fb_robot_model.nv - 6, 3));
+    ).transpose());
+    predicted_imu_angular_velocity_log_.push_back(y_pred.segment(3, 3).transpose());
+    predicted_imu_accelerometer_log_.push_back(y_pred.segment(2*fb_robot_model.nv - 6, 3).transpose());
     fb_imu_orientation_log_.push_back(Eigen::Vector4d(
         fb_imu_orientation.w(),
         fb_imu_orientation.x(),
         fb_imu_orientation.y(),
         fb_imu_orientation.z()
-    ));
-    fb_imu_angular_velocity_log_.push_back(y_actual.segment(3, 3));
-    fb_imu_accelerometer_log_.push_back(y_actual.segment(2*fb_robot_model.nv - 6, 3));
+    ).transpose());
+    fb_imu_angular_velocity_log_.push_back(y_actual.segment(3, 3).transpose());
+    fb_imu_accelerometer_log_.push_back(y_actual.segment(2*fb_robot_model.nv - 6, 3).transpose());
 
-    // return current_state;
+    return current_state;
 }
 
 LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
@@ -977,6 +952,8 @@ WalkingManager::update(
     Eigen::VectorXd actual_output
 ) {
 
+    auto start_update = std::chrono::high_resolution_clock::now();
+
     int njnt = sim_robot_model.nv - 6; // size of configuration space without floating base
 
     auto q = robot_state_to_pinocchio_joint_configuration(sim_robot_model, sim_robot_state);
@@ -1000,7 +977,6 @@ WalkingManager::update(
 
     auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
     
-
     if (useRobot) {
 
         auto q_fb = robot_state_to_pinocchio_joint_configuration(fb_robot_model, fb_robot_state);
@@ -1085,10 +1061,6 @@ WalkingManager::update(
 
         real_current_gait_configuration.rsole.pos = labrob::SE3(fb_robot_data.oMf[rsole_idx_].rotation(), fb_robot_data.oMf[rsole_idx_].translation());
         real_current_gait_configuration.rsole.vel = J_rsole_fb * qdot_fb;
-
-        //log real com
-        Eigen::Vector3d real_com_pos = fb_robot_data.com[0];
-        real_com_log_.push_back(real_com_pos);
 
     }
 
@@ -1177,8 +1149,10 @@ WalkingManager::update(
         #pragma omp section
         {
             // EKF
-            fb_filt_robot_state = fb_robot_state;
-            updateEKF(fb_filt_robot_state, useRobot, actual_output);
+            // fb_filt_robot_state = fb_robot_state;
+            // updateEKF(fb_filt_robot_state, useRobot, actual_output);
+
+            fb_filt_robot_state = updateEKF(fb_robot_state, useRobot, actual_output);
         }
         #pragma omp section
         {
@@ -1188,31 +1162,35 @@ WalkingManager::update(
     auto t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
     execution_time_ekf_log_.push_back(t_duration);
 
-    
-    if (useRobot && t_msec_ > 6000) {
-        if(t_msec_ == 6002){
-            std::cout << "STARTING CLOSED-LOOP SIM"<< std::endl;
-        }
+    //update the model with the filtered state
+    auto q_fb_filt = robot_state_to_pinocchio_joint_configuration(fb_robot_model, fb_filt_robot_state);
+    auto qdot_fb_filt = robot_state_to_pinocchio_joint_velocity(fb_robot_model, fb_filt_robot_state);
+    pinocchio::forwardKinematics(fb_robot_model, fb_robot_data, q_fb_filt);
+    pinocchio::jacobianCenterOfMass(fb_robot_model, fb_robot_data, q_fb_filt);
+    pinocchio::computeJointJacobiansTimeVariation(fb_robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt);
+    pinocchio::framesForwardKinematics(fb_robot_model, fb_robot_data, q_fb_filt);
+    pinocchio::centerOfMass(fb_robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot_fb_filt);
 
-        const auto& fb_p_CoM = fb_robot_data.com[0];
-        const auto& J_CoM = fb_robot_data.Jcom;
-        Eigen::Vector3d zmp_3d;
-        zmp_3d.z() = fb_filt_robot_state.position(2) - fb_filt_robot_state.total_force.z() / (mass * eta2);
-        zmp_3d.x() = 0.0;
-        zmp_3d.y() = 0.0;
-        for (int i = 0; i < fb_filt_robot_state.contact_points.size(); ++i) {
-            auto &pi = fb_filt_robot_state.contact_points[i];
-            auto &fi = fb_filt_robot_state.contact_forces[i];
-            zmp_3d.x() += (pi.x() * fi.z() / fb_filt_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / fb_filt_robot_state.total_force.z());
-            zmp_3d.y() += (pi.y() * fi.z() / fb_filt_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / fb_filt_robot_state.total_force.z());
-        }
     
-        auto qdot_fb = robot_state_to_pinocchio_joint_velocity(fb_robot_model, fb_filt_robot_state);
-    
-        fb_LIPstate = LIPState(fb_p_CoM, J_CoM * qdot_fb, zmp_3d);
-    
-        // fb_filt_LIPstate = updateKF(fb_filt_LIPstate, fb_LIPstate, ismpc_ptr_->getInput());
+    const auto& fb_p_CoM = fb_robot_data.com[0];
+    const auto& fb_J_CoM = fb_robot_data.Jcom;
+    Eigen::Vector3d fb_zmp_3d;
+    fb_zmp_3d.z() = fb_filt_robot_state.position(2) - fb_filt_robot_state.total_force.z() / (mass * eta2);
+    fb_zmp_3d.x() = 0.0;
+    fb_zmp_3d.y() = 0.0;
+    for (int i = 0; i < fb_filt_robot_state.contact_points.size(); ++i) {
+        auto &pi = fb_filt_robot_state.contact_points[i];
+        auto &fi = fb_filt_robot_state.contact_forces[i];
+        fb_zmp_3d.x() += (pi.x() * fi.z() / fb_filt_robot_state.total_force.z() + (fb_zmp_3d.z() - pi.z()) * fi.x() / fb_filt_robot_state.total_force.z());
+        fb_zmp_3d.y() += (pi.y() * fi.z() / fb_filt_robot_state.total_force.z() + (fb_zmp_3d.z() - pi.z()) * fi.y() / fb_filt_robot_state.total_force.z());
     }
+    auto qdot_fb = robot_state_to_pinocchio_joint_velocity(fb_robot_model, fb_filt_robot_state);
+    t_start = std::chrono::high_resolution_clock::now();
+    fb_LIPstate = LIPState(fb_p_CoM, fb_J_CoM * qdot_fb, fb_zmp_3d);
+    fb_filt_LIPstate = updateKF(fb_filt_LIPstate, fb_LIPstate, ismpc_ptr_->getInput());
+    t_end = std::chrono::high_resolution_clock::now();
+    t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
+    // execution_time_fb_kf_log_.push_back(t_duration);
 
     const auto& p_CoM = sim_robot_data.com[0];
     const auto& J_CoM = sim_robot_data.Jcom;
@@ -1226,26 +1204,32 @@ WalkingManager::update(
         zmp_3d.x() += (pi.x() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / sim_robot_state.total_force.z());
         zmp_3d.y() += (pi.y() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / sim_robot_state.total_force.z());
     }
-
     t_start = std::chrono::high_resolution_clock::now();
-    if(!useRobot || t_msec_ >= 0) {
-        sim_LIPstate = LIPState(p_CoM, J_CoM * robot_state_to_pinocchio_joint_velocity(sim_robot_model, sim_robot_state), zmp_3d);
-
-        sim_filt_LIPstate = updateKF(sim_filt_LIPstate, sim_LIPstate, ismpc_ptr_->getInput());
-    }
+    sim_LIPstate = LIPState(p_CoM, J_CoM * robot_state_to_pinocchio_joint_velocity(sim_robot_model, sim_robot_state), zmp_3d);
+    sim_filt_LIPstate = updateKF(sim_filt_LIPstate, sim_LIPstate, ismpc_ptr_->getInput());
     t_end = std::chrono::high_resolution_clock::now();
     t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
     execution_time_kf_log_.push_back(t_duration);
 
+    //compare fb_filt_LIPstate with sim_filt_LIPstate
+    std::cout << "CoM position error: " << (fb_filt_LIPstate.com_pos_ - sim_filt_LIPstate.com_pos_).norm() << " m" << std::endl;
+    std::cout << "CoM velocity error: " << (fb_filt_LIPstate.com_vel_ - sim_filt_LIPstate.com_vel_).norm() << " m/s" << std::endl;
+    std::cout << "ZMP position error: " << (fb_filt_LIPstate.zmp_pos_ - sim_filt_LIPstate.zmp_pos_).norm() << " m" << std::endl;
+    
+    // compare fb_filt_robot_state with sim_robot_state
+    std::cout << "Base position error: " << (fb_filt_robot_state.position.head(3) - sim_robot_state.position.head(3)).norm() << " m" << std::endl;
+    std::cout << "Base orientation error (quat): " << fb_filt_robot_state.orientation.angularDistance(sim_robot_state.orientation) << " rad" << std::endl;
+    std::cout << "Base linear linear velocity error: " << (fb_filt_robot_state.linear_velocity.head(3) - sim_robot_state.linear_velocity.head(3)).norm() << " m/s" << std::endl;
+    std::cout << "Base angular linear velocity error: " << (fb_filt_robot_state.angular_velocity.tail(3) - sim_robot_state.angular_velocity.tail(3)).norm() << " rad/s" << std::endl;
+
     // CoM task:
     auto mpc_t0_ms = std::chrono::system_clock::now();
-    ismpc_ptr_->solve(t_msec_, walking_data_, sim_filt_LIPstate); //change sim to fb to close the loop
+    ismpc_ptr_->solve(t_msec_, walking_data_, fb_filt_LIPstate); //change sim to fb to close the loop
     auto mpc_tf_ms = std::chrono::system_clock::now();
     auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count();
     execution_time_mpc_log_.push_back(mpc_duration);
 
     // DdpSolver ddpsolver = DdpSolver();
-
     // // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
     // Eigen::Vector<double, NX> x0;
     // x0 <<
@@ -1272,18 +1256,22 @@ WalkingManager::update(
     // ddpsolver.set_initial_state(x0);
     // ddpsolver.set_x_warmstart(x_guess);
     // ddpsolver.set_u_warmstart(u_guess);
+
     // ddpsolver.solve();
+
+    // u0 = ddpsolver.u[0];
+
 
 
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(sim_filt_LIPstate, ismpc_ptr_->getInput());
-    // substitute with ddpsolver.u[0]
+    // auto lip_state = discrete_lip_dynamics_ptr_->integrate(sim_filt_LIPstate, ddpsolver.u[0]);
 
-    Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
-    Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
-    Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
+    // Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
+    // Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
+    // Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
 
-    LIPState sim_LIPstate_mpc = sim_filt_LIPstate;
+    // LIPState sim_LIPstate_mpc = sim_filt_LIPstate;
 
     // for (int i = 0; i < 20; ++i) {
     //     sim_LIPstate_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
@@ -1384,9 +1372,9 @@ WalkingManager::update(
 
 
     auto start = std::chrono::system_clock::now();
-    if (t_msec_ > 20000 && false) {
+    if (t_msec_ > 2000 && false) {
         // Use the robot feedback to compute the joint command:
-        if(t_msec_ == 20002){
+        if(t_msec_ == 2002){
             std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
         }
         joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
@@ -1423,6 +1411,7 @@ WalkingManager::update(
     mpc_com_log_.push_back(p_CoM_des);
     mpc_zmp_log_.push_back(p_ZMP_des);
     com_log_.push_back(p_CoM);
+    real_com_log_.push_back(fb_p_CoM);
     p_lsole_log_.push_back(T_lsole.translation().transpose());
     p_rsole_log_.push_back(T_rsole.translation().transpose());
     v_lsole_log_.push_back(v_lsole.head<3>().transpose());
@@ -1487,6 +1476,15 @@ WalkingManager::update(
         fb_joint_position_log_.back()(joint_id - 2) = fb_robot_state.joint_state[joint_name].pos;
         fb_joint_velocity_log_.back()(joint_id - 2) = fb_robot_state.joint_state[joint_name].vel;
     }
+    input_torque_log_.push_back(Eigen::VectorXd(njnt).transpose());
+    for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) fb_robot_model.njoints; ++joint_id) {
+        std::string joint_name = fb_robot_model.names[joint_id];
+        input_torque_log_.back()(joint_id - 2) = joint_command[joint_name];
+    }   
+
+    auto end_update = std::chrono::high_resolution_clock::now();
+    auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_update - start_update).count();
+    execution_time_update_log_.push_back(update_duration);
 }
 
 void WalkingManager::saveLogs() {
@@ -1511,6 +1509,11 @@ void WalkingManager::saveLogs() {
     std::ofstream com_file("/tmp/com.txt");
     for (auto& v : com_log_) {
         com_file << v.transpose() << "\n";
+    }
+
+    std::ofstream real_com_file("/tmp/real_com.txt");
+    for (auto& v : real_com_log_) {
+        real_com_file << v.transpose() << "\n";
     }
 
     std::ofstream p_lsole_file("/tmp/p_lsole.txt");
@@ -1607,9 +1610,49 @@ void WalkingManager::saveLogs() {
         sim_base_orientation_file << v.transpose() << "\n";
     }
 
+    std::ofstream sim_joint_position_file("/tmp/sim_joint_position.txt");
+    for (auto& v : sim_joint_position_log_) {
+        sim_joint_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream sim_joint_velocity_file("/tmp/sim_joint_velocity.txt");
+    for (auto& v : sim_joint_velocity_log_) {
+        sim_joint_velocity_file << v.transpose() << "\n";
+    }
+
     std::ofstream sim_base_angular_velocity_file("/tmp/sim_base_angular_velocity.txt");  
     for (auto& v : sim_base_angular_velocity_log_) {
         sim_base_angular_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_base_position_file("/tmp/fb_base_position.txt");
+    for (auto& v : fb_base_position_log_) {
+        fb_base_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_base_velocity_file("/tmp/fb_base_velocity.txt");
+    for (auto& v : fb_base_velocity_log_) {
+        fb_base_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_base_orientation_file("/tmp/fb_base_orientation.txt");
+    for (auto& v : fb_base_orientation_log_) {
+        fb_base_orientation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_base_angular_velocity_file("/tmp/fb_base_angular_velocity.txt");
+    for (auto& v : fb_base_angular_velocity_log_) {
+        fb_base_angular_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_joint_position_file("/tmp/fb_joint_position.txt");
+    for (auto& v : fb_joint_position_log_) {
+        fb_joint_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_joint_velocity_file("/tmp/fb_joint_velocity.txt");
+    for (auto& v : fb_joint_velocity_log_) {
+        fb_joint_velocity_file << v.transpose() << "\n";
     }
 
     std::ofstream execution_time_ekf_file("/tmp/execution_time_ekf.txt");
@@ -1632,6 +1675,11 @@ void WalkingManager::saveLogs() {
         execution_time_wbc_file << t << "\n";
     }
 
+    std::ofstream execution_time_update_file("/tmp/execution_time_update.txt");
+    for (auto& t : execution_time_update_log_) {
+        execution_time_update_file << t << "\n";
+    }
+
     std::ofstream predicted_imu_accelerometer_file("/tmp/predicted_imu_accelerometer.txt");
     for (auto& v : predicted_imu_accelerometer_log_) {
         predicted_imu_accelerometer_file << v.transpose() << "\n";
@@ -1645,6 +1693,26 @@ void WalkingManager::saveLogs() {
     std::ofstream predicted_imu_orientation_file("/tmp/predicted_imu_orientation.txt");
     for (auto& v : predicted_imu_orientation_log_) {
         predicted_imu_orientation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_imu_accelerometer_log_file("/tmp/fb_imu_accelerometer.txt");
+    for (auto& v : fb_imu_accelerometer_log_) {
+        fb_imu_accelerometer_log_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_imu_angular_velocity_log_file("/tmp/fb_imu_angular_velocity.txt");
+    for (auto& v : fb_imu_angular_velocity_log_) {
+        fb_imu_angular_velocity_log_file << v.transpose() << "\n";
+    }
+
+    std::ofstream fb_imu_orientation_log_file("/tmp/fb_imu_orientation.txt");
+    for (auto& v : fb_imu_orientation_log_) {
+        fb_imu_orientation_log_file << v.transpose() << "\n";
+    }
+
+    std::ofstream input_torque_file("/tmp/input_torque.txt");
+    for (auto& v : input_torque_log_) {
+        input_torque_file << v.transpose() << "\n";
     }
 
 
