@@ -30,12 +30,12 @@ if __name__ == '__main__':
     base_orientation = np.loadtxt(folder + '/base_orientation.txt')
     base_angular_velocity = np.loadtxt(folder + '/base_angular_velocity.txt')
 
-    execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
-    execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
-    execution_time_mpc = np.loadtxt(folder + '/execution_time_mpc.txt')
-    execution_time_wbc = np.loadtxt(folder + '/execution_time_wbc.txt')
-    execution_time_update = np.loadtxt(folder + '/execution_time_update.txt')
-    execution_time_kalman_gain = np.loadtxt(folder + '/execution_time_kalman_gain.txt')
+    # execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
+    # execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
+    # execution_time_mpc = np.loadtxt(folder + '/execution_time_mpc.txt')
+    # execution_time_wbc = np.loadtxt(folder + '/execution_time_wbc.txt')
+    # execution_time_update = np.loadtxt(folder + '/execution_time_update.txt')
+    # execution_time_kalman_gain = np.loadtxt(folder + '/execution_time_kalman_gain.txt')
 
     # kalman_gain_matrix = np.loadtxt(folder + '/kalman_gain_matrix.txt')
 
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     # kalman_gain_mean = np.mean(kalman_gain_matrix, axis=0)
     # np.savetxt(folder + '/kalman_gain_mean.txt', kalman_gain_mean)
 
-    num_samples = joint_pos.shape[0] -1000
+    num_samples = joint_pos.shape[0] -2
     joint_pos = joint_pos[:num_samples, :]
     joint_vel = joint_vel[:num_samples, :]
     joint_eff = joint_eff[:num_samples, :]
@@ -61,35 +61,35 @@ if __name__ == '__main__':
     base_velocity = base_velocity[:num_samples, :]
     base_orientation = base_orientation[:num_samples, :]
     base_angular_velocity = base_angular_velocity[:num_samples, :]
-    execution_time_ekf = execution_time_ekf[:num_samples]
-    execution_time_kf = execution_time_kf[:num_samples]
-    execution_time_mpc = execution_time_mpc[:num_samples]
-    execution_time_wbc = execution_time_wbc[:num_samples]
-    execution_time_update = execution_time_update[:num_samples]
-    execution_time_kalman_gain = execution_time_kalman_gain[:num_samples]
+    # execution_time_ekf = execution_time_ekf[:num_samples]
+    # execution_time_kf = execution_time_kf[:num_samples]
+    # execution_time_mpc = execution_time_mpc[:num_samples]
+    # execution_time_wbc = execution_time_wbc[:num_samples]
+    # execution_time_update = execution_time_update[:num_samples]
+    # execution_time_kalman_gain = execution_time_kalman_gain[:num_samples]
 
     if number != '0':
         fb_joint_pos: np.ndarray = np.loadtxt(folder +'/fb_joint_pos.txt')
         fb_joint_vel: np.ndarray = np.loadtxt(folder +'/fb_joint_vel.txt')
-        fb_com: np.ndarray = np.loadtxt(folder + '/real_com.txt')
+        # fb_com: np.ndarray = np.loadtxt(folder + '/real_com.txt')
         input_command: np.ndarray = np.loadtxt(folder + '/input_command.txt')
         imu_orientation: np.ndarray = np.loadtxt(folder + '/imu_orientation.txt')
         imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/imu_angular_velocity.txt')
         imu_accelerometer: np.ndarray = np.loadtxt(folder + '/imu_accelerometer.txt')
-        predicted_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/predicted_imu_accelerometer.txt')
-        predicted_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/predicted_imu_angular_velocity.txt')
-        predicted_imu_orientation: np.ndarray = np.loadtxt(folder + '/predicted_imu_orientation.txt')
+        # predicted_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/predicted_imu_accelerometer.txt')
+        # predicted_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/predicted_imu_angular_velocity.txt')
+        # predicted_imu_orientation: np.ndarray = np.loadtxt(folder + '/predicted_imu_orientation.txt')
 
         fb_joint_pos = fb_joint_pos[:num_samples, :]
         fb_joint_vel = fb_joint_vel[:num_samples, :]
-        fb_com = fb_com[:num_samples, :]
+        # fb_com = fb_com[:num_samples, :]
         input_command = input_command[:num_samples, :]
         imu_orientation = imu_orientation[:num_samples, :]
         imu_angular_velocity = imu_angular_velocity[:num_samples, :]
         imu_accelerometer = imu_accelerometer[:num_samples, :]
-        predicted_imu_accelerometer = predicted_imu_accelerometer[:num_samples, :]
-        predicted_imu_angular_velocity = predicted_imu_angular_velocity[:num_samples, :]
-        predicted_imu_orientation = predicted_imu_orientation[:num_samples, :]
+        # predicted_imu_accelerometer = predicted_imu_accelerometer[:num_samples, :]
+        # predicted_imu_angular_velocity = predicted_imu_angular_velocity[:num_samples, :]
+        # predicted_imu_orientation = predicted_imu_orientation[:num_samples, :]
         
     delta = 2e-3
     t = np.linspace(0.0, delta * num_samples, num_samples)
@@ -308,58 +308,58 @@ if __name__ == '__main__':
     fig.savefig("images/joints/velocities/simulation_joint_velocities_plot.png")
     plt.close(fig)
 
-    #plot execution times over the itarations, first in different plots, then summed up in a single plot with a line at 2000
-    figs = []
-    exec_times = {
-        'EKF': execution_time_ekf,
-        'KF': execution_time_kf,
-        'MPC': execution_time_mpc,
-        'WBC': execution_time_wbc,
-        'Update': execution_time_update,
-        'Kalman Gain': execution_time_kalman_gain
-    }
-    for name, times in exec_times.items():
-        fig, ax = plt.subplots()
-        ax.plot(times, label=f'{name} Execution Time', color='blue')
-        if name == 'Update':
-            ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
-        ax.set_xlabel('Iteration')
-        ax.set_ylabel('Execution Time [microseconds]')
-        ax.set_title(f'{name} Execution Time per Iteration')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        figs.append(fig)
+    # #plot execution times over the itarations, first in different plots, then summed up in a single plot with a line at 2000
+    # figs = []
+    # exec_times = {
+    #     'EKF': execution_time_ekf,
+    #     'KF': execution_time_kf,
+    #     'MPC': execution_time_mpc,
+    #     'WBC': execution_time_wbc,
+    #     'Update': execution_time_update,
+    #     'Kalman Gain': execution_time_kalman_gain
+    # }
+    # for name, times in exec_times.items():
+    #     fig, ax = plt.subplots()
+    #     ax.plot(times, label=f'{name} Execution Time', color='blue')
+    #     if name == 'Update':
+    #         ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+    #     ax.set_xlabel('Iteration')
+    #     ax.set_ylabel('Execution Time [microseconds]')
+    #     ax.set_title(f'{name} Execution Time per Iteration')
+    #     ax.grid(True)
+    #     ax.legend()
+    #     fig.tight_layout()
+    #     figs.append(fig)
 
-        fig.savefig(f"images/execution_times/{name}_execution_time_plot.png")
-        plt.close(fig)
-    # Combined plot
-    fig, ax = plt.subplots(figsize=(12, 8))
-    for name, times in exec_times.items():
-        ax.plot(times, label=f'{name} Execution Time')
-    ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
-    ax.set_xlabel('Iteration')
-    ax.set_ylabel('Execution Time [microseconds]')
-    ax.set_title('Execution Time per Iteration')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/execution_times/combined_execution_time_plot.png")
-    plt.close(fig)
+    #     fig.savefig(f"images/execution_times/{name}_execution_time_plot.png")
+    #     plt.close(fig)
+    # # Combined plot
+    # fig, ax = plt.subplots(figsize=(12, 8))
+    # for name, times in exec_times.items():
+    #     ax.plot(times, label=f'{name} Execution Time')
+    # ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+    # ax.set_xlabel('Iteration')
+    # ax.set_ylabel('Execution Time [microseconds]')
+    # ax.set_title('Execution Time per Iteration')
+    # ax.grid(True)
+    # ax.legend()
+    # fig.tight_layout()
+    # fig.savefig("images/execution_times/combined_execution_time_plot.png")
+    # plt.close(fig)
 
-    #plot the sum of each execution time
-    total_execution_time = (execution_time_ekf + execution_time_kf + execution_time_mpc + execution_time_wbc)
-    fig, ax = plt.subplots(figsize=(12, 8))
-    ax.plot(total_execution_time, label='Total Execution Time', color='blue')
-    ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
-    ax.set_xlabel('Iteration')
-    ax.set_ylabel('Total Execution Time [microseconds]')
-    ax.set_title('Total Execution Time per Iteration')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/execution_times/total_execution_time_plot.png")
-    plt.close(fig)
+    # #plot the sum of each execution time
+    # total_execution_time = (execution_time_ekf + execution_time_kf + execution_time_mpc + execution_time_wbc)
+    # fig, ax = plt.subplots(figsize=(12, 8))
+    # ax.plot(total_execution_time, label='Total Execution Time', color='blue')
+    # ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
+    # ax.set_xlabel('Iteration')
+    # ax.set_ylabel('Total Execution Time [microseconds]')
+    # ax.set_title('Total Execution Time per Iteration')
+    # ax.grid(True)
+    # ax.legend()
+    # fig.tight_layout()
+    # fig.savefig("images/execution_times/total_execution_time_plot.png")
+    # plt.close(fig)
 
 
     if number != '0':
@@ -377,48 +377,48 @@ if __name__ == '__main__':
         fig.savefig("images/feedback/fb_joint_velocities_plot.png")
         plt.close(fig)
         
-        # plot imu orientation predicted
-        fig, ax = plt.subplots()
-        ax.plot(t, predicted_imu_orientation[:, 0], label='Predicted IMU Orientation W', color='blue')
-        ax.plot(t, predicted_imu_orientation[:, 1], label='Predicted IMU Orientation X', color='orange')
-        ax.plot(t, predicted_imu_orientation[:, 2], label='Predicted IMU Orientation Y', color='green')
-        ax.plot(t, predicted_imu_orientation[:, 3], label='Predicted IMU Orientation Z', color='red')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Predicted IMU Orientation [Quaternion]')
-        ax.set_title('Predicted IMU Orientation')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/predicted_imu_orientation_plot.png")
-        plt.close(fig)
+        # # plot imu orientation predicted
+        # fig, ax = plt.subplots()
+        # ax.plot(t, predicted_imu_orientation[:, 0], label='Predicted IMU Orientation W', color='blue')
+        # ax.plot(t, predicted_imu_orientation[:, 1], label='Predicted IMU Orientation X', color='orange')
+        # ax.plot(t, predicted_imu_orientation[:, 2], label='Predicted IMU Orientation Y', color='green')
+        # ax.plot(t, predicted_imu_orientation[:, 3], label='Predicted IMU Orientation Z', color='red')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('Predicted IMU Orientation [Quaternion]')
+        # ax.set_title('Predicted IMU Orientation')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/predicted_imu_orientation_plot.png")
+        # plt.close(fig)
 
-        # plot imu accelerometer predicted
-        fig, ax = plt.subplots()
-        ax.plot(t, predicted_imu_accelerometer[:, 0], label='Predicted IMU Accelerometer X', color='blue')
-        ax.plot(t, predicted_imu_accelerometer[:, 1], label='Predicted IMU Accelerometer Y', color='orange')
-        ax.plot(t, predicted_imu_accelerometer[:, 2], label='Predicted IMU Accelerometer Z', color='green')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Predicted IMU Accelerometer [m/s^2]')
-        ax.set_title('Predicted IMU Accelerometer')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/predicted_imu_accelerometer_plot.png")
-        plt.close(fig)
+        # # plot imu accelerometer predicted
+        # fig, ax = plt.subplots()
+        # ax.plot(t, predicted_imu_accelerometer[:, 0], label='Predicted IMU Accelerometer X', color='blue')
+        # ax.plot(t, predicted_imu_accelerometer[:, 1], label='Predicted IMU Accelerometer Y', color='orange')
+        # ax.plot(t, predicted_imu_accelerometer[:, 2], label='Predicted IMU Accelerometer Z', color='green')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('Predicted IMU Accelerometer [m/s^2]')
+        # ax.set_title('Predicted IMU Accelerometer')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/predicted_imu_accelerometer_plot.png")
+        # plt.close(fig)
 
-        # plot imu angular velocity predicted
-        fig, ax = plt.subplots()
-        ax.plot(t, predicted_imu_angular_velocity[:, 0], label='Predicted IMU Angular Velocity X', color='blue')
-        ax.plot(t, predicted_imu_angular_velocity[:, 1], label='Predicted IMU Angular Velocity Y', color='orange')
-        ax.plot(t, predicted_imu_angular_velocity[:, 2], label='Predicted IMU Angular Velocity Z', color='green')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Predicted IMU Angular Velocity [rad/s]')
-        ax.set_title('Predicted IMU Angular Velocity')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/predicted_imu_angular_velocity_plot.png")
-        plt.close(fig)
+        # # plot imu angular velocity predicted
+        # fig, ax = plt.subplots()
+        # ax.plot(t, predicted_imu_angular_velocity[:, 0], label='Predicted IMU Angular Velocity X', color='blue')
+        # ax.plot(t, predicted_imu_angular_velocity[:, 1], label='Predicted IMU Angular Velocity Y', color='orange')
+        # ax.plot(t, predicted_imu_angular_velocity[:, 2], label='Predicted IMU Angular Velocity Z', color='green')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('Predicted IMU Angular Velocity [rad/s]')
+        # ax.set_title('Predicted IMU Angular Velocity')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/predicted_imu_angular_velocity_plot.png")
+        # plt.close(fig)
 
         # plot imu orientation
         fig, ax = plt.subplots()
@@ -463,48 +463,48 @@ if __name__ == '__main__':
         fig.savefig("images/feedback/imu_accelerometer_plot.png")
         plt.close(fig)
 
-        # plot error between real and predicted imu accelerometer
-        fig, ax = plt.subplots()
-        ax.plot(t, imu_accelerometer[:, 0] - predicted_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
-        ax.plot(t, imu_accelerometer[:, 1] - predicted_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
-        ax.plot(t, imu_accelerometer[:, 2] - predicted_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('IMU Accelerometer Error [m/s^2]')
-        ax.set_title('IMU Accelerometer Error: Real - Predicted')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/imu_accelerometer_error_plot.png")
-        plt.close(fig)
+        # # plot error between real and predicted imu accelerometer
+        # fig, ax = plt.subplots()
+        # ax.plot(t, imu_accelerometer[:, 0] - predicted_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
+        # ax.plot(t, imu_accelerometer[:, 1] - predicted_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
+        # ax.plot(t, imu_accelerometer[:, 2] - predicted_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('IMU Accelerometer Error [m/s^2]')
+        # ax.set_title('IMU Accelerometer Error: Real - Predicted')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/imu_accelerometer_error_plot.png")
+        # plt.close(fig)
 
-        # plot error between real and predicted imu angular velocity
-        fig, ax = plt.subplots()
-        ax.plot(t, imu_angular_velocity[:, 0] - predicted_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
-        ax.plot(t, imu_angular_velocity[:, 1] - predicted_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
-        ax.plot(t, imu_angular_velocity[:, 2] - predicted_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('IMU Angular Velocity Error [rad/s]')
-        ax.set_title('IMU Angular Velocity Error: Real - Predicted')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/imu_angular_velocity_error_plot.png")
-        plt.close(fig)
+        # # plot error between real and predicted imu angular velocity
+        # fig, ax = plt.subplots()
+        # ax.plot(t, imu_angular_velocity[:, 0] - predicted_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
+        # ax.plot(t, imu_angular_velocity[:, 1] - predicted_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
+        # ax.plot(t, imu_angular_velocity[:, 2] - predicted_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('IMU Angular Velocity Error [rad/s]')
+        # ax.set_title('IMU Angular Velocity Error: Real - Predicted')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/imu_angular_velocity_error_plot.png")
+        # plt.close(fig)
 
-        # plot error between real and predicted imu orientation
-        fig, ax = plt.subplots()
-        ax.plot(t, imu_orientation[:, 0] - predicted_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
-        ax.plot(t, imu_orientation[:, 1] - predicted_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
-        ax.plot(t, imu_orientation[:, 2] - predicted_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
-        ax.plot(t, imu_orientation[:, 3] - predicted_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('IMU Orientation Error [Quaternion]')
-        ax.set_title('IMU Orientation Error: Real - Predicted')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/imu_orientation_error_plot.png")
-        plt.close(fig)
+        # # plot error between real and predicted imu orientation
+        # fig, ax = plt.subplots()
+        # ax.plot(t, imu_orientation[:, 0] - predicted_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
+        # ax.plot(t, imu_orientation[:, 1] - predicted_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
+        # ax.plot(t, imu_orientation[:, 2] - predicted_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
+        # ax.plot(t, imu_orientation[:, 3] - predicted_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('IMU Orientation Error [Quaternion]')
+        # ax.set_title('IMU Orientation Error: Real - Predicted')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/imu_orientation_error_plot.png")
+        # plt.close(fig)
 
         figs = []
         for group_name, indices in grouped_indices.items():
@@ -596,9 +596,9 @@ if __name__ == '__main__':
         ax.plot(t, com_simulation[:, 0], label='CoM Simulation X', color='blue')
         ax.plot(t, com_simulation[:, 1], label='CoM Simulation Y', color='orange')
         ax.plot(t, com_simulation[:, 2], label='CoM Simulation Z', color='green')
-        ax.plot(t, fb_com[:, 0], label='CoM Real X', color='red', linestyle='--')
-        ax.plot(t, fb_com[:, 1], label='CoM Real Y', color='purple', linestyle='--')
-        ax.plot(t, fb_com[:, 2], label='CoM Real Z', color='brown', linestyle='--')
+        # ax.plot(t, fb_com[:, 0], label='CoM Real X', color='red', linestyle='--')
+        # ax.plot(t, fb_com[:, 1], label='CoM Real Y', color='purple', linestyle='--')
+        # ax.plot(t, fb_com[:, 2], label='CoM Real Z', color='brown', linestyle='--')
         ax.plot(t, com_desired[:, 0], label='CoM Desired X', color='cyan', linestyle=':')
         ax.plot(t, com_desired[:, 1], label='CoM Desired Y', color='magenta', linestyle=':')
         ax.plot(t, com_desired[:, 2], label='CoM Desired Z', color='yellow', linestyle=':')
@@ -611,20 +611,20 @@ if __name__ == '__main__':
         fig.savefig("images/feedback/com_plot.png")
         plt.close(fig)  
 
-        # Plot CoM error
-        com_error = com_simulation - fb_com
-        fig, ax = plt.subplots()
-        ax.plot(t, com_error[:, 0], label='CoM Error X', color='blue')
-        ax.plot(t, com_error[:, 1], label='CoM Error Y', color='orange')
-        ax.plot(t, com_error[:, 2], label='CoM Error Z', color='green')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('CoM Error [m]')
-        ax.set_title('CoM Error: Simulation - Real')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        fig.savefig("images/feedback/com_error_plot.png")
-        plt.close(fig)
+        # # Plot CoM error
+        # com_error = com_simulation - fb_com
+        # fig, ax = plt.subplots()
+        # ax.plot(t, com_error[:, 0], label='CoM Error X', color='blue')
+        # ax.plot(t, com_error[:, 1], label='CoM Error Y', color='orange')
+        # ax.plot(t, com_error[:, 2], label='CoM Error Z', color='green')
+        # ax.set_xlabel('Time [s]')
+        # ax.set_ylabel('CoM Error [m]')
+        # ax.set_title('CoM Error: Simulation - Real')
+        # ax.grid(True)
+        # ax.legend()
+        # fig.tight_layout()
+        # fig.savefig("images/feedback/com_error_plot.png")
+        # plt.close(fig)
 
         #plot error between feedback orientation and ekf orientation
         fig, ax = plt.subplots()

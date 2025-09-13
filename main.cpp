@@ -426,12 +426,8 @@ int main(const int argc, const char* argv[]) {
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   // create a folder experiment in tmp labelled as the number of experiment i made
-  std::ofstream joint_pos_log_file("/tmp/joint_pos.txt");
-  std::ofstream joint_vel_log_file("/tmp/joint_vel.txt");
   std::ofstream joint_eff_log_file("/tmp/joint_eff.txt");
   std::ofstream joint_names_log_file("/tmp/joint_names.txt");
-  std::ofstream fb_joint_pos_log_file("/tmp/fb_joint_pos.txt");
-  std::ofstream fb_joint_vel_log_file("/tmp/fb_joint_vel.txt");
   std::ofstream input_command_log_file("/tmp/input_command.txt");
   std::ofstream imu_accelerometer_log_file("/tmp/imu_accelerometer.txt");
   std::ofstream imu_angular_velocity_log_file("/tmp/imu_angular_velocity.txt");
@@ -641,8 +637,6 @@ int main(const int argc, const char* argv[]) {
         int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
         mj_data_ptr->ctrl[i] = joint_command[joint_name];
 
-        joint_pos_log_file << mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] << " ";
-        joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
         joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
       }
 
@@ -753,10 +747,6 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-  
-          //save values in the log files
-          fb_joint_pos_log_file << low_state_copy.q[i] << " ";
-          fb_joint_vel_log_file << low_state_copy.dq[i] << " ";
         }
 
         // convert imustatecopy from rpy to quaternion
@@ -766,21 +756,16 @@ int main(const int argc, const char* argv[]) {
           Eigen::AngleAxisd(imu_state_copy.rpy[2], Eigen::Vector3d::UnitZ())
         );
       }
-      
-      joint_pos_log_file << std::endl;
-      joint_vel_log_file << std::endl;
       joint_eff_log_file << std::endl;
-      fb_joint_pos_log_file << std::endl;
-      fb_joint_vel_log_file << std::endl;
       input_command_log_file << std::endl;
 
       //sleep from 1 - now to 1 ms
       auto end_sleep = std::chrono::high_resolution_clock::now();
       auto sleep = end_sleep - start_sleep;
-      // if(sleep < std::chrono::milliseconds(2))
-      //     std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
-      // else
-      //   std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
+      if(sleep < std::chrono::milliseconds(2))
+          std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
+      else
+        std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
     
     }
 
@@ -791,8 +776,6 @@ int main(const int argc, const char* argv[]) {
   mj_deleteData(mj_data_ptr);
   mj_deleteModel(mj_model_ptr);
 
-  joint_pos_log_file.close();
-  joint_vel_log_file.close();
   joint_eff_log_file.close();
 
   return 0;
