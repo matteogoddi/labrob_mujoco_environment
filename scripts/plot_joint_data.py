@@ -55,7 +55,7 @@ if __name__ == '__main__':
     # kalman_gain_mean = np.mean(kalman_gain_matrix, axis=0)
     # np.savetxt(folder + '/kalman_gain_mean.txt', kalman_gain_mean)
 
-    num_samples = sim_joint_position.shape[0] -2
+    num_samples = sim_joint_position.shape[0] -1000
     sim_joint_position = sim_joint_position[:num_samples, :]
     sim_joint_velocity = sim_joint_velocity[:num_samples, :]
     input_torque = input_torque[:num_samples, :]
