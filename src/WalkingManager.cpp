@@ -644,12 +644,6 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
             current_state
         );
 
-        Eigen::Quaterniond imu_orientation = Eigen::Quaterniond(
-            fb_robot_data.oMf[fb_robot_model.getFrameId("imu_in_torso")].rotation()
-        );
-
-        Eigen::Vector3d axis_angle = rotVecFromQuaternion(imu_orientation);
-
         Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, fb_robot_model.nv);
         pinocchio::getFrameJacobian(
             fb_robot_model, 
@@ -668,16 +662,14 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
             J_imu_dot
         );
 
-        //compute angular velocity of imu
-        Eigen::Vector3d imu_angular_velocity = J_imu.block(3, 0, 3, fb_robot_model.nv) * qdot;
-
-        //get feet position
         Eigen::Vector3d left_foot_position = fb_robot_data.oMf[lsole_idx_].translation();
         Eigen::Vector3d right_foot_position = fb_robot_data.oMf[rsole_idx_].translation();
 
-        y_actual.head(3) = axis_angle;
+        y_actual.head(3) = rotVecFromQuaternion(Eigen::Quaterniond(
+            fb_robot_data.oMf[fb_robot_model.getFrameId("imu_in_torso")].rotation()
+        ));
         y_actual.segment(3, fb_robot_model.nv - 6) = q.tail(fb_robot_model.nv - 6);
-        y_actual.segment(fb_robot_model.nv - 3, 3) = imu_angular_velocity;
+        y_actual.segment(fb_robot_model.nv - 3, 3) = J_imu.block(3, 0, 3, fb_robot_model.nv) * qdot;
         y_actual.segment(fb_robot_model.nv - 3 + 3, fb_robot_model.nv - 6) = qdot.tail(fb_robot_model.nv - 6);
         y_actual.segment(fb_robot_model.nv - 3 + fb_robot_model.nv - 3, 3) = J_imu.block(0, 0, 3, fb_robot_model.nv) * whole_body_controller_ptr_->get_q_ddot() + J_imu_dot.block(0, 0, 3, fb_robot_model.nv) * qdot;
         y_actual.segment(fb_robot_model.nv - 3 + fb_robot_model.nv - 3 + 6 + 3, 3) = left_foot_position*left_support_check;
