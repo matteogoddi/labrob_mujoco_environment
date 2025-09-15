@@ -39,13 +39,17 @@ if __name__ == '__main__':
     fb_joint_position: np.ndarray = np.loadtxt(folder +'/fb_joint_position.txt')
     fb_joint_velocity: np.ndarray = np.loadtxt(folder +'/fb_joint_velocity.txt')
     fb_com: np.ndarray = np.loadtxt(folder + '/real_com.txt')
-    # input_command: np.ndarray = np.loadtxt(folder + '/input_command.txt')
     fb_imu_orientation: np.ndarray = np.loadtxt(folder + '/fb_imu_orientation.txt')
     fb_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/fb_imu_angular_velocity.txt')
     fb_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/fb_imu_accelerometer.txt')
     predicted_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/predicted_imu_accelerometer.txt')
     predicted_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/predicted_imu_angular_velocity.txt')
     predicted_imu_orientation: np.ndarray = np.loadtxt(folder + '/predicted_imu_orientation.txt')
+
+    #load the feet velocity
+    v_lsole: np.ndarray = np.loadtxt(folder + '/v_lsole.txt')
+
+    v_rsole: np.ndarray = np.loadtxt(folder + '/v_rsole.txt')
 
     # kalman_gain_matrix = np.loadtxt(folder + '/kalman_gain_matrix.txt')
 
@@ -80,13 +84,15 @@ if __name__ == '__main__':
     fb_joint_position = fb_joint_position[:num_samples, :]
     fb_joint_velocity = fb_joint_velocity[:num_samples, :]
     fb_com = fb_com[:num_samples, :]
-    # input_command = input_command[:num_samples, :]
     fb_imu_orientation = fb_imu_orientation[:num_samples, :]
     fb_imu_angular_velocity = fb_imu_angular_velocity[:num_samples, :]
     fb_imu_accelerometer = fb_imu_accelerometer[:num_samples, :]
     predicted_imu_accelerometer = predicted_imu_accelerometer[:num_samples, :]
     predicted_imu_angular_velocity = predicted_imu_angular_velocity[:num_samples, :]
     predicted_imu_orientation = predicted_imu_orientation[:num_samples, :]
+
+    v_lsole = v_lsole[:num_samples, :]
+    v_rsole = v_rsole[:num_samples, :]
         
     delta = 1 / 500  # Assuming a control frequency of 500 Hz
     t = np.linspace(0.0, delta * num_samples, num_samples)
@@ -106,26 +112,42 @@ if __name__ == '__main__':
 
     grouped_indices = defaultdict(list)
 
+    print(joint_names)
+
     for idx, name in enumerate(joint_names):
         base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
         grouped_indices[base_name].append(idx)
-    
-    # Crea un plot per ogni gruppo
-    figs = []
-    for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots()
-        for i in indices:
-            ax.plot(t, input_torque[:, i], label=joint_names[i])
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Torque [Nm]')
-        ax.set_title(group_name.replace('_', ' ').title())
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
-        figs.append(fig)
 
-        fig.savefig(f"images/joints/torques/{group_name}_torque_plot.png")
-        plt.close(fig)
+    #plot vlsole e vrsole
+    fig, ax = plt.subplots()
+    ax.plot(t, v_lsole[:, 0], label='v_lsole_x', color='blue')
+    ax.plot(t, v_lsole[:, 1], label='v_lsole_y', color='orange')
+    ax.plot(t, v_lsole[:, 2], label='v_lsole_z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Linear Velocity [m/s]')
+    ax.set_title('Left Foot Linear Velocity')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/joints/velocities/left_foot_linear_velocity.png")
+    plt.close(fig)
+    
+    # # Crea un plot per ogni gruppo
+    # figs = []
+    # for group_name, indices in grouped_indices.items():
+    #     fig, ax = plt.subplots()
+    #     for i in indices:
+    #         ax.plot(t, input_torque[:, i], label=joint_names[i])
+    #     ax.set_xlabel('Time [s]')
+    #     ax.set_ylabel('Torque [Nm]')
+    #     ax.set_title(group_name.replace('_', ' ').title())
+    #     ax.grid(True)
+    #     ax.legend()
+    #     fig.tight_layout()
+    #     figs.append(fig)
+
+    #     fig.savefig(f"images/joints/torques/{group_name}_torque_plot.png")
+    #     plt.close(fig)
 
     figs = []
     for group_name, indices in grouped_indices.items():
@@ -236,6 +258,7 @@ if __name__ == '__main__':
     # Plot position error between input command and feedback joint position
     fig, ax = plt.subplots(figsize=(18, 12))
     num_joints = sim_joint_position.shape[1]
+    print(num_joints)
     colormap = plt.colormaps['tab10'] 
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):

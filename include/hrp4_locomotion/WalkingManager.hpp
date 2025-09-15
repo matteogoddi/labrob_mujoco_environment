@@ -55,8 +55,14 @@ class WalkingManager {
   pinocchio::Model fb_robot_model;
   pinocchio::Data fb_robot_data;
 
-  pinocchio::Model model;
-  pinocchio::Data data;
+  pinocchio::Model predicted_robot_model;
+  pinocchio::Data predicted_robot_data;
+
+  pinocchio::Model estimated_robot_model;
+  pinocchio::Data estimated_robot_data;
+
+  pinocchio::Model prec_estimated_robot_model;
+  pinocchio::Data prec_estimated_robot_data;
 
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
@@ -122,7 +128,7 @@ private:
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 
-  Eigen::MatrixXd K; 
+  Eigen::MatrixXd Kalman_Gain; 
 
   std::vector<long long> mpc_timings_log_;
   std::vector<Eigen::Vector3d> mpc_com_log_;

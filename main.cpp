@@ -41,6 +41,11 @@ static const std::string HG_STATE_TOPIC = "rt/lowstate";
 labrob::WalkingManager walking_manager;
 bool useRobot = false;
 bool useSim = false;
+bool use_wbc_cl = false;
+bool use_mpc_cl = false;
+bool use_ekf_cl = false;
+bool use_kf_cl = false;
+bool use_lip_cl = false;
 
 template <typename T>
 class DataBuffer {
@@ -434,8 +439,32 @@ int main(const int argc, const char* argv[]) {
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
-  // create a folder experiment in tmp labelled as the number of experiment i made
-  std::ofstream joint_names_log_file("/tmp/joint_names.txt");
+  // ask user which closed loop to use
+  std::cout << "Select closed loop to use:" << std::endl;
+  std::cout << "1. Whole Body Controller (WBC)" << std::endl;
+  std::cout << "2. Model Predictive Control (MPC)" << std::endl;
+  std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
+  std::cout << "4. Kalman Filter (KF)" << std::endl;
+  std::cout << "5. Linear Inverted Pendulum (LIP)" << std::endl;
+  std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for WBC and EKF)." << std::endl;
+  std::cout << "Enter your choice: " << std::endl;
+  std::string user_input;
+  std::getline(std::cin, user_input);
+  std::istringstream iss(user_input);
+  std::string token;
+  while (iss >> token) {
+    if (token == "1") {
+      use_wbc_cl = true;
+    } else if (token == "2") {
+      use_mpc_cl = true;
+    } else if (token == "3") {
+      use_ekf_cl = true;
+    } else if (token == "4") {
+      use_kf_cl = true;
+    } else if (token == "5") {
+      use_lip_cl = true;
+    }
+  }
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -456,7 +485,7 @@ int main(const int argc, const char* argv[]) {
   mjtNum r_shoulder_p_init = 0.07;
   mjtNum r_shoulder_r_init = -0.14;
   mjtNum r_shoulder_y_init = 0.0;
-  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
+  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.7;
   mjtNum l_shoulder_p_init = r_shoulder_p_init;
   mjtNum l_shoulder_r_init = -r_shoulder_r_init;
   mjtNum l_shoulder_y_init = 0.0;
@@ -499,11 +528,7 @@ int main(const int argc, const char* argv[]) {
     std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
     int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
     armatures[joint_name] = mj_model_ptr->dof_armature[dof_id];
-    joint_names_log_file << joint_name << std::endl;
   }
-
-  joint_names_log_file.flush();
-  joint_names_log_file.close();
 
   // Walking Manager:
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);

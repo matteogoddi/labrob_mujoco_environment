@@ -36,7 +36,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.gamma = 5;
+  params.gamma = 0;
   params.mu = 0.5;
 
   params.foot_length = 0.15;
@@ -80,12 +80,13 @@ WholeBodyController::WholeBodyController(
   n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
-  for (pinocchio::JointIndex joint_id = 2;
+  for (pinocchio::JointIndex joint_id = 0;
        joint_id < (pinocchio::JointIndex) robot_model_.njoints;
        ++joint_id) {
-    std::string joint_name = robot_model_.names[joint_id];
-    M_armature_(joint_id - 2) = armatures[joint_name];
+    std::string joint_name = robot_model_.names[joint_id + 2];
+    M_armature_(joint_id) = armatures[joint_name];
   }
+  std::cout << "check 7" << std::endl;
 
   wbc_solver_ptr_ = std::make_unique<qpsolvers::QPSolverEigenWrapper<double>>(
       std::make_shared<qpsolvers::HPIPMQPSolver>(
@@ -321,10 +322,11 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
 
   JointCommand joint_command;
-  for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
-    const auto& joint_name = robot_model.names[joint_id];
-    joint_command[joint_name] = tau[joint_id - 2];
+  for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
+    const auto& joint_name = robot_model.names[joint_id + 2];
+    joint_command[joint_name] = tau[joint_id];
   }
+  std::cout << "check 8" << std::endl;
   
   return joint_command;
 }
