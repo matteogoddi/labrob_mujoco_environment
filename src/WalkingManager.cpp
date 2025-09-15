@@ -265,7 +265,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         std::string joint_name = sim_robot_model.names[joint_id + 2];
         M_armature_(joint_id) = armatures[joint_name];
     }
-    std::cout << "check 1" << std::endl;
 
     double waist_p_des = 0.0;
     double waist_y_des = 0.0;
@@ -290,6 +289,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     double l_shoulder_r_des = -r_shoulder_r_des;
     double l_shoulder_y_des = 0.0;
     double l_elbow_p_des = r_elbow_p_des;
+
 
     q_jnt_des_ = q_init.tail(njnt);
 
@@ -415,13 +415,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //labrob::readFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
     //labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
 
+
     // Init MPC:
     Eigen::Vector3d p_CoM = sim_robot_data.com[0];
-    // std::cout << "CoM position: " << p_CoM.transpose() << std::endl;
     int64_t mpc_prediction_horizon_msec = 2000;
     int64_t mpc_timestep_msec = 100;
     double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-    // std::cout << "CoM target height: " << com_target_height << std::endl;
     double foot_constraint_square_length = 100; //0.20;
     double foot_constraint_square_width = 100; //0.07;
     Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
@@ -1004,10 +1003,7 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
                 fb_robot_data.oMf[fb_robot_model.getFrameId("imu_in_torso")].rotation()).z()
         );
 
-        std::cout << fb_robot_model.nv<< std::endl;
-
         y_actual.head(3) = rotVecFromQuaternion(actual_imu_orientation);
-        std::cout << "Actual IMU orientation quaternion: " << actual_imu_orientation<< std::endl;
         y_actual.segment(3, fb_robot_model.nv - 6) = q.tail(fb_robot_model.nv - 6);
         y_actual.segment(fb_robot_model.nv - 3, 3) = J_imu.bottomRows(3) * qdot;
         y_actual.segment(fb_robot_model.nv - 3 + 3, fb_robot_model.nv - 6) = qdot.tail(fb_robot_model.nv - 6);
@@ -1078,13 +1074,11 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     current_state.orientation = quaternionFromRotVec(x_estimate.segment<3>(3));
     current_state.linear_velocity = x_estimate.segment(fb_robot_model.nv, 3);
     current_state.angular_velocity = x_estimate.segment(fb_robot_model.nv + 3, 3);
-    std::cout << "check 5" << std::endl;
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) fb_robot_model.nv - 6; ++joint_id) {
         std::string joint_name = fb_robot_model.names[joint_id + 2];
         current_state.joint_state[joint_name].pos = x_estimate(joint_id + 6);
         current_state.joint_state[joint_name].vel = x_estimate(fb_robot_model.nv - 6 + joint_id + 6 + 6);
     }
-    std::cout << "check 6" << std::endl;
     Eigen::Quaterniond predicted_imu_orientation = quaternionFromRotVec(y_pred.head(3));
     Eigen::Quaterniond fb_imu_orientation = quaternionFromRotVec(y_actual.head(3));
 
@@ -1251,7 +1245,6 @@ WalkingManager::update(
     Eigen::VectorXd actual_output
 ) {
 
-    std::cout << "WalkingManager update() called." << std::endl;
     auto start_update = std::chrono::high_resolution_clock::now();
 
     int njnt = sim_robot_model.nv - 6; // size of configuration space without floating base
@@ -1341,8 +1334,6 @@ WalkingManager::update(
 
     sim_current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     sim_current_gait_configuration.rsole.vel = J_rsole * qdot;
-
-    std::cout << "Simulated COM pos: " << std::endl;
 
     double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
     double mass = pinocchio::computeTotalMass(sim_robot_model);
@@ -1495,17 +1486,6 @@ WalkingManager::update(
     t_end = std::chrono::high_resolution_clock::now();
     t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
     execution_time_kf_log_.push_back(t_duration);
-
-    //compare fb_filt_LIPstate with sim_filt_LIPstate
-    std::cout << "CoM position error: " << (fb_filt_LIPstate.com_pos_ - sim_filt_LIPstate.com_pos_).norm() << " m" << std::endl;
-    std::cout << "CoM velocity error: " << (fb_filt_LIPstate.com_vel_ - sim_filt_LIPstate.com_vel_).norm() << " m/s" << std::endl;
-    std::cout << "ZMP position error: " << (fb_filt_LIPstate.zmp_pos_ - sim_filt_LIPstate.zmp_pos_).norm() << " m" << std::endl;
-    
-    // compare fb_filt_robot_state with sim_robot_state
-    std::cout << "Base position error: " << (fb_filt_robot_state.position.head(3) - sim_robot_state.position.head(3)).norm() << " m" << std::endl;
-    std::cout << "Base orientation error (quat): " << fb_filt_robot_state.orientation.angularDistance(sim_robot_state.orientation) << " rad" << std::endl;
-    std::cout << "Base linear linear velocity error: " << (fb_filt_robot_state.linear_velocity.head(3) - sim_robot_state.linear_velocity.head(3)).norm() << " m/s" << std::endl;
-    std::cout << "Base angular linear velocity error: " << (fb_filt_robot_state.angular_velocity.tail(3) - sim_robot_state.angular_velocity.tail(3)).norm() << " rad/s" << std::endl;
 
     // CoM task:
     auto mpc_t0_ms = std::chrono::system_clock::now();
@@ -1666,9 +1646,6 @@ WalkingManager::update(
     //     );
     // }
 
-
-    std::cout << "check before WBC" << std::endl;
-
     auto start = std::chrono::system_clock::now();
     if (t_msec_ > 2000) {
         // Use the robot feedback to compute the joint command:
@@ -1735,15 +1712,11 @@ WalkingManager::update(
     ekf_base_angular_velocity_log_.push_back(fb_filt_robot_state.angular_velocity.transpose());
     ekf_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
     ekf_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());   
-    std::cout << "check 1" << std::endl;
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) fb_robot_model.nv - 6; ++joint_id) {
         std::string joint_name = fb_robot_model.names[joint_id + 2];
-        std::cout << joint_name << std::endl;
         ekf_joint_position_log_.back()(joint_id) = fb_filt_robot_state.joint_state[joint_name].pos;
         ekf_joint_velocity_log_.back()(joint_id) = fb_filt_robot_state.joint_state[joint_name].vel;
     }
-    std::cout << "check 2" << std::endl;
-    // Log the simulated state:
     sim_base_position_log_.push_back(sim_robot_state.position.transpose());
     sim_base_velocity_log_.push_back(sim_robot_state.linear_velocity.transpose());
     sim_base_orientation_log_.push_back(Eigen::Vector4d(
@@ -1760,7 +1733,6 @@ WalkingManager::update(
         sim_joint_position_log_.back()(joint_id) = sim_robot_state.joint_state[joint_name].pos;
         sim_joint_velocity_log_.back()(joint_id) = sim_robot_state.joint_state[joint_name].vel;
     }
-    std::cout << "check 3" << std::endl;
     // Log the actual state:
     fb_base_position_log_.push_back(fb_robot_state.position.transpose());
     fb_base_velocity_log_.push_back(fb_robot_state.linear_velocity.transpose());
@@ -1778,13 +1750,11 @@ WalkingManager::update(
         fb_joint_position_log_.back()(joint_id) = fb_robot_state.joint_state[joint_name].pos;
         fb_joint_velocity_log_.back()(joint_id) = fb_robot_state.joint_state[joint_name].vel;
     }
-    std::cout << "check 4" << std::endl;
     input_torque_log_.push_back(Eigen::VectorXd(njnt).transpose());
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) fb_robot_model.nv - 6; ++joint_id) {
         std::string joint_name = fb_robot_model.names[joint_id + 2];
         input_torque_log_.back()(joint_id) = joint_command[joint_name];
     }   
-    std::cout << "check 5" << std::endl;
 
     auto end_update = std::chrono::high_resolution_clock::now();
     auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_update - start_update).count();
@@ -1798,7 +1768,6 @@ void WalkingManager::saveLogs() {
         std::string joint_name = fb_robot_model.names[joint_id + 2];
         joint_names_file << joint_name << "\n";
     }
-    std::cout << "check 5" << std::endl;
 
     std::ofstream mpc_timings_file("/tmp/mpc_timings.txt");
     for (auto& t : mpc_timings_log_) {

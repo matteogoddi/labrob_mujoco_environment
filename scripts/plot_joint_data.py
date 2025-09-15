@@ -112,8 +112,6 @@ if __name__ == '__main__':
 
     grouped_indices = defaultdict(list)
 
-    print(joint_names)
-
     for idx, name in enumerate(joint_names):
         base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
         grouped_indices[base_name].append(idx)
@@ -258,7 +256,6 @@ if __name__ == '__main__':
     # Plot position error between input command and feedback joint position
     fig, ax = plt.subplots(figsize=(18, 12))
     num_joints = sim_joint_position.shape[1]
-    print(num_joints)
     colormap = plt.colormaps['tab10'] 
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
