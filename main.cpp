@@ -482,10 +482,10 @@ int main(const int argc, const char* argv[]) {
   mjtNum l_knee_init = r_knee_init;
   mjtNum l_ankle_p_init = r_ankle_p_init;
   mjtNum l_ankle_r_init = -r_ankle_r_init;
-  mjtNum r_shoulder_p_init = 0.10;
+  mjtNum r_shoulder_p_init = 0.07;
   mjtNum r_shoulder_r_init = -0.14;
   mjtNum r_shoulder_y_init = 0.0;
-  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.4;
+  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
   mjtNum l_shoulder_p_init = r_shoulder_p_init;
   mjtNum l_shoulder_r_init = -r_shoulder_r_init;
   mjtNum l_shoulder_y_init = 0.0;
@@ -635,6 +635,16 @@ int main(const int argc, const char* argv[]) {
 
       // Update walking manager:
       labrob::JointCommand joint_command;
+      // #pragma omp parallel sections num_threads(2)
+      // {
+      //   #pragma omp section
+      //   {
+      //     walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
+      //   }
+      //   #pragma omp section
+      //   {
+      //   }
+      // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
 
       mj_step1(mj_model_ptr, mj_data_ptr);

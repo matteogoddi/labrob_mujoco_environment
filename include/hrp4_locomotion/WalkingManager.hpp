@@ -174,13 +174,13 @@ private:
   std::vector<Eigen::VectorXd> fb_imu_orientation_log_;
   std::vector<Eigen::VectorXd> input_torque_log_;
 
+  std::vector<Eigen::MatrixXd> kalman_gain_log_;
+
   std::vector<long long> execution_time_wbc_log_;
   std::vector<long long> execution_time_mpc_log_;
   std::vector<long long> execution_time_ekf_log_;
   std::vector<long long> execution_time_kf_log_;
   std::vector<long long> execution_time_update_log_;
-  
-  std::vector<Eigen::MatrixXd> kalman_gain_matrix_log_;
 
 }; // end class WalkingManager
 

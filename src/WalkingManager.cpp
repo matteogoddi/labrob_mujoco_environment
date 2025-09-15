@@ -105,7 +105,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     input_torque_log_.reserve(max_steps);
 
-    kalman_gain_matrix_log_.reserve(max_steps);
+    kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
     std::string robot_description_filename = "../g1_description/unitreeg1.urdf";
@@ -930,7 +930,7 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
 
     //PREDICTION COVARIANCE E KALMAN GAIN
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
-    Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
+    // Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
 
     // Eigen::LLT<Eigen::MatrixXd> llt(C * Lambda_ * C.transpose() + R);
     // Eigen::MatrixXd MatInv = llt.solve(Eigen::MatrixXd::Identity(n_ekf_output, n_ekf_output));
@@ -939,12 +939,13 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
     // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
     // Eigen::MatrixXd K = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
 
-    // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
-    // K = Lambda_ * C.transpose();
-    // K = S.ldlt().solve(K.transpose()).transpose();
+    Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
+    Kalman_Gain = Lambda_ * C.transpose();
+    Kalman_Gain = S.ldlt().solve(Kalman_Gain.transpose()).transpose();
 
-    //save kalman gain matrix in a file
-    // kalman_gain_matrix_log_file_ << K << std::endl;
+    //save kalman gain matrix in kalman_gain_log push backù
+    kalman_gain_log_.push_back(Kalman_Gain);
+
 
     //take K from the file "mean_kalman_gain"
     
@@ -1364,6 +1365,7 @@ WalkingManager::update(
         {
         }
     } // end of parallel sections
+    // fb_filt_robot_state = updateEKF(fb_robot_state, useRobot, actual_output);
     auto t_end = std::chrono::high_resolution_clock::now();
     auto t_duration = std::chrono::duration_cast<std::chrono::microseconds>(t_end - t_start).count();
     execution_time_ekf_log_.push_back(t_duration);
@@ -1489,12 +1491,27 @@ WalkingManager::update(
 
     // CoM task:
     auto mpc_t0_ms = std::chrono::system_clock::now();
-    if (t_msec_ > 2000){
-        ismpc_ptr_->solve(t_msec_, walking_data_, fb_filt_LIPstate);
-    }
-    else {
-        ismpc_ptr_->solve(t_msec_, walking_data_, sim_filt_LIPstate);
-    }
+    #pragma omp parallel sections num_threads(2)
+    {
+        #pragma omp section
+        {
+            if (t_msec_ > 2000){
+                ismpc_ptr_->solve(t_msec_, walking_data_, fb_filt_LIPstate);
+            }
+            else {
+                ismpc_ptr_->solve(t_msec_, walking_data_, sim_filt_LIPstate);
+            }
+        }
+        #pragma omp section
+        {
+        }
+    } // end of parallel sections
+    // if (t_msec_ > 2000){
+    //     ismpc_ptr_->solve(t_msec_, walking_data_, fb_filt_LIPstate);
+    // }
+    // else {
+    //     ismpc_ptr_->solve(t_msec_, walking_data_, sim_filt_LIPstate);
+    // }
     //change sim to fb to close the loop
     auto mpc_tf_ms = std::chrono::system_clock::now();
     auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count();
@@ -1647,28 +1664,59 @@ WalkingManager::update(
     // }
 
     auto start = std::chrono::system_clock::now();
-    if (t_msec_ > 2000) {
-        // Use the robot feedback to compute the joint command:
-        if(t_msec_ == 2002){
-            std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
+    #pragma omp parallel sections num_threads(2)
+    {
+        #pragma omp section
+        {
+            if (t_msec_ > 2000) {
+                // Use the robot feedback to compute the joint command:
+                if(t_msec_ == 2002){
+                    std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
+                }
+                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+                    fb_robot_model,
+                    fb_filt_robot_state,
+                    fb_robot_data,
+                    fb_current_gait_configuration,
+                    desired_gait_configuration
+                );
+            } else {
+                // Use the MPC to compute the joint command:
+                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+                    sim_robot_model,
+                    sim_robot_state,
+                    sim_robot_data,
+                    sim_current_gait_configuration,
+                    desired_gait_configuration
+                );
+            }
         }
-        joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-            fb_robot_model,
-            fb_filt_robot_state,
-            fb_robot_data,
-            fb_current_gait_configuration,
-            desired_gait_configuration
-        );
-    } else {
-        // Use the MPC to compute the joint command:
-        joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-            sim_robot_model,
-            sim_robot_state,
-            sim_robot_data,
-            sim_current_gait_configuration,
-            desired_gait_configuration
-        );
-    }
+        #pragma omp section
+        {
+        }
+    } // end of parallel sections
+    // if (t_msec_ > 2000) {
+    //     // Use the robot feedback to compute the joint command:
+    //     if(t_msec_ == 2002){
+    //         std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
+    //     }
+    //     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+    //         fb_robot_model,
+    //         fb_filt_robot_state,
+    //         fb_robot_data,
+    //         fb_current_gait_configuration,
+    //         desired_gait_configuration
+    //     );
+    // } else {
+    //     // Use the MPC to compute the joint command:
+    //     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+    //         sim_robot_model,
+    //         sim_robot_state,
+    //         sim_robot_data,
+    //         sim_current_gait_configuration,
+    //         desired_gait_configuration
+    //     );
+    // }
     auto end = std::chrono::system_clock::now();
     auto compute_id_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
     execution_time_wbc_log_.push_back(compute_id_duration);
@@ -1762,6 +1810,21 @@ WalkingManager::update(
 }
 
 void WalkingManager::saveLogs() {
+
+    //compute mean kalman gain matrix and save it to a file
+    Eigen::MatrixXd mean_Kalman_Gain = Eigen::MatrixXd::Zero(kalman_gain_log_[0].rows(), kalman_gain_log_[0].cols());
+    for (auto& Kalman_Gain : kalman_gain_log_) {
+        mean_Kalman_Gain += Kalman_Gain;
+    }
+    mean_Kalman_Gain /= kalman_gain_log_.size();
+    std::ofstream mean_kalman_gain_file("../mean_kalman_gain.txt");
+    for (int i = 0; i < mean_Kalman_Gain.rows(); ++i) {
+        for (int j = 0; j < mean_Kalman_Gain.cols(); ++j) {
+            mean_kalman_gain_file << mean_Kalman_Gain(i, j);
+            if (j < mean_Kalman_Gain.cols() - 1) mean_kalman_gain_file << " ";
+        }
+        mean_kalman_gain_file << "\n";
+    }
 
     std::ofstream joint_names_file("/tmp/joint_names.txt");
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) fb_robot_model.nv - 6; ++joint_id) {
