@@ -25,7 +25,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_regulation = 10.0;
 
   params.weight_q_ddot = 1e-4;
-  params.weight_com = 1e-1;
+  params.weight_com = 1e-2;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-1;
@@ -99,6 +99,7 @@ WholeBodyController::compute_inverse_dynamics(
     const pinocchio::Model& robot_model,
     const labrob::RobotState& robot_state,
     pinocchio::Data& robot_data,
+    pinocchio::Data& fb_robot_data,
     const labrob::GaitConfiguration& current,
     const labrob::GaitConfiguration& desired
 ) {
@@ -120,9 +121,9 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
 
-  const auto& J_com = robot_data.Jcom;
+  const auto& J_com = fb_robot_data.Jcom;
   const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
-  const auto& a_com_drift = robot_data.acom[0];
+  const auto& a_com_drift = fb_robot_data.acom[0];
   const auto a_lsole_drift = J_lsole_dot_ * qdot;
   const auto a_rsole_drift = J_rsole_dot_ * qdot;
   const auto a_torso_orientation_drift = J_torso_dot_.bottomRows<3>() * qdot;

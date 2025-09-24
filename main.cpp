@@ -91,8 +91,8 @@ struct MotorState {
 
 // Stiffness for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kp{
-  600, 700, 500, 1000, 900, 500,      // legs sx
-  600, 700, 500, 1000, 900, 500,      // legs dx
+  700, 700, 700, 1000, 900, 500,      // legs sx
+  700, 700, 700, 1000, 900, 500,      // legs dx
   400, 400, 400,                   // waist
   100, 100, 100, 100,  20, 20, 20,  // arms sx
   100, 100, 100, 100,  20, 20, 20   // arms dx
@@ -287,66 +287,66 @@ void signalHandler(int signum) {
     std::cout << "Saving logs..." << std::endl;
     walking_manager.saveLogs();
     std::cout << "Logs saved." << std::endl;
+
+    if(useRobot){
+      std::string experiment_folder;
+      bool experiment_folder_exists = true;
+      int experiment_counter = 1;
+      while (experiment_folder_exists) {
+        if (!std::filesystem::exists("../experiments")) {
+          std::filesystem::create_directory("../experiments");
+          std::cout << "Created experiments directory." << std::endl;
+        }
+        experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
+        experiment_folder_exists = std::filesystem::exists(experiment_folder);
+        if (!experiment_folder_exists) {
+          std::filesystem::create_directory(experiment_folder);
+          std::cout << "Created experiment folder: " << experiment_folder << std::endl;
+          break;
+        }
+        ++experiment_counter;
+      }
+      for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".txt") {
+            std::filesystem::path destination = experiment_folder / entry.path().filename();
+            std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
+        }
+      }
+      // create a README file in the experiment folder
+      std::ofstream readme_file(experiment_folder + "/README.txt");
+      if (readme_file.is_open()) {
+        readme_file << "This folder contains the results of the experiment.\n";
+        readme_file << "The gains used for the experiment are:\n";
+        readme_file << "Kp: ";
+        for (const auto& kp : Kp) {
+          readme_file << kp << " ";
+        }
+        readme_file << "\nKd: ";
+        for (const auto& kd : Kd) {
+          readme_file << kd << " ";
+        }
+        readme_file << "\n\n";
+  
+        //request text input from terminal and write the text on the readme file
+        std::string user_input;
+        std::cout << "Please enter a description of the experiment: ";
+        std::getline(std::cin, user_input);
+        if (user_input == "delete" || user_input == "remove" || user_input == "erase" || user_input == "trash") {
+          std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
+          std::filesystem::remove_all(experiment_folder);
+          readme_file.close();
+        }
+        else{
+          std::cout << "Experiment description: " << user_input << std::endl;
+          readme_file << "Experiment description: " << user_input << "\n\n";
+        }
+  
+        readme_file.close();
+      }
+    }
   }
   else{
     std::cout << "Logs not saved." << std::endl;
-  }
-  
-  if(useRobot){
-    std::string experiment_folder;
-    bool experiment_folder_exists = true;
-    int experiment_counter = 1;
-    while (experiment_folder_exists) {
-      if (!std::filesystem::exists("../experiments")) {
-        std::filesystem::create_directory("../experiments");
-        std::cout << "Created experiments directory." << std::endl;
-      }
-      experiment_folder = "../experiments/experiment_" + std::to_string(experiment_counter);
-      experiment_folder_exists = std::filesystem::exists(experiment_folder);
-      if (!experiment_folder_exists) {
-        std::filesystem::create_directory(experiment_folder);
-        std::cout << "Created experiment folder: " << experiment_folder << std::endl;
-        break;
-      }
-      ++experiment_counter;
-    }
-    for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
-      if (entry.is_regular_file() && entry.path().extension() == ".txt") {
-          std::filesystem::path destination = experiment_folder / entry.path().filename();
-          std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
-      }
-    }
-    // create a README file in the experiment folder
-    std::ofstream readme_file(experiment_folder + "/README.txt");
-    if (readme_file.is_open()) {
-      readme_file << "This folder contains the results of the experiment.\n";
-      readme_file << "The gains used for the experiment are:\n";
-      readme_file << "Kp: ";
-      for (const auto& kp : Kp) {
-        readme_file << kp << " ";
-      }
-      readme_file << "\nKd: ";
-      for (const auto& kd : Kd) {
-        readme_file << kd << " ";
-      }
-      readme_file << "\n\n";
-
-      //request text input from terminal and write the text on the readme file
-      std::string user_input;
-      std::cout << "Please enter a description of the experiment: ";
-      std::getline(std::cin, user_input);
-      if (user_input == "delete" || user_input == "remove" || user_input == "erase" || user_input == "trash") {
-        std::cout << "Deleting experiment folder: " << experiment_folder << std::endl;
-        std::filesystem::remove_all(experiment_folder);
-        readme_file.close();
-      }
-      else{
-        std::cout << "Experiment description: " << user_input << std::endl;
-        readme_file << "Experiment description: " << user_input << "\n\n";
-      }
-
-      readme_file.close();
-    }
   }
 
   exit(signum);
@@ -570,13 +570,6 @@ int main(const int argc, const char* argv[]) {
     lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
-
-    //convert imustate data from rpy to quaternion
-    Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
-      Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
-      Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
-      Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
-    );
     
   }
 
@@ -589,6 +582,13 @@ int main(const int argc, const char* argv[]) {
       auto start_sleep = std::chrono::high_resolution_clock::now();
 
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+      if (mj_data_ptr->time >150){
+        std::cout << "ciao" << std::endl;
+      }
+      if (useRobot && (mj_data_ptr->time) >15000){
+        std::cout << "using integration" << std::endl;
+        robot_state = walking_manager.getNewRobotState(robot_state);
+      }
 
       labrob::RobotState fb_robot_state = robot_state;
 
@@ -629,10 +629,9 @@ int main(const int argc, const char* argv[]) {
         actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2] - 9.81;
+        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
         
       }
-
       // Update walking manager:
       labrob::JointCommand joint_command;
       // #pragma omp parallel sections num_threads(2)
@@ -682,43 +681,6 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          // if (joint_name == "right_elbow_joint"){
-
-          //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
-          //   motor_command.q_target[25] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
-          //   motor_command.dq_target[25] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
-
-          //   input_command_log_file << motor_command.q_target[25] << " ";
-
-          //   // set motor command as a sinusoidal fuction of time oscillating between 0 and pi/6
-          //   motor_command.q_target[18] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
-          //   motor_command.dq_target[18] = 0;
-
-          // }
-
-          // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8 for ankle pitch joints
-          // if (joint_name == "right_ankle_pitch_joint"){
-
-          //   // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8
-          //   motor_command.q_target[10] = 0.2 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 4) - (M_PI / 8);
-          //   motor_command.dq_target[10] = 0.2 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 4));
-
-          //   input_command_log_file << motor_command.q_target[10] << " ";
-
-          //   // set motor command as a sinusoidal fuction of time oscillating between -pi/8 and pi/8
-          //   motor_command.q_target[4] = 0.2 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 4) - (M_PI / 8);
-          //   motor_command.dq_target[4] = 0.2 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 4));
-          // }
-          
-          // if (joint_name == "right_knee_joint") {
-          //   // set motor command as a sinusoidal function of time oscillating between 0 and pi/6
-          //   motor_command.q_target[9] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
-          //   motor_command.dq_target[9] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
-          //   input_command_log_file << motor_command.q_target[9] << " ";
-
-          //   motor_command.q_target[3] = 0.5 * (1 + sin(mj_data_ptr->time * 2 * M_PI / 2)) * (M_PI / 6);
-          //   motor_command.dq_target[3] = 0.5 * M_PI * (cos(mj_data_ptr->time * 2 * M_PI / 2) * (M_PI / 6));
-          // }
 
           // if the values are too big in module, give a warning and assign the value to 0
           if (std::abs(motor_command.q_target[i]) > 3.14 || std::abs(motor_command.dq_target[i]) > 3.14 || std::abs(motor_command.tau_ff[i]) > 100.0) {
@@ -752,32 +714,15 @@ int main(const int argc, const char* argv[]) {
         }
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
-        lowcmd_publisher->Write(dds_low_command);      
-
-        std::lock_guard<std::mutex> lock(stateMutex);
-        MotorState low_state_copy = motor_state_data;
-        ImuState imu_state_copy = imu_state_data;
-
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-        }
-
-        // convert imustatecopy from rpy to quaternion
-        Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
-          Eigen::AngleAxisd(imu_state_copy.rpy[0], Eigen::Vector3d::UnitX()) *
-          Eigen::AngleAxisd(imu_state_copy.rpy[1], Eigen::Vector3d::UnitY()) *
-          Eigen::AngleAxisd(imu_state_copy.rpy[2], Eigen::Vector3d::UnitZ())
-        );
+        lowcmd_publisher->Write(dds_low_command);
       }
 
-      //sleep from 1 - now to 1 ms
       auto end_sleep = std::chrono::high_resolution_clock::now();
       auto sleep = end_sleep - start_sleep;
       if(sleep < std::chrono::milliseconds(2))
           std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
-      else
-        std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
+      // else
+      //   std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
     
     }
 

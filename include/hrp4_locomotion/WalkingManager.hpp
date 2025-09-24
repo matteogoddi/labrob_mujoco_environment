@@ -36,6 +36,8 @@ class WalkingManager {
 
   RobotState updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
 
+ RobotState getNewRobotState(RobotState robot_state);
+
   void saveLogs();
 
   void update(
@@ -49,20 +51,11 @@ class WalkingManager {
   int64_t get_controller_frequency() const;
 
  protected:
-  pinocchio::Model sim_robot_model;
+  pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
-
-  pinocchio::Model fb_robot_model;
   pinocchio::Data fb_robot_data;
-
-  pinocchio::Model predicted_robot_model;
   pinocchio::Data predicted_robot_data;
-
-  pinocchio::Model estimated_robot_model;
   pinocchio::Data estimated_robot_data;
-
-  pinocchio::Model prec_estimated_robot_model;
-  pinocchio::Data prec_estimated_robot_data;
 
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
@@ -72,13 +65,19 @@ class WalkingManager {
   Eigen::VectorXd y_actual;
   Eigen::VectorXd y_estimate;
   Eigen::VectorXd actual_output;
-  Eigen::VectorXd input;
-  bool input_initialized = false;
   int n_ekf_output;
+
+  Eigen::VectorXd integrated_state_pos;
+  Eigen::VectorXd integrated_state_vel;
+
+  int njnt;
 
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
+  pinocchio::FrameIndex imu_idx_;
+
+  bool walking_data_initialized_ = false;
 
   Eigen::VectorXd q_jnt_des_;
 
@@ -92,10 +91,11 @@ class WalkingManager {
   Eigen::VectorXd M_armature_;
 
   LIPState sim_filt_LIPstate;
-  LIPState sim_filt_LIPstate2;
+  LIPState sim_LIPstate;
 
   LIPState fb_filt_LIPstate;
   LIPState fb_LIPstate;
+  RobotState fb_filt_robot_state;
   
   Eigen::Matrix3d cov_x, cov_y, cov_z;
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
@@ -103,7 +103,7 @@ class WalkingManager {
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
 
-  Eigen::Vector3d u0 = Eigen::Vector3d::Zero();
+  Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 
 private:
 
@@ -130,52 +130,77 @@ private:
 
   Eigen::MatrixXd Kalman_Gain; 
 
-  std::vector<long long> mpc_timings_log_;
-  std::vector<Eigen::Vector3d> mpc_com_log_;
-  std::vector<Eigen::Vector3d> mpc_zmp_log_;
-  std::vector<Eigen::Vector3d> com_log_;
-  std::vector<Eigen::Vector3d> p_lsole_log_;
-  std::vector<Eigen::Vector3d> p_rsole_log_;
-  std::vector<Eigen::Vector3d> v_lsole_log_;
-  std::vector<Eigen::Vector3d> v_rsole_log_;
+  //com vectors
+  std::vector<Eigen::Vector3d> sim_com_log_;
+  std::vector<Eigen::Vector3d> sim_filt_com_log_;
+  std::vector<Eigen::Vector3d> fb_com_log_;
+  std::vector<Eigen::Vector3d> fb_filt_com_log_;
+  std::vector<Eigen::Vector3d> des_com_log_;
+  // com vel vectors
+  std::vector<Eigen::Vector3d> sim_com_vel_log_;
+  std::vector<Eigen::Vector3d> sim_filt_com_vel_log_;
+  std::vector<Eigen::Vector3d> fb_com_vel_log_;
+  std::vector<Eigen::Vector3d> fb_filt_com_vel_log_;
+  std::vector<Eigen::Vector3d> des_com_vel_log_;
+  // zmp vectors
+  std::vector<Eigen::Vector3d> des_zmp_log_;
+  std::vector<Eigen::VectorXd> sim_zmp_log_;
+  std::vector<Eigen::VectorXd> sim_filt_zmp_log_;
+  std::vector<Eigen::VectorXd> fb_zmp_log_;
+  std::vector<Eigen::VectorXd> fb_filt_zmp_log_;
+
+
+  std::vector<Eigen::Vector3d> p_lsole_sim_log_;
+  std::vector<Eigen::Vector3d> p_rsole_sim_log_;
+  std::vector<Eigen::Vector3d> v_lsole_sim_log_;
+  std::vector<Eigen::Vector3d> v_rsole_sim_log_;
+  std::vector<Eigen::Vector3d> p_lsole_fb_log_;
+  std::vector<Eigen::Vector3d> p_rsole_fb_log_;
+  std::vector<Eigen::Vector3d> v_lsole_fb_log_;
+  std::vector<Eigen::Vector3d> v_rsole_fb_log_;
   std::vector<Eigen::Vector3d> p_lsole_des_log_;
   std::vector<Eigen::Vector3d> p_rsole_des_log_;
   std::vector<Eigen::Vector3d> v_lsole_des_log_;
   std::vector<Eigen::Vector3d> v_rsole_des_log_;
+  
   std::vector<Eigen::Vector3d> angular_momentum_log_;
   // std::vector<Eigen::VectorXd> fl_log_;
   // std::vector<Eigen::VectorXd> fr_log_;
-  std::vector<Eigen::VectorXd> cop_computed_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;
+  // ekf state vectors
   std::vector<Eigen::VectorXd> ekf_base_position_log_;
   std::vector<Eigen::VectorXd> ekf_base_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
   std::vector<Eigen::VectorXd> ekf_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_joint_position_log_;
   std::vector<Eigen::VectorXd> ekf_joint_velocity_log_;
+  // sim state vectors
   std::vector<Eigen::VectorXd> sim_base_position_log_;
   std::vector<Eigen::VectorXd> sim_base_velocity_log_;
   std::vector<Eigen::VectorXd> sim_base_orientation_log_;
   std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
+  // fb state vectors
   std::vector<Eigen::VectorXd> fb_base_position_log_;
   std::vector<Eigen::VectorXd> fb_base_velocity_log_;
   std::vector<Eigen::VectorXd> fb_base_orientation_log_;
   std::vector<Eigen::VectorXd> fb_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> fb_joint_position_log_;
   std::vector<Eigen::VectorXd> fb_joint_velocity_log_;
-  std::vector<Eigen::VectorXd> real_com_log_;
-  std::vector<Eigen::VectorXd> predicted_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> predicted_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> predicted_imu_orientation_log_;
+  // imu vectors
+  std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
+  std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
   std::vector<Eigen::VectorXd> fb_imu_accelerometer_log_;
   std::vector<Eigen::VectorXd> fb_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> fb_imu_orientation_log_;
+
   std::vector<Eigen::VectorXd> input_torque_log_;
 
   std::vector<Eigen::MatrixXd> kalman_gain_log_;
 
+  //execution time logs
   std::vector<long long> execution_time_wbc_log_;
   std::vector<long long> execution_time_mpc_log_;
   std::vector<long long> execution_time_ekf_log_;

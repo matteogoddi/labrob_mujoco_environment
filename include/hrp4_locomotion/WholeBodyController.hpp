@@ -66,6 +66,7 @@ class WholeBodyController {
       const pinocchio::Model& robot_model,
       const labrob::RobotState& robot_state,
       pinocchio::Data& robot_data,
+      pinocchio::Data& fb_robot_data,
       const labrob::GaitConfiguration& current,
       const labrob::GaitConfiguration& desired
   );
