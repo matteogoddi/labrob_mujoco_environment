@@ -25,7 +25,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_regulation = 10.0;
 
   params.weight_q_ddot = 1e-4;
-  params.weight_com = 1e-2;
+  params.weight_com = 1e-1;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-1;
@@ -36,7 +36,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.gamma = 0;
+  params.beta = 30;
+  params.gamma = 10;
   params.mu = 0.5;
 
   params.foot_length = 0.15;
@@ -273,11 +274,11 @@ WholeBodyController::compute_inverse_dynamics(
 
   if (current.is_left_foot_support) {
     A_acc.topRows(6) = J_lsole_;
-    b_acc.topRows(6) = -J_lsole_dot_ * qdot - params_.gamma * J_lsole_ * qdot;
+    b_acc.topRows(6) = -J_lsole_dot_ * qdot - params_.gamma * J_lsole_ * qdot + params_.beta * err_lsole;
   }
   if (current.is_right_foot_support) {
     A_acc.bottomRows(6) = J_rsole_;
-    b_acc.bottomRows(6) = -J_rsole_dot_ * qdot - params_.gamma * J_rsole_ * qdot;
+    b_acc.bottomRows(6) = -J_rsole_dot_ * qdot - params_.gamma * J_rsole_ * qdot + params_.beta * err_rsole;
   }
   if (!current.is_left_foot_support) {
     A_no_contact.block(0, 0, 3 * n_contacts_, 3 * n_contacts_) = Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);

@@ -78,7 +78,7 @@ if __name__ == '__main__':
     estimated_imu_orientation: np.ndarray = np.loadtxt(folder + '/estimated_imu_orientation.txt')
 
 
-    num_samples = sim_joint_position.shape[0] -10
+    num_samples = sim_joint_position.shape[0] -500
     input_torque = sim_joint_position[:num_samples, :]
 
     sim_com = sim_com[:num_samples, :]
@@ -310,6 +310,145 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/com/sim_vs_fb_filtered_com_velocity_plot.png")
     plt.close(fig)
+
+    # plot com position desired and zmp desired in the same plot
+    fig, ax = plt.subplots()
+    ax.plot(t, des_com[:, 0], label='Des COM X', color='blue')
+    ax.plot(t, des_com[:, 1], label='Des COM Y', color='orange')
+    ax.plot(t, des_com[:, 2], label='Des COM Z', color='green')
+    ax.plot(t, des_zmp[:, 0], label='Des ZMP X', color='blue', linestyle='--')
+    ax.plot(t, des_zmp[:, 1], label='Des ZMP Y', color='orange', linestyle='--')
+    ax.plot(t, des_zmp[:, 2], label='Des ZMP Z', color='green', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Desired COM and ZMP Position [m]')
+    ax.set_title('Desired COM and ZMP Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/des_com_and_zmp_plot.png")
+    plt.close(fig)
+
+    # compute the double derivative of the com position to have the com acceleration and plot
+    com_acceleration_computed = np.gradient(np.gradient(des_com, axis=0), axis=0) * (1 / delta**2)
+    eta2 = 15.4933  # This value should match the one used in the LIPM controller
+    com_acceleration = eta2 * (des_com - des_zmp) + np.array([0, 0, - 9.81])    
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 0], label='Des COM Acc X', color='blue')
+    ax.plot(t, com_acceleration[:, 1], label='Des COM Acc Y', color='orange')
+    ax.plot(t, com_acceleration[:, 2], label='Des COM Acc Z', color='green')
+    ax.plot(t, com_acceleration_computed[:, 0], label='Computed Des COM Acc X', color='blue', linestyle='--')
+    ax.plot(t, com_acceleration_computed[:, 1], label='Computed Des COM Acc Y', color='orange', linestyle='--')
+    ax.plot(t, com_acceleration_computed[:, 2], label='Computed Des COM Acc Z', color='green', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Desired COM Acceleration [m/s^2]')
+    ax.set_title('Desired COM Acceleration')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/numerical_derivative_plot.png")
+    plt.close(fig)
+
+    #only x component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 0], label='Des COM Acc X', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 0], label='Computed Des COM Acc X', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Desired COM Acceleration X [m/s^2]')
+    ax.set_title('Desired COM Acceleration X')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/numerical_derivative_x_plot.png")
+    plt.close(fig)
+
+    #only y component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 1], label='Des COM Acc Y', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 1], label='Computed Des COM Acc Y', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Desired COM Acceleration Y [m/s^2]')
+    ax.set_title('Desired COM Acceleration Y')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/numerical_derivative_y_plot.png")
+    plt.close(fig)
+
+    #only z component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 2], label='Des COM Acc Z', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 2], label='Computed Des COM Acc Z', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Desired COM Acceleration Z [m/s^2]')
+    ax.set_title('Desired COM Acceleration Z')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/numerical_derivative_z_plot.png")
+    plt.close(fig)
+
+        # compute the double derivative of the com position to have the com acceleration and plot
+    com_acceleration_computed = np.gradient(np.gradient(fb_com, axis=0), axis=0) * (1 / delta**2)
+    eta2 = 15.4933  # This value should match the one used in the LIPM controller
+    com_acceleration = eta2 * (fb_com - fb_zmp) + np.array([0, 0, - 9.81])    
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 0], label='fb COM Acc X', color='blue')
+    ax.plot(t, com_acceleration[:, 1], label='fb COM Acc Y', color='orange')
+    ax.plot(t, com_acceleration[:, 2], label='fb COM Acc Z', color='green')
+    ax.plot(t, com_acceleration_computed[:, 0], label='Computed fb COM Acc X', color='blue', linestyle='--')
+    ax.plot(t, com_acceleration_computed[:, 1], label='Computed fb COM Acc Y', color='orange', linestyle='--')
+    ax.plot(t, com_acceleration_computed[:, 2], label='Computed fb COM Acc Z', color='green', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('fbired COM Acceleration [m/s^2]')
+    ax.set_title('fbired COM Acceleration')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_numerical_derivative_plot.png")
+    plt.close(fig)
+
+    #only x component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 0], label='fb COM Acc X', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 0], label='Computed fb COM Acc X', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('fbired COM Acceleration X [m/s^2]')
+    ax.set_title('fbired COM Acceleration X')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_numerical_derivative_x_plot.png")
+    plt.close(fig)
+
+    #only y component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 1], label='fb COM Acc Y', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 1], label='Computed fb COM Acc Y', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('fbired COM Acceleration Y [m/s^2]')
+    ax.set_title('fbired COM Acceleration Y')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_numerical_derivative_y_plot.png")
+    plt.close(fig)
+    
+    #only z component
+    fig, ax = plt.subplots()
+    ax.plot(t, com_acceleration[:, 2], label='fb COM Acc Z', color='blue')
+    ax.plot(t, com_acceleration_computed[:, 2], label='Computed fb COM Acc Z', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('fbired COM Acceleration Z [m/s^2]')
+    ax.set_title('fbired COM Acceleration Z')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_numerical_derivative_z_plot.png")
+    plt.close(fig)
+
+
+
+
 
     ##########################
     #  FEET PLOT

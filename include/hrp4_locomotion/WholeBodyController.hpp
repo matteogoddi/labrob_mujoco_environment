@@ -44,6 +44,7 @@ struct WholeBodyControllerParams {
   double cmm_selection_matrix_z;
 
   double gamma;
+  double beta;
 
   double mu;
 

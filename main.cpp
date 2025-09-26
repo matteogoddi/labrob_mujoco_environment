@@ -582,13 +582,6 @@ int main(const int argc, const char* argv[]) {
       auto start_sleep = std::chrono::high_resolution_clock::now();
 
       labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-      if (mj_data_ptr->time >150){
-        std::cout << "ciao" << std::endl;
-      }
-      if (useRobot && (mj_data_ptr->time) >15000){
-        std::cout << "using integration" << std::endl;
-        robot_state = walking_manager.getNewRobotState(robot_state);
-      }
 
       labrob::RobotState fb_robot_state = robot_state;
 
@@ -646,16 +639,48 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
 
-      mj_step1(mj_model_ptr, mj_data_ptr);
-
-      for (int i = 0; i < mj_model_ptr->nu; ++i) {
-        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-        int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
-        mj_data_ptr->ctrl[i] = joint_command[joint_name];
+      if (mj_data_ptr->time < 3.0 && false){
+        mj_step1(mj_model_ptr, mj_data_ptr);
+  
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
+          mj_data_ptr->ctrl[i] = joint_command[joint_name];
+        }
+  
+        mj_step2(mj_model_ptr, mj_data_ptr);
       }
+      else{
+        if (!useRobot){
+          if(mj_data_ptr->time == 15.00){
+            std::cout << "Starting control with real robot" << std::endl;
+          }
+          robot_state = walking_manager.getNewRobotState(robot_state);
+        }
+        // update mujoco state with robot_state
+        mj_data_ptr->qpos[0] = robot_state.position.x();
+        mj_data_ptr->qpos[1] = robot_state.position.y();
+        mj_data_ptr->qpos[2] = robot_state.position.z();
+        mj_data_ptr->qpos[3] = robot_state.orientation.w();
+        mj_data_ptr->qpos[4] = robot_state.orientation.x();
+        mj_data_ptr->qpos[5] = robot_state.orientation.y();
+        mj_data_ptr->qpos[6] = robot_state.orientation.z();
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
+          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
+        }
+        mj_forward(mj_model_ptr, mj_data_ptr);
 
-      mj_step2(mj_model_ptr, mj_data_ptr);
+        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
+        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+
+        mj_data_ptr->time += 0.002;
+      }
 
       if (useRobot) {
         MotorCommand motor_command;
