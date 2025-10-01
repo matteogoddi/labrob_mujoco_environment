@@ -68,10 +68,6 @@ ISMPC::solve(
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
-  //const auto& feet_placement = walking_data.footstep_plan.front().getFeetPlacement();
-  //Eigen::Vector3d p_support = feet_placement.getSupportFootConfiguration().p;
-  //Eigen::Vector3d p_swing = feet_placement.getSwingFootConfiguration().p;
-
   Eigen::VectorXd mc_x(N_);
   Eigen::VectorXd mc_y(N_);
   Eigen::VectorXd mc_z(N_);
@@ -138,11 +134,6 @@ ISMPC::solve(
     mc_x.segment(n, varying_x.rows()) = varying_x;
     mc_y.segment(n, varying_y.rows()) = varying_y;
     mc_z.segment(n, varying_z.rows()) = varying_z;
-
-    // // print mc_x, mc_y and mc_z
-    // std::cerr << "mc_x: " << mc_x.transpose() << std::endl;
-    // std::cerr << "mc_y: " << mc_y.transpose() << std::endl;
-    // std::cerr << "mc_z: " << mc_z.transpose() << std::endl;
 
     n += n_bar;
     ++k;

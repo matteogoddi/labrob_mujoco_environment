@@ -28,6 +28,20 @@
 #include <unitree/idl/hg/LowState_.hpp>
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
+#include <hrp4_locomotion/globals.h>
+
+bool isWBCLoopClosed = false;
+bool isMPCLoopClosed = false;
+bool isEKFLoopClosed = false;
+bool isLIPLoopClosed = false;
+bool useSim = false;
+bool useRobot = false;
+
+double startTimeWBCCL = 0.0;
+double startTimeMPCCL = 0.0;
+double startTimeEKFCL = 0.0;
+double startTimeLIPCL = 0.0;
+
 #include "MujocoUI.hpp"
 
 using namespace unitree::robot;
@@ -39,13 +53,6 @@ static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
 labrob::WalkingManager walking_manager;
-bool useRobot = false;
-bool useSim = false;
-bool use_wbc_cl = false;
-bool use_mpc_cl = false;
-bool use_ekf_cl = false;
-bool use_kf_cl = false;
-bool use_lip_cl = false;
 
 template <typename T>
 class DataBuffer {
@@ -439,32 +446,36 @@ int main(const int argc, const char* argv[]) {
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
-  // ask user which closed loop to use
-  std::cout << "Select closed loop to use:" << std::endl;
-  std::cout << "1. Whole Body Controller (WBC)" << std::endl;
-  std::cout << "2. Model Predictive Control (MPC)" << std::endl;
-  std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
-  std::cout << "4. Kalman Filter (KF)" << std::endl;
-  std::cout << "5. Linear Inverted Pendulum (LIP)" << std::endl;
-  std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for WBC and EKF)." << std::endl;
-  std::cout << "Enter your choice: " << std::endl;
-  std::string user_input;
-  std::getline(std::cin, user_input);
-  std::istringstream iss(user_input);
-  std::string token;
-  while (iss >> token) {
-    if (token == "1") {
-      use_wbc_cl = true;
-    } else if (token == "2") {
-      use_mpc_cl = true;
-    } else if (token == "3") {
-      use_ekf_cl = true;
-    } else if (token == "4") {
-      use_kf_cl = true;
-    } else if (token == "5") {
-      use_lip_cl = true;
+  if (useRobot) {
+    std::cout << "Select closed loop to use:" << std::endl;
+    std::cout << "1. Whole Body Controller (WBC)" << std::endl;
+    std::cout << "2. Model Predictive Control (MPC)" << std::endl;
+    std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
+    std::cout << "4. Linear Inverted Pendulum (LIP)" << std::endl;
+    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for WBC and EKF)." << std::endl;
+    std::cout << "Enter your choice: " << std::endl;
+    std::string user_input;
+    std::getline(std::cin, user_input);
+    std::istringstream iss(user_input);
+    std::string token;
+    while (iss >> token) {
+      if (token == "1") {
+        isWBCLoopClosed = true;
+      } else if (token == "2") {
+        isMPCLoopClosed= true;
+      } else if (token == "3") {
+        isEKFLoopClosed = true;
+      } else if (token == "4") {
+        isLIPLoopClosed = true;
+      }
     }
+  } else {
+    isWBCLoopClosed = true;
+    isMPCLoopClosed = true;
+    isEKFLoopClosed = true;
+    isLIPLoopClosed = true;
   }
+  
 
   // Init robot posture:
   mjtNum waist_p_init = 0.0;
@@ -533,7 +544,7 @@ int main(const int argc, const char* argv[]) {
   // Walking Manager:
   labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   
-  walking_manager.init(initial_robot_state, armatures, useRobot);
+  walking_manager.init(initial_robot_state, armatures);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -631,15 +642,15 @@ int main(const int argc, const char* argv[]) {
       // {
       //   #pragma omp section
       //   {
-      //     walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
+      //     walking_manager.update(robot_state, joint_command, fb_robot_state, actual_output);
       //   }
       //   #pragma omp section
       //   {
       //   }
       // } // end of parallel sections
-      walking_manager.update(robot_state, joint_command, fb_robot_state, useRobot, actual_output);
+      walking_manager.update(robot_state, joint_command, fb_robot_state, actual_output);
 
-      if (mj_data_ptr->time < 3.0 && false){
+      if (true){
         mj_step1(mj_model_ptr, mj_data_ptr);
   
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -651,13 +662,10 @@ int main(const int argc, const char* argv[]) {
   
         mj_step2(mj_model_ptr, mj_data_ptr);
       }
-      else{
-        if (!useRobot){
-          if(mj_data_ptr->time == 15.00){
-            std::cout << "Starting control with real robot" << std::endl;
-          }
-          robot_state = walking_manager.getNewRobotState(robot_state);
-        }
+      // double check to ensure that mujoco is active when using the robot
+      //fix the error when using integration "by hand"
+      else if (!useRobot) {
+        robot_state = walking_manager.getNewRobotState(robot_state);
         // update mujoco state with robot_state
         mj_data_ptr->qpos[0] = robot_state.position.x();
         mj_data_ptr->qpos[1] = robot_state.position.y();

@@ -28,13 +28,13 @@ class WalkingManager {
  public:
   WalkingManager();
 
-  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures, bool useRobot);
+  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
 
   LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
   LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  RobotState updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output);
+  RobotState updateEKF(RobotState current_state, Eigen::VectorXd actual_output);
 
  RobotState getNewRobotState(RobotState robot_state);
 
@@ -44,7 +44,6 @@ class WalkingManager {
       const labrob::RobotState& sim_robot_state,
       labrob::JointCommand& joint_command, 
       labrob::RobotState& fb_robot_state,
-      bool useRobot,
       Eigen::VectorXd actual_output
   );
 

@@ -26,6 +26,8 @@
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/DdpSolver.hpp>
 
+#include <hrp4_locomotion/globals.h>
+
 namespace labrob {
 
 WalkingManager::WalkingManager() :
@@ -69,7 +71,7 @@ Eigen::Vector3d rotVecFromQuaternion(const Eigen::Quaterniond& q) {
 
 bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state,
-                     std::map<std::string, double> &armatures, bool useRobot) {
+                     std::map<std::string, double> &armatures) {
     cov_x = Eigen::Matrix3d::Identity();
     cov_y = Eigen::Matrix3d::Identity();
     cov_z = Eigen::Matrix3d::Identity();
@@ -438,11 +440,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     int64_t mpc_prediction_horizon_msec = 2000;
     int64_t mpc_timestep_msec = 100;
     double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-    std::cout << T_lsole_init.translation().z() << std::endl;
-    double foot_constraint_square_length = 100; //0.20;
-    double foot_constraint_square_width = 100; //0.07;
+    double foot_constraint_square_length = 0.20;
+    double foot_constraint_square_width = 0.10;
     Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
-    std::cout << "pzmp iniziale: " << p_ZMP.transpose() << std::endl;
     sim_filt_LIPstate = labrob::LIPState(
         p_CoM,
         Eigen::Vector3d::Zero(),
@@ -530,7 +530,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     return true;
 }
 
-RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Eigen::VectorXd actual_output) {
+RobotState WalkingManager::updateEKF(RobotState current_state, Eigen::VectorXd actual_output) {
 
     double left_support_check = 1.0;
     double right_support_check = 1.0;
@@ -709,14 +709,12 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
 
     if (useRobot) {
         y_actual = actual_output;
-        // compute rotation matrix to world frame from imu in torso frame
+        // is it transpose?
         Eigen::Matrix3d R_world_imu = estimated_robot_data.oMf[imu_idx_].rotation();
-        // y_actual.segment(njnt + 3 + njnt, 3) = R_world_imu * R_world_imu * y_actual.segment(njnt + 3 + njnt, 3);
-        // y_actual.segment(njnt + 3 + njnt + 3, 3) = R_world_imu * R_world_imu * (y_actual.segment(njnt + 3 + njnt + 3, 3) + Eigen::Vector3d(0, 0, 9.81)) - Eigen::Vector3d(0, 0, 9.81);
         y_actual.segment(njnt + 3 + njnt, 3) = R_world_imu * y_actual.segment(njnt + 3 + njnt, 3);
         y_actual.segment(njnt + 3 + njnt + 3, 3) = R_world_imu * (y_actual.segment(njnt + 3 + njnt + 3, 3)) - Eigen::Vector3d(0, 0, 9.81);
         
-        // //get feet position from walking data using desired Gait configuration
+        //get feet position from walking data using desired Gait configuration
         Eigen::Vector3d left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
         Eigen::Vector3d right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
 
@@ -730,12 +728,12 @@ RobotState WalkingManager::updateEKF(RobotState current_state, bool useRobot, Ei
         // 2) joint position 3) angular velocity of the imu 4) joint velocity of the robot
         // 5) accelerometer of the imu 6) velocity of feet 7) feet position
 
-        Eigen::Vector3d left_foot_position = fb_robot_data.oMf[lsole_idx_].translation();
-        Eigen::Vector3d right_foot_position = fb_robot_data.oMf[rsole_idx_].translation();
+        Eigen::Vector3d left_foot_position = sim_robot_data.oMf[lsole_idx_].translation();
+        Eigen::Vector3d right_foot_position = sim_robot_data.oMf[rsole_idx_].translation();
 
         //compute actual imu orientation from pinocchio, make sure it is in order w x y z
         Eigen::Quaterniond actual_imu_orientation = Eigen::Quaterniond(
-            fb_robot_data.oMf[imu_idx_].rotation()
+            sim_robot_data.oMf[imu_idx_].rotation()
         );
 
         y_actual.head(3) = rotVecFromQuaternion(actual_imu_orientation);
@@ -984,7 +982,6 @@ WalkingManager::update(
     const labrob::RobotState& sim_robot_state,
     labrob::JointCommand& joint_command,
     labrob::RobotState& fb_robot_state,
-    bool useRobot,
     Eigen::VectorXd actual_output
 ) {
 
@@ -1063,21 +1060,21 @@ WalkingManager::update(
     walking_data_.updateWalkingState(t_msec_);
 
     double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
-    double mass = pinocchio::computeTotalMass(robot_model);
+    // double mass = pinocchio::computeTotalMass(robot_model);
     // Eigen::Vector3d lip_zmp = p_CoM - robot_state.total_force / (mass * eta2);
 
-    auto q_fb = robot_state_to_pinocchio_joint_configuration(robot_model, fb_robot_state);
-    auto qdot_fb = robot_state_to_pinocchio_joint_velocity(robot_model, fb_robot_state);
+    // auto q_fb = robot_state_to_pinocchio_joint_configuration(robot_model, fb_robot_state);
+    // auto qdot_fb = robot_state_to_pinocchio_joint_velocity(robot_model, fb_robot_state);
 
-    // Perform forward kinematics on the whole tree and update robot data:
-    pinocchio::forwardKinematics(robot_model, fb_robot_data, q_fb);
+    // // Perform forward kinematics on the whole tree and update robot data:
+    // pinocchio::forwardKinematics(robot_model, fb_robot_data, q_fb);
 
-    // // NOTE: jacobianCenterOfMass calls forwardKinematics and
-    //       computeJointJacobians.
-    pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_fb);
-    pinocchio::computeJointJacobiansTimeVariation(robot_model, fb_robot_data, q_fb, qdot_fb);
-    pinocchio::framesForwardKinematics(robot_model, fb_robot_data, q_fb);
-    pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb, qdot_fb, 0.0 * qdot_fb); // This is used to compute the CoM drift (J_com_dot * qdot)
+    // // // NOTE: jacobianCenterOfMass calls forwardKinematics and
+    // //       computeJointJacobians.
+    // pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_fb);
+    // pinocchio::computeJointJacobiansTimeVariation(robot_model, fb_robot_data, q_fb, qdot_fb);
+    // pinocchio::framesForwardKinematics(robot_model, fb_robot_data, q_fb);
+    // pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb, qdot_fb, 0.0 * qdot_fb); // This is used to compute the CoM drift (J_com_dot * qdot)
 
     //start measuring time
     auto start_ekf = std::chrono::high_resolution_clock::now();
@@ -1085,18 +1082,18 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if(t_msec_ >= 0) {
-                fb_filt_robot_state = updateEKF(fb_robot_state, useRobot, actual_output);
+            if(t_msec_ >= startTimeEKFCL && isEKFLoopClosed) {
+                fb_filt_robot_state = updateEKF(fb_robot_state, actual_output);
             }
             else{
-                fb_filt_robot_state = fb_robot_state;
+                //TODO: don't know what to do if not using the EKF
+                fb_filt_robot_state = sim_robot_state;
             }
         }
         #pragma omp section
         {
         }
     } // end of parallel sections
-    // fb_filt_robot_state = updateEKF(fb_robot_state, useRobot, actual_output);
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
     auto q_fb_filt = robot_state_to_pinocchio_joint_configuration(robot_model, fb_filt_robot_state);
@@ -1136,7 +1133,7 @@ WalkingManager::update(
         J_lsole_fb
     );
 
-    const auto& v_lsole_fb = J_lsole_fb * qdot_fb;
+    const auto& v_lsole_fb = J_lsole_fb * q_dot_fb_filt;
 
     const auto& T_rsole_fb = fb_robot_data.oMf[rsole_idx_];
     Eigen::MatrixXd J_rsole_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
@@ -1147,7 +1144,7 @@ WalkingManager::update(
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
         J_rsole_fb
     );
-    const auto& v_rsole_fb = J_rsole_fb * qdot_fb;
+    const auto& v_rsole_fb = J_rsole_fb * q_dot_fb_filt;
 
     // Fill current gait configuration:
     labrob::GaitConfiguration fb_current_gait_configuration;
@@ -1254,9 +1251,9 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if (t_msec_ >= 0){
-                if(t_msec_ == 15002){
-                    std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
+            if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed) {
+                if(t_msec_ == startTimeMPCCL){
+                    std::cout << "MPC CLOSED LOOP"<< std::endl;
                 }
                 ismpc_ptr_->solve(t_msec_, walking_data_, fb_filt_LIPstate);
             }
@@ -1306,9 +1303,9 @@ WalkingManager::update(
 
     // Update the state based on the result of the QP:
     LIPState lip_state;
-    if (t_msec_ >= 0){
-        if(t_msec_ == 15002){
-            std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
+    if (t_msec_ >= startTimeLIPCL && isLIPLoopClosed){
+        if(t_msec_ == startTimeLIPCL){
+            std::cout << "LIP CLOSED LOOP"<< std::endl;
         }
         lip_state = discrete_lip_dynamics_ptr_->integrate(fb_filt_LIPstate, ismpc_ptr_->getInput());
     }
@@ -1394,10 +1391,10 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if (t_msec_ >=0){
+            if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
                 // Use the robot feedback to compute the joint command:
-                if(t_msec_ == 15002){
-                    std::cout << "FEEDBACK WBC"<< std::endl;
+                if(t_msec_ == startTimeWBCCL){
+                    std::cout << "WBC CLOSED LOOP"<< std::endl;
                 }
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
@@ -1407,18 +1404,6 @@ WalkingManager::update(
                     fb_current_gait_configuration,
                     desired_gait_configuration
                 );
-            // if (t_msec_ > 5000){
-            //     // Use the robot feedback to compute the joint command:
-            //     if(t_msec_ == 5002){
-            //         std::cout << "FEEDBACK WBC"<< std::endl;
-            //     }
-            //     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-            //         robot_model,
-            //         sim_robot_state,
-            //         sim_robot_data,
-            //         fb_current_gait_configuration,
-            //         desired_gait_configuration
-            //     );
             } else {
                 // Use the MPC to compute the joint command:
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
@@ -1435,28 +1420,6 @@ WalkingManager::update(
         {
         }
     } // end of parallel sections
-    // if (t_msec_ > 2000) {
-    //     // Use the robot feedback to compute the joint command:
-    //     if(t_msec_ == 2002){
-    //         std::cout << "SWITCHING TO FEEDBACK CONTROL"<< std::endl;
-    //     }
-    //     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-    //         robot_model,
-    //         fb_filt_robot_state,
-    //         fb_robot_data,
-    //         fb_current_gait_configuration,
-    //         desired_gait_configuration
-    //     );
-    // } else {
-    //     // Use the MPC to compute the joint command:
-    //     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-    //         robot_model,
-    //         sim_robot_state,
-    //         sim_robot_data,
-    //         sim_current_gait_configuration,
-    //         desired_gait_configuration
-    //     );
-    // }
     auto end_wbc = std::chrono::system_clock::now();
 
 
@@ -1573,8 +1536,9 @@ WalkingManager::update(
 
 RobotState WalkingManager::getNewRobotState(RobotState robot_state){
     Eigen::VectorXd wbc_qddot = whole_body_controller_ptr_->get_q_ddot();
-    integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
+    // integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
     integrated_state_pos = integrated_state_pos + integrated_state_vel * controller_timestep_msec_ * 0.001 + 0.5 * wbc_qddot * std::pow(controller_timestep_msec_ * 0.001, 2);
+    integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
     //use pinocchio integrate
     // Eigen::VectorXd integrated_q = Eigen::VectorXd::Zero(njnt + 7);
     
