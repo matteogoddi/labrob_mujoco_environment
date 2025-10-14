@@ -57,12 +57,6 @@ if __name__ == '__main__':
     sim_base_angular_velocity = np.loadtxt(folder + '/sim_base_angular_velocity.txt')
     sim_joint_position: np.ndarray = np.loadtxt(folder + '/sim_joint_position.txt')
     sim_joint_velocity: np.ndarray = np.loadtxt(folder + '/sim_joint_velocity.txt')
-    fb_base_position = np.loadtxt(folder + '/fb_base_position.txt')
-    fb_base_velocity = np.loadtxt(folder + '/fb_base_velocity.txt')
-    fb_base_orientation = np.loadtxt(folder + '/fb_base_orientation.txt')
-    fb_base_angular_velocity = np.loadtxt(folder + '/fb_base_angular_velocity.txt')
-    fb_joint_position: np.ndarray = np.loadtxt(folder +'/fb_joint_position.txt')
-    fb_joint_velocity: np.ndarray = np.loadtxt(folder +'/fb_joint_velocity.txt')
 
     execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
     execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
@@ -70,15 +64,17 @@ if __name__ == '__main__':
     execution_time_wbc = np.loadtxt(folder + '/execution_time_wbc.txt')
     execution_time_update = np.loadtxt(folder + '/execution_time_update.txt')
 
-    fb_imu_orientation: np.ndarray = np.loadtxt(folder + '/fb_imu_orientation.txt')
-    fb_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/fb_imu_angular_velocity.txt')
-    fb_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/fb_imu_accelerometer.txt')
+    measured_joint_position: np.ndarray = np.loadtxt(folder +'/measured_joint_position.txt')
+    measured_joint_velocity: np.ndarray = np.loadtxt(folder +'/measured_joint_velocity.txt')
+    measured_imu_orientation: np.ndarray = np.loadtxt(folder + '/measured_imu_orientation.txt')
+    measured_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/measured_imu_angular_velocity.txt')
+    measured_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/measured_imu_accelerometer.txt')
     estimated_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/estimated_imu_accelerometer.txt')
     estimated_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/estimated_imu_angular_velocity.txt')
     estimated_imu_orientation: np.ndarray = np.loadtxt(folder + '/estimated_imu_orientation.txt')
 
 
-    num_samples = sim_joint_position.shape[0] -500
+    num_samples = sim_joint_position.shape[0] 
     input_torque = sim_joint_position[:num_samples, :]
 
     sim_com = sim_com[:num_samples, :]
@@ -122,21 +118,17 @@ if __name__ == '__main__':
     sim_base_angular_velocity = sim_base_angular_velocity[:num_samples, :]
     sim_joint_position = sim_joint_position[:num_samples, :]
     sim_joint_velocity = sim_joint_velocity[:num_samples, :]
-    fb_base_position = fb_base_position[:num_samples, :]
-    fb_base_velocity = fb_base_velocity[:num_samples, :]
-    fb_base_orientation = fb_base_orientation[:num_samples, :]
-    fb_base_angular_velocity = fb_base_angular_velocity[:num_samples, :]
-    fb_joint_position = fb_joint_position[:num_samples, :]
-    fb_joint_velocity = fb_joint_velocity[:num_samples, :]
+    measured_joint_position = measured_joint_position[:num_samples, :]
+    measured_joint_velocity = measured_joint_velocity[:num_samples, :]
     execution_time_ekf = execution_time_ekf[:num_samples]
     execution_time_kf = execution_time_kf[:num_samples]
     execution_time_mpc = execution_time_mpc[:num_samples]
     execution_time_wbc = execution_time_wbc[:num_samples]
     execution_time_update = execution_time_update[:num_samples]
     
-    fb_imu_orientation = fb_imu_orientation[:num_samples, :]
-    fb_imu_angular_velocity = fb_imu_angular_velocity[:num_samples, :]
-    fb_imu_accelerometer = fb_imu_accelerometer[:num_samples, :]
+    measured_imu_orientation = measured_imu_orientation[:num_samples, :]
+    measured_imu_angular_velocity = measured_imu_angular_velocity[:num_samples, :]
+    measured_imu_accelerometer = measured_imu_accelerometer[:num_samples, :]
     #add 1000 zeros to estimated imu
     # estimated_imu_accelerometer = np.vstack((np.zeros((2000, 3)), estimated_imu_accelerometer))
     # estimated_imu_angular_velocity = np.vstack((np.zeros((2000, 3)), estimated_imu_angular_velocity))
@@ -171,27 +163,62 @@ if __name__ == '__main__':
     for idx, name in enumerate(joint_names):
         base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
         grouped_indices[base_name].append(idx)
-    
-    # # Crea un plot per ogni gruppo
-    # figs = []
-    # for group_name, indices in grouped_indices.items():
-    #     fig, ax = plt.subplots()
-    #     for i in indices:
-    #         ax.plot(t, input_torque[:, i], label=joint_names[i])
-    #     ax.set_xlabel('Time [s]')
-    #     ax.set_ylabel('Torque [Nm]')
-    #     ax.set_title(group_name.replace('_', ' ').title())
-    #     ax.grid(True)
-    #     ax.legend()
-    #     fig.tight_layout()
-    #     figs.append(fig)
 
-    #     fig.savefig(f"images/joints/torques/{group_name}_torque_plot.png")
-    #     plt.close(fig)
+    #################################
+    # TORQUES
+    #################################
+
+    fig, ax = plt.subplots()
+    for i, name in enumerate(joint_names):
+        ax.plot(t, input_torque[:, i], label=name.strip())
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Torque [Nm]')
+    ax.set_title('Input Joint Torques')
+    ax.grid(True)
+    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    fig.tight_layout()
+    fig.savefig("images/simulation/torques/input_joint_torques.png")
+    plt.close(fig)
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, input_torque[:, i], label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Torque [Nm]')
+        ax.set_title(f'Input Joint Torques - {group_name}')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/simulation/torques/{group_name}_input_joint_torques.png")
+        plt.close(fig)
+        figs.append(fig)
+
 
     #################################
     #  COM AND ZMP PLOTS
     #################################
+    # plot zmp and com x and y in the same plot
+    fig, ax = plt.subplots()
+    # ax.plot(t, fb_zmp[:, 0], label='fb ZMP X', color='blue')
+    # ax.plot(t, fb_zmp[:, 1], label='fb ZMP Y', color='orange')
+    # ax.plot(t, fb_com[:, 0], label='fb COM X', color='blue', linestyle='--')
+    # ax.plot(t, fb_com[:, 1], label='fb COM Y', color='orange', linestyle='--')
+    ax.plot(t, des_zmp[:, 0], label='des ZMP X', color='blue', linestyle=':')
+    ax.plot(t, des_zmp[:, 1], label='des ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, des_com[:, 0], label='des COM X', color='blue', linestyle='-.')
+    ax.plot(t, des_com[:, 1], label='des COM Y', color='orange', linestyle='-.')
+    ax.set_xlim([14.8, 16])
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position [m]')
+    ax.set_title('ZMP and COM Position Feedback vs Desired')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_zmp_and_com_plot.png")
+
+
     fig, ax = plt.subplots()
     ax.plot(t, sim_zmp[:, 0], label='Sim ZMP X', color='blue')
     ax.plot(t, sim_zmp[:, 1], label='Sim ZMP Y', color='orange')
@@ -225,6 +252,7 @@ if __name__ == '__main__':
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Filtered ZMP Position [m]')
     ax.set_title('Filtered ZMP Position Simulation vs Feedback')
+    ax.set_xlim([14.8, 16])
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -255,13 +283,10 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, sim_filt_com[:, 0], label='Sim Filt COM X', color='blue')
     ax.plot(t, sim_filt_com[:, 1], label='Sim Filt COM Y', color='orange')
-    ax.plot(t, sim_filt_com[:, 2], label='Sim Filt COM Z', color='green')
     ax.plot(t, fb_filt_com[:, 0], label='FB Filt COM X', color='blue', linestyle='--')
     ax.plot(t, fb_filt_com[:, 1], label='FB Filt COM Y', color='orange', linestyle='--')
-    ax.plot(t, fb_filt_com[:, 2], label='FB Filt COM Z', color='green', linestyle='--')
     ax.plot(t, des_com[:, 0], label='Des COM X', color='blue', linestyle=':')
     ax.plot(t, des_com[:, 1], label='Des COM Y', color='orange', linestyle=':')
-    ax.plot(t, des_com[:, 2], label='Des COM Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Filtered COM Position [m]')
     ax.set_title('Filtered COM Position Simulation vs Feedback')
@@ -583,20 +608,6 @@ if __name__ == '__main__':
     fig.savefig("images/ekf/base_position_error_plot.png")
     plt.close(fig)
 
-    #plot error between ekf base position and fb base position
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_position[:, 0] - fb_base_position[:, 0], label='EKF Base Position X', color='blue')
-    ax.plot(t, ekf_base_position[:, 1] - fb_base_position[:, 1], label='EKF Base Position Y', color='orange')
-    ax.plot(t, ekf_base_position[:, 2] - fb_base_position[:, 2], label='EKF Base Position Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Position [m]')
-    ax.set_title('Base Position Error between EKF estimation and Feedback')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_position_error_vs_feedback_plot.png")
-    plt.close(fig)
-
     # Plot EKF base velocity
     fig, ax = plt.subplots()
     ax.plot(t, ekf_base_velocity[:, 0] - sim_base_velocity[:, 0], label='EKF Base Velocity X', color='blue')
@@ -609,20 +620,6 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/ekf/base_velocity_error_plot.png")
-    plt.close(fig)
-
-    # Plot error between ekf base velocity and fb base velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_velocity[:, 0] - fb_base_velocity[:, 0], label='EKF Base Velocity X', color='blue')
-    ax.plot(t, ekf_base_velocity[:, 1] - fb_base_velocity[:, 1], label='EKF Base Velocity Y', color='orange')
-    ax.plot(t, ekf_base_velocity[:, 2] - fb_base_velocity[:, 2], label='EKF Base Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Velocity [m/s]')
-    ax.set_title('Base Velocity Error between EKF estimation and Feedback')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_velocity_error_vs_feedback_plot.png")
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -656,21 +653,6 @@ if __name__ == '__main__':
     fig.savefig("images/ekf/base_orientation_error_plot.png")
     plt.close(fig)
 
-    # plot error between ekf base orientation and fb base orientation
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_orientation[:, 0] - fb_base_orientation[:, 0], label='EKF Base Orientation W', color='blue')
-    ax.plot(t, ekf_base_orientation[:, 1] - fb_base_orientation[:, 1], label='EKF Base Orientation X', color='orange')
-    ax.plot(t, ekf_base_orientation[:, 2] - fb_base_orientation[:, 2], label='EKF Base Orientation Y', color='green')
-    ax.plot(t, ekf_base_orientation[:, 3] - fb_base_orientation[:, 3], label='EKF Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation Error between EKF estimation and Feedback')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_orientation_error_vs_feedback_plot.png")
-    plt.close(fig)
-
     # Plot EKF base angular velocity
     fig, ax = plt.subplots()
     ax.plot(t, ekf_base_angular_velocity[:, 0] - sim_base_angular_velocity[:, 0], label='EKF Base Angular Velocity X', color='blue')
@@ -683,20 +665,6 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/ekf/base_angular_velocity_error_plot.png")
-    plt.close(fig)
-
-    # plot error between ekf base angular velocity and fb base angular velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_angular_velocity[:, 0] - fb_base_angular_velocity[:, 0], label='EKF Base Angular Velocity X', color='blue')
-    ax.plot(t, ekf_base_angular_velocity[:, 1] - fb_base_angular_velocity[:, 1], label='EKF Base Angular Velocity Y', color='orange')
-    ax.plot(t, ekf_base_angular_velocity[:, 2] - fb_base_angular_velocity[:, 2], label='EKF Base Angular Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Angular Velocity [rad/s]')
-    ax.set_title('Angular Velocity Error between EKF estimation and Feedback')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_angular_velocity_error_vs_feedback_plot.png")
     plt.close(fig)
 
     # Plot position error between ekf joint position and simulated joint position
@@ -752,7 +720,7 @@ if __name__ == '__main__':
     for i in range(num_joints):
         color = colormap(i % 10)
         linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_position[:, i] - fb_joint_position[:, i]
+        error = ekf_joint_position[:, i] - measured_joint_position[:, i]
         ax.plot(t, error,
                 label=joint_names[i].strip(),
                 color=color,
@@ -774,7 +742,7 @@ if __name__ == '__main__':
     for i in range(num_joints):
         color = colormap(i % 10)
         linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_velocity[:, i] - fb_joint_velocity[:, i]
+        error = ekf_joint_velocity[:, i] - measured_joint_velocity[:, i]
         ax.plot(t, error,
                 label=joint_names[i].strip(),
                 color=color,
@@ -844,15 +812,15 @@ if __name__ == '__main__':
 
     # plot feedback joint velocity
     fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(fb_joint_velocity.shape[1]):
-        ax.plot(t, fb_joint_velocity[:, i], label=joint_names[i].strip())
+    for i in range(measured_joint_velocity.shape[1]):
+        ax.plot(t, measured_joint_velocity[:, i], label=joint_names[i].strip())
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Velocity [rad/s]')
     ax.set_title('Feedback Joint Velocities')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/feedback/fb_joint_velocity_plot.png")
+    fig.savefig("images/feedback/measured_joint_velocity_plot.png")
     plt.close(fig)
     
     # plot imu orientation estimated
@@ -900,52 +868,52 @@ if __name__ == '__main__':
 
     # plot imu orientation
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_orientation[:, 0], label='IMU Orientation W', color='blue')
-    ax.plot(t, fb_imu_orientation[:, 1], label='IMU Orientation X', color='orange')
-    ax.plot(t, fb_imu_orientation[:, 2], label='IMU Orientation Y', color='green')
-    ax.plot(t, fb_imu_orientation[:, 3], label='IMU Orientation Z', color='red')
+    ax.plot(t, measured_imu_orientation[:, 0], label='IMU Orientation W', color='blue')
+    ax.plot(t, measured_imu_orientation[:, 1], label='IMU Orientation X', color='orange')
+    ax.plot(t, measured_imu_orientation[:, 2], label='IMU Orientation Y', color='green')
+    ax.plot(t, measured_imu_orientation[:, 3], label='IMU Orientation Z', color='red')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Orientation [Quaternion]')
     ax.set_title('IMU Orientation')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/ekf/fb_imu_orientation_plot.png")
+    fig.savefig("images/ekf/measured_imu_orientation_plot.png")
     plt.close(fig)
 
     # plot imu angular velocity
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_angular_velocity[:, 0], label='IMU Angular Velocity X', color='blue')
-    ax.plot(t, fb_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y', color='orange')
-    ax.plot(t, fb_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z', color='green')
+    ax.plot(t, measured_imu_angular_velocity[:, 0], label='IMU Angular Velocity X', color='blue')
+    ax.plot(t, measured_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y', color='orange')
+    ax.plot(t, measured_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Angular Velocity [rad/s]')
     ax.set_title('IMU Angular Velocity')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/ekf/fb_imu_angular_velocity_plot.png")
+    fig.savefig("images/ekf/measured_imu_angular_velocity_plot.png")
     plt.close(fig)
     
     # plot imu accelerometer
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_accelerometer[:, 0], label='IMU Accelerometer X', color='blue')
-    ax.plot(t, fb_imu_accelerometer[:, 1], label='IMU Accelerometer Y', color='orange')
-    ax.plot(t, fb_imu_accelerometer[:, 2], label='IMU Accelerometer Z', color='green')
+    ax.plot(t, measured_imu_accelerometer[:, 0], label='IMU Accelerometer X', color='blue')
+    ax.plot(t, measured_imu_accelerometer[:, 1], label='IMU Accelerometer Y', color='orange')
+    ax.plot(t, measured_imu_accelerometer[:, 2], label='IMU Accelerometer Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Accelerometer [m/s^2]')
     ax.set_title('IMU Accelerometer')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/ekf/fb_imu_accelerometer_plot.png")
+    fig.savefig("images/ekf/measured_imu_accelerometer_plot.png")
     plt.close(fig)
 
     # plot error between real and estimated imu accelerometer
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_accelerometer[:, 0] - estimated_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
-    ax.plot(t, fb_imu_accelerometer[:, 1] - estimated_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
-    ax.plot(t, fb_imu_accelerometer[:, 2] - estimated_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
+    ax.plot(t, measured_imu_accelerometer[:, 0] - estimated_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
+    ax.plot(t, measured_imu_accelerometer[:, 1] - estimated_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
+    ax.plot(t, measured_imu_accelerometer[:, 2] - estimated_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Accelerometer Error [m/s^2]')
     ax.set_title('IMU Accelerometer Error: Real - estimated')
@@ -957,9 +925,9 @@ if __name__ == '__main__':
 
     # plot error between real and estimated imu angular velocity
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_angular_velocity[:, 0] - estimated_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
-    ax.plot(t, fb_imu_angular_velocity[:, 1] - estimated_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
-    ax.plot(t, fb_imu_angular_velocity[:, 2] - estimated_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
+    ax.plot(t, measured_imu_angular_velocity[:, 0] - estimated_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
+    ax.plot(t, measured_imu_angular_velocity[:, 1] - estimated_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
+    ax.plot(t, measured_imu_angular_velocity[:, 2] - estimated_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Angular Velocity Error [rad/s]')
     ax.set_title('IMU Angular Velocity Error: Real - estimated')
@@ -971,10 +939,10 @@ if __name__ == '__main__':
 
     # plot error between real and estimated imu orientation
     fig, ax = plt.subplots()
-    ax.plot(t, fb_imu_orientation[:, 0] - estimated_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
-    ax.plot(t, fb_imu_orientation[:, 1] - estimated_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
-    ax.plot(t, fb_imu_orientation[:, 2] - estimated_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
-    ax.plot(t, fb_imu_orientation[:, 3] - estimated_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
+    ax.plot(t, measured_imu_orientation[:, 0] - estimated_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
+    ax.plot(t, measured_imu_orientation[:, 1] - estimated_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
+    ax.plot(t, measured_imu_orientation[:, 2] - estimated_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
+    ax.plot(t, measured_imu_orientation[:, 3] - estimated_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('IMU Orientation Error [Quaternion]')
     ax.set_title('IMU Orientation Error: Real - estimated')
@@ -988,11 +956,9 @@ if __name__ == '__main__':
     for group_name, indices in grouped_indices.items():
         fig, ax = plt.subplots()
         for i in indices:
-            ax.plot(t, fb_joint_position[:, i], label=joint_names[i])
+            ax.plot(t, measured_joint_position[:, i], label=joint_names[i])
             ax.plot(t, sim_joint_position[:, i], label=f"{joint_names[i].strip()} Simulation", linestyle='--')
             ax.plot(t, ekf_joint_position[:, i], label=f"{joint_names[i].strip()} EKF", linestyle=':')
-            # plot input command as a dotted line 
-            # ax.plot(t, input_command[:, i], label=f"{joint_names[i].strip()} Input Command", linestyle='--')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Position [rad]')
         ax.set_title(group_name.replace('_', ' ').title())
@@ -1007,8 +973,8 @@ if __name__ == '__main__':
 
     #plot velocity error between input command and feedback joint velocity, everything in one single plot
     fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(fb_joint_velocity.shape[1]):
-        error = fb_joint_velocity[:, i] - sim_joint_velocity[:, i]
+    for i in range(measured_joint_velocity.shape[1]):
+        error = measured_joint_velocity[:, i] - sim_joint_velocity[:, i]
         ax.plot(t, error, label=joint_names[i].strip())
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Velocity Error [rad/s]')

@@ -34,7 +34,7 @@ class WalkingManager {
 
   LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  RobotState updateEKF(RobotState current_state, Eigen::VectorXd actual_output);
+  RobotState updateEKF(RobotState sim_robot_state, Eigen::VectorXd actual_output);
 
  RobotState getNewRobotState(RobotState robot_state);
 
@@ -42,8 +42,7 @@ class WalkingManager {
 
   void update(
       const labrob::RobotState& sim_robot_state,
-      labrob::JointCommand& joint_command, 
-      labrob::RobotState& fb_robot_state,
+      labrob::JointCommand& joint_command,
       Eigen::VectorXd actual_output
   );
 
@@ -181,19 +180,14 @@ private:
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
   // fb state vectors
-  std::vector<Eigen::VectorXd> fb_base_position_log_;
-  std::vector<Eigen::VectorXd> fb_base_velocity_log_;
-  std::vector<Eigen::VectorXd> fb_base_orientation_log_;
-  std::vector<Eigen::VectorXd> fb_base_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> fb_joint_position_log_;
-  std::vector<Eigen::VectorXd> fb_joint_velocity_log_;
-  // imu vectors
+  std::vector<Eigen::VectorXd> measured_joint_position_log_;
+  std::vector<Eigen::VectorXd> measured_joint_velocity_log_;
   std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
   std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
-  std::vector<Eigen::VectorXd> fb_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> fb_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> fb_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
+  std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
 
   std::vector<Eigen::VectorXd> input_torque_log_;
 

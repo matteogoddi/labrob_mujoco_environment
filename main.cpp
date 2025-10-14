@@ -37,10 +37,10 @@ bool isLIPLoopClosed = false;
 bool useSim = false;
 bool useRobot = false;
 
-double startTimeWBCCL = 0.0;
-double startTimeMPCCL = 0.0;
+double startTimeWBCCL = 15000.0;
+double startTimeMPCCL = 15000.0;
 double startTimeEKFCL = 0.0;
-double startTimeLIPCL = 0.0;
+double startTimeLIPCL = 15000.0;
 
 #include "MujocoUI.hpp"
 
@@ -77,7 +77,7 @@ class DataBuffer {
   std::shared_mutex mutex;
 };
 
-const int G1_NUM_MOTOR = 29;
+const int G1_NUM_MOTOR = 27;
 struct ImuState {
   std::array<float, 3> rpy = {};
   std::array<float, 3> omega = {};
@@ -100,7 +100,7 @@ struct MotorState {
 std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 500,      // legs sx
   700, 700, 700, 1000, 900, 500,      // legs dx
-  400, 400, 400,                   // waist
+  400,                   // waist
   100, 100, 100, 100,  20, 20, 20,  // arms sx
   100, 100, 100, 100,  20, 20, 20   // arms dx
 };
@@ -117,7 +117,7 @@ std::array<float, G1_NUM_MOTOR> Kp{
 std::array<float, G1_NUM_MOTOR> Kd{
   10, 10, 10, 10, 10, 10,     // legs sx
   10, 10, 10, 10, 10, 10,     // legs dx
-  10, 10, 10,              // waist
+  10,             // waist
   10, 10, 10, 10, 10, 10, 10,  // arms sx
   10, 10, 10, 10, 10, 10, 10   // arms dx
 };
@@ -141,42 +141,37 @@ PR = 0,  // Series Control for Ptich/Roll Joints
 AB = 1   // Parallel Control for A/B Joints
 };
 
-enum G1JointIndex {
-LeftHipPitch = 0,
-LeftHipRoll = 1,
-LeftHipYaw = 2,
-LeftKnee = 3,
-LeftAnklePitch = 4,
-LeftAnkleB = 4,
-LeftAnkleRoll = 5,
-LeftAnkleA = 5,
-RightHipPitch = 6,
-RightHipRoll = 7,
-RightHipYaw = 8,
-RightKnee = 9,
-RightAnklePitch = 10,
-RightAnkleB = 10,
-RightAnkleRoll = 11,
-RightAnkleA = 11,
-WaistYaw = 12,
-WaistRoll = 13,        // NOTE INVALID for g1 23dof/29dof with waist locked
-WaistA = 13,           // NOTE INVALID for g1 23dof/29dof with waist locked
-WaistPitch = 14,       // NOTE INVALID for g1 23dof/29dof with waist locked
-WaistB = 14,           // NOTE INVALID for g1 23dof/29dof with waist locked
-LeftShoulderPitch = 15,
-LeftShoulderRoll = 16,
-LeftShoulderYaw = 17,
-LeftElbow = 18,
-LeftWristRoll = 19,
-LeftWristPitch = 20,   // NOTE INVALID for g1 23dof
-LeftWristYaw = 21,     // NOTE INVALID for g1 23dof
-RightShoulderPitch = 22,
-RightShoulderRoll = 23,
-RightShoulderYaw = 24,
-RightElbow = 25,
-RightWristRoll = 26,
-RightWristPitch = 27,  // NOTE INVALID for g1 23dof
-RightWristYaw = 28     // NOTE INVALID for g1 23dof
+// make a map between joint name and robot joint index
+std::map<std::string, int> joint_name_to_index = {
+  {"left_hip_pitch_joint", 0},
+  {"left_hip_roll_joint", 1},
+  {"left_hip_yaw_joint", 2},
+  {"left_knee_joint", 3},
+  {"left_ankle_pitch_joint", 4},
+  {"left_ankle_roll_joint", 5},
+  {"right_hip_pitch_joint", 6},
+  {"right_hip_roll_joint", 7},
+  {"right_hip_yaw_joint", 8},
+  {"right_knee_joint", 9},
+  {"right_ankle_pitch_joint", 10},
+  {"right_ankle_roll_joint", 11},
+  {"waist_yaw_joint", 12},
+  // {"waist_roll_joint", 13},        // NOTE INVALID for g1 23dof/29dof with waist locked
+  // {"waist_pitch_joint", 14},      // NOTE INVALID for g1 23dof/29dof with waist locked
+  {"left_shoulder_pitch_joint", 15},
+  {"left_shoulder_roll_joint", 16},
+  {"left_shoulder_yaw_joint", 17},
+  {"left_elbow_joint", 18},
+  {"left_wrist_roll_joint", 19},
+  {"left_wrist_pitch_joint", 20},   // NOTE INVALID for g1 23dof
+  {"left_wrist_yaw_joint", 21},       // NOTE INVALID for g1 23dof
+  {"right_shoulder_pitch_joint", 22},
+  {"right_shoulder_roll_joint", 23},
+  {"right_shoulder_yaw_joint", 24},
+  {"right_elbow_joint", 25},
+  {"right_wrist_roll_joint", 26},
+  {"right_wrist_pitch_joint", 27}, // NOTE INVALID for g1 23dof
+  {"right_wrist_yaw_joint", 28}      // NOTE INVALID for g1 23dof
 };
 
 inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
@@ -211,11 +206,35 @@ void LowStateHandler(const void* msg){
     return;
   }
 
+  // if(low_state.motor_state().size() != G1_NUM_MOTOR) {
+  //   std::cerr << "Warning: LowState motor count differs: " << low_state.motor_state().size() << "\n";
+  // }        
+
   std::lock_guard<std::mutex> lock(stateMutex);
   for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-    motor_state_data.q[i] = low_state.motor_state()[i].q();
-    motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+    if (i == 13 || i == 14) continue; // skip waist roll and pitch
+    if (i < 13) {
+      motor_state_data.q[i] = low_state.motor_state()[i].q();
+      motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+    }
+    else if (i > 14) {
+      motor_state_data.q[i] = low_state.motor_state()[i + 2].q();
+      motor_state_data.dq[i] = low_state.motor_state()[i + 2].dq();
+    }
   }
+
+  static bool debugPrinted = false;
+  if (!debugPrinted) {
+    for (size_t i = 0; i < low_state.motor_state().size(); ++i) {
+      const auto& m = low_state.motor_state()[i];
+      std::cout << "HW idx " << i
+                << " | q=" << m.q()
+                << " | dq=" << m.dq()
+                << std::endl;
+    }
+    debugPrinted = true;
+  }
+
   
   if (mode_machine_ != low_state.mode_machine()) {
     if (mode_machine_ == 0) {
@@ -478,9 +497,9 @@ int main(const int argc, const char* argv[]) {
   
 
   // Init robot posture:
-  mjtNum waist_p_init = 0.0;
+  // mjtNum waist_p_init = 0.0;
   mjtNum waist_y_init = 0.0;
-  mjtNum waist_r_init = 0.0;
+  // mjtNum waist_r_init = 0.0;
   mjtNum r_hip_y_init = 0.0;
   mjtNum r_hip_r_init = -0.05;
   mjtNum r_hip_p_init = -0.44;
@@ -508,9 +527,9 @@ int main(const int argc, const char* argv[]) {
 
   mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071;
   mj_data_ptr->qpos[3] = 1.0;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_roll_joint")]] = waist_r_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_roll_joint")]] = waist_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_pitch_joint")]] = r_hip_p_init;
@@ -542,9 +561,9 @@ int main(const int argc, const char* argv[]) {
   }
 
   // Walking Manager:
-  labrob::RobotState initial_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   
-  walking_manager.init(initial_robot_state, armatures);
+  walking_manager.init(robot_state, armatures);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -584,29 +603,21 @@ int main(const int argc, const char* argv[]) {
     
   }
 
+  auto next_tick = std::chrono::steady_clock::now();
+
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
-      auto start_sleep = std::chrono::high_resolution_clock::now();
-
-      labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-
-      labrob::RobotState fb_robot_state = robot_state;
+      auto start_sleep = std::chrono::steady_clock::now();
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 3 + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
         std::lock_guard<std::mutex> lock(stateMutex);
-        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          fb_robot_state.joint_state[joint_name].pos = motor_state_data.q[i];
-          fb_robot_state.joint_state[joint_name].vel = motor_state_data.dq[i];
-        }
 
         Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
           Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
@@ -625,8 +636,8 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          actual_output[3 + i] = fb_robot_state.joint_state[joint_name].pos;
-          actual_output[3 + mj_model_ptr->nu + i + 3] = fb_robot_state.joint_state[joint_name].vel;
+          actual_output[3 + i] = motor_state_data.q[i];
+          actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
         }
         actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
         actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
@@ -634,7 +645,6 @@ int main(const int argc, const char* argv[]) {
         actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
         actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
-        
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
@@ -642,21 +652,20 @@ int main(const int argc, const char* argv[]) {
       // {
       //   #pragma omp section
       //   {
-      //     walking_manager.update(robot_state, joint_command, fb_robot_state, actual_output);
+      //     walking_manager.update(robot_state, joint_command, actual_output);
       //   }
       //   #pragma omp section
       //   {
       //   }
       // } // end of parallel sections
-      walking_manager.update(robot_state, joint_command, fb_robot_state, actual_output);
+      walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (true){
+      if (false){
         mj_step1(mj_model_ptr, mj_data_ptr);
   
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
           mj_data_ptr->ctrl[i] = joint_command[joint_name];
         }
   
@@ -664,7 +673,7 @@ int main(const int argc, const char* argv[]) {
       }
       // double check to ensure that mujoco is active when using the robot
       //fix the error when using integration "by hand"
-      else if (!useRobot) {
+      else{
         robot_state = walking_manager.getNewRobotState(robot_state);
         // update mujoco state with robot_state
         mj_data_ptr->qpos[0] = robot_state.position.x();
@@ -674,6 +683,14 @@ int main(const int argc, const char* argv[]) {
         mj_data_ptr->qpos[4] = robot_state.orientation.x();
         mj_data_ptr->qpos[5] = robot_state.orientation.y();
         mj_data_ptr->qpos[6] = robot_state.orientation.z();
+        //rotate the linear velocity from world to body frame
+        Eigen::Vector3d lin_vel_body = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
+        mj_data_ptr->qvel[0] = lin_vel_body.x();
+        mj_data_ptr->qvel[1] = lin_vel_body.y();
+        mj_data_ptr->qvel[2] = lin_vel_body.z();
+        mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
+        mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
+        mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
@@ -701,6 +718,8 @@ int main(const int argc, const char* argv[]) {
         // impose kp and kd to increase linearly with time
         if (mj_data_ptr->time < 5.0f) {
           for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
             motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
             motor_command.kd[i] = Kd[i];
           }
@@ -715,19 +734,21 @@ int main(const int argc, const char* argv[]) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
-          // if the values are too big in module, give a warning and assign the value to 0
-          if (std::abs(motor_command.q_target[i]) > 3.14 || std::abs(motor_command.dq_target[i]) > 3.14 || std::abs(motor_command.tau_ff[i]) > 100.0) {
+          // if the values are too big in module, turn off the robot
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 1 || std::abs(joint_command[joint_name]) > 50.0) {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
-                      << "q_target = " << motor_command.q_target[i] << ", "
-                      << "dq_target = " << motor_command.dq_target[i] << std::endl;
-            motor_command.q_target[i] = 0.0;
-            motor_command.dq_target[i] = 0.0;
-            motor_command.tau_ff[i] = 0.0;
+                      << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
+                      << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "
+                      << "tau_ff = " << joint_command[joint_name] << std::endl;
+            std::cout << "Disabling robot for safety." << std::endl;
+
+            walking_manager.saveLogs();
+            exit(1);
           }
           else {
-            motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
-            motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
-            motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
+            motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
+            motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
+            motor_command.tau_ff[i] = joint_command[joint_name];
           }
         }
       
@@ -737,7 +758,10 @@ int main(const int argc, const char* argv[]) {
         dds_low_command.mode_machine() = mode_machine_;
       
         for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-          auto &cmd = dds_low_command.motor_cmd().at(i);
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id)); 
+          int robot_idx = joint_name_to_index[joint_name];
+          auto &cmd = dds_low_command.motor_cmd().at(robot_idx);
           cmd.mode() = 1;
           cmd.q()    = motor_command.q_target[i];
           cmd.dq()   = motor_command.dq_target[i];
@@ -750,13 +774,20 @@ int main(const int argc, const char* argv[]) {
         lowcmd_publisher->Write(dds_low_command);
       }
 
-      auto end_sleep = std::chrono::high_resolution_clock::now();
-      auto sleep = end_sleep - start_sleep;
-      if(sleep < std::chrono::milliseconds(2))
-          std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
+      // auto end_sleep = std::chrono::high_resolution_clock::now();
+      // auto sleep = end_sleep - start_sleep;
+      // if(sleep < std::chrono::milliseconds(2))
+      //     std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
       // else
       //   std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
     
+      next_tick += std::chrono::milliseconds(2);
+
+      // Calcola quanto dormire
+      auto now = std::chrono::steady_clock::now();
+      if ( now - start_sleep < std::chrono::milliseconds(2) ) {
+          std::this_thread::sleep_until(next_tick);
+      }
     }
 
     mujoco_ui.render();
