@@ -74,7 +74,7 @@ if __name__ == '__main__':
     estimated_imu_orientation: np.ndarray = np.loadtxt(folder + '/estimated_imu_orientation.txt')
 
 
-    num_samples = sim_joint_position.shape[0] 
+    num_samples = sim_joint_position.shape[0] - 10
     input_torque = sim_joint_position[:num_samples, :]
 
     sim_com = sim_com[:num_samples, :]

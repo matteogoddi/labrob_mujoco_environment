@@ -131,11 +131,11 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
 
   const auto& J_com = fb_robot_data.Jcom;
-  const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt);
+  const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
   const auto& a_com_drift = fb_robot_data.acom[0];
-  const auto a_lsole_drift = J_lsole_dot_ * qdot_fb_filt;
-  const auto a_rsole_drift = J_rsole_dot_ * qdot_fb_filt;
-  const auto a_torso_orientation_drift = J_torso_dot_.bottomRows<3>() * qdot_fb_filt;
+  const auto a_lsole_drift = J_lsole_dot_ * qdot;
+  const auto a_rsole_drift = J_rsole_dot_ * qdot;
+  const auto a_torso_orientation_drift = J_torso_dot_.bottomRows<3>() * qdot;
 
   // Compute desired accelerations
   auto err_com = desired.com.pos - current.com.pos;
@@ -195,7 +195,7 @@ WholeBodyController::compute_inverse_dynamics(
   f_acc += params_.weight_torso * J_torso_.bottomRows<3>().transpose() * (a_torso_orientation_drift - a_torso_orientation_total);
   f_acc += -params_.weight_regulation * err_posture_selection_matrix * a_jnt_total;
   f_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
-      sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot_fb_filt;
+      sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
   auto q_jnt_dot_min = -robot_model.velocityLimit.tail(n_joints_);
   auto q_jnt_dot_max = robot_model.velocityLimit.tail(n_joints_);
@@ -282,11 +282,11 @@ WholeBodyController::compute_inverse_dynamics(
 
   if (current.is_left_foot_support) {
     A_acc.topRows(6) = J_lsole_;
-    b_acc.topRows(6) = -J_lsole_dot_ * qdot_fb_filt - params_.gamma * J_lsole_ * qdot_fb_filt + params_.beta * err_lsole;
+    b_acc.topRows(6) = -J_lsole_dot_ * qdot - params_.gamma * J_lsole_ * qdot + params_.beta * err_lsole;
   }
   if (current.is_right_foot_support) {
     A_acc.bottomRows(6) = J_rsole_;
-    b_acc.bottomRows(6) = -J_rsole_dot_ * qdot_fb_filt - params_.gamma * J_rsole_ * qdot_fb_filt + params_.beta * err_rsole;
+    b_acc.bottomRows(6) = -J_rsole_dot_ * qdot - params_.gamma * J_rsole_ * qdot + params_.beta * err_rsole;
   }
   if (!current.is_left_foot_support) {
     A_no_contact.block(0, 0, 3 * n_contacts_, 3 * n_contacts_) = Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);

@@ -211,15 +211,15 @@ void LowStateHandler(const void* msg){
   // }        
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+  for (int i = 0; i < G1_NUM_MOTOR + 2; ++i) {
     if (i == 13 || i == 14) continue; // skip waist roll and pitch
-    if (i < 13) {
+    else if (i < 13) {
       motor_state_data.q[i] = low_state.motor_state()[i].q();
       motor_state_data.dq[i] = low_state.motor_state()[i].dq();
     }
     else if (i > 14) {
-      motor_state_data.q[i] = low_state.motor_state()[i + 2].q();
-      motor_state_data.dq[i] = low_state.motor_state()[i + 2].dq();
+      motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
+      motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
     }
   }
 

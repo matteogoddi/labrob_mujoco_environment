@@ -198,6 +198,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     pinocchio::forwardKinematics(robot_model, sim_robot_data, q_init);
     pinocchio::jacobianCenterOfMass(robot_model, sim_robot_data, q_init);
     pinocchio::framesForwardKinematics(robot_model, sim_robot_data, q_init);
+    pinocchio::centerOfMass(robot_model, sim_robot_data, q_init, false);
 
     integrated_state_pos = Eigen::VectorXd::Zero(6 + njnt);
     integrated_state_vel = Eigen::VectorXd::Zero(6 + njnt);
@@ -207,9 +208,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         q_init[6], q_init[3], q_init[4], q_init[5]
     ));
     integrated_state_pos.tail(njnt) = q_init.tail(njnt);
-    integrated_state_vel.head<3>() = qdot_init.head<3>();
-    integrated_state_vel.segment<3>(3) = qdot_init.segment<3>(3);
-    integrated_state_vel.tail(njnt) = qdot_init.tail(njnt);
+    integrated_state_vel = qdot_init;
 
     fb_robot_data = pinocchio::Data(robot_model);
     predicted_robot_data = pinocchio::Data(robot_model);
@@ -265,10 +264,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     R.block(3, 3, njnt, njnt) = 1e-6 * Eigen::MatrixXd::Identity(njnt, njnt);
 
     // 3) Velocità angolare IMU (rad^2/s^2)
-    R.block(njnt+3, njnt+3, 3, 3) = 1e-3 * Eigen::Matrix3d::Identity();
+    R.block(njnt+3, njnt+3, 3, 3) = 1e-2 * Eigen::Matrix3d::Identity();
 
     // 4) Velocità giunti (rad^2/s^2)
-    R.block(njnt+6, njnt+6, njnt, njnt) = 1e-2 * Eigen::MatrixXd::Identity(njnt, njnt);
+    R.block(njnt+6, njnt+6, njnt, njnt) = 1e-1 * Eigen::MatrixXd::Identity(njnt, njnt);
 
     // 5) Accelerometro IMU (m^2/s^4)
     R.block(2*njnt+6, 2*njnt+6, 3, 3) = 1e-2 * Eigen::Matrix3d::Identity();
@@ -637,14 +636,14 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
 
     //PREDICTION COVARIANCE E KALMAN GAIN
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
-    // Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
+    Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
 
     // Eigen::LLT<Eigen::MatrixXd> llt(C * Lambda_ * C.transpose() + R);
     // Eigen::MatrixXd MatInv = llt.solve(Eigen::MatrixXd::Identity(n_ekf_output, n_ekf_output));
     // Kalman_Gain = Lambda_ * C.transpose() * MatInv;
 
-    Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
-    Kalman_Gain = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
+    // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
+    // Kalman_Gain = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
 
     // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
     // Kalman_Gain = Lambda_ * C.transpose();
@@ -657,7 +656,7 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
     if (useRobot) {
         y_actual = actual_output;
         // is it transpose?
-        Eigen::Matrix3d R_world_imu = estimated_robot_data.oMf[imu_idx_].rotation().transpose();
+        Eigen::Matrix3d R_world_imu = predicted_robot_data.oMf[imu_idx_].rotation();
         y_actual.segment(njnt + 3, 3) = R_world_imu * y_actual.segment(njnt + 3, 3);
         y_actual.segment(njnt + 3 + njnt + 3, 3) = R_world_imu * (y_actual.segment(njnt + 3 + njnt + 3, 3)) - Eigen::Vector3d(0, 0, 9.81);
         
@@ -722,6 +721,10 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
     }
 
     x_estimate = x_pred + Kalman_Gain * (y_actual - y_pred);
+
+    // print kalman gain values for imu accelerometer
+    std::cout << "Kalman Gain imu accelerometer: " << Kalman_Gain.block(0, 2*(njnt+3), 3, 2*(njnt+6)) << std::endl;
+    std::cout << "prossima matrice" << std::endl;
 
     Eigen::VectorXd q_estimate = Eigen::VectorXd::Zero(njnt + 7);
     q_estimate.head(3) = x_estimate.head(3);
@@ -1137,6 +1140,7 @@ WalkingManager::update(
 
     const auto& p_CoM = sim_robot_data.com[0];
     const auto& J_CoM = sim_robot_data.Jcom;
+    const auto& a_CoM_drift = sim_robot_data.acom[0];
     Eigen::Vector3d zmp_3d;
     // zmp_3d.z() = sim_robot_state.position(2) - sim_robot_state.total_force.z() / (mass * eta2);
     // zmp_3d.x() = 0.0;
@@ -1147,17 +1151,17 @@ WalkingManager::update(
     //     zmp_3d.x() += (pi.x() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.x() / sim_robot_state.total_force.z());
     //     zmp_3d.y() += (pi.y() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d.z() - pi.z()) * fi.y() / sim_robot_state.total_force.z());
     // }
-    zmp_3d.z() = 0.0;
-    zmp_3d.x() = p_CoM.x() - a_CoM_drift_fb.x() / eta2;
-    zmp_3d.y() = p_CoM.y() - a_CoM_drift_fb.y() / eta2;
+    zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+    zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+    zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
     sim_LIPstate = LIPState(p_CoM, J_CoM * robot_state_to_pinocchio_joint_velocity(robot_model, sim_robot_state), zmp_3d);
     sim_filt_LIPstate = updateKF(sim_filt_LIPstate, sim_LIPstate, ismpc_ptr_->getInput());
     auto end_kf = std::chrono::high_resolution_clock::now();
 
     // Fill current gait configuration:
     labrob::GaitConfiguration fb_current_gait_configuration;
-    fb_current_gait_configuration.qjnt = q_fb_filt.tail(njnt);
-    fb_current_gait_configuration.qjntdot = q_dot_fb_filt.tail(njnt);
+    fb_current_gait_configuration.qjnt = q.tail(njnt);
+    fb_current_gait_configuration.qjntdot = qdot.tail(njnt);
 
     fb_current_gait_configuration.is_left_foot_support = true;
     fb_current_gait_configuration.is_right_foot_support = true;
@@ -1192,28 +1196,28 @@ WalkingManager::update(
 
     sim_current_gait_configuration.com.pos = sim_robot_data.com[0];
     sim_current_gait_configuration.com.vel = sim_robot_data.vcom[0];
-    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed){
+    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed && false){
         sim_current_gait_configuration.com.pos = fb_filt_LIPstate.com_pos_;
         sim_current_gait_configuration.com.vel = fb_filt_LIPstate.com_vel_;
     }
 
     sim_current_gait_configuration.torso.pos = sim_robot_data.oMf[torso_idx_].rotation();
     sim_current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
-    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed){
+    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed && false){
         sim_current_gait_configuration.torso.pos = fb_robot_data.oMf[torso_idx_].rotation();
         sim_current_gait_configuration.torso.vel = J_torso_fb.bottomRows<3>() * q_dot_fb_filt;
     }
 
     sim_current_gait_configuration.lsole.pos = labrob::SE3(sim_robot_data.oMf[lsole_idx_].rotation(), sim_robot_data.oMf[lsole_idx_].translation());
     sim_current_gait_configuration.lsole.vel = J_lsole * qdot;
-    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed){
+    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed && false){
         sim_current_gait_configuration.lsole.pos = labrob::SE3(fb_robot_data.oMf[lsole_idx_].rotation(), fb_robot_data.oMf[lsole_idx_].translation());
         sim_current_gait_configuration.lsole.vel = J_lsole_fb * q_dot_fb_filt;
     }
 
     sim_current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     sim_current_gait_configuration.rsole.vel = J_rsole * qdot;
-    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed){
+    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed && false){
         sim_current_gait_configuration.rsole.pos = labrob::SE3(fb_robot_data.oMf[rsole_idx_].rotation(), fb_robot_data.oMf[rsole_idx_].translation());
         sim_current_gait_configuration.rsole.vel = J_rsole_fb * q_dot_fb_filt;
     }
@@ -1338,9 +1342,9 @@ WalkingManager::update(
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
                     sim_robot_state,
-                    fb_filt_robot_state,
+                    sim_robot_state,
                     sim_robot_data,
-                    fb_robot_data,
+                    sim_robot_data,
                     sim_current_gait_configuration,
                     desired_gait_configuration
                 );
