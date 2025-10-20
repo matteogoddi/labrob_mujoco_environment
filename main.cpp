@@ -101,8 +101,8 @@ std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 500,      // legs sx
   700, 700, 700, 1000, 900, 500,      // legs dx
   400,                   // waist
-  100, 100, 100, 100,  20, 20, 20,  // arms sx
-  100, 100, 100, 100,  20, 20, 20   // arms dx
+  300, 300, 300, 300,  200, 200, 200,  // arms sx
+  300, 300, 300, 300,  200, 200, 200   // arms dx
 };
 
 // std::array<float, G1_NUM_MOTOR> Kp = {
@@ -206,10 +206,6 @@ void LowStateHandler(const void* msg){
     return;
   }
 
-  // if(low_state.motor_state().size() != G1_NUM_MOTOR) {
-  //   std::cerr << "Warning: LowState motor count differs: " << low_state.motor_state().size() << "\n";
-  // }        
-
   std::lock_guard<std::mutex> lock(stateMutex);
   for (int i = 0; i < G1_NUM_MOTOR + 2; ++i) {
     if (i == 13 || i == 14) continue; // skip waist roll and pitch
@@ -222,19 +218,6 @@ void LowStateHandler(const void* msg){
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
     }
   }
-
-  static bool debugPrinted = false;
-  if (!debugPrinted) {
-    for (size_t i = 0; i < low_state.motor_state().size(); ++i) {
-      const auto& m = low_state.motor_state()[i];
-      std::cout << "HW idx " << i
-                << " | q=" << m.q()
-                << " | dq=" << m.dq()
-                << std::endl;
-    }
-    debugPrinted = true;
-  }
-
   
   if (mode_machine_ != low_state.mode_machine()) {
     if (mode_machine_ == 0) {
@@ -491,7 +474,7 @@ int main(const int argc, const char* argv[]) {
   } else {
     isWBCLoopClosed = true;
     isMPCLoopClosed = true;
-    isEKFLoopClosed = true;
+    isEKFLoopClosed = false;
     isLIPLoopClosed = true;
   }
   
@@ -613,7 +596,7 @@ int main(const int argc, const char* argv[]) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 3 + 6 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -642,9 +625,9 @@ int main(const int argc, const char* argv[]) {
         actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
         actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
         actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
-        actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
-        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
+        // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
+        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
+        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
@@ -735,7 +718,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 1 || std::abs(joint_command[joint_name]) > 50.0) {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 1 || std::abs(joint_command[joint_name]) > 100.0) {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "
@@ -785,7 +768,7 @@ int main(const int argc, const char* argv[]) {
 
       // Calcola quanto dormire
       auto now = std::chrono::steady_clock::now();
-      if ( now - start_sleep < std::chrono::milliseconds(2) ) {
+      if ( now - start_sleep < std::chrono::milliseconds(2)) {
           std::this_thread::sleep_until(next_tick);
       }
     }
