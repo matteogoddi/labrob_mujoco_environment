@@ -156,7 +156,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
-    std::string robot_description_filename = "../g1_description/unitreeg1.urdf";
+    std::string robot_description_filename = "../g1_description/unitreeg1_2.urdf";
 
     // Build Pinocchio model and data from URDF:
     pinocchio::Model full_robot_model;
@@ -1210,8 +1210,8 @@ WalkingManager::update(
 
     // Fill current gait configuration:
     labrob::GaitConfiguration sim_current_gait_configuration;
-    sim_current_gait_configuration.qjnt = q.tail(njnt);
-    sim_current_gait_configuration.qjntdot = qdot.tail(njnt);
+    sim_current_gait_configuration.qjnt = q_fb_filt.tail(njnt);
+    sim_current_gait_configuration.qjntdot = q_dot_fb_filt.tail(njnt);
 
     sim_current_gait_configuration.is_left_foot_support = true;
     sim_current_gait_configuration.is_right_foot_support = true;
@@ -1222,7 +1222,7 @@ WalkingManager::update(
 
     sim_current_gait_configuration.com.pos = sim_robot_data.com[0];
     sim_current_gait_configuration.com.vel = sim_robot_data.vcom[0];
-    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed && false){
+    if (t_msec_ >= startTimeMPCCL && isMPCLoopClosed){
         sim_current_gait_configuration.com.pos = fb_filt_LIPstate.com_pos_;
         sim_current_gait_configuration.com.vel = fb_filt_LIPstate.com_vel_;
     }
