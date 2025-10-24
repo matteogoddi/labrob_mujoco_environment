@@ -41,34 +41,6 @@ WalkingManager::WalkingManager() :
 
 }
 
-// write function quaternionFromRotVec
-Eigen::Quaterniond quaternionFromRotVec(const Eigen::Vector3d& rot_vec) {
-    double angle = rot_vec.norm();
-    if (angle > M_PI) {
-        angle -= 2 * M_PI;
-    } else if (angle < -M_PI) {
-        angle += 2 * M_PI;
-    }
-    if (angle < 1e-6) {
-        return Eigen::Quaterniond(1, 0, 0, 0); // No rotation
-    } else {
-        Eigen::Vector3d axis = rot_vec.normalized();
-        return Eigen::Quaterniond(Eigen::AngleAxisd(angle, axis));
-    }
-}
-
-// write function rotVecFromQuaternion
-Eigen::Vector3d rotVecFromQuaternion(const Eigen::Quaterniond& q) {
-    Eigen::AngleAxisd axis_angle(q);
-    if (axis_angle.angle() > M_PI) {
-        axis_angle.angle() -= 2 * M_PI;
-    } else if (axis_angle.angle() < -M_PI) {
-        axis_angle.angle() += 2 * M_PI;
-    }
-
-    return axis_angle.axis() * axis_angle.angle();
-}
-
 bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state,
                      std::map<std::string, double> &armatures) {
@@ -309,7 +281,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     q_jnt_des_ = q_init.tail(njnt);
 
     // TODO: init using node handle.
-    controller_frequency_ = 500;
+    controller_frequency_ = 1000;
     controller_timestep_msec_ = 1000 / controller_frequency_;
 
     double swing_foot_trajectory_height = 0.05;
@@ -338,8 +310,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::WalkingState::Standing
     ));
 
-    double double_support_duration = 20000;
-    double single_support_duration = 20000;
+    double double_support_duration = 4000;
+    double single_support_duration = 4000;
     walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
@@ -436,8 +408,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     int64_t mpc_prediction_horizon_msec = 2000;
     int64_t mpc_timestep_msec = 100;
     double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
-    double foot_constraint_square_length = 0.20;
-    double foot_constraint_square_width = 0.10;
+    double foot_constraint_square_length = 100;
+    double foot_constraint_square_width = 100;
     Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
     sim_filt_LIPstate = labrob::LIPState(
         p_CoM,
@@ -1080,6 +1052,9 @@ WalkingManager::update(
                     fb_filt_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
                     fb_filt_robot_state.joint_state[joint_name].vel = actual_output(3 + njnt + 3 + joint_id);
                 }
+                if (!useRobot) {
+                    fb_filt_robot_state = sim_robot_state;
+                }
             }
             else{
                 //TODO: don't know what to do if not using the EKF
@@ -1202,16 +1177,16 @@ WalkingManager::update(
     fb_current_gait_configuration.torso.pos = fb_robot_data.oMf[torso_idx_].rotation();
     fb_current_gait_configuration.torso.vel = J_torso_fb.bottomRows<3>() * q_dot_fb_filt;
 
-    fb_current_gait_configuration.lsole.pos = labrob::SE3(fb_robot_data.oMf[lsole_idx_].rotation(), fb_robot_data.oMf[lsole_idx_].translation());
+    fb_current_gait_configuration.lsole.pos = labrob::SE3(sim_robot_data.oMf[lsole_idx_].rotation(), sim_robot_data.oMf[lsole_idx_].translation());
     fb_current_gait_configuration.lsole.vel = J_lsole_fb * q_dot_fb_filt;
 
-    fb_current_gait_configuration.rsole.pos = labrob::SE3(fb_robot_data.oMf[rsole_idx_].rotation(), fb_robot_data.oMf[rsole_idx_].translation());
+    fb_current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     fb_current_gait_configuration.rsole.vel = J_rsole_fb * q_dot_fb_filt;
 
     // Fill current gait configuration:
     labrob::GaitConfiguration sim_current_gait_configuration;
-    sim_current_gait_configuration.qjnt = q_fb_filt.tail(njnt);
-    sim_current_gait_configuration.qjntdot = q_dot_fb_filt.tail(njnt);
+    sim_current_gait_configuration.qjnt = q.tail(njnt);
+    sim_current_gait_configuration.qjntdot = qdot.tail(njnt);
 
     sim_current_gait_configuration.is_left_foot_support = true;
     sim_current_gait_configuration.is_right_foot_support = true;

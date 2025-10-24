@@ -37,7 +37,7 @@ struct WholeBodyControllerParams {
   double weight_torso;
   double weight_regulation;
   double weight_angular_momentum;
-  double weight_slack;
+  Eigen::MatrixXd weight_regulation_matrix;
 
   double cmm_selection_matrix_x;
   double cmm_selection_matrix_y;

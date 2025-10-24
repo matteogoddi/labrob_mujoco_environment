@@ -38,6 +38,34 @@ err_rotation(const Eigen::Matrix3d& Ra, const Eigen::Matrix3d& Rb) {
   return aa.angle() * Ra * aa.axis();
 }
 
+// write function quaternionFromRotVec
+Eigen::Quaterniond quaternionFromRotVec(const Eigen::Vector3d& rot_vec) {
+  double angle = rot_vec.norm();
+  if (angle > M_PI) {
+      angle -= 2 * M_PI;
+  } else if (angle < -M_PI) {
+      angle += 2 * M_PI;
+  }
+  if (angle < 1e-6) {
+      return Eigen::Quaterniond(1, 0, 0, 0); // No rotation
+  } else {
+      Eigen::Vector3d axis = rot_vec.normalized();
+      return Eigen::Quaterniond(Eigen::AngleAxisd(angle, axis));
+  }
+}
+
+// write function rotVecFromQuaternion
+Eigen::Vector3d rotVecFromQuaternion(const Eigen::Quaterniond& q) {
+  Eigen::AngleAxisd axis_angle(q);
+  if (axis_angle.angle() > M_PI) {
+      axis_angle.angle() -= 2 * M_PI;
+  } else if (axis_angle.angle() < -M_PI) {
+      axis_angle.angle() += 2 * M_PI;
+  }
+
+  return axis_angle.axis() * axis_angle.angle();
+}
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,

@@ -79,7 +79,7 @@ class DataBuffer {
 
 const int G1_NUM_MOTOR = 27;
 struct ImuState {
-  std::array<float, 3> rpy = {};
+  std::array<float, 4> quaternion = {};
   std::array<float, 3> omega = {};
   std::array<float, 3> accelerometer = {};
 };
@@ -232,9 +232,10 @@ void imuTorsoHandler(const void* msg) {
   IMUState_ imu_state = *(const IMUState_*)msg;
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  imu_state_data.rpy[0] = imu_state.rpy()[0];
-  imu_state_data.rpy[1] = imu_state.rpy()[1];
-  imu_state_data.rpy[2] = imu_state.rpy()[2];
+  imu_state_data.quaternion[0] = imu_state.quaternion()[0];
+  imu_state_data.quaternion[1] = imu_state.quaternion()[1];
+  imu_state_data.quaternion[2] = imu_state.quaternion()[2];
+  imu_state_data.quaternion[3] = imu_state.quaternion()[3];
 
   imu_state_data.omega[0] = imu_state.gyroscope()[0];
   imu_state_data.omega[1] = imu_state.gyroscope()[1];
@@ -474,7 +475,7 @@ int main(const int argc, const char* argv[]) {
   } else {
     isWBCLoopClosed = true;
     isMPCLoopClosed = true;
-    isEKFLoopClosed = false;
+    isEKFLoopClosed = true;
     isLIPLoopClosed = true;
   }
   
@@ -603,19 +604,14 @@ int main(const int argc, const char* argv[]) {
         std::lock_guard<std::mutex> lock(stateMutex);
 
         Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
-          Eigen::AngleAxisd(imu_state_data.rpy[0], Eigen::Vector3d::UnitX()) *
-          Eigen::AngleAxisd(imu_state_data.rpy[1], Eigen::Vector3d::UnitY()) *
-          Eigen::AngleAxisd(imu_state_data.rpy[2], Eigen::Vector3d::UnitZ())
+          imu_state_data.quaternion[0],
+          imu_state_data.quaternion[1],
+          imu_state_data.quaternion[2],
+          imu_state_data.quaternion[3]
         );
-        // convert quaternion to axis-angle representation
-        Eigen::AngleAxisd angle_axis(imu_quat);
 
         // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
-        actual_output.head<3>() = Eigen::Vector3d(
-          angle_axis.axis().x() * angle_axis.angle(),
-          angle_axis.axis().y() * angle_axis.angle(),
-          angle_axis.axis().z() * angle_axis.angle()
-        );
+        actual_output.head<3>() = labrob::rotVecFromQuaternion(imu_quat);
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
@@ -718,7 +714,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 1 || std::abs(joint_command[joint_name]) > 100.0) {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 2 || std::abs(joint_command[joint_name]) > 100.0) {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "

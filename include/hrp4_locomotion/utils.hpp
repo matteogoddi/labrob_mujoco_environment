@@ -63,6 +63,12 @@ err_translation(const Eigen::Vector3d& pa, const Eigen::Vector3d& pb);
 Eigen::Vector3d
 err_rotation(const Eigen::Matrix3d& Ra, const Eigen::Matrix3d& Rb);
 
+Eigen::Quaterniond
+quaternionFromRotVec(const Eigen::Vector3d& rot_vec);
+
+Eigen::Vector3d
+rotVecFromQuaternion(const Eigen::Quaterniond& q);
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,

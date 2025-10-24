@@ -5,11 +5,11 @@
 #include <hrp4_locomotion/WholeBodyController.hpp>
 
 // Pinocchio
-// #include <pinocchio/algorithm/centroidal.hpp>
-// #include <pinocchio/algorithm/joint-configuration.hpp>
-// #include <pinocchio/algorithm/model.hpp>
-// #include <pinocchio/algorithm/rnea.hpp>
-// #include <pinocchio/algorithm/crba.hpp>
+#include <pinocchio/algorithm/centroidal.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/model.hpp>
+#include <pinocchio/algorithm/rnea.hpp>
+#include <pinocchio/algorithm/crba.hpp>
 
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/utils.hpp>
@@ -31,6 +31,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
+  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
+  // params.weight_regulation_matrix.block(10, 10, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
+  // params.weight_regulation_matrix.block(16, 16, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
+  //fare matrice identità e asssegnare valori più alti per l'ankle roll
 
   params.cmm_selection_matrix_x = 1e-6;
   params.cmm_selection_matrix_y = 1e-6;
@@ -40,7 +44,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = 10;
   params.mu = 0.5;
 
-  params.foot_length = 0.15;
+  params.foot_length = 0.20;
   params.foot_width = 0.07; 
 
   return params;
@@ -185,7 +189,7 @@ WholeBodyController::compute_inverse_dynamics(
   H_acc += params_.weight_lsole * (J_lsole_.transpose() * J_lsole_);
   H_acc += params_.weight_rsole * (J_rsole_.transpose() * J_rsole_);
   H_acc += params_.weight_torso * (J_torso_.bottomRows<3>().transpose() * J_torso_.bottomRows<3>());
-  H_acc += params_.weight_regulation * err_posture_selection_matrix;
+  H_acc += params_.weight_regulation_matrix * err_posture_selection_matrix;
   H_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       std::pow(sample_time_, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
 
@@ -193,7 +197,7 @@ WholeBodyController::compute_inverse_dynamics(
   f_acc += params_.weight_lsole * J_lsole_.transpose() * (a_lsole_drift - a_lsole_total);
   f_acc += params_.weight_rsole * J_rsole_.transpose() * (a_rsole_drift - a_rsole_total);
   f_acc += params_.weight_torso * J_torso_.bottomRows<3>().transpose() * (a_torso_orientation_drift - a_torso_orientation_total);
-  f_acc += -params_.weight_regulation * err_posture_selection_matrix * a_jnt_total;
+  f_acc += -params_.weight_regulation_matrix * err_posture_selection_matrix * a_jnt_total;
   f_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
