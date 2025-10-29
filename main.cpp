@@ -10,6 +10,12 @@
 #include <shared_mutex>
 #include <filesystem>
 
+#include <thread>
+#include <iomanip>
+#include <pthread.h>
+#include <sched.h>
+#include <unistd.h>
+
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
@@ -30,17 +36,15 @@
 
 #include <hrp4_locomotion/globals.h>
 
-bool isWBCLoopClosed = false;
-bool isMPCLoopClosed = false;
+bool isTotalBodyLoopClosed = false;
+bool isCoMLoopClosed = false;
 bool isEKFLoopClosed = false;
-bool isLIPLoopClosed = false;
 bool useSim = false;
 bool useRobot = false;
 
-double startTimeWBCCL = 15000.0;
-double startTimeMPCCL = 15000.0;
+double startTimeTotalBodyCL = 15000.0;
+double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
-double startTimeLIPCL = 15000.0;
 
 #include "MujocoUI.hpp"
 
@@ -286,6 +290,18 @@ int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
     return motionStatus;
 };
 
+// Blocca il thread su un core specifico (per ridurre jitter)
+void pin_thread_to_core(int core_id = 3) {
+  cpu_set_t cpuset;
+  CPU_ZERO(&cpuset);
+  CPU_SET(core_id, &cpuset);
+  if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
+      std::cerr << "[WARN] Non riesco a fissare l’affinità CPU.\n";
+  } else {
+      std::cout << "[INFO] Thread fissato sul core #" << core_id << "\n";
+  }
+}
+
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
 
@@ -418,6 +434,8 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 
 int main(const int argc, const char* argv[]) {
 
+  pin_thread_to_core(3);
+
   std::string netInterface;
 
   for (int i = 1; i < argc; ++i) {
@@ -451,11 +469,10 @@ int main(const int argc, const char* argv[]) {
 
   if (useRobot) {
     std::cout << "Select closed loop to use:" << std::endl;
-    std::cout << "1. Whole Body Controller (WBC)" << std::endl;
-    std::cout << "2. Model Predictive Control (MPC)" << std::endl;
+    std::cout << "1. Center of Mass (CoM)" << std::endl;
+    std::cout << "2. Total Body" << std::endl;
     std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
-    std::cout << "4. Linear Inverted Pendulum (LIP)" << std::endl;
-    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for WBC and EKF)." << std::endl;
+    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for CoM and EKF)." << std::endl;
     std::cout << "Enter your choice: " << std::endl;
     std::string user_input;
     std::getline(std::cin, user_input);
@@ -463,27 +480,22 @@ int main(const int argc, const char* argv[]) {
     std::string token;
     while (iss >> token) {
       if (token == "1") {
-        isWBCLoopClosed = true;
+        isCoMLoopClosed = true;
       } else if (token == "2") {
-        isMPCLoopClosed= true;
+        isTotalBodyLoopClosed = true;
       } else if (token == "3") {
         isEKFLoopClosed = true;
-      } else if (token == "4") {
-        isLIPLoopClosed = true;
-      }
+      } 
     }
   } else {
-    isWBCLoopClosed = true;
-    isMPCLoopClosed = true;
+    isTotalBodyLoopClosed = false;
+    isCoMLoopClosed = true;
     isEKFLoopClosed = true;
-    isLIPLoopClosed = true;
   }
   
 
   // Init robot posture:
-  // mjtNum waist_p_init = 0.0;
   mjtNum waist_y_init = 0.0;
-  // mjtNum waist_r_init = 0.0;
   mjtNum r_hip_y_init = 0.0;
   mjtNum r_hip_r_init = -0.05;
   mjtNum r_hip_p_init = -0.44;
@@ -509,11 +521,9 @@ int main(const int argc, const char* argv[]) {
     mj_data_ptr->qpos[i] = 0.0;
   }
 
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071;
+  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105;
   mj_data_ptr->qpos[3] = 1.0;
-  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_pitch_joint")]] = waist_p_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
-  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_roll_joint")]] = waist_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_pitch_joint")]] = r_hip_p_init;
@@ -603,15 +613,13 @@ int main(const int argc, const char* argv[]) {
       if (useRobot) {
         std::lock_guard<std::mutex> lock(stateMutex);
 
-        Eigen::Quaterniond imu_quat = Eigen::Quaterniond(
+        // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
+        actual_output.head<3>() = labrob::rotVecFromQuaternion(Eigen::Quaterniond(
           imu_state_data.quaternion[0],
           imu_state_data.quaternion[1],
           imu_state_data.quaternion[2],
           imu_state_data.quaternion[3]
-        );
-
-        // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
-        actual_output.head<3>() = labrob::rotVecFromQuaternion(imu_quat);
+        ));
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
@@ -649,10 +657,12 @@ int main(const int argc, const char* argv[]) {
         }
   
         mj_step2(mj_model_ptr, mj_data_ptr);
+        robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
       }
       // double check to ensure that mujoco is active when using the robot
       //fix the error when using integration "by hand"
       else{
+        auto start_integration = std::chrono::steady_clock::now();
         robot_state = walking_manager.getNewRobotState(robot_state);
         // update mujoco state with robot_state
         mj_data_ptr->qpos[0] = robot_state.position.x();
@@ -684,6 +694,12 @@ int main(const int argc, const char* argv[]) {
         mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
+        auto end_integration = std::chrono::steady_clock::now();
+        // print if duration of integration is too high
+        auto integration_duration = end_integration - start_integration;
+        if(integration_duration > std::chrono::milliseconds(1))
+          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
+
       }
 
       if (useRobot) {
@@ -753,23 +769,28 @@ int main(const int argc, const char* argv[]) {
         lowcmd_publisher->Write(dds_low_command);
       }
 
-      // auto end_sleep = std::chrono::high_resolution_clock::now();
-      // auto sleep = end_sleep - start_sleep;
-      // if(sleep < std::chrono::milliseconds(2))
-      //     std::this_thread::sleep_for(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - sleep));
-      // else
-      //   std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(sleep).count() << " ms" << std::endl;
-    
       next_tick += std::chrono::milliseconds(2);
 
       // Calcola quanto dormire
-      auto now = std::chrono::steady_clock::now();
-      if ( now - start_sleep < std::chrono::milliseconds(2)) {
+      auto end_sleep = std::chrono::steady_clock::now();
+      if ( end_sleep - start_sleep < std::chrono::milliseconds(2)) {
           std::this_thread::sleep_until(next_tick);
+      }
+      else {
+          // std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep).count() << " us" << std::endl;
+          next_tick = end_sleep;
       }
     }
 
+    auto start_render =  std::chrono::steady_clock::now();
+
     mujoco_ui.render();
+
+    auto end_render =  std::chrono::steady_clock::now();
+    auto render_duration = end_render - start_render;
+    if(render_duration > std::chrono::milliseconds(5))
+      std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;
+
   }
 
   // Free memory (Mujoco):

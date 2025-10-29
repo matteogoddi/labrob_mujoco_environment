@@ -16,21 +16,24 @@ if __name__ == '__main__':
     joint_names = open(folder + '/joint_names.txt').readlines()
     input_torque: np.ndarray = np.loadtxt(folder +'/input_torque.txt')
 
-    sim_com = np.loadtxt(folder + '/sim_com.txt')
-    sim_filt_com = np.loadtxt(folder + '/sim_filt_com.txt')
-    fb_com = np.loadtxt(folder + '/fb_com.txt')
-    fb_filt_com = np.loadtxt(folder + '/fb_filt_com.txt')
-    des_com = np.loadtxt(folder + '/des_com.txt')
-    sim_com_vel = np.loadtxt(folder + '/sim_com_vel.txt')
-    sim_filt_com_vel = np.loadtxt(folder + '/sim_filt_com_vel.txt')
-    fb_com_vel = np.loadtxt(folder + '/fb_com_vel.txt')
-    fb_filt_com_vel = np.loadtxt(folder + '/fb_filt_com_vel.txt')
-    des_com_vel = np.loadtxt(folder + '/des_com_vel.txt')
-    sim_zmp = np.loadtxt(folder + '/sim_zmp.txt')
-    sim_filt_zmp = np.loadtxt(folder + '/sim_filt_zmp.txt')
-    fb_zmp = np.loadtxt(folder + '/fb_zmp.txt')
-    fb_filt_zmp = np.loadtxt(folder + '/fb_filt_zmp.txt')
-    des_zmp = np.loadtxt(folder + '/des_zmp.txt')
+    sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')
+    sim_com_velocity =  np.loadtxt(folder + '/sim_com_velocity.txt')
+    sim_zmp_position =  np.loadtxt(folder + '/sim_zmp_position.txt')
+    fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')
+    fb_com_velocity = np.loadtxt(folder + '/fb_com_velocity.txt')
+    fb_zmp_position = np.loadtxt(folder + '/fb_zmp_position.txt')
+    kf_com_position =  np.loadtxt(folder + '/kf_com_position.txt')
+    kf_com_velocity =  np.loadtxt(folder + '/kf_com_velocity.txt')
+    kf_zmp_position =  np.loadtxt(folder + '/kf_zmp_position.txt')
+    des_com_position = np.loadtxt(folder + '/des_com_position.txt')
+    des_com_velocity = np.loadtxt(folder + '/des_com_velocity.txt')
+    des_zmp_position = np.loadtxt(folder + '/des_zmp_position.txt')
+
+    base_estimate = np.loadtxt(folder + '/base_estimate.txt')
+    base_estimation_left = np.loadtxt(folder + '/base_estimation_left.txt')
+    base_estimation_right = np.loadtxt(folder + '/base_estimation_right.txt')
+    left_foot_position_base_estimation = np.loadtxt(folder + '/left_foot_position_base_estimation.txt')
+    right_foot_position_base_estimation = np.loadtxt(folder + '/right_foot_position_base_estimation.txt')
 
     p_lsole_sim = np.loadtxt(folder + '/p_lsole_sim.txt')
     p_rsole_sim = np.loadtxt(folder + '/p_rsole_sim.txt')
@@ -44,6 +47,9 @@ if __name__ == '__main__':
     p_rsole_des = np.loadtxt(folder + '/p_rsole_des.txt')
     v_lsole_des = np.loadtxt(folder + '/v_lsole_des.txt')
     v_rsole_des = np.loadtxt(folder + '/v_rsole_des.txt')
+
+    estimated_force_lsole = np.loadtxt(folder + '/estimated_force_lsole.txt')
+    estimated_force_rsole = np.loadtxt(folder + '/estimated_force_rsole.txt')
 
     ekf_base_position = np.loadtxt(folder + '/ekf_base_position.txt')
     ekf_base_velocity = np.loadtxt(folder + '/ekf_base_velocity.txt')
@@ -77,21 +83,24 @@ if __name__ == '__main__':
     num_samples = sim_joint_position.shape[0] - 10
     input_torque = sim_joint_position[:num_samples, :]
 
-    sim_com = sim_com[:num_samples, :]
-    sim_filt_com = sim_filt_com[:num_samples, :]
-    fb_com = fb_com[:num_samples, :]
-    fb_filt_com = fb_filt_com[:num_samples, :]
-    des_com = des_com[:num_samples, :]
-    sim_com_vel = sim_com_vel[:num_samples, :]
-    sim_filt_com_vel = sim_filt_com_vel[:num_samples, :]
-    fb_com_vel = fb_com_vel[:num_samples, :]
-    fb_filt_com_vel = fb_filt_com_vel[:num_samples, :]
-    des_com_vel = des_com_vel[:num_samples, :]
-    sim_zmp = sim_zmp[:num_samples, :]
-    sim_filt_zmp = sim_filt_zmp[:num_samples, :]
-    fb_zmp = fb_zmp[:num_samples, :]
-    fb_filt_zmp = fb_filt_zmp[:num_samples, :]
-    des_zmp = des_zmp[:num_samples, :]
+    sim_com_position = sim_com_position[:num_samples, :]
+    sim_com_velocity = sim_com_velocity[:num_samples, :]
+    sim_zmp_position = sim_zmp_position[:num_samples, :]
+    fb_com_position = fb_com_position[:num_samples, :]
+    fb_com_velocity = fb_com_velocity[:num_samples, :]
+    fb_zmp_position = fb_zmp_position[:num_samples, :]
+    kf_com_position = kf_com_position[:num_samples, :]
+    kf_com_velocity = kf_com_velocity[:num_samples, :]
+    kf_zmp_position = kf_zmp_position[:num_samples, :]
+    des_com_position = des_com_position[:num_samples, :]
+    des_com_velocity = des_com_velocity[:num_samples, :]
+    des_zmp_position = des_zmp_position[:num_samples, :]
+
+    base_estimate = base_estimate[:num_samples, :]
+    base_estimation_left = base_estimation_left[:num_samples, :]
+    base_estimation_right = base_estimation_right[:num_samples, :]
+    left_foot_position_base_estimation = left_foot_position_base_estimation[:num_samples, :]
+    right_foot_position_base_estimation = right_foot_position_base_estimation[:num_samples, :]
 
     p_lsole_sim = p_lsole_sim[:num_samples, :]
     p_rsole_sim = p_rsole_sim[:num_samples, :]
@@ -105,6 +114,9 @@ if __name__ == '__main__':
     p_rsole_des = p_rsole_des[:num_samples, :]
     v_lsole_des = v_lsole_des[:num_samples, :]
     v_rsole_des = v_rsole_des[:num_samples, :]
+
+    estimated_force_lsole = estimated_force_lsole[:num_samples, :]
+    estimated_force_rsole = estimated_force_rsole[:num_samples, :]
     
     ekf_base_position = ekf_base_position[:num_samples, :]
     ekf_base_velocity = ekf_base_velocity[:num_samples, :]
@@ -145,8 +157,6 @@ if __name__ == '__main__':
         os.makedirs('images/simulation/positions')
     if not os.path.exists('images/simulation/velocities'):
         os.makedirs('images/simulation/velocities')
-    if not os.path.exists('images/simulation/torques'):
-        os.makedirs('images/simulation/torques')
     if not os.path.exists('images/feedback/positions'):
         os.makedirs('images/feedback/positions')
     if not os.path.exists('images/feedback/velocities'):
@@ -157,6 +167,14 @@ if __name__ == '__main__':
         os.makedirs('images/execution_times')
     if not os.path.exists('images/com'):
         os.makedirs('images/com')
+    if not os.path.exists('images/forces_torques'):
+        os.makedirs('images/forces_torques')
+    if not os.path.exists('images/forces_torques/joints'):
+        os.makedirs('images/forces_torques/joints')
+    if not os.path.exists('images/soles'):
+        os.makedirs('images/soles')
+    if not os.path.exists('images/base_estimate'):
+        os.makedirs('images/base_estimate')
 
     grouped_indices = defaultdict(list)
 
@@ -165,20 +183,8 @@ if __name__ == '__main__':
         grouped_indices[base_name].append(idx)
 
     #################################
-    # TORQUES
+    # JOINT TORQUES & ESTIMATED FORCES ON SOLES
     #################################
-
-    fig, ax = plt.subplots()
-    for i, name in enumerate(joint_names):
-        ax.plot(t, input_torque[:, i], label=name.strip())
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Torque [Nm]')
-    ax.set_title('Input Joint Torques')
-    ax.grid(True)
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    fig.tight_layout()
-    fig.savefig("images/simulation/torques/input_joint_torques.png")
-    plt.close(fig)
 
     figs = []
     for group_name, indices in grouped_indices.items():
@@ -191,58 +197,231 @@ if __name__ == '__main__':
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
-        fig.savefig(f"images/simulation/torques/{group_name}_input_joint_torques.png")
+        fig.savefig(f"images/forces_torques/joints/{group_name}_input_joint_torques.png")
         plt.close(fig)
         figs.append(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, estimated_force_lsole[:, 0], label='Estimated Force Left Sole X', color='blue')
+    ax.plot(t, estimated_force_lsole[:, 1], label='Estimated Force Left Sole Y', color='orange')
+    ax.plot(t, estimated_force_lsole[:, 2], label='Estimated Force Left Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Estimated Force [N]')
+    ax.set_title('Estimated Forces on Left Sole')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/forces_torques/estimated_force_left_sole.png")
+    plt.close(fig)
+
+    #plot estimated forces on right sole
+    fig, ax = plt.subplots()
+    ax.plot(t, estimated_force_rsole[:, 0], label='Estimated Force Right Sole X', color='blue')
+    ax.plot(t, estimated_force_rsole[:, 1], label='Estimated Force Right Sole Y', color='orange')
+    ax.plot(t, estimated_force_rsole[:, 2], label='Estimated Force Right Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Estimated Force [N]')
+    ax.set_title('Estimated Forces on Right Sole')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/forces_torques/estimated_force_right_sole.png")
+    plt.close(fig)
+
+
+    ################################
+    # BASE ESTIMATION PLOTS
+    ################################
+
+    #plot base_estimate
+    fig, ax = plt.subplots()
+    ax.plot(t, base_estimation_left[:, 0], label='Base Est X', color='blue')
+    ax.plot(t, base_estimation_left[:, 1], label='Base Est Y', color='orange')
+    ax.plot(t, base_estimation_left[:, 2], label='Base Est Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Base Est Position [m]')
+    ax.set_title('Base Estimated Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/base_estimated_position_left_plot.png")
+
+    fig, ax = plt.subplots()
+    ax.plot(t, base_estimation_right[:, 0], label='Base Est X', color='blue')
+    ax.plot(t, base_estimation_right[:, 1], label='Base Est Y', color='orange')
+    ax.plot(t, base_estimation_right[:, 2], label='Base Est Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Base Est Position [m]')
+    ax.set_title('Base Estimated Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/base_estimated_position_right_plot.png")
+
+    #plot base_estimation
+    fig, ax = plt.subplots()
+    ax.plot(t, base_estimate[:, 0], label='Base Est X', color='blue')
+    ax.plot(t, base_estimate[:, 1], label='Base Est Y', color='orange')
+    ax.plot(t, base_estimate[:, 2], label='Base Est Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Base Est [m]')
+    ax.set_title('Base Position Estimation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/position_base_estimation_plot.png")
+
+
+    #plot difference base est and base position
+    fig, ax = plt.subplots()
+    ax.plot(t, base_estimate[:, 0] - sim_base_position[:, 0], label='Base Est X - Sim Base X', color='blue')
+    ax.plot(t, base_estimate[:, 1] - sim_base_position[:, 1], label='Base Est Y - Sim Base Y', color='orange')
+    ax.plot(t, base_estimate[:, 2] - sim_base_position[:, 2], label='Base Est Z - Sim Base Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Base Estimation Error [m]')
+    ax.set_title('Base Estimation Error vs Simulated Base Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/base_estimation_error_plot.png")
+
+    #plot left foot position base estimation and right foot position base estimation
+    fig, ax = plt.subplots()
+    ax.plot(t, left_foot_position_base_estimation[:, 0], label='Left Foot Pos Base Est X', color='blue')
+    ax.plot(t, left_foot_position_base_estimation[:, 1], label='Left Foot Pos Base Est Y', color='orange')
+    ax.plot(t, left_foot_position_base_estimation[:, 2], label='Left Foot Pos Base Est Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Position Base Est [m]')
+    ax.set_title('Left Foot Position from Base Estimation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/left_foot_position_base_estimation_plot.png")
+
+    #plot error between left foot position base estimation and p_lsole_fb
+    fig, ax = plt.subplots()
+    ax.plot(t, left_foot_position_base_estimation[:, 0] - p_lsole_fb[:, 0], label='Left Foot Pos Base Est X - fb Left Sole X', color='blue')
+    ax.plot(t, left_foot_position_base_estimation[:, 1] - p_lsole_fb[:, 1], label='Left Foot Pos Base Est Y - fb Left Sole Y', color='orange')
+    ax.plot(t, left_foot_position_base_estimation[:, 2] - p_lsole_fb[:, 2], label='Left Foot Pos Base Est Z - fb Left Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Position Estimation Error [m]')
+    ax.set_title('Left Foot Position Estimation Error vs fb Left Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/left_foot_position_estimation_error_plot.png")
+
+    #plot error between right foot position base estimation and p_rsole_sim
+    fig, ax = plt.subplots()
+    ax.plot(t, right_foot_position_base_estimation[:, 0] - p_rsole_sim[:, 0], label='Right Foot Pos Base Est X - sim Right Sole X', color='blue')
+    ax.plot(t, right_foot_position_base_estimation[:, 1] - p_rsole_sim[:, 1], label='Right Foot Pos Base Est Y - sim Right Sole Y', color='orange')
+    ax.plot(t, right_foot_position_base_estimation[:, 2] - p_rsole_sim[:, 2], label='Right Foot Pos Base Est Z - sim Right Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Foot Position Estimation Error [m]')
+    ax.set_title('Right Foot Position Estimation Error vs sim Right Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/right_foot_position_estimation_error_sim_plot.png")
+
+    #plot error between left foot position base estimation and p_lsole_sim
+    fig, ax = plt.subplots()
+    ax.plot(t, left_foot_position_base_estimation[:, 0] - p_lsole_sim[:, 0], label='Left Foot Pos Base Est X - sim Left Sole X', color='blue')
+    ax.plot(t, left_foot_position_base_estimation[:, 1] - p_lsole_sim[:, 1], label='Left Foot Pos Base Est Y - sim Left Sole Y', color='orange')
+    ax.plot(t, left_foot_position_base_estimation[:, 2] - p_lsole_sim[:, 2], label='Left Foot Pos Base Est Z - sim Left Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Position Estimation Error [m]')
+    ax.set_title('Left Foot Position Estimation Error vs sim Left Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/left_foot_position_estimation_error_sim_plot.png")
+
+
+
+    #plot error between right foot position base estimation and p_rsole_fb
+    fig, ax = plt.subplots()
+    ax.plot(t, right_foot_position_base_estimation[:, 0] - p_rsole_fb[:, 0], label='Right Foot Pos Base Est X - fb Right Sole X', color='blue')
+    ax.plot(t, right_foot_position_base_estimation[:, 1] - p_rsole_fb[:, 1], label='Right Foot Pos Base Est Y - fb Right Sole Y', color='orange')
+    ax.plot(t, right_foot_position_base_estimation[:, 2] - p_rsole_fb[:, 2], label='Right Foot Pos Base Est Z - fb Right Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Foot Position Estimation Error [m]')
+    ax.set_title('Right Foot Position Estimation Error vs fb Right Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/right_foot_position_estimation_error_plot.png")
+
+    #plot error between left_foot_position_base_estimation and desired left sole position
+    fig, ax = plt.subplots()
+    ax.plot(t, left_foot_position_base_estimation[:, 0] - p_lsole_des[:, 0], label='Left Foot Pos Base Est X - des Left Sole X', color='blue')
+    ax.plot(t, left_foot_position_base_estimation[:, 1] - p_lsole_des[:, 1], label='Left Foot Pos Base Est Y - des Left Sole Y', color='orange')
+    ax.plot(t, left_foot_position_base_estimation[:, 2] - p_lsole_des[:, 2], label='Left Foot Pos Base Est Z - des Left Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Position Estimation Error [m]')
+    ax.set_title('Left Foot Position Estimation Error vs Desired Left Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/left_foot_position_estimation_error_vs_desired_plot.png")
+
+    #plot error between right_foot_position_base_estimation and desired right sole position
+    fig, ax = plt.subplots()
+    ax.plot(t, right_foot_position_base_estimation[:, 0] - p_rsole_des[:, 0], label='Right Foot Pos Base Est X - des Right Sole X', color='blue')
+    ax.plot(t, right_foot_position_base_estimation[:, 1] - p_rsole_des[:, 1], label='Right Foot Pos Base Est Y - des Right Sole Y', color='orange')
+    ax.plot(t, right_foot_position_base_estimation[:, 2] - p_rsole_des[:, 2], label='Right Foot Pos Base Est Z - des Right Sole Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Foot Position Estimation Error [m]')
+    ax.set_title('Right Foot Position Estimation Error vs Desired Right Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/right_foot_position_estimation_error_vs_desired_plot.png")
 
 
     #################################
     #  COM AND ZMP PLOTS
     #################################
-    # plot zmp and com x and y in the same plot
     fig, ax = plt.subplots()
-    # ax.plot(t, fb_zmp[:, 0], label='fb ZMP X', color='blue')
-    # ax.plot(t, fb_zmp[:, 1], label='fb ZMP Y', color='orange')
-    # ax.plot(t, fb_com[:, 0], label='fb COM X', color='blue', linestyle='--')
-    # ax.plot(t, fb_com[:, 1], label='fb COM Y', color='orange', linestyle='--')
-    ax.plot(t, des_zmp[:, 0], label='des ZMP X', color='blue', linestyle=':')
-    ax.plot(t, des_zmp[:, 1], label='des ZMP Y', color='orange', linestyle=':')
-    ax.plot(t, des_com[:, 0], label='des COM X', color='blue', linestyle='-.')
-    ax.plot(t, des_com[:, 1], label='des COM Y', color='orange', linestyle='-.')
+    ax.plot(t, des_zmp_position[:, 0], label='des ZMP X', color='blue', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 1], label='des ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, des_com_position[:, 0], label='des COM X', color='blue', linestyle='-.')
+    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='orange', linestyle='-.')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
-    ax.set_title('ZMP and COM Position Feedback vs Desired')
+    ax.set_title('ZMP and COM Position Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/fb_zmp_and_com_plot.png")
+    fig.savefig("images/com/des_zmp_and_com_plot.png")
 
     #plot x position of com, left and right sole
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 0], label='fb left sole X', color='blue')
     ax.plot(t, p_rsole_fb[:, 0], label='fb right sole X', color='orange')
-    ax.plot(t, fb_com[:, 0], label='fb COM X', color='green')
+    ax.plot(t, fb_com_position[:, 0], label='fb COM X', color='green')
     ax.plot(t, p_lsole_des[:, 0], label='des left sole X', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 0], label='des right sole X', color='orange', linestyle='--')
-    ax.plot(t, des_com[:, 0], label='des COM X', color='green', linestyle='--')
+    ax.plot(t, des_com_position[:, 0], label='des COM X', color='green', linestyle='--')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position X [m]')
-    ax.set_title('Left and Right Sole and COM X Position Feedback vs Desired')
+    ax.set_title('Left Sole, Right Sole and COM X Position Feedback vs Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/fb_left_right_sole_and_com_x_plot.png")
+
     #plot y position of com, left and right sole
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 1], label='fb left sole Y', color='blue')
     ax.plot(t, p_rsole_fb[:, 1], label='fb right sole Y', color='orange')
-    ax.plot(t, fb_com[:, 1], label='fb COM Y', color='green')
+    ax.plot(t, fb_com_position[:, 1], label='fb COM Y', color='green')
     ax.plot(t, p_lsole_des[:, 1], label='des left sole Y', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 1], label='des right sole Y', color='orange', linestyle='--')
-    ax.plot(t, des_com[:, 1], label='des COM Y', color='green', linestyle='--')
+    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='--')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position Y [m]')
-    ax.set_title('Left and Right Sole and COM Y Position Feedback vs Desired')
+    ax.set_title('Left Sole, Right Sole and COM Y Position Feedback vs Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -250,161 +429,120 @@ if __name__ == '__main__':
 
 
     fig, ax = plt.subplots()
-    # ax.plot(t, fb_zmp[:, 0], label='fb ZMP X', color='blue')
-    # ax.plot(t, fb_zmp[:, 1], label='fb ZMP Y', color='orange')
-    # ax.plot(t, fb_com[:, 0], label='fb COM X', color='blue', linestyle='--')
-    # ax.plot(t, fb_com[:, 1], label='fb COM Y', color='orange', linestyle='--')
-    ax.plot(t, fb_filt_zmp[:, 0], label='fb ZMP X', color='blue', linestyle=':')
-    ax.plot(t, fb_filt_zmp[:, 1], label='fb ZMP Y', color='orange', linestyle=':')
-    ax.plot(t, fb_filt_com[:, 0], label='fb COM X', color='blue', linestyle='-.')
-    ax.plot(t, fb_filt_com[:, 1], label='fb COM Y', color='orange', linestyle='-.')
+    ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='blue', linestyle=':')
+    ax.plot(t, kf_zmp_position[:, 1], label='kf ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, kf_com_position[:, 0], label='kf COM X', color='blue', linestyle='-.')
+    ax.plot(t, kf_com_position[:, 1], label='kf COM Y', color='orange', linestyle='-.')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
-    ax.set_title('ZMP and COM Position Feedback vs Desired')
+    ax.set_title('ZMP and COM X & Y Position Filtered')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/new_fb_zmp_and_com_plot.png")
+    fig.savefig("images/com/kf_zmp_and_com_plot.png")
 
 
     fig, ax = plt.subplots()
-    ax.plot(t, sim_zmp[:, 0], label='Sim ZMP X', color='blue')
-    ax.plot(t, sim_zmp[:, 1], label='Sim ZMP Y', color='orange')
-    ax.plot(t, sim_zmp[:, 2], label='Sim ZMP Z', color='green')
-    ax.plot(t, fb_zmp[:, 0], label='FB ZMP X', color='blue', linestyle='--')
-    ax.plot(t, fb_zmp[:, 1], label='FB ZMP Y', color='orange', linestyle='--')
-    ax.plot(t, fb_zmp[:, 2], label='FB ZMP Z', color='green', linestyle='--')
-    ax.plot(t, des_zmp[:, 0], label='Des ZMP X', color='blue', linestyle=':')
-    ax.plot(t, des_zmp[:, 1], label='Des ZMP Y', color='orange', linestyle=':')
-    ax.plot(t, des_zmp[:, 2], label='Des ZMP Z', color='green', linestyle=':')
+    ax.plot(t, sim_zmp_position[:, 0], label='Sim ZMP X', color='blue')
+    ax.plot(t, sim_zmp_position[:, 1], label='Sim ZMP Y', color='orange')
+    ax.plot(t, sim_zmp_position[:, 2], label='Sim ZMP Z', color='green')
+    ax.plot(t, fb_zmp_position[:, 0], label='FB ZMP X', color='blue', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 1], label='FB ZMP Y', color='orange', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 2], label='FB ZMP Z', color='green', linestyle='--')
+    ax.plot(t, des_zmp_position[:, 0], label='Des ZMP X', color='blue', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 1], label='Des ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 2], label='Des ZMP Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('ZMP Position [m]')
-    ax.set_title('ZMP Position Simulation vs Feedback')
+    ax.set_title('ZMP Position Simulation vs Feedback vs Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_zmp_plot.png")
+    fig.savefig("images/com/sim_vs_fb_vs_des_zmp_plot.png")
     plt.close(fig)
 
     #plot filtered zmp sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, sim_filt_zmp[:, 0], label='Sim Filt ZMP X', color='blue')
-    ax.plot(t, sim_filt_zmp[:, 1], label='Sim Filt ZMP Y', color='orange')
-    ax.plot(t, sim_filt_zmp[:, 2], label='Sim Filt ZMP Z', color='green')
-    ax.plot(t, fb_filt_zmp[:, 0], label='FB Filt ZMP X', color='blue', linestyle='--')
-    ax.plot(t, fb_filt_zmp[:, 1], label='FB Filt ZMP Y', color='orange', linestyle='--')
-    ax.plot(t, fb_filt_zmp[:, 2], label='FB Filt ZMP Z', color='green', linestyle='--')
-    ax.plot(t, des_zmp[:, 0], label='Des ZMP X', color='blue', linestyle=':')
-    ax.plot(t, des_zmp[:, 1], label='Des ZMP Y', color='orange', linestyle=':')
-    ax.plot(t, des_zmp[:, 2], label='Des ZMP Z', color='green', linestyle=':')
+    ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='blue')
+    ax.plot(t, kf_zmp_position[:, 1], label='kf ZMP Y', color='orange')
+    ax.plot(t, kf_zmp_position[:, 2], label='kf ZMP Z', color='green')
+    ax.plot(t, des_zmp_position[:, 0], label='Des ZMP X', color='blue', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 1], label='Des ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 2], label='Des ZMP Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Filtered ZMP Position [m]')
-    ax.set_title('Filtered ZMP Position Simulation vs Feedback')
+    ax.set_title('Filtered vs Desired ZMP Position')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_filtered_zmp_plot.png")
+    fig.savefig("images/com/kf_vs_des_zmp_plot.png")
     plt.close(fig)
 
     #plot com sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, sim_com[:, 0], label='Sim COM X', color='blue')
-    ax.plot(t, sim_com[:, 1], label='Sim COM Y', color='orange')
-    # ax.plot(t, sim_com[:, 2], label='Sim COM Z', color='green')
-    ax.plot(t, fb_com[:, 0], label='FB COM X', color='blue', linestyle='--')
-    ax.plot(t, fb_com[:, 1], label='FB COM Y', color='orange', linestyle='--')
-    # ax.plot(t, fb_com[:, 2], label='FB COM Z', color='green', linestyle='--')
-    ax.plot(t, des_com[:, 0], label='Des COM X', color='blue', linestyle=':')
-    ax.plot(t, des_com[:, 1], label='Des COM Y', color='orange', linestyle=':')
-    # ax.plot(t, des_com[:, 2], label='Des COM Z', color='green', linestyle=':')
+    ax.plot(t, sim_com_position[:, 0], label='Sim COM X', color='blue')
+    ax.plot(t, sim_com_position[:, 1], label='Sim COM Y', color='orange')
+    ax.plot(t, fb_com_position[:, 0], label='FB COM X', color='blue', linestyle='--')
+    ax.plot(t, fb_com_position[:, 1], label='FB COM Y', color='orange', linestyle='--')
+    ax.plot(t, des_com_position[:, 0], label='Des COM X', color='blue', linestyle=':')
+    ax.plot(t, des_com_position[:, 1], label='Des COM Y', color='orange', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('COM Position [m]')
-    ax.set_title('COM Position Simulation vs Feedback')
+    ax.set_title('COM Position Simulation vs Feedback vs Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_com_plot.png")
+    fig.savefig("images/com/sim_vs_fb_vs_des_com_plot.png")
     plt.close(fig)
 
     #plot filtered com sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, sim_filt_com[:, 0], label='Sim Filt COM X', color='blue')
-    ax.plot(t, sim_filt_com[:, 1], label='Sim Filt COM Y', color='orange')
-    ax.plot(t, fb_filt_com[:, 0], label='FB Filt COM X', color='blue', linestyle='--')
-    ax.plot(t, fb_filt_com[:, 1], label='FB Filt COM Y', color='orange', linestyle='--')
-    ax.plot(t, des_com[:, 0], label='Des COM X', color='blue', linestyle=':')
-    ax.plot(t, des_com[:, 1], label='Des COM Y', color='orange', linestyle=':')
+    ax.plot(t, kf_com_position[:, 0], label='Kf COM X', color='blue')
+    ax.plot(t, kf_com_position[:, 1], label='Kf COM Y', color='orange')
+    ax.plot(t, des_com_position[:, 0], label='Des COM X', color='blue', linestyle=':')
+    ax.plot(t, des_com_position[:, 1], label='Des COM Y', color='orange', linestyle=':')
     ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Filtered COM Position [m]')
-    ax.set_title('Filtered COM Position Simulation vs Feedback')
+    ax.set_ylabel('Position [m]')
+    ax.set_title('Filtered vs Desired X & Y COM Position')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_filtered_com_plot.png")
+    fig.savefig("images/com/kf_vs_des_com_plot.png")
     plt.close(fig)
 
     # plot com velocities sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, sim_com_vel[:, 0], label='Sim COM Vel X', color='blue')
-    ax.plot(t, sim_com_vel[:, 1], label='Sim COM Vel Y', color='orange')
-    # ax.plot(t, sim_com_vel[:, 2], label='Sim COM Vel Z', color='green')
-    ax.plot(t, fb_com_vel[:, 0], label='FB COM Vel X', color='blue', linestyle='--')
-    ax.plot(t, fb_com_vel[:, 1], label='FB COM Vel Y', color='orange', linestyle='--')
-    # ax.plot(t, fb_com_vel[:, 2], label='FB COM Vel Z', color='green', linestyle='--')
-    ax.plot(t, des_com_vel[:, 0], label='Des COM Vel X', color='blue', linestyle=':')
-    ax.plot(t, des_com_vel[:, 1], label='Des COM Vel Y', color='orange', linestyle=':')
-    # ax.plot(t, des_com_vel[:, 2], label='Des COM Vel Z', color='green', linestyle=':')
+    ax.plot(t, sim_com_velocity[:, 0], label='Sim COM Vel X', color='blue')
+    ax.plot(t, sim_com_velocity[:, 1], label='Sim COM Vel Y', color='orange')
+    ax.plot(t, fb_com_velocity[:, 0], label='FB COM Vel X', color='blue', linestyle='--')
+    ax.plot(t, fb_com_velocity[:, 1], label='FB COM Vel Y', color='orange', linestyle='--')
+    ax.plot(t, des_com_velocity[:, 0], label='Des COM Vel X', color='blue', linestyle=':')
+    ax.plot(t, des_com_velocity[:, 1], label='Des COM Vel Y', color='orange', linestyle=':')
     ax.set_xlabel('Time [s]')
-    ax.set_ylabel('COM Velocity [m/s]')
-    ax.set_title('COM Velocity Simulation vs Feedback')
+    ax.set_ylabel('Velocity [m/s]')
+    ax.set_title('COM Velocity Simulation vs Feedback vs Desired')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_com_velocity_plot.png")
+    fig.savefig("images/com/sim_vs_fb_vs_des_com_velocity_plot.png")
     plt.close(fig)
 
     # plot filtered com velocities sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, sim_filt_com_vel[:, 0], label='Sim Filt COM Vel X', color='blue')
-    ax.plot(t, sim_filt_com_vel[:, 1], label='Sim Filt COM Vel Y', color='orange')
-    ax.plot(t, sim_filt_com_vel[:, 2], label='Sim Filt COM Vel Z', color='green')
-    ax.plot(t, fb_filt_com_vel[:, 0], label='FB Filt COM Vel X', color='blue', linestyle='--')
-    ax.plot(t, fb_filt_com_vel[:, 1], label='FB Filt COM Vel Y', color='orange', linestyle='--')
-    ax.plot(t, fb_filt_com_vel[:, 2], label='FB Filt COM Vel Z', color='green', linestyle='--')
-    ax.plot(t, des_com_vel[:, 0], label='Des COM Vel X', color='blue', linestyle=':')
-    ax.plot(t, des_com_vel[:, 1], label='Des COM Vel Y', color='orange', linestyle=':')
-    ax.plot(t, des_com_vel[:, 2], label='Des COM Vel Z', color='green', linestyle=':')
+    ax.plot(t, kf_com_velocity[:, 0], label='Kf COM Vel X', color='blue')
+    ax.plot(t, kf_com_velocity[:, 1], label='Kf COM Vel Y', color='orange')
+    ax.plot(t, kf_com_velocity[:, 2], label='Kf COM Vel Z', color='green')
+    ax.plot(t, des_com_velocity[:, 0], label='Des COM Vel X', color='blue', linestyle=':')
+    ax.plot(t, des_com_velocity[:, 1], label='Des COM Vel Y', color='orange', linestyle=':')
+    ax.plot(t, des_com_velocity[:, 2], label='Des COM Vel Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Filtered COM Velocity [m/s]')
-    ax.set_title('Filtered COM Velocity Simulation vs Feedback')
+    ax.set_ylabel('Velocity [m/s]')
+    ax.set_title('Filtered vs Desired COM Velocity')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_filtered_com_velocity_plot.png")
+    fig.savefig("images/com/kf_vs_des_com_velocity_plot.png")
     plt.close(fig)
-
-    # plot com position desired and zmp desired in the same plot
-    fig, ax = plt.subplots()
-    ax.plot(t, des_com[:, 0], label='Des COM X', color='blue')
-    ax.plot(t, des_com[:, 1], label='Des COM Y', color='orange')
-    ax.plot(t, des_com[:, 2], label='Des COM Z', color='green')
-    ax.plot(t, des_zmp[:, 0], label='Des ZMP X', color='blue', linestyle='--')
-    ax.plot(t, des_zmp[:, 1], label='Des ZMP Y', color='orange', linestyle='--')
-    ax.plot(t, des_zmp[:, 2], label='Des ZMP Z', color='green', linestyle='--')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Desired COM and ZMP Position [m]')
-    ax.set_title('Desired COM and ZMP Position')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/com/des_com_and_zmp_plot.png")
-    plt.close(fig)
-
-
-    
-
-
-
 
 
     ##########################
@@ -427,7 +565,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_left_sole_position_plot.png")
+    fig.savefig("images/soles/sim_vs_fb_left_sole_position_plot.png")
     plt.close(fig)
 
     #plot des, sim and fb rsole position
@@ -447,7 +585,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_right_sole_position_plot.png")
+    fig.savefig("images/soles/sim_vs_fb_right_sole_position_plot.png")
     plt.close(fig)
 
     #plot des, sim and fb lsole velocity
@@ -467,7 +605,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_left_sole_velocity_plot.png")
+    fig.savefig("images/soles/sim_vs_fb_left_sole_velocity_plot.png")
     plt.close(fig)
 
     #plot des, sim and fb rsole velocity
@@ -487,7 +625,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_right_sole_velocity_plot.png")
+    fig.savefig("images/soles/sim_vs_fb_right_sole_velocity_plot.png")
     plt.close(fig)
     
 

@@ -33,6 +33,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotState.cpp

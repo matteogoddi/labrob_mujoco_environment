@@ -75,6 +75,10 @@ class WholeBodyController {
 
   Eigen::VectorXd get_q_ddot() const;
   Eigen::VectorXd get_flr() const;
+  const Eigen::VectorXd& getLeftFootWrench() const { return left_foot_wrench_; }
+  const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
+  const Eigen::MatrixXd& getLeftFootUnderactuatedJacobian() const;
+  const Eigen::MatrixXd& getRightFootUnderactuatedJacobian() const;
 
  private:
   pinocchio::Model robot_model_;
@@ -111,6 +115,11 @@ class WholeBodyController {
   int n_slack_;
 
   std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+
+  Eigen::VectorXd left_foot_wrench_;
+  Eigen::VectorXd right_foot_wrench_;
+  Eigen::MatrixXd Jlu_;
+  Eigen::MatrixXd Jru_;
 
 };
 

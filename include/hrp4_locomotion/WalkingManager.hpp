@@ -17,7 +17,7 @@
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/WholeBodyController.hpp>
-// #include <hrp4_locomotion/DdpSolver.hpp>
+#include <hrp4_locomotion/ResidualEstimator.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -36,7 +36,7 @@ class WalkingManager {
 
   RobotState updateEKF(RobotState sim_robot_state, Eigen::VectorXd actual_output);
 
- RobotState getNewRobotState(RobotState robot_state);
+  RobotState getNewRobotState(RobotState robot_state);
 
   void saveLogs();
 
@@ -85,15 +85,16 @@ class WalkingManager {
 
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
+  std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
 
   Eigen::VectorXd M_armature_;
 
-  LIPState sim_filt_LIPstate;
-  LIPState sim_LIPstate;
+  LIPState LipState;
+  LIPState kf_LipState;
 
-  LIPState fb_filt_LIPstate;
-  LIPState fb_LIPstate;
-  RobotState fb_filt_robot_state;
+  RobotState fb_robot_state;
+
+  Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
   
   Eigen::Matrix3d cov_x, cov_y, cov_z;
   double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
@@ -128,24 +129,28 @@ private:
 
   Eigen::MatrixXd Kalman_Gain; 
 
-  //com vectors
-  std::vector<Eigen::Vector3d> sim_com_log_;
-  std::vector<Eigen::Vector3d> sim_filt_com_log_;
-  std::vector<Eigen::Vector3d> fb_com_log_;
-  std::vector<Eigen::Vector3d> fb_filt_com_log_;
-  std::vector<Eigen::Vector3d> des_com_log_;
-  // com vel vectors
-  std::vector<Eigen::Vector3d> sim_com_vel_log_;
-  std::vector<Eigen::Vector3d> sim_filt_com_vel_log_;
-  std::vector<Eigen::Vector3d> fb_com_vel_log_;
-  std::vector<Eigen::Vector3d> fb_filt_com_vel_log_;
-  std::vector<Eigen::Vector3d> des_com_vel_log_;
-  // zmp vectors
-  std::vector<Eigen::Vector3d> des_zmp_log_;
-  std::vector<Eigen::VectorXd> sim_zmp_log_;
-  std::vector<Eigen::VectorXd> sim_filt_zmp_log_;
-  std::vector<Eigen::VectorXd> fb_zmp_log_;
-  std::vector<Eigen::VectorXd> fb_filt_zmp_log_;
+  // Logs
+  std::vector<Eigen::Vector3d> sim_com_position_log_;
+  std::vector<Eigen::Vector3d> sim_com_velocity_log_;
+  std::vector<Eigen::Vector3d> sim_zmp_position_log_;
+
+  std::vector<Eigen::Vector3d> fb_com_position_log_;
+  std::vector<Eigen::Vector3d> fb_com_velocity_log_;
+  std::vector<Eigen::Vector3d> fb_zmp_position_log_;
+
+  std::vector<Eigen::Vector3d> kf_com_position_log_;
+  std::vector<Eigen::Vector3d> kf_com_velocity_log_;
+  std::vector<Eigen::Vector3d> kf_zmp_position_log_;
+
+  std::vector<Eigen::Vector3d> des_com_position_log_;
+  std::vector<Eigen::Vector3d> des_com_velocity_log_;
+  std::vector<Eigen::Vector3d> des_zmp_position_log_;
+
+  std::vector<Eigen::Vector3d> base_estimate_log_;
+  std::vector<Eigen::Vector3d> base_estimation_left_log_;
+  std::vector<Eigen::Vector3d> base_estimation_right_log_;
+  std::vector<Eigen::Vector3d> left_foot_position_base_estimation_log_;
+  std::vector<Eigen::Vector3d> right_foot_position_base_estimation_log_;
 
 
   std::vector<Eigen::Vector3d> p_lsole_sim_log_;
@@ -160,6 +165,9 @@ private:
   std::vector<Eigen::Vector3d> p_rsole_des_log_;
   std::vector<Eigen::Vector3d> v_lsole_des_log_;
   std::vector<Eigen::Vector3d> v_rsole_des_log_;
+
+  std::vector<Eigen::Vector3d> estimated_force_lsole_log_;
+  std::vector<Eigen::Vector3d> estimated_force_rsole_log_;
   
   std::vector<Eigen::Vector3d> angular_momentum_log_;
   // std::vector<Eigen::VectorXd> fl_log_;

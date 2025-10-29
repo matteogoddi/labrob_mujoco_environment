@@ -334,6 +334,9 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
 
+  left_foot_wrench_ = T_l * fl;
+  right_foot_wrench_ = T_r * fr;
+
   JointCommand joint_command;
   for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) n_joints_; ++joint_id) {
     const auto& joint_name = robot_model.names[joint_id + 2];
@@ -346,6 +349,10 @@ WholeBodyController::compute_inverse_dynamics(
 Eigen::VectorXd WholeBodyController::get_q_ddot() const {
   return q_ddot_;
 }
+
+
+const Eigen::MatrixXd& WholeBodyController::getLeftFootUnderactuatedJacobian() const { return Jlu_; }
+const Eigen::MatrixXd& WholeBodyController::getRightFootUnderactuatedJacobian() const { return Jru_; }
 
 Eigen::VectorXd WholeBodyController::get_flr() const {
   return flr;
