@@ -146,11 +146,16 @@ private:
   std::vector<Eigen::Vector3d> des_com_velocity_log_;
   std::vector<Eigen::Vector3d> des_zmp_position_log_;
 
+  std::vector<Eigen::Vector3d> ef_zmp_position_log_;
+
   std::vector<Eigen::Vector3d> base_estimate_log_;
-  std::vector<Eigen::Vector3d> base_estimation_left_log_;
-  std::vector<Eigen::Vector3d> base_estimation_right_log_;
+  std::vector<Eigen::Vector4d> orientation_estimate_log_;
   std::vector<Eigen::Vector3d> left_foot_position_base_estimation_log_;
   std::vector<Eigen::Vector3d> right_foot_position_base_estimation_log_;
+  std::vector<Eigen::Vector3d> left_foot_position_with_zero_base_log_;
+  std::vector<Eigen::Vector3d> right_foot_position_with_zero_base_log_;
+
+  std::vector<Eigen::Vector3d> imu_accelerometer_log_;
 
 
   std::vector<Eigen::Vector3d> p_lsole_sim_log_;

@@ -46,6 +46,8 @@ double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
 
+Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
+
 #include "MujocoUI.hpp"
 
 using namespace unitree::robot;
@@ -632,6 +634,12 @@ int main(const int argc, const char* argv[]) {
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
+
+        imu_accelerometer = Eigen::Vector3d(
+          imu_state_data.accelerometer[0],
+          imu_state_data.accelerometer[1],
+          imu_state_data.accelerometer[2]
+        );
       }
       // Update walking manager:
       labrob::JointCommand joint_command;

@@ -29,11 +29,15 @@ if __name__ == '__main__':
     des_com_velocity = np.loadtxt(folder + '/des_com_velocity.txt')
     des_zmp_position = np.loadtxt(folder + '/des_zmp_position.txt')
 
+    ef_zmp_position = np.loadtxt(folder + '/ef_zmp_position.txt')
+    imu_accelerometer = np.loadtxt(folder + '/imu_accelerometer.txt')
+
     base_estimate = np.loadtxt(folder + '/base_estimate.txt')
-    base_estimation_left = np.loadtxt(folder + '/base_estimation_left.txt')
-    base_estimation_right = np.loadtxt(folder + '/base_estimation_right.txt')
+    orientation_estimate = np.loadtxt(folder + '/orientation_estimate.txt')
     left_foot_position_base_estimation = np.loadtxt(folder + '/left_foot_position_base_estimation.txt')
     right_foot_position_base_estimation = np.loadtxt(folder + '/right_foot_position_base_estimation.txt')
+    left_foot_position_with_zero_base = np.loadtxt(folder + '/left_foot_position_with_zero_base.txt')
+    right_foot_position_with_zero_base = np.loadtxt(folder + '/right_foot_position_with_zero_base.txt')
 
     p_lsole_sim = np.loadtxt(folder + '/p_lsole_sim.txt')
     p_rsole_sim = np.loadtxt(folder + '/p_rsole_sim.txt')
@@ -96,11 +100,16 @@ if __name__ == '__main__':
     des_com_velocity = des_com_velocity[:num_samples, :]
     des_zmp_position = des_zmp_position[:num_samples, :]
 
+    ef_zmp_position = ef_zmp_position[:num_samples, :]
+
+    imu_accelerometer = imu_accelerometer[:num_samples, :]
+
     base_estimate = base_estimate[:num_samples, :]
-    base_estimation_left = base_estimation_left[:num_samples, :]
-    base_estimation_right = base_estimation_right[:num_samples, :]
+    orientation_estimate = orientation_estimate[:num_samples, :]
     left_foot_position_base_estimation = left_foot_position_base_estimation[:num_samples, :]
     right_foot_position_base_estimation = right_foot_position_base_estimation[:num_samples, :]
+    left_foot_position_with_zero_base = left_foot_position_with_zero_base[:num_samples, :]
+    right_foot_position_with_zero_base = right_foot_position_with_zero_base[:num_samples, :]
 
     p_lsole_sim = p_lsole_sim[:num_samples, :]
     p_rsole_sim = p_rsole_sim[:num_samples, :]
@@ -232,31 +241,20 @@ if __name__ == '__main__':
     ################################
     # BASE ESTIMATION PLOTS
     ################################
-
-    #plot base_estimate
+    #plot error between orientation estimate and sim base orientation
     fig, ax = plt.subplots()
-    ax.plot(t, base_estimation_left[:, 0], label='Base Est X', color='blue')
-    ax.plot(t, base_estimation_left[:, 1], label='Base Est Y', color='orange')
-    ax.plot(t, base_estimation_left[:, 2], label='Base Est Z', color='green')
+    ax.plot(t, orientation_estimate[:, 0] - sim_base_orientation[:, 0], label='Orientation Est W - Sim Base Orientation W', color='blue')
+    ax.plot(t, orientation_estimate[:, 1] - sim_base_orientation[:, 1], label='Orientation Est X - Sim Base Orientation X', color='orange')
+    ax.plot(t, orientation_estimate[:, 2] - sim_base_orientation[:, 2], label='Orientation Est Y - Sim Base Orientation Y', color='green')
+    ax.plot(t, orientation_estimate[:, 3] - sim_base_orientation[:, 3], label='Orientation Est Z - Sim Base Orientation Z', color='red')
     ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Base Est Position [m]')
-    ax.set_title('Base Estimated Position')
+    ax.set_ylabel('Orientation Estimation Error')
+    ax.set_title('Orientation Estimation Error vs Simulated Base Orientation')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/base_estimate/base_estimated_position_left_plot.png")
-
-    fig, ax = plt.subplots()
-    ax.plot(t, base_estimation_right[:, 0], label='Base Est X', color='blue')
-    ax.plot(t, base_estimation_right[:, 1], label='Base Est Y', color='orange')
-    ax.plot(t, base_estimation_right[:, 2], label='Base Est Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Base Est Position [m]')
-    ax.set_title('Base Estimated Position')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/base_estimate/base_estimated_position_right_plot.png")
+    fig.savefig("images/base_estimate/orientation_estimation_error_plot.png")
+    
 
     #plot base_estimation
     fig, ax = plt.subplots()
@@ -378,10 +376,112 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/base_estimate/right_foot_position_estimation_error_vs_desired_plot.png")
 
+    #plot difference between left_foot_position_with_zero_base and p_lsole_des x and y
+    fig, ax = plt.subplots()
+    ax.plot(t, left_foot_position_with_zero_base[:, 0] - p_lsole_des[:, 0], label='Left Foot Pos with Zero Base X - des Left Sole X', color='blue')
+    ax.plot(t, left_foot_position_with_zero_base[:, 1] - p_lsole_des[:, 1], label='Left Foot Pos with Zero Base Y - des Left Sole Y', color='orange')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Left Foot Position Error [m]')
+    ax.set_title('Left Foot Position with Zero Base Error vs Desired Left Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/left_foot_position_with_zero_base_error_vs_desired_plot.png")
+
+    #plot difference between right_foot_position_with_zero_base and p_lsole_des x and y
+    fig, ax = plt.subplots()
+    ax.plot(t, right_foot_position_with_zero_base[:, 0] - p_lsole_des[:, 0], label='right Foot Pos with Zero Base X - des right Sole X', color='blue')
+    ax.plot(t, right_foot_position_with_zero_base[:, 1] - p_lsole_des[:, 1], label='right Foot Pos with Zero Base Y - des right Sole Y', color='orange')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('right Foot Position Error [m]')
+    ax.set_title('right Foot Position with Zero Base Error vs Desired right Sole Position')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/right_foot_position_with_zero_base_error_vs_desired_plot.png")
+
+    #plot position of left and right sole from right_foot_position_with_zero_base and p_lsole_des in a xy plane. plot that in many instants of time
+    fig, ax = plt.subplots()
+    for i in range(0, num_samples, int(num_samples / 10)):
+        ax.plot(left_foot_position_with_zero_base[i, 0], left_foot_position_with_zero_base[i, 1], 'bo', label='Left Foot Pos with Zero Base' if i == 0 else "")
+        ax.plot(right_foot_position_with_zero_base[i, 0], right_foot_position_with_zero_base[i, 1], 'ro', label='Right Foot Pos with Zero Base' if i == 0 else "")
+        ax.plot(p_lsole_des[i, 0], p_lsole_des[i, 1], 'b+', label='Des Left Sole Pos' if i == 0 else "")
+        ax.plot(p_rsole_des[i, 0], p_rsole_des[i, 1], 'r+', label='Des Right Sole Pos' if i == 0 else "")
+    ax.set_xlabel('X Position [m]')
+    ax.set_ylabel('Y Position [m]')
+    ax.set_title('Foot Positions in XY Plane at Different Time Instants')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/base_estimate/foot_positions_xy_plane.png")
+
+    #create a gif of the previous plot and add the left_foot_position and right_foot_position with base est too
+    import imageio
+    images = []
+    for i in range(0, num_samples, int(num_samples / 20)):  
+        fig, ax = plt.subplots()
+        ax.plot(left_foot_position_base_estimation[i, 0], left_foot_position_base_estimation[i, 1], 'co', label='Left Foot Pos Base Est' )
+        ax.plot(right_foot_position_base_estimation[i, 0], right_foot_position_base_estimation[i, 1], 'mo', label='Right Foot Pos Base Est' )
+        ax.plot(left_foot_position_with_zero_base[i, 0], left_foot_position_with_zero_base[i, 1], 'bo', label='Left Foot Pos with Zero Base')
+        ax.plot(right_foot_position_with_zero_base[i, 0], right_foot_position_with_zero_base[i, 1], 'ro', label='Right Foot Pos with Zero Base')
+        ax.plot(p_lsole_des[i, 0], p_lsole_des[i, 1], 'b+', label='Des Left Sole Pos')
+        ax.plot(p_rsole_des[i, 0], p_rsole_des[i, 1], 'r+', label='Des Right Sole Pos')
+        ax.set_xlabel('X Position [m]')
+        ax.set_ylabel('Y Position [m]')
+        ax.set_title(f'Foot Positions in XY Plane at Time {t[i]:.2f} s')
+        ax.grid(True)
+        ax.legend()
+        #equal scale on axis
+        ax.set_aspect('equal', adjustable='box')
+        fig.tight_layout()
+        filename = f'temp_foot_positions_{i}.png'
+        fig.savefig(filename)
+        plt.close(fig)
+        images.append(imageio.imread(filename))
+        os.remove(filename)
+    imageio.mimsave('images/base_estimate/foot_positions_xy_plane_with_base_estimation.gif', images, fps=5)
+    # import imageio
+    # images = []
+    # for i in range(0, num_samples, int(num_samples / 20)):
+    #     fig, ax = plt.subplots()
+    #     ax.plot(left_foot_position_with_zero_base[i, 0], left_foot_position_with_zero_base[i, 1], 'bo', label='Left Foot Pos with Zero Base')
+    #     ax.plot(right_foot_position_with_zero_base[i, 0], right_foot_position_with_zero_base[i, 1], 'ro', label='Right Foot Pos with Zero Base')
+    #     ax.plot(p_lsole_des[i, 0], p_lsole_des[i, 1], 'b+', label='Des Left Sole Pos')
+    #     ax.plot(p_rsole_des[i, 0], p_rsole_des[i, 1], 'r+', label='Des Right Sole Pos')
+    #     ax.set_xlabel('X Position [m]')
+    #     ax.set_ylabel('Y Position [m]')
+    #     ax.set_title(f'Foot Positions in XY Plane at Time {t[i]:.2f} s')
+    #     ax.grid(True)
+    #     ax.legend()
+    #     #equal scale on axis
+    #     ax.set_aspect('equal', adjustable='box')
+    #     fig.tight_layout()
+    #     filename = f'temp_foot_positions_{i}.png'
+    #     fig.savefig(filename)
+    #     plt.close(fig)
+    #     images.append(imageio.imread(filename))
+    #     os.remove(filename)
+    # imageio.mimsave('images/base_estimate/foot_positions_xy_plane.gif', images, fps=5)
+
+
+
 
     #################################
     #  COM AND ZMP PLOTS
     #################################
+    fig, ax = plt.subplots()
+    ax.plot(t, fb_zmp_position[:, 0], label='used ZMP X', color='blue', linestyle=':')
+    ax.plot(t, fb_zmp_position[:, 1], label='used ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, ef_zmp_position[:, 0], label='not used ZMP X', color='blue', linestyle='--')
+    ax.plot(t, ef_zmp_position[:, 1], label='not used ZMP Y', color='orange', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position [m]')
+    ax.set_title('ZMP X & Y Position Feedback')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/fb_used_and_not_used_zmp_plot.png")
+
     fig, ax = plt.subplots()
     ax.plot(t, des_zmp_position[:, 0], label='des ZMP X', color='blue', linestyle=':')
     ax.plot(t, des_zmp_position[:, 1], label='des ZMP Y', color='orange', linestyle=':')
@@ -399,7 +499,8 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 0], label='fb left sole X', color='blue')
     ax.plot(t, p_rsole_fb[:, 0], label='fb right sole X', color='orange')
-    ax.plot(t, fb_com_position[:, 0], label='fb COM X', color='green')
+    ax.plot(t, kf_com_position[:, 0], label='fb COM X', color='green')
+    ax.plot(t, kf_zmp_position[:, 0], label='fb ZMP X', color='red')
     ax.plot(t, p_lsole_des[:, 0], label='des left sole X', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 0], label='des right sole X', color='orange', linestyle='--')
     ax.plot(t, des_com_position[:, 0], label='des COM X', color='green', linestyle='--')
@@ -415,7 +516,8 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 1], label='fb left sole Y', color='blue')
     ax.plot(t, p_rsole_fb[:, 1], label='fb right sole Y', color='orange')
-    ax.plot(t, fb_com_position[:, 1], label='fb COM Y', color='green')
+    ax.plot(t, kf_com_position[:, 1], label='fb COM Y', color='green')
+    ax.plot(t, kf_zmp_position[:, 1], label='fb ZMP Y', color='red')
     ax.plot(t, p_lsole_des[:, 1], label='des left sole Y', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 1], label='des right sole Y', color='orange', linestyle='--')
     ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='--')
@@ -423,6 +525,8 @@ if __name__ == '__main__':
     ax.set_ylabel('Position Y [m]')
     ax.set_title('Left Sole, Right Sole and COM Y Position Feedback vs Desired')
     ax.grid(True)
+    #lim between 24 and 26
+    # ax.set_xlim([27.99, 28.02])
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/fb_left_right_sole_and_com_y_plot.png")

@@ -75,11 +75,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     des_com_velocity_log_.reserve(max_steps);
     des_zmp_position_log_.reserve(max_steps);
 
+    ef_zmp_position_log_.reserve(max_steps);
+
     base_estimate_log_.reserve(max_steps);
-    base_estimation_left_log_.reserve(max_steps);
-    base_estimation_right_log_.reserve(max_steps);
+    orientation_estimate_log_.reserve(max_steps);
     left_foot_position_base_estimation_log_.reserve(max_steps);
     right_foot_position_base_estimation_log_.reserve(max_steps);
+    left_foot_position_with_zero_base_log_.reserve(max_steps);
+    right_foot_position_with_zero_base_log_.reserve(max_steps);
+
+    imu_accelerometer_log_.reserve(max_steps);
 
     p_lsole_sim_log_.reserve(max_steps);
     p_rsole_sim_log_.reserve(max_steps);
@@ -968,6 +973,10 @@ WalkingManager::update(
     double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
     double mass = pinocchio::computeTotalMass(robot_model);
 
+    Eigen::Vector3d left_foot_force = estimated_force.head(3);
+    Eigen::Vector3d right_foot_force = estimated_force.tail(3);
+    Eigen::Vector3d total_force = left_foot_force + right_foot_force;
+
     auto q = robot_state_to_pinocchio_joint_configuration(robot_model, sim_robot_state);
     auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model, sim_robot_state);
 
@@ -1047,27 +1056,32 @@ WalkingManager::update(
     //     zmp_3d_sim.x() += (pi.x() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d_sim.z() - pi.z()) * fi.x() / sim_robot_state.total_force.z());
     //     zmp_3d_sim.y() += (pi.y() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d_sim.z() - pi.z()) * fi.y() / sim_robot_state.total_force.z());
     // }
-    // zmp_3d_sim.z() = p_CoM_sim.z() - (a_CoM_drift_sim.z() + 9.81) / eta2;
-    // zmp_3d_sim.x() = p_CoM_sim.x() - a_CoM_drift_sim.x() / eta2;
-    // zmp_3d_sim.y() = p_CoM_sim.y() - a_CoM_drift_sim.y() / eta2;
+    zmp_3d_sim.z() = p_CoM_sim.z() - (a_CoM_drift_sim.z() + 9.81) / eta2;
+    zmp_3d_sim.x() = p_CoM_sim.x() - a_CoM_drift_sim.x() / eta2;
+    zmp_3d_sim.y() = p_CoM_sim.y() - a_CoM_drift_sim.y() / eta2;
 
     // compute zmp 3d using the 6d vector estimated forces, first three are left foot, second three are right foot
-    Eigen::Vector3d left_foot_force = estimated_force.head(3);
-    Eigen::Vector3d right_foot_force = estimated_force.tail(3);
-    Eigen::Vector3d total_force = left_foot_force + right_foot_force;
-    zmp_3d_sim.z() = sim_robot_state.position(2) - total_force.z() / (mass * eta2);
-    zmp_3d_sim.x() = 0.0;
-    zmp_3d_sim.y() = 0.0;
-    if (total_force.z() > 1e-5) {
-        if (left_foot_force.z() > 1e-5) {
-            zmp_3d_sim.x() += (T_lsole_sim.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.x() / total_force.z());
-            zmp_3d_sim.y() += (T_lsole_sim.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.y() / total_force.z());
-        }
-        if (right_foot_force.z() > 1e-5) {
-            zmp_3d_sim.x() += (T_rsole_sim.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.x() / total_force.z());
-            zmp_3d_sim.y() += (T_rsole_sim.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.y() / total_force.z());
-        }
-    }
+    // zmp_3d_sim.z() = sim_robot_state.position(2) - total_force.z() / (mass * eta2);
+    // zmp_3d_sim.x() = 0.0;
+    // zmp_3d_sim.y() = 0.0;
+    // if (total_force.z() > 1e-5) {
+    //     if (left_foot_force.z() > 1e-5) {
+    //         zmp_3d_sim.x() += (T_lsole_sim.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.x() / total_force.z());
+    //         zmp_3d_sim.y() += (T_lsole_sim.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.y() / total_force.z());
+    //     }
+    //     if (right_foot_force.z() > 1e-5) {
+    //         zmp_3d_sim.x() += (T_rsole_sim.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.x() / total_force.z());
+    //         zmp_3d_sim.y() += (T_rsole_sim.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.y() / total_force.z());
+    //     }
+    // }
+    
+
+
+
+    ////////////////////////
+    // BASE ESTIMATION
+    ////////////////////////
+    // WORK IN PROGRESS
     
     //start measuring time
     auto start_ekf = std::chrono::high_resolution_clock::now();
@@ -1107,15 +1121,6 @@ WalkingManager::update(
     } // end of parallel sections
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
-
-
-
-
-
-
-
-    
-
     Eigen::Vector3d left_foot_position;
     Eigen::Vector3d right_foot_position;
 
@@ -1126,22 +1131,8 @@ WalkingManager::update(
     pinocchio::Motion desired_rsole_vel_base_est;
     pinocchio::Motion desired_rsole_acc_base_est;
 
-    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) {
-            swingFootTrajectory(desired_rsole_pose_base_est, desired_rsole_vel_base_est, desired_rsole_acc_base_est);
-            left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
-            right_foot_position = desired_rsole_pose_base_est.translation();
-        }
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-            swingFootTrajectory(desired_lsole_pose_base_est, desired_lsole_vel_base_est, desired_lsole_acc_base_est);
-            left_foot_position = desired_lsole_pose_base_est.translation();
-            right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
-        }
-    }
-    else{
-        left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
-        right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
-    }
+    left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
+    right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
 
     RobotState base_estimation_robot_state = fb_robot_state;
     base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
@@ -1151,8 +1142,11 @@ WalkingManager::update(
     pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
     pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
 
+    left_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[lsole_idx_].translation().transpose());
+    right_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[rsole_idx_].translation().transpose());
+
     //convert orientation of base from quaternion to rpy
-    Eigen::Matrix3d R_world_base = base_estimation_robot_data.oMf[imu_idx_].rotation();
+    Eigen::Matrix3d R_world_base = base_estimation_robot_state.orientation.toRotationMatrix();
     Eigen::Vector3d rpy_world_base = R_world_base.eulerAngles(0, 1, 2);
     //wrap between -pi and pi
     if (rpy_world_base(2) > M_PI/2) rpy_world_base(2) -=  M_PI;
@@ -1164,24 +1158,70 @@ WalkingManager::update(
                     sin(rpy_world_base(2)), cos(rpy_world_base(2)), 0,
                     0, 0, 1;
     rotation_yaw = rotation_yaw.transpose(); //inverse rotation
-    Eigen::Vector3d base_estimate;
 
+    double foot_line_angle;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate = rotation_yaw * (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) base_estimate = rotation_yaw * (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
+        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+
+            Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+            double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
+            foot_line_angle = left_foot_yaw;
+            foot_line_angle -= M_PI/2;
+            
         }
-    else{
-        base_estimate = 0.5*(rotation_yaw * (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation()) + rotation_yaw * (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation()));
+        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+            Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+            double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
+            foot_line_angle = right_foot_yaw;
+            foot_line_angle -= M_PI/2;
+        }
+    }else{
+        // compute left foot yaw angle relative to base frame of simulation
+        Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+        double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
+        // compute right foot yaw angle relative to base frame of simulation
+        Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+        double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
+        foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
+        foot_line_angle -= M_PI/2; // to be aligned with the foot line
     }
 
-    //push back base estimate
-    base_estimate_log_.push_back(base_estimate.transpose());
+    Eigen::Vector3d base_estimate;
 
-    Eigen::Vector3d base_estimate_left = rotation_yaw * (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
-    Eigen::Vector3d base_estimate_right = rotation_yaw * (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
+    // std::cout << "left foot position with base at zero" << base_estimation_robot_data.oMf[lsole_idx_].translation().transpose() << std::endl;
+    // std::cout << "right foot position with base at zero" << base_estimation_robot_data.oMf[rsole_idx_].translation().transpose() << std::endl;
+    // std::cout << "yaw angle" << rpy_world_base(2) << std::endl;
 
-    base_estimation_left_log_.push_back(base_estimate_left.transpose());
-    base_estimation_right_log_.push_back(base_estimate_right.transpose());
+    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
+        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) base_estimate =  (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
+        }
+    else{
+        Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
+        Eigen::Vector3d mean_fb_feet = 0.5 * (base_estimation_robot_data.oMf[lsole_idx_].translation() + base_estimation_robot_data.oMf[rsole_idx_].translation());
+        base_estimate = (mean_des_feet - mean_fb_feet);
+    }
+
+    // rotate base_estimation_robot_state orientation, take the quaternion and rotate it by the yaw rotation using quaternion rotartion
+    Eigen::Quaterniond base_orientation = base_estimation_robot_state.orientation;
+    Eigen::Quaterniond yaw_rotation;
+    yaw_rotation = Eigen::Quaterniond(
+        cos(foot_line_angle/2),
+        0,
+        0,
+        sin(foot_line_angle/2)
+    );
+    // concatenate quaternions in the right way
+    base_estimation_robot_state.orientation = Eigen::Quaterniond(yaw_rotation.w() * base_orientation.w() - yaw_rotation.x() * base_orientation.x() - yaw_rotation.y() * base_orientation.y() - yaw_rotation.z() * base_orientation.z(),
+                                            yaw_rotation.w() * base_orientation.x() + yaw_rotation.x() * base_orientation.w() + yaw_rotation.y() * base_orientation.z() - yaw_rotation.z() * base_orientation.y(),
+                                            yaw_rotation.w() * base_orientation.y() - yaw_rotation.x() * base_orientation.z() + yaw_rotation.y() * base_orientation.w() + yaw_rotation.z() * base_orientation.x(),
+                                            yaw_rotation.w() * base_orientation.z() + yaw_rotation.x() * base_orientation.y() - yaw_rotation.y() * base_orientation.x() + yaw_rotation.z() * base_orientation.w());
+    //normalize quaternion  
+    base_estimation_robot_state.orientation.normalize();
+
+    Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
+    Eigen::Quaterniond q_yaw(yaw_correction);
+    base_estimation_robot_state.orientation = q_yaw * base_estimation_robot_state.orientation;
 
     base_estimation_robot_state.position = base_estimate;
 
@@ -1195,10 +1235,21 @@ WalkingManager::update(
     left_foot_position_base_estimation_log_.push_back(left_foot_position_base_estimation.transpose());
     right_foot_position_base_estimation_log_.push_back(right_foot_position_base_estimation.transpose());
 
+    base_estimate_log_.push_back(base_estimation_robot_state.position.transpose());
+    orientation_estimate_log_.push_back(Eigen::Vector4d(
+        base_estimation_robot_state.orientation.w(),
+        base_estimation_robot_state.orientation.x(),
+        base_estimation_robot_state.orientation.y(),
+        base_estimation_robot_state.orientation.z()
+    ).transpose());
+
     if (isCoMLoopClosed && t_msec_ >= startTimeCoMCL) {
-        fb_robot_state.position = base_estimate;
+        fb_robot_state = base_estimation_robot_state;
     }
 
+    ////////////////////
+    // END BASE ESTIMATE
+    ///////////////////
 
 
 
@@ -1218,7 +1269,12 @@ WalkingManager::update(
     pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_fb_filt);
     pinocchio::computeJointJacobiansTimeVariation(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt);
     pinocchio::framesForwardKinematics(robot_model, fb_robot_data, q_fb_filt);
-    pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot_fb_filt);
+    //get rotation matrix of imu
+    Eigen::Matrix3d R_imu_fb = fb_robot_data.oMf[imu_idx_].rotation();
+    imu_accelerometer = R_imu_fb * imu_accelerometer; //convert to world frame
+    imu_accelerometer[2] -= 9.81; //remove gravity
+    imu_accelerometer_log_.push_back(imu_accelerometer.transpose());
+    pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot_fb_filt); // This is used to compute the CoM drift (J_com_dot * qdot)
 
     const auto& p_CoM_fb = fb_robot_data.com[0];
     const auto& a_CoM_drift_fb = fb_robot_data.acom[0];
@@ -1269,10 +1325,6 @@ WalkingManager::update(
     //     zmp_3d_fb.y() += (pi.y() * fi.z() / fb_robot_state.total_force.z() + (zmp_3d_fb.z() - pi.z()) * fi.y() / fb_robot_state.total_force.z());
     // }
 
-    // zmp_3d_fb.z() = 0.0;
-    // zmp_3d_fb.x() = p_CoM_fb.x() - a_CoM_drift_fb.x() / eta2;
-    // zmp_3d_fb.y() = p_CoM_fb.y() - a_CoM_drift_fb.y() / eta2;
-
     zmp_3d_fb.z() = fb_robot_state.position(2) - total_force.z() / (mass * eta2);
     zmp_3d_fb.x() = 0.0;
     zmp_3d_fb.y() = 0.0;
@@ -1286,6 +1338,12 @@ WalkingManager::update(
             zmp_3d_fb.y() += (T_rsole_fb.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_rsole_fb.translation().z()) * right_foot_force.y() / total_force.z());
         }
     }
+
+    ef_zmp_position_log_.push_back(zmp_3d_fb.transpose());
+
+    // zmp_3d_fb.z() = p_CoM_fb.z() - (a_CoM_drift_fb.z() + 9.81) / eta2;
+    // zmp_3d_fb.x() = p_CoM_fb.x() - a_CoM_drift_fb.x() / eta2;
+    // zmp_3d_fb.y() = p_CoM_fb.y() - a_CoM_drift_fb.y() / eta2;
 
     /////////////////////////////////////
     // 
@@ -1492,15 +1550,30 @@ WalkingManager::update(
     Eigen::VectorXd wbc_right_wrench = whole_body_controller_ptr_->getRightFootWrench();
 
     // Use the new WBC-based residual computation
-    residual_estimator_ptr_->computeResidualWithWBCWrenches(
-        fb_robot_state,
-        fb_robot_data,
-        measured_torques,
-        //wbc_left_wrench,
-        //wbc_right_wrench,
-        *whole_body_controller_ptr_,
-        controller_timestep_msec_*0.001
-    );
+    if (startTimeCoMCL >= t_msec_ && isCoMLoopClosed) {
+        if (t_msec_ == startTimeCoMCL){
+            std::cout << "Using WBC-based residual estimation" << std::endl;
+        }
+        residual_estimator_ptr_->computeResidualWithWBCWrenches(
+            fb_robot_state,
+            fb_robot_data,
+            measured_torques,
+            //wbc_left_wrench,
+            //wbc_right_wrench,
+            *whole_body_controller_ptr_,
+            controller_timestep_msec_*0.001
+        );
+    }else{
+        residual_estimator_ptr_->computeResidualWithWBCWrenches(
+            fb_robot_state,
+            fb_robot_data,
+            measured_torques,
+            //wbc_left_wrench,
+            //wbc_right_wrench,
+            *whole_body_controller_ptr_,
+            controller_timestep_msec_*0.001
+        );
+    }
 
     estimated_force = residual_estimator_ptr_->getFeetEstimatedForce();
 
@@ -1702,20 +1775,25 @@ void WalkingManager::saveLogs() {
         des_zmp_position_file << v.transpose() << "\n";
     }
 
+    std::ofstream ef_zmp_position_file("/tmp/ef_zmp_position.txt");
+    for (auto& v : ef_zmp_position_log_) {
+        ef_zmp_position_file << v.transpose() << "\n";
+    }
+    
+    std::ofstream imu_accelerometer_file("/tmp/imu_accelerometer.txt");
+    for (auto& v : imu_accelerometer_log_) {
+        imu_accelerometer_file << v.transpose() << "\n";
+    }
+
     std::ofstream base_estimate_file("/tmp/base_estimate.txt");
     for (auto& v : base_estimate_log_) {
         base_estimate_file << v.transpose() << "\n";
     }
 
-    std::ofstream base_estimation_left_file("/tmp/base_estimation_left.txt");
-    for (auto& v : base_estimation_left_log_) {
-        base_estimation_left_file << v.transpose() << "\n";
-    }
-
-    std::ofstream base_estimation_right_file("/tmp/base_estimation_right.txt");
-    for (auto& v : base_estimation_right_log_) {
-        base_estimation_right_file << v.transpose() << "\n";
-    }
+    std::ofstream orientation_estimate_file("/tmp/orientation_estimate.txt");
+    for (auto& v : orientation_estimate_log_) {
+        orientation_estimate_file << v.transpose() << "\n";
+    }        
 
     std::ofstream left_foot_position_base_estimation_file("/tmp/left_foot_position_base_estimation.txt");
     for (auto& v : left_foot_position_base_estimation_log_) {
@@ -1725,6 +1803,16 @@ void WalkingManager::saveLogs() {
     std::ofstream right_foot_position_base_estimation_file("/tmp/right_foot_position_base_estimation.txt");
     for (auto& v : right_foot_position_base_estimation_log_) {
         right_foot_position_base_estimation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream left_foot_position_with_zero_base_file("/tmp/left_foot_position_with_zero_base.txt");
+    for (auto& v : left_foot_position_with_zero_base_log_) {
+        left_foot_position_with_zero_base_file << v.transpose() << "\n";
+    }
+
+    std::ofstream right_foot_position_with_zero_base_file("/tmp/right_foot_position_with_zero_base.txt");
+    for (auto& v : right_foot_position_with_zero_base_log_) {
+        right_foot_position_with_zero_base_file << v.transpose() << "\n";
     }
 
 
