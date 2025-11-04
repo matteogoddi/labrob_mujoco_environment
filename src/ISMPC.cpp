@@ -23,10 +23,8 @@ ISMPC::ISMPC(
 
   N_ = prediction_horizon_msec / mpc_timestep_msec;
 
-  qp_solver_ptr_ = std::make_shared<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(
-          num_variables_, num_equality_constraints_, num_inequality_constraints_
-      )
+  qp_solver_ptr_ = std::make_shared<labrob::HPIPMQPSolver>(
+      num_variables_, num_equality_constraints_, num_inequality_constraints_
   );
 
   // Setup matrices size:
@@ -180,7 +178,7 @@ ISMPC::solve(
       b_zmp_min_,
       b_zmp_max_
   );
-  auto decisionVariables = qp_solver_ptr_->get_solution();
+  auto decisionVariables = qp_solver_ptr_->get_solution_eigen();
 
   // Split the QP solution in ZMP dot and footsteps
   zDotOptimalX = (decisionVariables.segment(     0, N_));

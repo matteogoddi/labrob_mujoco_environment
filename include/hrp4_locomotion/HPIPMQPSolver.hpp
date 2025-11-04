@@ -1,8 +1,6 @@
 #ifndef LABROB_HPIPM_QP_SOLVER_HPP_
 #define LABROB_HPIPM_QP_SOLVER_HPP_
 
-#include "QPSolver.hpp"
-
 // HPIPM
 #include <blasfeo_target.h>
 #include <blasfeo_common.h>
@@ -19,17 +17,22 @@
 #include <hpipm_d_dense_qp_sol.h>
 #include <hpipm_timing.h>
 
+// Eigen
+#include <Eigen/Core>
+
 #include <iostream>
 #include <numeric>
+#include <vector>
 
 namespace labrob {
-namespace qpsolvers {
 
-
-class HPIPMQPSolver : public QPSolver<double> {
+class HPIPMQPSolver {
  public:
   HPIPMQPSolver(int numVariables, int numEqualityConstraints, int numInequalityConstraints) :
-  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints), numIneq_(numInequalityConstraints) {
+  num_variables_(numVariables),
+  num_equality_constraints_(numEqualityConstraints),
+  num_inequality_constraints_(numInequalityConstraints),
+  numIneq_(numInequalityConstraints) {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
@@ -83,7 +86,7 @@ class HPIPMQPSolver : public QPSolver<double> {
       const double* b,
       const double* C,
       const double* d_min,
-      const double* d_max) override {
+      const double* d_max) {
     d_dense_qp_set_H((double*) H, &qp_);
     d_dense_qp_set_g((double*) f, &qp_);
 
@@ -107,9 +110,36 @@ class HPIPMQPSolver : public QPSolver<double> {
     //std::cout << "Status = " << workspace_.status << std::endl;
   }
 
-  const double* get_solution() const override {
+  const double* get_solution() const {
     return u_;
   }
+
+  // Eigen wrapper methods for convenient usage
+  template <typename DerivedCostH, typename DerivedCostg,
+            typename DerivedEqA, typename DerivedEqb,
+            typename DerivedIneqC, typename DerivedIneqg>
+  void solve(
+      const Eigen::PlainObjectBase<DerivedCostH>& H,
+      const Eigen::PlainObjectBase<DerivedCostg>& g,
+      const Eigen::PlainObjectBase<DerivedEqA>& A,
+      const Eigen::PlainObjectBase<DerivedEqb>& b,
+      const Eigen::PlainObjectBase<DerivedIneqC>& C,
+      const Eigen::PlainObjectBase<DerivedIneqg>& lg,
+      const Eigen::PlainObjectBase<DerivedIneqg>& ug) {
+    solve(H.data(), g.data(), A.data(), b.data(), C.data(), lg.data(), ug.data());
+  }
+
+  Eigen::VectorXd get_solution_eigen() {
+    Eigen::VectorXd solution(num_variables_);
+    for (int idx = 0; idx < num_variables_; ++idx) {
+      solution(idx) = u_[idx];
+    }
+    return solution;
+  }
+
+  const int num_variables_;
+  const int num_equality_constraints_;
+  const int num_inequality_constraints_;
 
  protected:
   struct d_dense_qp qp_;
@@ -132,7 +162,6 @@ class HPIPMQPSolver : public QPSolver<double> {
 
 }; // end class HPIPMQPSolver
 
-} // end namespace labrob::qpsolvers
 } // end namespace labrob
 
 #endif // LABROB_HPIPM_QP_SOLVER_HPP_

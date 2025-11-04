@@ -19,8 +19,6 @@
 #include <hrp4_locomotion/WholeBodyController.hpp>
 #include <hrp4_locomotion/ResidualEstimator.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
-
 
 namespace labrob {
 

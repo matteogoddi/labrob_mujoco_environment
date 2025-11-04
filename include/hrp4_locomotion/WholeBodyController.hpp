@@ -19,8 +19,7 @@
 #include <hrp4_locomotion/GaitConfiguration.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
-
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <hrp4_locomotion/HPIPMQPSolver.hpp>
 
 namespace labrob {
 
@@ -114,7 +113,7 @@ class WholeBodyController {
   int n_wbc_inequalities_;
   int n_slack_;
 
-  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+  std::unique_ptr<labrob::HPIPMQPSolver> wbc_solver_ptr_;
 
   Eigen::VectorXd left_foot_wrench_;
   Eigen::VectorXd right_foot_wrench_;

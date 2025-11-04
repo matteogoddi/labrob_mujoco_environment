@@ -27,7 +27,6 @@
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingManager.hpp>
 #include <hrp4_locomotion/utils.hpp>
-#include <hrp4_locomotion/gamepad.hpp>
 
 
 #include <unitree/robot/channel/channel_publisher.hpp>
