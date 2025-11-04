@@ -27,7 +27,6 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
@@ -69,16 +68,4 @@ target_link_libraries(main
   pinocchio::pinocchio
   WalkingControllerLibrary
   unitree_sdk2
-)
-
-add_executable(lip_simulator_main
-lip_simulator_main.cpp
-)
-target_include_directories(lip_simulator_main
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(lip_simulator_main
-  pinocchio::pinocchio
-  WalkingControllerLibrary
 )
