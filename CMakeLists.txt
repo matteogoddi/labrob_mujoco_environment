@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(/usr/local/include/ddscxx)
 
 find_package(glfw3 REQUIRED)
-find_package(jsoncpp REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
@@ -26,7 +25,6 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
@@ -51,7 +49,6 @@ target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
-  jsoncpp_lib
   OpenMP::OpenMP_CXX
 )
 

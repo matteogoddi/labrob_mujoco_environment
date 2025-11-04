@@ -407,13 +407,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::WalkingState::Standing
     ));
 
-    // Save and read again footstep plan to double check it's working:
-    //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
-    //labrob::saveFootstepPlan(walking_data_.footstep_plan, footstep_plan_path);
-    //labrob::readFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-    //labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-
-
     // Init MPC:
     Eigen::Vector3d p_CoM_sim = sim_robot_data.com[0];
     int64_t mpc_prediction_horizon_msec = 2000;
