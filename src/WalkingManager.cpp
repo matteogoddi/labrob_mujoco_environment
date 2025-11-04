@@ -1200,7 +1200,7 @@ WalkingManager::update(
         Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
         Eigen::Vector3d mean_fb_feet = 0.5 * (base_estimation_robot_data.oMf[lsole_idx_].translation() + base_estimation_robot_data.oMf[rsole_idx_].translation());
         base_estimate = (mean_des_feet - mean_fb_feet);
-        // base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
+        base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
     }
 
     Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());

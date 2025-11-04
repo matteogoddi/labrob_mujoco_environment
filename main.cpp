@@ -27,6 +27,8 @@
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingManager.hpp>
 #include <hrp4_locomotion/utils.hpp>
+#include <hrp4_locomotion/gamepad.hpp>
+
 
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
@@ -45,6 +47,9 @@ bool useRobot = false;
 double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
+
+Gamepad gamepad_;
+REMOTE_DATA_RX rx_;
 
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
@@ -224,6 +229,10 @@ void LowStateHandler(const void* msg){
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
     }
   }
+
+  // update gamepad
+  memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
+  gamepad_.update(rx_.RF_RX);
   
   if (mode_machine_ != low_state.mode_machine()) {
     if (mode_machine_ == 0) {
@@ -523,7 +532,7 @@ int main(const int argc, const char* argv[]) {
     mj_data_ptr->qpos[i] = 0.0;
   }
 
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105;
+  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.01;
   mj_data_ptr->qpos[3] = 1.0;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
@@ -608,6 +617,11 @@ int main(const int argc, const char* argv[]) {
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
       auto start_sleep = std::chrono::steady_clock::now();
+      // RC
+      printf("gamepad_.A.pressed: %d\n", static_cast<int>(gamepad_.A.pressed));
+      printf("gamepad_.B.pressed: %d\n", static_cast<int>(gamepad_.B.pressed));
+      printf("gamepad_.X.pressed: %d\n", static_cast<int>(gamepad_.X.pressed));
+      printf("gamepad_.Y.pressed: %d\n", static_cast<int>(gamepad_.Y.pressed));
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
 
