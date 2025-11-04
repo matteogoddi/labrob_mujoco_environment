@@ -48,9 +48,6 @@ double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
 
-Gamepad gamepad_;
-REMOTE_DATA_RX rx_;
-
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 #include "MujocoUI.hpp"
@@ -229,17 +226,6 @@ void LowStateHandler(const void* msg){
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
     }
   }
-
-  // update gamepad
-  memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
-  gamepad_.update(rx_.RF_RX);
-  
-  if (mode_machine_ != low_state.mode_machine()) {
-    if (mode_machine_ == 0) {
-      std::cout << "G1 type: " << unsigned(low_state.mode_machine()) << std::endl;
-    }
-    mode_machine_ = low_state.mode_machine();
-  }
 }
 
 ImuState imu_state_data;
@@ -300,18 +286,6 @@ int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
     }
     return motionStatus;
 };
-
-// Blocca il thread su un core specifico (per ridurre jitter)
-void pin_thread_to_core(int core_id = 3) {
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(core_id, &cpuset);
-  if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
-      std::cerr << "[WARN] Non riesco a fissare l’affinità CPU.\n";
-  } else {
-      std::cout << "[INFO] Thread fissato sul core #" << core_id << "\n";
-  }
-}
 
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
@@ -444,8 +418,6 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 }
 
 int main(const int argc, const char* argv[]) {
-
-  pin_thread_to_core(3);
 
   std::string netInterface;
 
@@ -617,11 +589,6 @@ int main(const int argc, const char* argv[]) {
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
       auto start_sleep = std::chrono::steady_clock::now();
-      // RC
-      printf("gamepad_.A.pressed: %d\n", static_cast<int>(gamepad_.A.pressed));
-      printf("gamepad_.B.pressed: %d\n", static_cast<int>(gamepad_.B.pressed));
-      printf("gamepad_.X.pressed: %d\n", static_cast<int>(gamepad_.X.pressed));
-      printf("gamepad_.Y.pressed: %d\n", static_cast<int>(gamepad_.Y.pressed));
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
 

@@ -12,11 +12,7 @@ find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
 find_package(OpenMP REQUIRED)
 
-if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
-  if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
-  endif()
-endif()
+set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 
 # Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
 set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
