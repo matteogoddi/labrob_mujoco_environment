@@ -264,7 +264,7 @@ int main() {
   joint_names_log_file.flush();
   joint_names_log_file.close();
 
-  static int framerate = 60.0;
+  static int time = 0;
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
@@ -292,7 +292,7 @@ int main() {
     joint_vel_log_file << std::endl;
     joint_eff_log_file << std::endl;
 
-    mujoco_ui.render();
+    if (time % 100 == 0) mujoco_ui.render();
   }
 
   // Free memory (Mujoco):

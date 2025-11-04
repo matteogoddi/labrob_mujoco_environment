@@ -1,8 +1,6 @@
 #ifndef LABROB_HPIPM_QP_SOLVER_HPP_
 #define LABROB_HPIPM_QP_SOLVER_HPP_
 
-#include "QPSolver.hpp"
-
 // HPIPM
 #include <blasfeo_target.h>
 #include <blasfeo_common.h>
@@ -11,24 +9,26 @@
 #include <blasfeo_i_aux_ext_dep.h>
 #include <blasfeo_d_aux.h>
 #include <blasfeo_d_blas.h>
-
-#include <blasfeo_d_aux_ext_dep.h>
 #include <hpipm_d_dense_qp_ipm.h>
 #include <hpipm_d_dense_qp_dim.h>
 #include <hpipm_d_dense_qp.h>
 #include <hpipm_d_dense_qp_sol.h>
 #include <hpipm_timing.h>
 
+// Eigen
+#include <Eigen/Core>
+
+// STL
 #include <iostream>
 
 namespace labrob {
-namespace qpsolvers {
 
-
-class HPIPMQPSolver : public QPSolver<double> {
+class HPIPMQPSolver {
  public:
   HPIPMQPSolver(int numVariables, int numEqualityConstraints, int numInequalityConstraints) :
-  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints) {
+  num_variables_(numVariables),
+  num_equality_constraints_(numEqualityConstraints),
+  num_inequality_constraints_(numInequalityConstraints) {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
@@ -67,6 +67,7 @@ class HPIPMQPSolver : public QPSolver<double> {
     free(u_);
   }
 
+  // Raw pointer interface
   void solve(
       const double* H,
       const double* f,
@@ -74,7 +75,7 @@ class HPIPMQPSolver : public QPSolver<double> {
       const double* b,
       const double* C,
       const double* d_min,
-      const double* d_max) override {
+      const double* d_max) {
     d_dense_qp_set_H((double*) H, &qp_);
     d_dense_qp_set_g((double*) f, &qp_);
 
@@ -88,15 +89,55 @@ class HPIPMQPSolver : public QPSolver<double> {
     // solve QP
     d_dense_qp_ipm_solve(&qp_, &qp_sol_, &arg_, &workspace_);
     d_dense_qp_sol_get_v(&qp_sol_, u_);
-
-    //std::cout << "Status = " << workspace_.status << std::endl;
   }
 
-  const double* get_solution() const override {
+  // Eigen interface
+  template <typename DerivedCostH, typename DerivedCostg,
+            typename DerivedEqA, typename DerivedEqb,
+            typename DerivedIneqC, typename DerivedIneqg>
+  void solve(
+      const Eigen::PlainObjectBase<DerivedCostH>& H,
+      const Eigen::PlainObjectBase<DerivedCostg>& g,
+      const Eigen::PlainObjectBase<DerivedEqA>& A,
+      const Eigen::PlainObjectBase<DerivedEqb>& b,
+      const Eigen::PlainObjectBase<DerivedIneqC>& C,
+      const Eigen::PlainObjectBase<DerivedIneqg>& lg,
+      const Eigen::PlainObjectBase<DerivedIneqg>& ug) {
+    solve(
+        H.data(),
+        g.data(),
+        A.data(),
+        b.data(),
+        C.data(),
+        lg.data(),
+        ug.data()
+    );
+  }
+
+  // Get solution as raw pointer
+  const double* get_solution() const {
     return u_;
   }
 
- protected:
+  // Get solution as Eigen vector
+  Eigen::VectorXd get_solution_eigen() const {
+    Eigen::VectorXd solution(num_variables_);
+    for (int idx = 0; idx < num_variables_; ++idx) {
+      solution(idx) = u_[idx];
+    }
+    return solution;
+  }
+
+  // Public accessors for dimensions
+  int num_variables() const { return num_variables_; }
+  int num_equality_constraints() const { return num_equality_constraints_; }
+  int num_inequality_constraints() const { return num_inequality_constraints_; }
+
+ private:
+  const int num_variables_;
+  const int num_equality_constraints_;
+  const int num_inequality_constraints_;
+
   struct d_dense_qp qp_;
   struct d_dense_qp_dim dim_;
   struct d_dense_qp_sol qp_sol_;
@@ -113,7 +154,6 @@ class HPIPMQPSolver : public QPSolver<double> {
 
 }; // end class HPIPMQPSolver
 
-} // end namespace labrob::qpsolvers
 } // end namespace labrob
 
 #endif // LABROB_HPIPM_QP_SOLVER_HPP_

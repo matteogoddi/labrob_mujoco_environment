@@ -20,7 +20,7 @@
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <HPIPMQPSolver.hpp>
 
 namespace labrob {
 
@@ -99,7 +99,7 @@ class WholeBodyController {
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
 
-  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+  std::unique_ptr<HPIPMQPSolver> wbc_solver_ptr_;
 
 };
 

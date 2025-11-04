@@ -9,7 +9,7 @@
 #include <hrp4_locomotion/LIPState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <HPIPMQPSolver.hpp>
 
 // Eigen
 #include <Eigen/Core>
@@ -74,7 +74,7 @@ class ISMPC{
   Eigen::Vector3d input_;
 
   // QP solver:
-  std::shared_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
+  std::shared_ptr<HPIPMQPSolver> qp_solver_ptr_;
 
   std::ofstream pred_log_file_;
 

@@ -18,9 +18,6 @@
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/WholeBodyController.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
-
-
 namespace labrob {
 
 class WalkingManager {

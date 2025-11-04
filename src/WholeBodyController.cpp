@@ -84,10 +84,8 @@ WholeBodyController::WholeBodyController(
     M_armature_(joint_id - 2) = armatures[joint_name];
   }
 
-  wbc_solver_ptr_ = std::make_unique<qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<qpsolvers::HPIPMQPSolver>(
-          n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
-      )
+  wbc_solver_ptr_ = std::make_unique<HPIPMQPSolver>(
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
   );
 }
 
@@ -312,7 +310,7 @@ WholeBodyController::compute_inverse_dynamics(
   d_max << d_max_acc, d_max_force_one, d_max_force_one;
 
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
-  Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
+  Eigen::VectorXd solution = wbc_solver_ptr_->get_solution_eigen();
   Eigen::VectorXd q_ddot = solution.head(6 + n_joints_);
   Eigen::VectorXd flr = solution.tail(2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
