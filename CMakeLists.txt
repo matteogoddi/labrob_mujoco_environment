@@ -6,7 +6,6 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_PREFIX_PATH "/opt/unitree_robotics" ${CMAKE_PREFIX_PATH})
 
 find_package(glfw3 REQUIRED)
-find_package(jsoncpp REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
@@ -29,8 +28,6 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
@@ -54,7 +51,6 @@ target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
-  jsoncpp_lib
 )
 
 add_executable(main
@@ -70,16 +66,4 @@ target_link_libraries(main
   pinocchio::pinocchio
   WalkingControllerLibrary
   unitree_sdk2
-)
-
-add_executable(lip_simulator_main
-lip_simulator_main.cpp
-)
-target_include_directories(lip_simulator_main
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(lip_simulator_main
-  pinocchio::pinocchio
-  WalkingControllerLibrary
 )

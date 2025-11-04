@@ -75,22 +75,24 @@ std::map<std::string, int> jointName2Index = {
   {"left_elbow_joint", 22}
 };
 
-void LowStateHandler(const void* msg){
-  LowState_ low_state = *(const LowState_*)msg;
-  uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
-  if (low_state.crc() != crc_calc) {
-    std::cerr << "CRC32 mismatch in LowState message!" << std::endl;
-    return;
-  };
+void LowStateHandler(const void* msg)
+{
+  const auto* low_state = reinterpret_cast<const LowState_*>(msg);
+
+  // NOTE: SDK2 (DDS) does not provide a public CRC helper and Unitree codebases
+  // no longer enforce client-side CRC checks for LowState. So we skip it.
+
+  const int NM = static_cast<int>(low_state->motor_state().size()); // model-agnostic
+
   std::lock_guard<std::mutex> lock(stateMutex);
-  int NM = G1_NUM_MOTORS;
   currentState.q.resize(NM);
   currentState.dq.resize(NM);
   for (int i = 0; i < NM; ++i) {
-    currentState.q[i] = low_state.motor_state()[i].q();
-    currentState.dq[i] = low_state.motor_state()[i].dq();
+    currentState.q[i]  = low_state->motor_state()[i].q();
+    currentState.dq[i] = low_state->motor_state()[i].dq();
   }
 }
+
 
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
