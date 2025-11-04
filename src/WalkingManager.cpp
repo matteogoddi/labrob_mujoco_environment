@@ -2,7 +2,6 @@
 
 // STL
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <fstream>
 
@@ -55,88 +54,20 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // estimated_force = Eigen::VectorXd::Zero(6);
 
-    // Pre-allocation of arrays (maximum size is 50000)
 
-    int64_t max_steps = 50000;
 
-    sim_com_position_log_.reserve(max_steps);
-    sim_com_velocity_log_.reserve(max_steps);
-    sim_zmp_position_log_.reserve(max_steps);
-    
-    fb_com_position_log_.reserve(max_steps);
-    fb_com_velocity_log_.reserve(max_steps);
-    fb_zmp_position_log_.reserve(max_steps);
 
-    kf_com_position_log_.reserve(max_steps);
-    kf_com_velocity_log_.reserve(max_steps);
-    kf_zmp_position_log_.reserve(max_steps);
 
-    des_com_position_log_.reserve(max_steps);
-    des_com_velocity_log_.reserve(max_steps);
-    des_zmp_position_log_.reserve(max_steps);
 
-    ef_zmp_position_log_.reserve(max_steps);
 
-    base_estimate_log_.reserve(max_steps);
-    orientation_estimate_log_.reserve(max_steps);
-    left_foot_position_base_estimation_log_.reserve(max_steps);
-    right_foot_position_base_estimation_log_.reserve(max_steps);
-    left_foot_position_with_zero_base_log_.reserve(max_steps);
-    right_foot_position_with_zero_base_log_.reserve(max_steps);
 
-    imu_accelerometer_log_.reserve(max_steps);
 
-    p_lsole_sim_log_.reserve(max_steps);
-    p_rsole_sim_log_.reserve(max_steps);
-    v_lsole_sim_log_.reserve(max_steps);
-    v_rsole_sim_log_.reserve(max_steps);
-    p_lsole_fb_log_.reserve(max_steps);
-    p_rsole_fb_log_.reserve(max_steps);
-    v_lsole_fb_log_.reserve(max_steps);
-    v_rsole_fb_log_.reserve(max_steps);
-    p_lsole_des_log_.reserve(max_steps);
-    p_rsole_des_log_.reserve(max_steps);
-    v_lsole_des_log_.reserve(max_steps);
-    v_rsole_des_log_.reserve(max_steps);
 
-    estimated_force_lsole_log_.reserve(max_steps);
-    estimated_force_rsole_log_.reserve(max_steps);
 
-    angular_momentum_log_.reserve(max_steps);
-    mpc_predictions_log_.reserve(max_steps);
 
-    ekf_base_position_log_.reserve(max_steps);
-    ekf_base_velocity_log_.reserve(max_steps);
-    ekf_base_orientation_log_.reserve(max_steps);
-    ekf_base_angular_velocity_log_.reserve(max_steps);
-    ekf_joint_position_log_.reserve(max_steps);
-    ekf_joint_velocity_log_.reserve(max_steps);
 
-    sim_base_position_log_.reserve(max_steps);
-    sim_base_velocity_log_.reserve(max_steps);
-    sim_base_orientation_log_.reserve(max_steps);
-    sim_base_angular_velocity_log_.reserve(max_steps);
-    sim_joint_position_log_.reserve(max_steps);
-    sim_joint_velocity_log_.reserve(max_steps);
 
-    measured_joint_position_log_.reserve(max_steps);
-    measured_joint_velocity_log_.reserve(max_steps);
-    measured_imu_accelerometer_log_.reserve(max_steps);
-    measured_imu_angular_velocity_log_.reserve(max_steps);
-    measured_imu_orientation_log_.reserve(max_steps);
 
-    estimated_imu_accelerometer_log_.reserve(max_steps);
-    estimated_imu_angular_velocity_log_.reserve(max_steps);
-    estimated_imu_orientation_log_.reserve(max_steps);
-
-    execution_time_wbc_log_.reserve(max_steps);
-    execution_time_mpc_log_.reserve(max_steps);
-    execution_time_ekf_log_.reserve(max_steps);
-    execution_time_kf_log_.reserve(max_steps);
-
-    input_torque_log_.reserve(max_steps);
-
-    kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
     std::string robot_description_filename = "../g1_description/unitreeg1_2.urdf";
@@ -617,7 +548,6 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
     // Kalman_Gain = Lambda_ * C.transpose();
     // Kalman_Gain = S.ldlt().solve(Kalman_Gain.transpose()).transpose();
 
-    // kalman_gain_log_.push_back(Kalman_Gain);
 
     P_ = (Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) - Kalman_Gain * C) * Lambda_;
 
@@ -770,31 +700,6 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
     }
     Eigen::Quaterniond measured_imu_orientation = quaternionFromRotVec(y_actual.head(3));
 
-    //save values into arrays
-    estimated_imu_orientation_log_.push_back(Eigen::Vector4d(
-        estimated_imu_orientation.w(),
-        estimated_imu_orientation.x(),
-        estimated_imu_orientation.y(),
-        estimated_imu_orientation.z()
-    ).transpose());
-    estimated_imu_angular_velocity_log_.push_back(y_estimate.segment(njnt + 3, 3).transpose());
-    // estimated_imu_accelerometer_log_.push_back(y_estimate.segment(2 * (njnt + 3), 3).transpose());
-    measured_imu_orientation_log_.push_back(Eigen::Vector4d(
-        measured_imu_orientation.w(),
-        measured_imu_orientation.x(),
-        measured_imu_orientation.y(),
-        measured_imu_orientation.z()
-    ).transpose());
-    measured_imu_angular_velocity_log_.push_back(y_actual.segment(njnt + 3, 3).transpose());
-    // measured_imu_accelerometer_log_.push_back(y_actual.segment(2 * (njnt + 3), 3).transpose());
-    measured_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    measured_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        measured_joint_position_log_.back()(joint_id) = actual_output(3 + joint_id);
-        measured_joint_velocity_log_.back()(joint_id) = actual_output(3 + njnt + 3 + joint_id);
-    }
-
     return current_state;
 }
 
@@ -938,7 +843,6 @@ WalkingManager::update(
     Eigen::VectorXd actual_output
 ) {
 
-    auto start_update = std::chrono::high_resolution_clock::now();
 
     // Update walking state:
     walking_data_.updateWalkingState(t_msec_);
@@ -1057,7 +961,6 @@ WalkingManager::update(
     // WORK IN PROGRESS
     
     //start measuring time
-    auto start_ekf = std::chrono::high_resolution_clock::now();
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -1092,7 +995,6 @@ WalkingManager::update(
         {
         }
     } // end of parallel sections
-    auto end_ekf = std::chrono::high_resolution_clock::now();
 
     Eigen::Vector3d left_foot_position;
     Eigen::Vector3d right_foot_position;
@@ -1133,8 +1035,6 @@ WalkingManager::update(
     pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
     pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
 
-    left_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[lsole_idx_].translation().transpose());
-    right_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[rsole_idx_].translation().transpose());
 
     double foot_line_angle;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
@@ -1189,17 +1089,6 @@ WalkingManager::update(
     auto left_foot_position_base_estimation = base_estimation_robot_data.oMf[lsole_idx_].translation();
     auto right_foot_position_base_estimation = base_estimation_robot_data.oMf[rsole_idx_].translation();
 
-    left_foot_position_base_estimation_log_.push_back(left_foot_position_base_estimation.transpose());
-    right_foot_position_base_estimation_log_.push_back(right_foot_position_base_estimation.transpose());
-
-    base_estimate_log_.push_back(base_estimation_robot_state.position.transpose());
-    orientation_estimate_log_.push_back(Eigen::Vector4d(
-        base_estimation_robot_state.orientation.w(),
-        base_estimation_robot_state.orientation.x(),
-        base_estimation_robot_state.orientation.y(),
-        base_estimation_robot_state.orientation.z()
-    ).transpose());
-
     if (true) {
         fb_robot_state = base_estimation_robot_state;
     }
@@ -1230,7 +1119,6 @@ WalkingManager::update(
     Eigen::Matrix3d R_imu_fb = fb_robot_data.oMf[imu_idx_].rotation();
     imu_accelerometer = R_imu_fb * imu_accelerometer; //convert to world frame
     imu_accelerometer[2] -= 9.81; //remove gravity
-    imu_accelerometer_log_.push_back(imu_accelerometer.transpose());
     pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot_fb_filt); // This is used to compute the CoM drift (J_com_dot * qdot)
 
     const auto& p_CoM_fb = fb_robot_data.com[0];
@@ -1296,7 +1184,6 @@ WalkingManager::update(
         }
     }
 
-    ef_zmp_position_log_.push_back(zmp_3d_fb.transpose());
 
     // zmp_3d_fb.z() = p_CoM_fb.z() - (a_CoM_drift_fb.z() + 9.81) / eta2;
     // zmp_3d_fb.x() = p_CoM_fb.x() - a_CoM_drift_fb.x() / eta2;
@@ -1308,7 +1195,6 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM_sim, J_CoM_sim * qdot, zmp_3d_sim);
     if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
         if (t_msec_ == startTimeCoMCL){
@@ -1317,7 +1203,6 @@ WalkingManager::update(
         LipState = LIPState(p_CoM_fb, J_CoM_fb * qdot_fb_filt, zmp_3d_fb);
     }
     kf_LipState = updateKF(kf_LipState, LipState, ismpc_ptr_->getInput());
-    auto end_kf = std::chrono::high_resolution_clock::now();
 
     // Fill current gait configuration:
     labrob::GaitConfiguration current_gait_configuration;
@@ -1365,7 +1250,6 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    auto start_mpc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -1376,7 +1260,6 @@ WalkingManager::update(
         {
         }
     } 
-    auto end_mpc = std::chrono::system_clock::now();
 
     LIPState lip_state;
     lip_state = discrete_lip_dynamics_ptr_->integrate(kf_LipState, ismpc_ptr_->getInput());
@@ -1393,9 +1276,6 @@ WalkingManager::update(
     //         Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
     //     );
 
-    //     mpc_predictions_log_.push_back(LipState_mpc.com_pos_);
-    //     mpc_predictions_vel_log_.push_back(LipState_mpc.com_vel_);
-    //     mpc_predictions_zmp_log_.push_back(LipState_mpc.zmp_pos_);
     // }
 
     Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
@@ -1459,7 +1339,6 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    auto start_wbc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -1501,7 +1380,6 @@ WalkingManager::update(
         {
         }
     } // end of parallel sections
-    auto end_wbc = std::chrono::system_clock::now();
 
     // Get measured joint torques from the joint command
     Eigen::VectorXd measured_torques(robot_model.nv - 6);  // Exclude floating base
@@ -1553,91 +1431,9 @@ WalkingManager::update(
     prev_angular_momentum_ = angular_momentum;
 
 
-    sim_com_position_log_.push_back(p_CoM_sim.transpose());
-    fb_com_position_log_.push_back(p_CoM_fb.transpose());
-    kf_com_position_log_.push_back(kf_LipState.com_pos_.transpose());
-    des_com_position_log_.push_back(p_CoM_des.transpose());
-
-    sim_com_velocity_log_.push_back(v_CoM_sim.transpose());
-    fb_com_velocity_log_.push_back(v_CoM_fb.transpose());
-    kf_com_velocity_log_.push_back((kf_LipState.com_vel_).transpose());
-    des_com_velocity_log_.push_back(v_CoM_des.transpose());
-
-    sim_zmp_position_log_.push_back(zmp_3d_sim.transpose());
-    fb_zmp_position_log_.push_back(zmp_3d_fb.transpose());
-    kf_zmp_position_log_.push_back(kf_LipState.zmp_pos_.transpose());
-    des_zmp_position_log_.push_back(p_ZMP_des.transpose());
-
-    p_lsole_sim_log_.push_back(T_lsole_sim.translation().transpose());
-    p_rsole_sim_log_.push_back(T_rsole_sim.translation().transpose());
-    v_lsole_sim_log_.push_back(v_lsole_sim.head<3>().transpose());
-    v_rsole_sim_log_.push_back(v_rsole_sim.head<3>().transpose());
-    p_lsole_fb_log_.push_back(T_lsole_fb.translation().transpose());
-    p_rsole_fb_log_.push_back(T_rsole_fb.translation().transpose());
-    v_lsole_fb_log_.push_back(v_lsole_fb.head<3>().transpose());
-    v_rsole_fb_log_.push_back(v_rsole_fb.head<3>().transpose());
-    p_lsole_des_log_.push_back(desired_gait_configuration.lsole.pos.p.transpose());
-    p_rsole_des_log_.push_back(desired_gait_configuration.rsole.pos.p.transpose());
-    v_lsole_des_log_.push_back(desired_gait_configuration.lsole.vel.head<3>().transpose());
-    v_rsole_des_log_.push_back(desired_gait_configuration.rsole.vel.head<3>().transpose());
-
-    estimated_force_lsole_log_.push_back(estimated_force.head<3>().transpose());
-    estimated_force_rsole_log_.push_back(estimated_force.tail<3>().transpose());
-
-    angular_momentum_log_.push_back(angular_momentum.transpose());
-    // Log the filtered state:
-    ekf_base_position_log_.push_back(fb_robot_state.position.transpose());
-    ekf_base_velocity_log_.push_back(fb_robot_state.linear_velocity.transpose());
-    ekf_base_orientation_log_.push_back(Eigen::Vector4d(
-        fb_robot_state.orientation.w(),
-        fb_robot_state.orientation.x(),
-        fb_robot_state.orientation.y(),
-        fb_robot_state.orientation.z()
-    ).transpose());
-    ekf_base_angular_velocity_log_.push_back(fb_robot_state.angular_velocity.transpose());
-    ekf_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    ekf_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        ekf_joint_position_log_.back()(joint_id) = fb_robot_state.joint_state[joint_name].pos;
-        ekf_joint_velocity_log_.back()(joint_id) = fb_robot_state.joint_state[joint_name].vel;
-    }
-    sim_base_position_log_.push_back(sim_robot_state.position.transpose());
-    sim_base_velocity_log_.push_back(sim_robot_state.linear_velocity.transpose());
-    sim_base_orientation_log_.push_back(Eigen::Vector4d(
-        sim_robot_state.orientation.w(),
-        sim_robot_state.orientation.x(),
-        sim_robot_state.orientation.y(),
-        sim_robot_state.orientation.z()
-    ).transpose());
-    sim_base_angular_velocity_log_.push_back(sim_robot_state.angular_velocity.transpose());
-    sim_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    sim_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        sim_joint_position_log_.back()(joint_id) = sim_robot_state.joint_state[joint_name].pos;
-        sim_joint_velocity_log_.back()(joint_id) = sim_robot_state.joint_state[joint_name].vel;
-    }
-    input_torque_log_.push_back(Eigen::VectorXd(njnt).transpose());
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        input_torque_log_.back()(joint_id) = joint_command[joint_name];
-    }
-
-    auto end_update = std::chrono::high_resolution_clock::now();
 
 
-    auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_update - start_update).count();
-    auto ekf_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_ekf - start_ekf).count();
-    auto kf_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_kf - start_kf).count();
-    auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_mpc - start_mpc).count();
-    auto wbc_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_wbc - start_wbc).count();
 
-    execution_time_update_log_.push_back(update_duration);
-    execution_time_ekf_log_.push_back(ekf_duration);
-    execution_time_kf_log_.push_back(kf_duration);
-    execution_time_mpc_log_.push_back(mpc_duration);
-    execution_time_wbc_log_.push_back(wbc_duration);
 }
 
 RobotState WalkingManager::getNewRobotState(RobotState robot_state){
@@ -1659,336 +1455,6 @@ RobotState WalkingManager::getNewRobotState(RobotState robot_state){
     return robot_state;
 }
 
-void WalkingManager::saveLogs() {
-
-    //compute mean kalman gain matrix and save it to a file
-    Eigen::MatrixXd mean_Kalman_Gain = Eigen::MatrixXd::Zero(kalman_gain_log_[0].rows(), kalman_gain_log_[0].cols());
-    for (auto& Kalman_Gain : kalman_gain_log_) {
-        mean_Kalman_Gain += Kalman_Gain;
-    }
-    mean_Kalman_Gain /= kalman_gain_log_.size();
-    std::ofstream mean_kalman_gain_file("../mean_kalman_gain.txt");
-    for (int i = 0; i < mean_Kalman_Gain.rows(); ++i) {
-        for (int j = 0; j < mean_Kalman_Gain.cols(); ++j) {
-            mean_kalman_gain_file << mean_Kalman_Gain(i, j);
-            if (j < mean_Kalman_Gain.cols() - 1) mean_kalman_gain_file << " ";
-        }
-        mean_kalman_gain_file << "\n";
-    }
-
-    std::ofstream joint_names_file("/tmp/joint_names.txt");
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        joint_names_file << joint_name << "\n";
-    }
-
-    std::ofstream sim_com_position_file("/tmp/sim_com_position.txt");
-    for (auto& v : sim_com_position_log_) {
-        sim_com_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_com_velocity_file("/tmp/sim_com_velocity.txt");
-    for (auto& v : sim_com_velocity_log_) {
-        sim_com_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_zmp_position_file("/tmp/sim_zmp_position.txt");
-    for (auto& v : sim_zmp_position_log_) {
-        sim_zmp_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream fb_com_position_file("/tmp/fb_com_position.txt");
-    for (auto& v : fb_com_position_log_) {
-        fb_com_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream fb_com_velocity_file("/tmp/fb_com_velocity.txt");
-    for (auto& v : fb_com_velocity_log_) {
-        fb_com_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream fb_zmp_position_file("/tmp/fb_zmp_position.txt");
-    for (auto& v : fb_zmp_position_log_) {
-        fb_zmp_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream kf_com_position_file("/tmp/kf_com_position.txt");
-    for (auto& v : kf_com_position_log_) {
-        kf_com_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream kf_com_velocity_file("/tmp/kf_com_velocity.txt");
-    for (auto& v : kf_com_velocity_log_) {
-        kf_com_velocity_file << v.transpose() << "\n";
-    }   
-
-    std::ofstream kf_zmp_position_file("/tmp/kf_zmp_position.txt");
-    for (auto& v : kf_zmp_position_log_) {
-        kf_zmp_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream des_com_position_file("/tmp/des_com_position.txt");
-    for (auto& v : des_com_position_log_) {
-        des_com_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream des_com_velocity_file("/tmp/des_com_velocity.txt");
-    for (auto& v : des_com_velocity_log_) {
-        des_com_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream des_zmp_position_file("/tmp/des_zmp_position.txt");
-    for (auto& v : des_zmp_position_log_) {
-        des_zmp_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ef_zmp_position_file("/tmp/ef_zmp_position.txt");
-    for (auto& v : ef_zmp_position_log_) {
-        ef_zmp_position_file << v.transpose() << "\n";
-    }
-    
-    std::ofstream imu_accelerometer_file("/tmp/imu_accelerometer.txt");
-    for (auto& v : imu_accelerometer_log_) {
-        imu_accelerometer_file << v.transpose() << "\n";
-    }
-
-    std::ofstream base_estimate_file("/tmp/base_estimate.txt");
-    for (auto& v : base_estimate_log_) {
-        base_estimate_file << v.transpose() << "\n";
-    }
-
-    std::ofstream orientation_estimate_file("/tmp/orientation_estimate.txt");
-    for (auto& v : orientation_estimate_log_) {
-        orientation_estimate_file << v.transpose() << "\n";
-    }        
-
-    std::ofstream left_foot_position_base_estimation_file("/tmp/left_foot_position_base_estimation.txt");
-    for (auto& v : left_foot_position_base_estimation_log_) {
-        left_foot_position_base_estimation_file << v.transpose() << "\n";
-    }
-
-    std::ofstream right_foot_position_base_estimation_file("/tmp/right_foot_position_base_estimation.txt");
-    for (auto& v : right_foot_position_base_estimation_log_) {
-        right_foot_position_base_estimation_file << v.transpose() << "\n";
-    }
-
-    std::ofstream left_foot_position_with_zero_base_file("/tmp/left_foot_position_with_zero_base.txt");
-    for (auto& v : left_foot_position_with_zero_base_log_) {
-        left_foot_position_with_zero_base_file << v.transpose() << "\n";
-    }
-
-    std::ofstream right_foot_position_with_zero_base_file("/tmp/right_foot_position_with_zero_base.txt");
-    for (auto& v : right_foot_position_with_zero_base_log_) {
-        right_foot_position_with_zero_base_file << v.transpose() << "\n";
-    }
-
-
-    std::ofstream p_lsole_sim_file("/tmp/p_lsole_sim.txt");
-    for (auto& v : p_lsole_sim_log_) {
-        p_lsole_sim_file << v.transpose() << "\n";
-    }
-    std::ofstream p_rsole_sim_file("/tmp/p_rsole_sim.txt");
-    for (auto& v : p_rsole_sim_log_) {
-        p_rsole_sim_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_lsole_sim_file("/tmp/v_lsole_sim.txt");
-    for (auto& v : v_lsole_sim_log_) {
-        v_lsole_sim_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_rsole_sim_file("/tmp/v_rsole_sim.txt");
-    for (auto& v : v_rsole_sim_log_) {
-        v_rsole_sim_file << v.transpose() << "\n";
-    }
-
-    std::ofstream p_lsole_fb_file("/tmp/p_lsole_fb.txt");
-    for (auto& v : p_lsole_fb_log_) {
-        p_lsole_fb_file << v.transpose() << "\n";
-    }
-
-    std::ofstream p_rsole_fb_file("/tmp/p_rsole_fb.txt");
-    for (auto& v : p_rsole_fb_log_) {
-        p_rsole_fb_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_lsole_fb_file("/tmp/v_lsole_fb.txt");
-    for (auto& v : v_lsole_fb_log_) {
-        v_lsole_fb_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_rsole_fb_file("/tmp/v_rsole_fb.txt");
-    for (auto& v : v_rsole_fb_log_) {
-        v_rsole_fb_file << v.transpose() << "\n";
-    }
-
-    std::ofstream p_lsole_des_file("/tmp/p_lsole_des.txt");
-    for (auto& v : p_lsole_des_log_) {
-        p_lsole_des_file << v.transpose() << "\n";
-    }
-
-    std::ofstream p_rsole_des_file("/tmp/p_rsole_des.txt");
-    for (auto& v : p_rsole_des_log_) {
-        p_rsole_des_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_lsole_des_file("/tmp/v_lsole_des.txt");
-    for (auto& v : v_lsole_des_log_) {
-        v_lsole_des_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_rsole_des_file("/tmp/v_rsole_des.txt");
-    for (auto& v : v_rsole_des_log_) {
-        v_rsole_des_file << v.transpose() << "\n";
-    }
-
-    std::ofstream estimated_force_lsole_file("/tmp/estimated_force_lsole.txt");
-    for (auto& v : estimated_force_lsole_log_) {
-        estimated_force_lsole_file << v.transpose() << "\n";
-    }
-
-    std::ofstream estimated_force_rsole_file("/tmp/estimated_force_rsole.txt");
-    for (auto& v : estimated_force_rsole_log_) {
-        estimated_force_rsole_file << v.transpose() << "\n";
-    }
-
-    std::ofstream angular_momentum_file("/tmp/angular_momentum.txt");
-    for (auto& v : angular_momentum_log_) {
-        angular_momentum_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_base_position_file("/tmp/ekf_base_position.txt");
-    for (auto& v : ekf_base_position_log_) {
-        ekf_base_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_base_velocity_file("/tmp/ekf_base_velocity.txt");
-    for (auto& v : ekf_base_velocity_log_) {
-        ekf_base_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_base_orientation_file("/tmp/ekf_base_orientation.txt");
-    for (auto& v : ekf_base_orientation_log_) {
-        ekf_base_orientation_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_base_angular_velocity_file("/tmp/ekf_base_angular_velocity.txt");
-    for (auto& v : ekf_base_angular_velocity_log_) {
-        ekf_base_angular_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_joint_position_file("/tmp/ekf_joint_position.txt");
-    for (auto& v : ekf_joint_position_log_) {
-        ekf_joint_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream ekf_joint_velocity_file("/tmp/ekf_joint_velocity.txt");
-    for (auto& v : ekf_joint_velocity_log_) {
-        ekf_joint_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_base_position_file("/tmp/sim_base_position.txt");
-    for (auto& v : sim_base_position_log_) {
-        sim_base_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_base_velocity_file("/tmp/sim_base_velocity.txt");
-    for (auto& v : sim_base_velocity_log_) {
-        sim_base_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_base_orientation_file("/tmp/sim_base_orientation.txt");
-    for (auto& v : sim_base_orientation_log_) {
-        sim_base_orientation_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_joint_position_file("/tmp/sim_joint_position.txt");
-    for (auto& v : sim_joint_position_log_) {
-        sim_joint_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_joint_velocity_file("/tmp/sim_joint_velocity.txt");
-    for (auto& v : sim_joint_velocity_log_) {
-        sim_joint_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_base_angular_velocity_file("/tmp/sim_base_angular_velocity.txt");
-    for (auto& v : sim_base_angular_velocity_log_) {
-        sim_base_angular_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream measured_joint_position_file("/tmp/measured_joint_position.txt");
-    for (auto& v : measured_joint_position_log_) {
-        measured_joint_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream measured_joint_velocity_file("/tmp/measured_joint_velocity.txt");
-    for (auto& v : measured_joint_velocity_log_) {
-        measured_joint_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream execution_time_ekf_file("/tmp/execution_time_ekf.txt");
-    for (auto& t : execution_time_ekf_log_) {
-        execution_time_ekf_file << t << "\n";
-    }
-
-    std::ofstream execution_time_kf_file("/tmp/execution_time_kf.txt");
-    for (auto& t : execution_time_kf_log_) {
-        execution_time_kf_file << t << "\n";
-    }
-
-    std::ofstream execution_time_mpc_file("/tmp/execution_time_mpc.txt");
-    for (auto& t : execution_time_mpc_log_) {
-        execution_time_mpc_file << t << "\n";
-    }
-
-    std::ofstream execution_time_wbc_file("/tmp/execution_time_wbc.txt");
-    for (auto& t : execution_time_wbc_log_) {
-        execution_time_wbc_file << t << "\n";
-    }
-
-    std::ofstream execution_time_update_file("/tmp/execution_time_update.txt");
-    for (auto& t : execution_time_update_log_) {
-        execution_time_update_file << t << "\n";
-    }
-
-    std::ofstream estimated_imu_accelerometer_file("/tmp/estimated_imu_accelerometer.txt");
-    for (auto& v : estimated_imu_accelerometer_log_) {
-        estimated_imu_accelerometer_file << v.transpose() << "\n";
-    }
-
-    std::ofstream estimated_imu_angular_velocity_file("/tmp/estimated_imu_angular_velocity.txt");
-    for (auto& v : estimated_imu_angular_velocity_log_) {
-        estimated_imu_angular_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream estimated_imu_orientation_file("/tmp/estimated_imu_orientation.txt");
-    for (auto& v : estimated_imu_orientation_log_) {
-        estimated_imu_orientation_file << v.transpose() << "\n";
-    }
-
-    std::ofstream measured_imu_accelerometer_log_file("/tmp/measured_imu_accelerometer.txt");
-    for (auto& v : measured_imu_accelerometer_log_) {
-        measured_imu_accelerometer_log_file << v.transpose() << "\n";
-    }
-
-    std::ofstream measured_imu_angular_velocity_log_file("/tmp/measured_imu_angular_velocity.txt");
-    for (auto& v : measured_imu_angular_velocity_log_) {
-        measured_imu_angular_velocity_log_file << v.transpose() << "\n";
-    }
-
-    std::ofstream measured_imu_orientation_log_file("/tmp/measured_imu_orientation.txt");
-    for (auto& v : measured_imu_orientation_log_) {
-        measured_imu_orientation_log_file << v.transpose() << "\n";
-    }
-
-    std::ofstream input_torque_file("/tmp/input_torque.txt");
-    for (auto& v : input_torque_log_) {
-        input_torque_file << v.transpose() << "\n";
-    }
-
-
-}
 
 
 int64_t

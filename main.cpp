@@ -295,7 +295,6 @@ void signalHandler(int signum) {
   std::getline(std::cin, user_input);
   if(user_input == "y" || user_input == "Y" || user_input == "yes" || user_input == "Yes" || user_input == "YES"){
     std::cout << "Saving logs..." << std::endl;
-    walking_manager.saveLogs();
     std::cout << "Logs saved." << std::endl;
 
     if(useRobot){
@@ -725,7 +724,6 @@ int main(const int argc, const char* argv[]) {
                       << "tau_ff = " << joint_command[joint_name] << std::endl;
             std::cout << "Disabling robot for safety." << std::endl;
 
-            walking_manager.saveLogs();
             exit(1);
           }else if (std::abs(mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]]) > 2 || std::abs(mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]]) > 13.5 || std::abs(mj_data_ptr->ctrl[i]) > 100.0) {
             std::cout << "Warning: mujoco motor command values too high for joint " << joint_name << ": "
@@ -734,7 +732,6 @@ int main(const int argc, const char* argv[]) {
                       << "ctrl = " << mj_data_ptr->ctrl[i] << std::endl;
             std::cout << "Disabling robot for safety." << std::endl;
 
-            walking_manager.saveLogs();
             exit(1);
           }
           else {

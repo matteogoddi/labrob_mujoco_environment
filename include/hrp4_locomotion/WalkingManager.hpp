@@ -36,8 +36,6 @@ class WalkingManager {
 
   RobotState getNewRobotState(RobotState robot_state);
 
-  void saveLogs();
-
   void update(
       const labrob::RobotState& sim_robot_state,
       labrob::JointCommand& joint_command,
@@ -125,91 +123,7 @@ private:
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 
-  Eigen::MatrixXd Kalman_Gain; 
-
-  // Logs
-  std::vector<Eigen::Vector3d> sim_com_position_log_;
-  std::vector<Eigen::Vector3d> sim_com_velocity_log_;
-  std::vector<Eigen::Vector3d> sim_zmp_position_log_;
-
-  std::vector<Eigen::Vector3d> fb_com_position_log_;
-  std::vector<Eigen::Vector3d> fb_com_velocity_log_;
-  std::vector<Eigen::Vector3d> fb_zmp_position_log_;
-
-  std::vector<Eigen::Vector3d> kf_com_position_log_;
-  std::vector<Eigen::Vector3d> kf_com_velocity_log_;
-  std::vector<Eigen::Vector3d> kf_zmp_position_log_;
-
-  std::vector<Eigen::Vector3d> des_com_position_log_;
-  std::vector<Eigen::Vector3d> des_com_velocity_log_;
-  std::vector<Eigen::Vector3d> des_zmp_position_log_;
-
-  std::vector<Eigen::Vector3d> ef_zmp_position_log_;
-
-  std::vector<Eigen::Vector3d> base_estimate_log_;
-  std::vector<Eigen::Vector4d> orientation_estimate_log_;
-  std::vector<Eigen::Vector3d> left_foot_position_base_estimation_log_;
-  std::vector<Eigen::Vector3d> right_foot_position_base_estimation_log_;
-  std::vector<Eigen::Vector3d> left_foot_position_with_zero_base_log_;
-  std::vector<Eigen::Vector3d> right_foot_position_with_zero_base_log_;
-
-  std::vector<Eigen::Vector3d> imu_accelerometer_log_;
-
-
-  std::vector<Eigen::Vector3d> p_lsole_sim_log_;
-  std::vector<Eigen::Vector3d> p_rsole_sim_log_;
-  std::vector<Eigen::Vector3d> v_lsole_sim_log_;
-  std::vector<Eigen::Vector3d> v_rsole_sim_log_;
-  std::vector<Eigen::Vector3d> p_lsole_fb_log_;
-  std::vector<Eigen::Vector3d> p_rsole_fb_log_;
-  std::vector<Eigen::Vector3d> v_lsole_fb_log_;
-  std::vector<Eigen::Vector3d> v_rsole_fb_log_;
-  std::vector<Eigen::Vector3d> p_lsole_des_log_;
-  std::vector<Eigen::Vector3d> p_rsole_des_log_;
-  std::vector<Eigen::Vector3d> v_lsole_des_log_;
-  std::vector<Eigen::Vector3d> v_rsole_des_log_;
-
-  std::vector<Eigen::Vector3d> estimated_force_lsole_log_;
-  std::vector<Eigen::Vector3d> estimated_force_rsole_log_;
-  
-  std::vector<Eigen::Vector3d> angular_momentum_log_;
-  // std::vector<Eigen::VectorXd> fl_log_;
-  // std::vector<Eigen::VectorXd> fr_log_;
-  std::vector<Eigen::VectorXd> mpc_predictions_log_;
-  // ekf state vectors
-  std::vector<Eigen::VectorXd> ekf_base_position_log_;
-  std::vector<Eigen::VectorXd> ekf_base_velocity_log_;
-  std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
-  std::vector<Eigen::VectorXd> ekf_base_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> ekf_joint_position_log_;
-  std::vector<Eigen::VectorXd> ekf_joint_velocity_log_;
-  // sim state vectors
-  std::vector<Eigen::VectorXd> sim_base_position_log_;
-  std::vector<Eigen::VectorXd> sim_base_velocity_log_;
-  std::vector<Eigen::VectorXd> sim_base_orientation_log_;
-  std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> sim_joint_position_log_;
-  std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
-  // fb state vectors
-  std::vector<Eigen::VectorXd> measured_joint_position_log_;
-  std::vector<Eigen::VectorXd> measured_joint_velocity_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
-  std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
-
-  std::vector<Eigen::VectorXd> input_torque_log_;
-
-  std::vector<Eigen::MatrixXd> kalman_gain_log_;
-
-  //execution time logs
-  std::vector<long long> execution_time_wbc_log_;
-  std::vector<long long> execution_time_mpc_log_;
-  std::vector<long long> execution_time_ekf_log_;
-  std::vector<long long> execution_time_kf_log_;
-  std::vector<long long> execution_time_update_log_;
+  Eigen::MatrixXd Kalman_Gain;
 
 }; // end class WalkingManager
 
