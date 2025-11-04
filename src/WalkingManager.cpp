@@ -300,111 +300,91 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     int n_steps = 10;
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        T_lsole_init.rotation(), T_lsole_init.translation(),
+        T_rsole_init.rotation(), T_rsole_init.translation(),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::Init,
         2000,
-        labrob::WalkingState::Init
+        0.0
     ));
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        T_lsole_init.rotation(), T_lsole_init.translation(),
+        T_rsole_init.rotation(), T_rsole_init.translation(),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::Standing,
         2000,
-        labrob::WalkingState::Standing
+        0.0
     ));
 
     double double_support_duration = 6000;
     double single_support_duration = 6000;
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        T_lsole_init.rotation(), T_lsole_init.translation(),
+        T_rsole_init.rotation(), T_rsole_init.translation(),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::Starting,
         double_support_duration,
-        labrob::WalkingState::Starting
+        0.0
     ));
 
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-            labrob::Foot::RIGHT
-        ),
-        swing_foot_trajectory_height,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        T_lsole_init.rotation(), T_lsole_init.translation(),
+        T_rsole_init.rotation(), T_rsole_init.translation(),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::SingleSupport,
         single_support_duration,
-        labrob::WalkingState::SingleSupport
+        swing_foot_trajectory_height
     ));
     for (int n = 0; n < n_steps; n += 2) {
-        walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-            labrob::DoubleSupportConfiguration(
-                labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::RIGHT
-            ),
-            0.0,
+        walking_data_.footstep_plan.push_back(labrob::Footstep(
+            labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Foot::RIGHT,
+            labrob::WalkingState::DoubleSupport,
             double_support_duration,
-            labrob::WalkingState::DoubleSupport
+            0.0
         ));
-        walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-            labrob::DoubleSupportConfiguration(
-                labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::LEFT
-            ),
-            swing_foot_trajectory_height,
+        walking_data_.footstep_plan.push_back(labrob::Footstep(
+            labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Rz(n * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Foot::LEFT,
+            labrob::WalkingState::SingleSupport,
             single_support_duration,
-            labrob::WalkingState::SingleSupport
+            swing_foot_trajectory_height
         ));
-        walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-            labrob::DoubleSupportConfiguration(
-                labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::SE3(labrob::Rz((n + 2) * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::LEFT
-            ),
-            0.0,
+        walking_data_.footstep_plan.push_back(labrob::Footstep(
+            labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Rz((n + 2) * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Foot::LEFT,
+            labrob::WalkingState::DoubleSupport,
             double_support_duration,
-            labrob::WalkingState::DoubleSupport
+            0.0
         ));
-        walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-            labrob::DoubleSupportConfiguration(
-                labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::SE3(labrob::Rz((n + 2) * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::RIGHT
-            ),
-            swing_foot_trajectory_height,
+        walking_data_.footstep_plan.push_back(labrob::Footstep(
+            labrob::Rz((n + 1) * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Rz((n + 2) * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+            labrob::Foot::RIGHT,
+            labrob::WalkingState::SingleSupport,
             single_support_duration,
-            labrob::WalkingState::SingleSupport
+            swing_foot_trajectory_height
         ));
     }
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(labrob::Rz(n_steps * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::SE3(labrob::Rz(n_steps * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        labrob::Rz(n_steps * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+        labrob::Rz(n_steps * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::Stopping,
         0,
-        labrob::WalkingState::Stopping
+        0.0
     ));
-    walking_data_.footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(labrob::Rz(n_steps * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::SE3(labrob::Rz(n_steps * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
+    walking_data_.footstep_plan.push_back(labrob::Footstep(
+        labrob::Rz(n_steps * step_rotation) * T_lsole_init.rotation(), T_lsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+        labrob::Rz(n_steps * step_rotation) * T_rsole_init.rotation(), T_rsole_init.translation() + n_steps * Eigen::Vector3d(step_length_x, step_length_y, 0.0),
+        labrob::Foot::RIGHT,
+        labrob::WalkingState::Standing,
         2000,
-        labrob::WalkingState::Standing
+        0.0
     ));
 
     // Init MPC:
@@ -504,11 +484,11 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
     double left_support_check = 1.0;
     double right_support_check = 1.0;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport){
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+        if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT){
             right_support_check = 0.0;
             left_support_check = 1.0;
         }
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+        if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT){
             left_support_check = 0.0;
             right_support_check = 1.0;
         }
@@ -649,8 +629,8 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
         // y_actual.segment(njnt + 3 + njnt + 3, 3) = R_world_imu * (y_actual.segment(njnt + 3 + njnt + 3, 3)) - Eigen::Vector3d(0, 0, 9.81);
         
         //get feet position from walking data using desired Gait configuration
-        Eigen::Vector3d left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
-        Eigen::Vector3d right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
+        Eigen::Vector3d left_foot_position = walking_data_.footstep_plan.front().left_foot_position.transpose();
+        Eigen::Vector3d right_foot_position = walking_data_.footstep_plan.front().right_foot_position.transpose();
 
         y_actual.segment(njnt + 3 + njnt + 3 + 6, 3) = left_foot_position * left_support_check;
         y_actual.segment(njnt + 3 + njnt + 6 + 6, 3) = right_foot_position * right_support_check;
@@ -688,8 +668,8 @@ RobotState WalkingManager::updateEKF(RobotState sim_robot_state, Eigen::VectorXd
             J_imu_dot
         );
 
-        Eigen::Vector3d left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
-        Eigen::Vector3d right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
+        Eigen::Vector3d left_foot_position = walking_data_.footstep_plan.front().left_foot_position.transpose();
+        Eigen::Vector3d right_foot_position = walking_data_.footstep_plan.front().right_foot_position.transpose();
 
         //compute actual imu orientation from pinocchio, make sure it is in order w x y z
         Eigen::Quaterniond actual_imu_orientation = Eigen::Quaterniond(
@@ -1124,8 +1104,8 @@ WalkingManager::update(
     pinocchio::Motion desired_rsole_vel_base_est;
     pinocchio::Motion desired_rsole_acc_base_est;
 
-    left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
-    right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
+    left_foot_position = walking_data_.footstep_plan.front().left_foot_position.transpose();
+    right_foot_position = walking_data_.footstep_plan.front().right_foot_position.transpose();
     // if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
     //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
 
@@ -1158,7 +1138,7 @@ WalkingManager::update(
 
     double foot_line_angle;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+        if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT){
 
             Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
@@ -1166,7 +1146,7 @@ WalkingManager::update(
             // foot_line_angle -= M_PI/2;
             
         }
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+        else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT){
             Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
             foot_line_angle = right_foot_yaw;
@@ -1186,8 +1166,8 @@ WalkingManager::update(
     Eigen::Vector3d base_estimate;
 
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) base_estimate =  (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
+        if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
+        else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT) base_estimate =  (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
         }
     else{
         Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
@@ -1351,8 +1331,8 @@ WalkingManager::update(
     current_gait_configuration.is_left_foot_support = true;
     current_gait_configuration.is_right_foot_support = true;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
-    else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
+    if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
+    else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
     current_gait_configuration.com.pos = kf_LipState.com_pos_;
@@ -1434,14 +1414,14 @@ WalkingManager::update(
 
     // Feet tasks
     if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
-        desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+        desired_gait_configuration.lsole.pos = labrob::SE3(walking_data_.footstep_plan.front().left_foot_rotation, walking_data_.footstep_plan.front().left_foot_position);
         desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
         desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
-        desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+        desired_gait_configuration.rsole.pos = labrob::SE3(walking_data_.footstep_plan.front().right_foot_rotation, walking_data_.footstep_plan.front().right_foot_position);
         desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
         desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
-    } else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) {
-        desired_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+    } else if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT) {
+        desired_gait_configuration.lsole.pos = labrob::SE3(walking_data_.footstep_plan.front().left_foot_rotation, walking_data_.footstep_plan.front().left_foot_position);
         desired_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
         desired_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
         pinocchio::SE3 desired_rsole_pose;
@@ -1453,7 +1433,7 @@ WalkingManager::update(
         desired_gait_configuration.rsole.vel << desired_rsole_vel.linear(), desired_rsole_vel.angular();
         desired_gait_configuration.rsole.acc << desired_rsole_acc.linear(), desired_rsole_acc.angular();
     } else {
-        desired_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+        desired_gait_configuration.rsole.pos = labrob::SE3(walking_data_.footstep_plan.front().right_foot_rotation, walking_data_.footstep_plan.front().right_foot_position);
         desired_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
         desired_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
         pinocchio::SE3 desired_lsole_pose;
@@ -2032,36 +2012,43 @@ WalkingManager::swingFootTrajectory(
   // NOTE: assuming there are at least two elements in the footstep plan.
   // NOTE: assuming roll and pitch are always zero for the swing foot.
   double t = 0.001 * static_cast<double>(t_msec_ - walking_data_.t0 + controller_timestep_msec_);
-  double swing_duration = 0.001 * static_cast<double>(walking_data_.footstep_plan.front().getDuration());
+  double swing_duration = 0.001 * static_cast<double>(walking_data_.footstep_plan.front().duration_ms);
   labrob::QuinticPolynomialTimingLaw timing_law(swing_duration);
   double s = timing_law.eval(t);
   double s_dot = timing_law.eval_dt(t);
   double s_ddot = timing_law.eval_dt_dt(t);
 
-  const auto& feet_placement = walking_data_.footstep_plan[0].getFeetPlacement();
-  const auto& target_feet_placement = walking_data_.footstep_plan[1].getFeetPlacement();
-  const auto& support_foot_identity = feet_placement.getSupportFoot();
-  const auto& support_foot_configuration = feet_placement.getSupportFootConfiguration();
-  const auto& starting_swing_foot_configuration = feet_placement.getSwingFootConfiguration();
-  const auto& target_swing_foot_configuration =
+  const auto& current_footstep = walking_data_.footstep_plan[0];
+  const auto& target_footstep = walking_data_.footstep_plan[1];
+  const auto& support_foot_identity = current_footstep.support_foot;
+  const auto& support_foot_rotation = current_footstep.get_support_foot_rotation();
+  const auto& support_foot_position = current_footstep.get_support_foot_position();
+  const auto& starting_swing_foot_rotation = current_footstep.get_swing_foot_rotation();
+  const auto& starting_swing_foot_position = current_footstep.get_swing_foot_position();
+  const Eigen::Matrix3d& target_swing_foot_rotation =
       (support_foot_identity == labrob::Foot::LEFT ?
-             target_feet_placement.getRightFootConfiguration() :
-             target_feet_placement.getLeftFootConfiguration()
+             target_footstep.right_foot_rotation :
+             target_footstep.left_foot_rotation
       );
-  const auto& p0 = starting_swing_foot_configuration.p;
-  const auto& R0 = starting_swing_foot_configuration.R;
-  const auto& pf = target_swing_foot_configuration.p;
-  const auto& Rf = target_swing_foot_configuration.R;
+  const Eigen::Vector3d& target_swing_foot_position =
+      (support_foot_identity == labrob::Foot::LEFT ?
+             target_footstep.right_foot_position :
+             target_footstep.left_foot_position
+      );
+  const auto& p0 = starting_swing_foot_position;
+  const auto& R0 = starting_swing_foot_rotation;
+  const auto& pf = target_swing_foot_position;
+  const auto& Rf = target_swing_foot_rotation;
   double yaw0 = std::atan2(R0(1, 0), R0(0, 0));
   double yawf = std::atan2(Rf(1, 0), Rf(0, 0));
 
   pinocchio::SE3 desired_swing_foot_pose;
   desired_swing_foot_pose.translation().x() = p0.x() + (pf.x() - p0.x()) * s;
   desired_swing_foot_pose.translation().y() = p0.y() + (pf.y() - p0.y()) * s;
-  double zs = support_foot_configuration.p.z();
+  double zs = support_foot_position.z();
   double z0 = p0.z();
   double zf = pf.z();
-  double h_z = walking_data_.footstep_plan[0].getSwingFootTrajectoryHeight();
+  double h_z = walking_data_.footstep_plan[0].swing_height;
   double a = 2.0 * z0 - 4.0 * h_z + 2.0 * zf - 4.0 * zs;
   double b = 4.0 * h_z - 3.0 * z0 - zf + 4.0 * zs;
   double c = z0;

@@ -22,8 +22,6 @@ set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp

@@ -12,7 +12,6 @@
 #include <pinocchio/multibody/model.hpp>
 
 // hrp4_locomotion
-#include <hrp4_locomotion/FootstepPlanElement.hpp>
 #include <hrp4_locomotion/LIPState.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingState.hpp>

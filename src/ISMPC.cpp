@@ -75,15 +75,15 @@ ISMPC::solve(
   // of MPC iterations already executed for current footstep plan element,
   // delta_mpc is the sampling time of the MPC.
   std::vector<int> n_k;
-  for (const auto& footstep_plan_elem : walking_data.footstep_plan) {
-    n_k.push_back(footstep_plan_elem.getDuration() / mpc_timestep_msec_);
+  for (const auto& footstep : walking_data.footstep_plan) {
+    n_k.push_back(footstep.duration_ms / mpc_timestep_msec_);
   }
   int n_ini = (time - walking_data.t0) / mpc_timestep_msec_;
 
   int n = 0, k = 0;
   while (n < N_) {
-    const auto& footstep_plan_elem = walking_data.footstep_plan[k];
-    const auto& walking_state = walking_data.footstep_plan[k].getWalkingState();
+    const auto& footstep = walking_data.footstep_plan[k];
+    const auto& walking_state = walking_data.footstep_plan[k].walking_state;
     int n_bar = n_k[k];
     if (k == 0) n_bar -= n_ini;
     if (n + n_bar >= N_) n_bar = N_ - n;
@@ -124,8 +124,8 @@ ISMPC::solve(
         mapping(i, 1) = 0.5 * s;
       }
     }
-    const auto& p_support = footstep_plan_elem.getFeetPlacement().getSupportFootConfiguration().p;
-    const auto& p_swing = footstep_plan_elem.getFeetPlacement().getSwingFootConfiguration().p;
+    const auto& p_support = footstep.get_support_foot_position();
+    const auto& p_swing = footstep.get_swing_foot_position();
     Eigen::VectorXd varying_x = mapping * Eigen::Vector2d(p_support.x(), p_swing.x());
     Eigen::VectorXd varying_y = mapping * Eigen::Vector2d(p_support.y(), p_swing.y());
     Eigen::VectorXd varying_z = mapping * Eigen::Vector2d(p_support.z(), p_swing.z());
