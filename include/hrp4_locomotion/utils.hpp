@@ -89,28 +89,6 @@ walkingStateFromString(
     const std::string& walking_state_str
 );
 
-bool readArgosFootstepPlan(
-    const std::string& file_path,
-    std::deque<labrob::FootstepPlanElement>& footstep_plan
-);
-
-bool readHumanoids2023FootstepPlan(
-    const std::string& file_path,
-    const labrob::DoubleSupportConfiguration& current_feet_placement,
-    const labrob::WalkingState& current_walking_state,
-    std::deque<labrob::FootstepPlanElement>& footstep_plan
-);
-
-bool readFootstepPlan(
-    const std::string& file_path,
-    std::deque<labrob::FootstepPlanElement>& footstep_plan
-);
-
-void saveFootstepPlan(
-    const std::deque<labrob::FootstepPlanElement>& footstep_plan,
-    const std::string& file_path
-);
-
 } // end namespace labrob
 
 #endif // LABROB_UTILS_HPP_

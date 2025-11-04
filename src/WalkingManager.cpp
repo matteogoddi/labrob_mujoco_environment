@@ -24,7 +24,6 @@
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/TimingLaw.hpp>
 #include <hrp4_locomotion/utils.hpp>
-#include <hrp4_locomotion/DdpSolver.hpp>
 
 namespace labrob {
 
@@ -243,12 +242,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       labrob::WalkingState::Standing
   ));
 
-  // Save and read again footstep plan to double check it's working:
-  //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
-  //labrob::saveFootstepPlan(walking_data_.footstep_plan, footstep_plan_path);
-  //labrob::readFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-  //labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
-
   // Init MPC:
   Eigen::Vector3d p_CoM = robot_data_.com[0];
   int64_t mpc_prediction_horizon_msec = 2000;
@@ -269,35 +262,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
       foot_constraint_square_length,
       foot_constraint_square_width
   );
-
-  DdpSolver ddpsolver = DdpSolver();
-
-  // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
-  Eigen::Vector<double, NX> x0;
-  x0 <<
-      filtered_state_.com_pos_(0),
-      filtered_state_.com_pos_(1),
-      filtered_state_.com_pos_(2),
-      filtered_state_.com_vel_(0),
-      filtered_state_.com_vel_(1),
-      filtered_state_.com_vel_(2),
-      filtered_state_.zmp_pos_(0),
-      filtered_state_.zmp_pos_(1),
-      filtered_state_.zmp_pos_(2);
-  std::array<Eigen::Vector<double, NX>, NH+1> x_traj;
-  x_traj[0] = x0;
-  std::array<Eigen::Vector<double, NU>, NH> u_traj;
-
-  // set warm-start trajectories
-  std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
-  for (int i = 0; i < NH+1; ++i)
-    x_guess[i] = x0;
-  std::array<Eigen::Vector<double, NU>, NH> u_guess;
-  for (int i = 0; i < NH; ++i)
-    u_guess[i].setZero();
-  ddpsolver.set_initial_state(x0);
-  ddpsolver.set_x_warmstart(x_guess);
-  ddpsolver.set_u_warmstart(u_guess);
 
   auto params = WholeBodyControllerParams::getDefaultParams();
   whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
@@ -553,45 +517,8 @@ WalkingManager::update(
     auto mpc_duration = std::chrono::duration_cast<std::chrono::microseconds>(mpc_tf_ms - mpc_t0_ms).count();
     std::cout << "IS-MPC solve duration: " << mpc_duration << " us" << std::endl;
 
-    DdpSolver ddpsolver = DdpSolver();
-
-    // set x0 as initial state of CoM_pos CoM_vel and ZMP_pos
-    Eigen::Vector<double, NX> x0;
-    x0 <<
-        filtered_state_.com_pos_(0),
-        filtered_state_.com_pos_(1),
-        filtered_state_.com_pos_(2),
-        filtered_state_.com_vel_(0),
-        filtered_state_.com_vel_(1),
-        filtered_state_.com_vel_(2),
-        filtered_state_.zmp_pos_(0),
-        filtered_state_.zmp_pos_(1),
-        filtered_state_.zmp_pos_(2);
-    std::array<Eigen::Vector<double, NX>, NH+1> x_traj;
-    x_traj[0] = x0;
-    std::array<Eigen::Vector<double, NU>, NH> u_traj;
-  
-    // set warm-start trajectories
-    std::array<Eigen::Vector<double, NX>, NH+1> x_guess;
-    for (int i = 0; i < NH+1; ++i)
-      x_guess[i] = x0;
-    std::array<Eigen::Vector<double, NU>, NH> u_guess;
-    for (int i = 0; i < NH; ++i)
-      u_guess[i].setZero();
-    ddpsolver.set_initial_state(x0);
-    ddpsolver.set_x_warmstart(x_guess);
-    ddpsolver.set_u_warmstart(u_guess);
-
-    auto start = std::chrono::system_clock::now();
-    ddpsolver.solve();
-    auto end = std::chrono::system_clock::now();
-    auto solve_duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout << "DdpSolver solve duration: " << solve_duration << " us" << std::endl;
-
     // Update the state based on the result of the QP:
     auto lip_state = discrete_lip_dynamics_ptr_->integrate(filtered_state_, ismpc_ptr_->getInput());
-    // substitute with ddpsolver.u[0]
-
 
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
     Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
