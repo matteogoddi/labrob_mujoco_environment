@@ -254,6 +254,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/base_estimate/orientation_estimation_error_plot.png")
+    plt.close(fig)
     
 
     #plot base_estimation
@@ -268,7 +269,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/base_estimate/position_base_estimation_plot.png")
-
+    plt.close(fig)
 
     #plot difference base est and base position
     fig, ax = plt.subplots()
@@ -282,6 +283,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/base_estimate/base_estimation_error_plot.png")
+    plt.close(fig)
 
     #plot left foot position base estimation and right foot position base estimation
     fig, ax = plt.subplots()
@@ -295,6 +297,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/base_estimate/left_foot_position_base_estimation_plot.png")
+    plt.close(fig)
 
     #plot error between left foot position base estimation and p_lsole_fb
     fig, ax = plt.subplots()
@@ -308,6 +311,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/base_estimate/left_foot_position_estimation_error_plot.png")
+    plt.close(fig)
 
     #plot error between right foot position base estimation and p_rsole_sim
     fig, ax = plt.subplots()
@@ -499,8 +503,48 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 0], label='fb left sole X', color='blue')
     ax.plot(t, p_rsole_fb[:, 0], label='fb right sole X', color='orange')
-    ax.plot(t, kf_com_position[:, 0], label='fb COM X', color='green')
-    ax.plot(t, kf_zmp_position[:, 0], label='fb ZMP X', color='red')
+    ax.plot(t, kf_com_position[:, 0], label='kf COM X', color='green')
+    ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='red')
+    # ax.plot(t, sim_com_position[:, 0], label='sim COM X', color='green')
+    # ax.plot(t, sim_zmp_position[:, 0], label='sim ZMP X', color='red')
+    ax.plot(t, p_lsole_des[:, 0], label='des left sole X', color='blue', linestyle='--')
+    ax.plot(t, p_rsole_des[:, 0], label='des right sole X', color='orange', linestyle='--')
+    ax.plot(t, des_com_position[:, 0], label='des COM X', color='green', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position X [m]')
+    ax.set_title('Left Sole, Right Sole and COM X Position Filtered vs Desired')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/kf_left_right_sole_and_com_x_plot.png")
+
+    #plot y position of com, left and right sole
+    fig, ax = plt.subplots()
+    ax.plot(t, p_lsole_fb[:, 1], label='fb left sole Y', color='blue')
+    ax.plot(t, p_rsole_fb[:, 1], label='fb right sole Y', color='orange')
+    ax.plot(t, kf_com_position[:, 1], label='kf COM Y', color='green')
+    ax.plot(t, kf_zmp_position[:, 1], label='kf ZMP Y', color='red')
+    # ax.plot(t, sim_com_position[:, 1], label='sim COM Y', color='green')
+    # ax.plot(t, sim_zmp_position[:, 1], label='sim ZMP Y', color='red')
+    ax.plot(t, p_lsole_des[:, 1], label='des left sole Y', color='blue', linestyle='--')
+    ax.plot(t, p_rsole_des[:, 1], label='des right sole Y', color='orange', linestyle='--')
+    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='--')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position Y [m]')
+    ax.set_title('Left Sole, Right Sole and COM Y Position Filtered vs Desired')
+    ax.grid(True)
+    #lim between 24 and 26
+    # ax.set_xlim([27.99, 28.02])
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/kf_left_right_sole_and_com_y_plot.png")
+
+    #plot x position of com, left and right sole
+    fig, ax = plt.subplots()
+    ax.plot(t, p_lsole_fb[:, 0], label='fb left sole X', color='blue')
+    ax.plot(t, p_rsole_fb[:, 0], label='fb right sole X', color='orange')
+    ax.plot(t, fb_com_position[:, 0], label='fb COM X', color='green')
+    ax.plot(t, fb_zmp_position[:, 0], label='fb ZMP X', color='red')
     ax.plot(t, p_lsole_des[:, 0], label='des left sole X', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 0], label='des right sole X', color='orange', linestyle='--')
     ax.plot(t, des_com_position[:, 0], label='des COM X', color='green', linestyle='--')
@@ -516,8 +560,8 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, p_lsole_fb[:, 1], label='fb left sole Y', color='blue')
     ax.plot(t, p_rsole_fb[:, 1], label='fb right sole Y', color='orange')
-    ax.plot(t, kf_com_position[:, 1], label='fb COM Y', color='green')
-    ax.plot(t, kf_zmp_position[:, 1], label='fb ZMP Y', color='red')
+    ax.plot(t, fb_com_position[:, 1], label='fb COM Y', color='green')
+    ax.plot(t, fb_zmp_position[:, 1], label='fb ZMP Y', color='red')
     ax.plot(t, p_lsole_des[:, 1], label='des left sole Y', color='blue', linestyle='--')
     ax.plot(t, p_rsole_des[:, 1], label='des right sole Y', color='orange', linestyle='--')
     ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='--')
@@ -530,7 +574,6 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/fb_left_right_sole_and_com_y_plot.png")
-
 
     fig, ax = plt.subplots()
     ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='blue', linestyle=':')

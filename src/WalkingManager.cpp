@@ -1133,6 +1133,24 @@ WalkingManager::update(
 
     left_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration().p.transpose();
     right_foot_position = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration().p.transpose();
+    // if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+
+    //         pinocchio::SE3 desired_rsole_pose;
+    //         pinocchio::Motion desired_rsole_vel;
+    //         pinocchio::Motion desired_rsole_acc;
+    //         swingFootTrajectory(desired_rsole_pose, desired_rsole_vel, desired_rsole_acc);
+    //         right_foot_position = desired_rsole_pose.translation().transpose();
+            
+    //     }
+    //     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+    //         pinocchio::SE3 desired_lsole_pose;
+    //         pinocchio::Motion desired_lsole_vel;
+    //         pinocchio::Motion desired_lsole_acc;
+    //         swingFootTrajectory(desired_lsole_pose, desired_lsole_vel, desired_lsole_acc);
+    //         left_foot_position = desired_lsole_pose.translation().transpose();
+    //     }
+    // }
 
     RobotState base_estimation_robot_state = fb_robot_state;
     base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
@@ -1145,20 +1163,6 @@ WalkingManager::update(
     left_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[lsole_idx_].translation().transpose());
     right_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[rsole_idx_].translation().transpose());
 
-    //convert orientation of base from quaternion to rpy
-    Eigen::Matrix3d R_world_base = base_estimation_robot_state.orientation.toRotationMatrix();
-    Eigen::Vector3d rpy_world_base = R_world_base.eulerAngles(0, 1, 2);
-    //wrap between -pi and pi
-    if (rpy_world_base(2) > M_PI/2) rpy_world_base(2) -=  M_PI;
-    else if (rpy_world_base(2) < -M_PI/2) rpy_world_base(2) +=  M_PI;
-    // compute rotation matrix only for yaw in the form cos, sin, 0; sin cos, 0
-    // std::cout << "RPY base estimation: " << rpy_world_base(2) << std::endl;
-    Eigen::Matrix3d rotation_yaw;
-    rotation_yaw << cos(rpy_world_base(2)), -sin(rpy_world_base(2)), 0,
-                    sin(rpy_world_base(2)), cos(rpy_world_base(2)), 0,
-                    0, 0, 1;
-    rotation_yaw = rotation_yaw.transpose(); //inverse rotation
-
     double foot_line_angle;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
         if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
@@ -1166,14 +1170,14 @@ WalkingManager::update(
             Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
             foot_line_angle = left_foot_yaw;
-            foot_line_angle -= M_PI/2;
+            // foot_line_angle -= M_PI/2;
             
         }
         else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
             Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
             foot_line_angle = right_foot_yaw;
-            foot_line_angle -= M_PI/2;
+            // foot_line_angle -= M_PI/2;
         }
     }else{
         // compute left foot yaw angle relative to base frame of simulation
@@ -1183,14 +1187,10 @@ WalkingManager::update(
         Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
         double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
         foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
-        foot_line_angle -= M_PI/2; // to be aligned with the foot line
+        // foot_line_angle -= M_PI/2; // to be aligned with the foot line
     }
 
     Eigen::Vector3d base_estimate;
-
-    // std::cout << "left foot position with base at zero" << base_estimation_robot_data.oMf[lsole_idx_].translation().transpose() << std::endl;
-    // std::cout << "right foot position with base at zero" << base_estimation_robot_data.oMf[rsole_idx_].translation().transpose() << std::endl;
-    // std::cout << "yaw angle" << rpy_world_base(2) << std::endl;
 
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
         if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
@@ -1200,24 +1200,8 @@ WalkingManager::update(
         Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
         Eigen::Vector3d mean_fb_feet = 0.5 * (base_estimation_robot_data.oMf[lsole_idx_].translation() + base_estimation_robot_data.oMf[rsole_idx_].translation());
         base_estimate = (mean_des_feet - mean_fb_feet);
+        // base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
     }
-
-    // rotate base_estimation_robot_state orientation, take the quaternion and rotate it by the yaw rotation using quaternion rotartion
-    Eigen::Quaterniond base_orientation = base_estimation_robot_state.orientation;
-    Eigen::Quaterniond yaw_rotation;
-    yaw_rotation = Eigen::Quaterniond(
-        cos(foot_line_angle/2),
-        0,
-        0,
-        sin(foot_line_angle/2)
-    );
-    // concatenate quaternions in the right way
-    base_estimation_robot_state.orientation = Eigen::Quaterniond(yaw_rotation.w() * base_orientation.w() - yaw_rotation.x() * base_orientation.x() - yaw_rotation.y() * base_orientation.y() - yaw_rotation.z() * base_orientation.z(),
-                                            yaw_rotation.w() * base_orientation.x() + yaw_rotation.x() * base_orientation.w() + yaw_rotation.y() * base_orientation.z() - yaw_rotation.z() * base_orientation.y(),
-                                            yaw_rotation.w() * base_orientation.y() - yaw_rotation.x() * base_orientation.z() + yaw_rotation.y() * base_orientation.w() + yaw_rotation.z() * base_orientation.x(),
-                                            yaw_rotation.w() * base_orientation.z() + yaw_rotation.x() * base_orientation.y() - yaw_rotation.y() * base_orientation.x() + yaw_rotation.z() * base_orientation.w());
-    //normalize quaternion  
-    base_estimation_robot_state.orientation.normalize();
 
     Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
     Eigen::Quaterniond q_yaw(yaw_correction);
@@ -1243,7 +1227,7 @@ WalkingManager::update(
         base_estimation_robot_state.orientation.z()
     ).transpose());
 
-    if (isCoMLoopClosed && t_msec_ >= startTimeCoMCL) {
+    if (true) {
         fb_robot_state = base_estimation_robot_state;
     }
 
@@ -1507,7 +1491,17 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
+            if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
+                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+                    robot_model,
+                    fb_robot_state,
+                    fb_robot_state,
+                    fb_robot_data,
+                    fb_robot_data,
+                    current_gait_configuration,
+                    desired_gait_configuration
+                );
+            }else if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed && !isTotalBodyLoopClosed){
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
                     sim_robot_state,

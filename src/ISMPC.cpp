@@ -106,7 +106,7 @@ ISMPC::solve(
       }
     } else if (walking_state == labrob::WalkingState::SingleSupport) {
       for (int i = 0; i < mapping.rows(); ++i) {
-        mapping(i, 0) = 1.1;
+        mapping(i, 0) = 1.0;
         mapping(i, 1) = 0.0;
       }
     } else if (walking_state == labrob::WalkingState::DoubleSupport) {
