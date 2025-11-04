@@ -48,9 +48,6 @@ double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
 
-Gamepad gamepad_;
-REMOTE_DATA_RX rx_;
-
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 #include "MujocoUI.hpp"
@@ -59,6 +56,9 @@ using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
 using namespace unitree::common;
 using namespace unitree::robot::b2;
+
+Gamepad gamepad_;
+REMOTE_DATA_RX rx_;
 
 static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
@@ -301,18 +301,6 @@ int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
     return motionStatus;
 };
 
-// Blocca il thread su un core specifico (per ridurre jitter)
-void pin_thread_to_core(int core_id = 3) {
-  cpu_set_t cpuset;
-  CPU_ZERO(&cpuset);
-  CPU_SET(core_id, &cpuset);
-  if (pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset) != 0) {
-      std::cerr << "[WARN] Non riesco a fissare l’affinità CPU.\n";
-  } else {
-      std::cout << "[INFO] Thread fissato sul core #" << core_id << "\n";
-  }
-}
-
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
 
@@ -445,8 +433,6 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 
 int main(const int argc, const char* argv[]) {
 
-  pin_thread_to_core(3);
-
   std::string netInterface;
 
   for (int i = 1; i < argc; ++i) {
@@ -479,7 +465,10 @@ int main(const int argc, const char* argv[]) {
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   if (useRobot) {
-    std::cout << "Select closed loop to use:" << std::endl;
+    std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
+    std::cout << "Press 'Y' on the GAMEPAD to end the program." << std::endl;
+    std::cout << "If GAMEPAD is not used, select now which loops to close:" << std::endl;
+    std::cout << "Options:" << std::endl;
     std::cout << "1. Center of Mass (CoM)" << std::endl;
     std::cout << "2. Total Body" << std::endl;
     std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
@@ -617,16 +606,23 @@ int main(const int argc, const char* argv[]) {
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
       auto start_sleep = std::chrono::steady_clock::now();
-      // RC
-      printf("gamepad_.A.pressed: %d\n", static_cast<int>(gamepad_.A.pressed));
-      printf("gamepad_.B.pressed: %d\n", static_cast<int>(gamepad_.B.pressed));
-      printf("gamepad_.X.pressed: %d\n", static_cast<int>(gamepad_.X.pressed));
-      printf("gamepad_.Y.pressed: %d\n", static_cast<int>(gamepad_.Y.pressed));
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
+
+        if (gamepad_.Y.pressed) {
+          std::cout << "[GAMEPAD] Y premuto -> rilascio motori..." << std::endl;
+          signalHandler(SIGINT);
+        }
+
+        if (gamepad_.X.on_press) {
+          isCoMLoopClosed = !isCoMLoopClosed;
+          startTimeCoMCL = mj_data_ptr->time;
+          std::cout << "[GAMEPAD] X premuto -> isCoMLoopClosed: " << isCoMLoopClosed << std::endl;
+        }
+
         std::lock_guard<std::mutex> lock(stateMutex);
 
         // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
@@ -725,6 +721,7 @@ int main(const int argc, const char* argv[]) {
       }
 
       if (useRobot) {
+
         MotorCommand motor_command;
       
         // Impostazioni di base

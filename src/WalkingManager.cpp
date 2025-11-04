@@ -167,7 +167,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     sim_robot_data = pinocchio::Data(robot_model);
 
     njnt = robot_model.nv - 6;
-    std::cout << "Number of joints: " << njnt << std::endl;
 
     // Init desired lsole and rsole poses:
     auto q_init = robot_state_to_pinocchio_joint_configuration(
@@ -1090,9 +1089,9 @@ WalkingManager::update(
         #pragma omp section
         {
             if(t_msec_ >= startTimeEKFCL && isEKFLoopClosed) {
-                if(t_msec_ == startTimeEKFCL){
-                    std::cout << "EKF loop closed "<< std::endl;
-                }
+                // if(t_msec_ == startTimeEKFCL){
+                //     std::cout << "EKF loop closed "<< std::endl;
+                // }
                 fb_robot_state = updateEKF(sim_robot_state, actual_output);
                 //TODO: don't know what to do if not using the EKF
                 fb_robot_state.position = sim_robot_state.position;
