@@ -93,7 +93,6 @@ void LowStateHandler(const void* msg)
   }
 }
 
-
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
   exit(signum);
@@ -264,35 +263,55 @@ int main() {
   joint_names_log_file.flush();
   joint_names_log_file.close();
 
-  static int time = 0;
+  static int framerate = 60.0;
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     mjtNum simstart = mj_data_ptr->time;
-    labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+    while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
-    // Update walking manager:
-    labrob::JointCommand joint_command;
-    walking_manager.update(robot_state, joint_command);
+      labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
-    mj_step1(mj_model_ptr, mj_data_ptr);
+      // Update walking manager:
+      labrob::JointCommand joint_command;
+      // measure the time taken by the walking manager update
+      auto update_start = std::chrono::high_resolution_clock::now();
+      walking_manager.update(robot_state, joint_command);
+      auto update_end = std::chrono::high_resolution_clock::now();
+      auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(update_end - update_start).count();
+      std::cout << "WalkingManager::update() took " << update_duration << " us" << std::endl;
+      
+      mj_step1(mj_model_ptr, mj_data_ptr);
 
-    for (int i = 0; i < mj_model_ptr->nu; ++i) {
-      int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-      std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-      int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
-      mj_data_ptr->ctrl[i] = joint_command[joint_name];
+      for (int i = 0; i < mj_model_ptr->nu; ++i) {
+        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        int jnt_qvel_idx = mj_model_ptr->jnt_dofadr[joint_id];
+        mj_data_ptr->ctrl[i] = joint_command[joint_name];
 
-      joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
-      joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
+        joint_vel_log_file << mj_data_ptr->qvel[jnt_qvel_idx] << " ";
+        joint_eff_log_file << mj_data_ptr->ctrl[i] << " ";
+      }
+
+      mj_step2(mj_model_ptr, mj_data_ptr);
+
+      joint_vel_log_file << std::endl;
+      joint_eff_log_file << std::endl;
+    
     }
 
-    mj_step2(mj_model_ptr, mj_data_ptr);
+    // Fine misurazione del tempo
+    auto end_time = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time).count();
 
-    joint_vel_log_file << std::endl;
-    joint_eff_log_file << std::endl;
+    // Stampa del tempo di esecuzione
+    std::cout << "Tempo di esecuzione del main: " << duration << " millisecondi" << std::endl;
 
-    if (time % 100 == 0) mujoco_ui.render();
+
+    mujoco_ui.render();
   }
 
   // Free memory (Mujoco):
