@@ -30,12 +30,6 @@ class WalkingManager {
 
   LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
-
-  RobotState updateEKF(RobotState sim_robot_state, Eigen::VectorXd actual_output);
-
-  RobotState getNewRobotState(RobotState robot_state);
-
   void update(
       const labrob::RobotState& sim_robot_state,
       labrob::JointCommand& joint_command,
@@ -48,18 +42,8 @@ class WalkingManager {
   pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
   pinocchio::Data fb_robot_data;
-  pinocchio::Data predicted_robot_data;
-  pinocchio::Data estimated_robot_data;
 
-  Eigen::MatrixXd P_;
-  Eigen::MatrixXd Q;
-  Eigen::MatrixXd R;
-  Eigen::VectorXd x_estimate;
-  Eigen::VectorXd y_pred;
-  Eigen::VectorXd y_actual;
-  Eigen::VectorXd y_estimate;
   Eigen::VectorXd actual_output;
-  int n_ekf_output;
 
   Eigen::VectorXd integrated_state_pos;
   Eigen::VectorXd integrated_state_vel;
@@ -75,8 +59,6 @@ class WalkingManager {
 
   Eigen::VectorXd q_jnt_des_;
 
-  labrob::GaitConfiguration initial_gait_configuration;
-
   double controller_timestep_msec_;
 
   labrob::WalkingData walking_data_;
@@ -91,18 +73,10 @@ class WalkingManager {
   RobotState fb_robot_state;
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
-  
-  Eigen::Matrix3d cov_x, cov_y, cov_z;
-  double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
-  double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
 
-  Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
-
 private:
-
-  Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;
 
   void swingFootTrajectory(
       pinocchio::SE3& swing_foot_pose,
@@ -110,20 +84,12 @@ private:
       pinocchio::Motion& swing_foot_acceleration
   ) const;
 
-  void swingFootTrajectoryBezier(
-      pinocchio::SE3& swing_foot_pose,
-      pinocchio::Motion& swing_foot_velocity
-  ) const;
-
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
-  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
-
-  Eigen::MatrixXd Kalman_Gain;
 
 }; // end class WalkingManager
 

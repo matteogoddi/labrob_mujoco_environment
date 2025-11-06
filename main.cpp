@@ -600,60 +600,16 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (true){
-        mj_step1(mj_model_ptr, mj_data_ptr);
-  
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->ctrl[i] = joint_command[joint_name];
-        }
-  
-        mj_step2(mj_model_ptr, mj_data_ptr);
-        robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+      mj_step1(mj_model_ptr, mj_data_ptr);
+
+      for (int i = 0; i < mj_model_ptr->nu; ++i) {
+        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        mj_data_ptr->ctrl[i] = joint_command[joint_name];
       }
-      // double check to ensure that mujoco is active when using the robot
-      //fix the error when using integration "by hand"
-      else{
-        auto start_integration = std::chrono::steady_clock::now();
-        robot_state = walking_manager.getNewRobotState(robot_state);
-        // update mujoco state with robot_state
-        mj_data_ptr->qpos[0] = robot_state.position.x();
-        mj_data_ptr->qpos[1] = robot_state.position.y();
-        mj_data_ptr->qpos[2] = robot_state.position.z();
-        mj_data_ptr->qpos[3] = robot_state.orientation.w();
-        mj_data_ptr->qpos[4] = robot_state.orientation.x();
-        mj_data_ptr->qpos[5] = robot_state.orientation.y();
-        mj_data_ptr->qpos[6] = robot_state.orientation.z();
-        //rotate the linear velocity from world to body frame
-        Eigen::Vector3d lin_vel_body = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
-        mj_data_ptr->qvel[0] = lin_vel_body.x();
-        mj_data_ptr->qvel[1] = lin_vel_body.y();
-        mj_data_ptr->qvel[2] = lin_vel_body.z();
-        mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
-        mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
-        mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
-          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
-        }
-        mj_forward(mj_model_ptr, mj_data_ptr);
 
-        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
-
-        mj_data_ptr->time += 0.002;
-        auto end_integration = std::chrono::steady_clock::now();
-        // print if duration of integration is too high
-        auto integration_duration = end_integration - start_integration;
-        if(integration_duration > std::chrono::milliseconds(1))
-          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
-
-      }
+      mj_step2(mj_model_ptr, mj_data_ptr);
+      robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
       if (useRobot) {
         MotorCommand motor_command;
