@@ -430,42 +430,10 @@ WalkingManager::update(
     const auto& J_CoM_sim = sim_robot_data.Jcom;
     const auto& a_CoM_drift_sim = sim_robot_data.acom[0];
     Eigen::Vector3d zmp_3d_sim;
-    // zmp_3d_sim.z() = sim_robot_state.position(2) - sim_robot_state.total_force.z() / (mass * eta2);
-    // zmp_3d_sim.x() = 0.0;
-    // zmp_3d_sim.y() = 0.0;
-    // for (int i = 0; i < sim_robot_state.contact_points.size(); ++i) {
-    //     auto &pi = sim_robot_state.contact_points[i];
-    //     auto &fi = sim_robot_state.contact_forces[i];
-    //     zmp_3d_sim.x() += (pi.x() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d_sim.z() - pi.z()) * fi.x() / sim_robot_state.total_force.z());
-    //     zmp_3d_sim.y() += (pi.y() * fi.z() / sim_robot_state.total_force.z() + (zmp_3d_sim.z() - pi.z()) * fi.y() / sim_robot_state.total_force.z());
-    // }
     zmp_3d_sim.z() = p_CoM_sim.z() - (a_CoM_drift_sim.z() + 9.81) / eta2;
     zmp_3d_sim.x() = p_CoM_sim.x() - a_CoM_drift_sim.x() / eta2;
     zmp_3d_sim.y() = p_CoM_sim.y() - a_CoM_drift_sim.y() / eta2;
 
-    // compute zmp 3d using the 6d vector estimated forces, first three are left foot, second three are right foot
-    // zmp_3d_sim.z() = sim_robot_state.position(2) - total_force.z() / (mass * eta2);
-    // zmp_3d_sim.x() = 0.0;
-    // zmp_3d_sim.y() = 0.0;
-    // if (total_force.z() > 1e-5) {
-    //     if (left_foot_force.z() > 1e-5) {
-    //         zmp_3d_sim.x() += (T_lsole_sim.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.x() / total_force.z());
-    //         zmp_3d_sim.y() += (T_lsole_sim.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_lsole_sim.translation().z()) * left_foot_force.y() / total_force.z());
-    //     }
-    //     if (right_foot_force.z() > 1e-5) {
-    //         zmp_3d_sim.x() += (T_rsole_sim.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.x() / total_force.z());
-    //         zmp_3d_sim.y() += (T_rsole_sim.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.y() / total_force.z());
-    //     }
-    // }
-    
-
-
-
-    ////////////////////////
-    // BASE ESTIMATION
-    ////////////////////////
-    // WORK IN PROGRESS
-    
     // In simulation mode, feedback state is same as sim state
     fb_robot_state = sim_robot_state;
 
@@ -481,24 +449,6 @@ WalkingManager::update(
 
     left_foot_position = walking_data_.footstep_plan.front().left_foot_position.transpose();
     right_foot_position = walking_data_.footstep_plan.front().right_foot_position.transpose();
-    // if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
-
-    //         pinocchio::SE3 desired_rsole_pose;
-    //         pinocchio::Motion desired_rsole_vel;
-    //         pinocchio::Motion desired_rsole_acc;
-    //         swingFootTrajectory(desired_rsole_pose, desired_rsole_vel, desired_rsole_acc);
-    //         right_foot_position = desired_rsole_pose.translation().transpose();
-            
-    //     }
-    //     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-    //         pinocchio::SE3 desired_lsole_pose;
-    //         pinocchio::Motion desired_lsole_vel;
-    //         pinocchio::Motion desired_lsole_acc;
-    //         swingFootTrajectory(desired_lsole_pose, desired_lsole_vel, desired_lsole_acc);
-    //         left_foot_position = desired_lsole_pose.translation().transpose();
-    //     }
-    // }
 
     RobotState base_estimation_robot_state = fb_robot_state;
     base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
@@ -516,24 +466,18 @@ WalkingManager::update(
             Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
             foot_line_angle = left_foot_yaw;
-            // foot_line_angle -= M_PI/2;
-            
         }
         else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT){
             Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
             foot_line_angle = right_foot_yaw;
-            // foot_line_angle -= M_PI/2;
         }
     }else{
-        // compute left foot yaw angle relative to base frame of simulation
         Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
         double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
-        // compute right foot yaw angle relative to base frame of simulation
         Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
         double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
         foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
-        // foot_line_angle -= M_PI/2; // to be aligned with the foot line
     }
 
     Eigen::Vector3d base_estimate;
@@ -565,10 +509,6 @@ WalkingManager::update(
     if (true) {
         fb_robot_state = base_estimation_robot_state;
     }
-
-    ////////////////////
-    // END BASE ESTIMATE
-    ///////////////////
 
 
 
@@ -602,16 +542,6 @@ WalkingManager::update(
     const auto& T_rsole_fb = fb_robot_data.oMf[rsole_idx_];   
 
     Eigen::Vector3d zmp_3d_fb;
-    // zmp_3d_fb.z() = fb_robot_state.position(2) - fb_robot_state.total_force.z() / (mass * eta2);
-    // zmp_3d_fb.x() = 0.0;
-    // zmp_3d_fb.y() = 0.0;
-    // for (int i = 0; i < fb_robot_state.contact_points.size(); ++i) {
-    //     auto &pi = fb_robot_state.contact_points[i];
-    //     auto &fi = fb_robot_state.contact_forces[i];
-    //     zmp_3d_fb.x() += (pi.x() * fi.z() / fb_robot_state.total_force.z() + (zmp_3d_fb.z() - pi.z()) * fi.x() / fb_robot_state.total_force.z());
-    //     zmp_3d_fb.y() += (pi.y() * fi.z() / fb_robot_state.total_force.z() + (zmp_3d_fb.z() - pi.z()) * fi.y() / fb_robot_state.total_force.z());
-    // }
-
     zmp_3d_fb.z() = fb_robot_state.position(2) - total_force.z() / (mass * eta2);
     zmp_3d_fb.x() = 0.0;
     zmp_3d_fb.y() = 0.0;
@@ -625,17 +555,6 @@ WalkingManager::update(
             zmp_3d_fb.y() += (T_rsole_fb.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_rsole_fb.translation().z()) * right_foot_force.y() / total_force.z());
         }
     }
-
-
-    // zmp_3d_fb.z() = p_CoM_fb.z() - (a_CoM_drift_fb.z() + 9.81) / eta2;
-    // zmp_3d_fb.x() = p_CoM_fb.x() - a_CoM_drift_fb.x() / eta2;
-    // zmp_3d_fb.y() = p_CoM_fb.y() - a_CoM_drift_fb.y() / eta2;
-
-    /////////////////////////////////////
-    // 
-    // START KF
-    //
-    /////////////////////////////////////
 
     // Use feedback CoM after 15 seconds (startTimeCoMCL = 15000.0)
     if (t_msec_ >= 15000.0) {
@@ -672,12 +591,6 @@ WalkingManager::update(
     current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     current_gait_configuration.rsole.vel = J_rsole_sim * qdot;
 
-    /////////////////////////////////////
-    // 
-    // START MPC
-    //
-    /////////////////////////////////////
-
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -691,20 +604,6 @@ WalkingManager::update(
 
     LIPState lip_state;
     lip_state = discrete_lip_dynamics_ptr_->integrate(kf_LipState, ismpc_ptr_->getInput());
-
-    // Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
-    // Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
-    // Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
-
-    // LIPState LipState_mpc = kf_LipState;
-
-    // for (int i = 0; i < 20; ++i) {
-    //     LipState_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
-    //         LipState_mpc,
-    //         Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
-    //     );
-
-    // }
 
     Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
     Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
@@ -760,12 +659,6 @@ WalkingManager::update(
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-
-    /////////////////////////////////////
-    // 
-    // START WHOLE BODY CONTROLLER
-    //
-    /////////////////////////////////////
 
     // Compute inverse dynamics (simulation mode uses sim_robot_state for kinematics, fb_robot_state for CoM)
     joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
