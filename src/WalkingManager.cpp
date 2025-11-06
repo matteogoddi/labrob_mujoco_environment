@@ -408,7 +408,6 @@ WalkingManager::update(
         J_torso_sim
     );
 
-    const auto& T_lsole_sim = sim_robot_data.oMf[lsole_idx_];
     Eigen::MatrixXd J_lsole_sim = Eigen::MatrixXd::Zero(6, njnt + 6);
     pinocchio::getFrameJacobian(
         robot_model,
@@ -418,9 +417,6 @@ WalkingManager::update(
         J_lsole_sim
     );
 
-    const auto& v_lsole_sim = J_lsole_sim * qdot;
-
-    const auto& T_rsole_sim = sim_robot_data.oMf[rsole_idx_];
     Eigen::MatrixXd J_rsole_sim = Eigen::MatrixXd::Zero(6, njnt + 6);
     pinocchio::getFrameJacobian(
         robot_model,
@@ -429,12 +425,10 @@ WalkingManager::update(
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
         J_rsole_sim
     );
-    const auto& v_rsole_sim = J_rsole_sim * qdot;
 
     const auto& p_CoM_sim = sim_robot_data.com[0];
     const auto& J_CoM_sim = sim_robot_data.Jcom;
     const auto& a_CoM_drift_sim = sim_robot_data.acom[0];
-    Eigen::Vector3d v_CoM_sim = J_CoM_sim * qdot;
     Eigen::Vector3d zmp_3d_sim;
     // zmp_3d_sim.z() = sim_robot_state.position(2) - sim_robot_state.total_force.z() / (mass * eta2);
     // zmp_3d_sim.x() = 0.0;
@@ -603,40 +597,9 @@ WalkingManager::update(
     const auto& p_CoM_fb = fb_robot_data.com[0];
     const auto& a_CoM_drift_fb = fb_robot_data.acom[0];
     const auto& J_CoM_fb = fb_robot_data.Jcom;
-    Eigen::Vector3d v_CoM_fb = J_CoM_fb * qdot_fb_filt;
-    const auto& T_torso_fb = fb_robot_data.oMf[torso_idx_];
-    auto torso_orientation_fb = T_torso_fb.rotation();
-    Eigen::MatrixXd J_torso_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        fb_robot_data,
-        torso_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_torso_fb
-    );
 
     const auto& T_lsole_fb = fb_robot_data.oMf[lsole_idx_];
-    Eigen::MatrixXd J_lsole_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        fb_robot_data,
-        lsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_lsole_fb
-    );
-
-    const auto& v_lsole_fb = J_lsole_fb * qdot_fb_filt;
-
-    const auto& T_rsole_fb = fb_robot_data.oMf[rsole_idx_];
-    Eigen::MatrixXd J_rsole_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        fb_robot_data,
-        rsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_rsole_fb
-    );
-    const auto& v_rsole_fb = J_rsole_fb * qdot_fb_filt;   
+    const auto& T_rsole_fb = fb_robot_data.oMf[rsole_idx_];   
 
     Eigen::Vector3d zmp_3d_fb;
     // zmp_3d_fb.z() = fb_robot_state.position(2) - fb_robot_state.total_force.z() / (mass * eta2);
