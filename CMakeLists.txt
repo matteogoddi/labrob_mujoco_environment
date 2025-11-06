@@ -9,7 +9,6 @@ find_package(glfw3 REQUIRED)
 find_package(mujoco REQUIRED)
 find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
-find_package(OpenMP REQUIRED)
 
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
 
@@ -47,7 +46,6 @@ target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
-  OpenMP::OpenMP_CXX
 )
 
 add_executable(main

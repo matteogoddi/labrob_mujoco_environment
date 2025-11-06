@@ -506,16 +506,7 @@ WalkingManager::update(
     auto left_foot_position_base_estimation = base_estimation_robot_data.oMf[lsole_idx_].translation();
     auto right_foot_position_base_estimation = base_estimation_robot_data.oMf[rsole_idx_].translation();
 
-    if (true) {
-        fb_robot_state = base_estimation_robot_state;
-    }
-
-
-
-
-
-
-
+    fb_robot_state = base_estimation_robot_state;
 
     auto q_fb_filt = robot_state_to_pinocchio_joint_configuration(robot_model, fb_robot_state);
     auto qdot_fb_filt = robot_state_to_pinocchio_joint_velocity(robot_model, fb_robot_state);
@@ -556,15 +547,8 @@ WalkingManager::update(
         }
     }
 
-    // Use feedback CoM after 15 seconds (startTimeCoMCL = 15000.0)
-    if (t_msec_ >= 15000.0) {
-        if (t_msec_ == 15000.0) {
-            std::cout << "Using feedback Center of Mass" << std::endl;
-        }
-        LipState = LIPState(p_CoM_fb, J_CoM_fb * qdot_fb_filt, zmp_3d_fb);
-    } else {
-        LipState = LIPState(p_CoM_sim, J_CoM_sim * qdot, zmp_3d_sim);
-    }
+    // Use feedback CoM
+    LipState = LIPState(p_CoM_fb, J_CoM_fb * qdot_fb_filt, zmp_3d_fb);
     kf_LipState = updateKF(kf_LipState, LipState, ismpc_ptr_->getInput());
 
     // Fill current gait configuration (always uses sim_robot_data in simulation mode)
@@ -591,16 +575,7 @@ WalkingManager::update(
     current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     current_gait_configuration.rsole.vel = J_rsole_sim * qdot;
 
-    #pragma omp parallel sections num_threads(2)
-    {
-        #pragma omp section
-        {
-            ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
-        }
-        #pragma omp section
-        {
-        }
-    } 
+    ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
 
     LIPState lip_state;
     lip_state = discrete_lip_dynamics_ptr_->integrate(kf_LipState, ismpc_ptr_->getInput());
