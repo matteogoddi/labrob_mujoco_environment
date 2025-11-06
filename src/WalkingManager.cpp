@@ -960,41 +960,8 @@ WalkingManager::update(
     ////////////////////////
     // WORK IN PROGRESS
     
-    //start measuring time
-    #pragma omp parallel sections num_threads(2)
-    {
-        #pragma omp section
-        {
-            if(t_msec_ >= startTimeEKFCL && isEKFLoopClosed) {
-                if(t_msec_ == startTimeEKFCL){
-                    std::cout << "EKF loop closed "<< std::endl;
-                }
-                fb_robot_state = updateEKF(sim_robot_state, actual_output);
-                //TODO: don't know what to do if not using the EKF
-                fb_robot_state.position = sim_robot_state.position;
-                fb_robot_state.linear_velocity = sim_robot_state.linear_velocity;
-                fb_robot_state.orientation = quaternionFromRotVec(actual_output.head(3));
-                fb_robot_state.angular_velocity = actual_output.segment(3 + njnt, 3);
-                //assign joint positions and velocities from actual output
-                for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-                    std::string joint_name = robot_model.names[joint_id + 2];
-                    fb_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
-                    fb_robot_state.joint_state[joint_name].vel = actual_output(3 + njnt + 3 + joint_id);
-                }
-                if (!useRobot) {
-                    fb_robot_state = sim_robot_state;
-                }
-            }
-            else{
-                //TODO: don't know what to do if not using the EKF
-                fb_robot_state = sim_robot_state;
-            }
-
-        }
-        #pragma omp section
-        {
-        }
-    } // end of parallel sections
+    // In simulation mode, feedback state is same as sim state
+    fb_robot_state = sim_robot_state;
 
     Eigen::Vector3d left_foot_position;
     Eigen::Vector3d right_foot_position;
@@ -1195,54 +1162,40 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    LipState = LIPState(p_CoM_sim, J_CoM_sim * qdot, zmp_3d_sim);
-    if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
-        if (t_msec_ == startTimeCoMCL){
+    // Use feedback CoM after 15 seconds (startTimeCoMCL = 15000.0)
+    if (t_msec_ >= 15000.0) {
+        if (t_msec_ == 15000.0) {
             std::cout << "Using feedback Center of Mass" << std::endl;
         }
         LipState = LIPState(p_CoM_fb, J_CoM_fb * qdot_fb_filt, zmp_3d_fb);
+    } else {
+        LipState = LIPState(p_CoM_sim, J_CoM_sim * qdot, zmp_3d_sim);
     }
     kf_LipState = updateKF(kf_LipState, LipState, ismpc_ptr_->getInput());
 
-    // Fill current gait configuration:
+    // Fill current gait configuration (always uses sim_robot_data in simulation mode)
     labrob::GaitConfiguration current_gait_configuration;
     current_gait_configuration.qjnt = q.tail(njnt);
     current_gait_configuration.qjntdot = qdot.tail(njnt);
-    if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
-        current_gait_configuration.qjnt = q_fb_filt.tail(njnt);
-        current_gait_configuration.qjntdot = qdot_fb_filt.tail(njnt);
-    }
 
     current_gait_configuration.is_left_foot_support = true;
     current_gait_configuration.is_right_foot_support = true;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-    if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
-    else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
+        if (walking_data_.footstep_plan.front().support_foot == Foot::LEFT) current_gait_configuration.is_right_foot_support = false;
+        else if (walking_data_.footstep_plan.front().support_foot == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
     current_gait_configuration.com.pos = kf_LipState.com_pos_;
     current_gait_configuration.com.vel = kf_LipState.com_vel_;
-    
+
     current_gait_configuration.torso.pos = sim_robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso_sim.bottomRows<3>() * qdot;
-    if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
-        current_gait_configuration.torso.pos = fb_robot_data.oMf[torso_idx_].rotation();
-        current_gait_configuration.torso.vel = J_torso_fb.bottomRows<3>() * qdot_fb_filt;
-    }
 
     current_gait_configuration.lsole.pos = labrob::SE3(sim_robot_data.oMf[lsole_idx_].rotation(), sim_robot_data.oMf[lsole_idx_].translation());
     current_gait_configuration.lsole.vel = J_lsole_sim * qdot;
-    if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
-        current_gait_configuration.lsole.pos = labrob::SE3(fb_robot_data.oMf[lsole_idx_].rotation(), fb_robot_data.oMf[lsole_idx_].translation());
-        current_gait_configuration.lsole.vel = J_lsole_fb * qdot_fb_filt;
-    }
 
     current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
     current_gait_configuration.rsole.vel = J_rsole_sim * qdot;
-    if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
-        current_gait_configuration.rsole.pos = labrob::SE3(fb_robot_data.oMf[rsole_idx_].rotation(), fb_robot_data.oMf[rsole_idx_].translation());
-        current_gait_configuration.rsole.vel = J_rsole_fb * qdot_fb_filt;
-    }
 
     /////////////////////////////////////
     // 
@@ -1339,47 +1292,16 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    #pragma omp parallel sections num_threads(2)
-    {
-        #pragma omp section
-        {
-            if (t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed){
-                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-                    robot_model,
-                    fb_robot_state,
-                    fb_robot_state,
-                    fb_robot_data,
-                    fb_robot_data,
-                    current_gait_configuration,
-                    desired_gait_configuration
-                );
-            }else if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed && !isTotalBodyLoopClosed){
-                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-                    robot_model,
-                    sim_robot_state,
-                    fb_robot_state,
-                    sim_robot_data,
-                    fb_robot_data,
-                    current_gait_configuration,
-                    desired_gait_configuration
-                );
-            } else {
-                // Use the MPC to compute the joint command:
-                joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
-                    robot_model,
-                    sim_robot_state,
-                    sim_robot_state,
-                    sim_robot_data,
-                    sim_robot_data,
-                    current_gait_configuration,
-                    desired_gait_configuration
-                );
-            }
-        }
-        #pragma omp section
-        {
-        }
-    } // end of parallel sections
+    // Compute inverse dynamics (simulation mode uses sim_robot_state for kinematics, fb_robot_state for CoM)
+    joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
+        robot_model,
+        sim_robot_state,
+        fb_robot_state,
+        sim_robot_data,
+        fb_robot_data,
+        current_gait_configuration,
+        desired_gait_configuration
+    );
 
     // Get measured joint torques from the joint command
     Eigen::VectorXd measured_torques(robot_model.nv - 6);  // Exclude floating base
@@ -1390,35 +1312,17 @@ WalkingManager::update(
     }
 
 
-    // In your update function, after WBC computation:
+    // Compute residual-based force estimation
     Eigen::VectorXd wbc_left_wrench = whole_body_controller_ptr_->getLeftFootWrench();
     Eigen::VectorXd wbc_right_wrench = whole_body_controller_ptr_->getRightFootWrench();
 
-    // Use the new WBC-based residual computation
-    if (startTimeCoMCL >= t_msec_ && isCoMLoopClosed) {
-        if (t_msec_ == startTimeCoMCL){
-            std::cout << "Using WBC-based residual estimation" << std::endl;
-        }
-        residual_estimator_ptr_->computeResidualWithWBCWrenches(
-            fb_robot_state,
-            fb_robot_data,
-            measured_torques,
-            //wbc_left_wrench,
-            //wbc_right_wrench,
-            *whole_body_controller_ptr_,
-            controller_timestep_msec_*0.001
-        );
-    }else{
-        residual_estimator_ptr_->computeResidualWithWBCWrenches(
-            fb_robot_state,
-            fb_robot_data,
-            measured_torques,
-            //wbc_left_wrench,
-            //wbc_right_wrench,
-            *whole_body_controller_ptr_,
-            controller_timestep_msec_*0.001
-        );
-    }
+    residual_estimator_ptr_->computeResidualWithWBCWrenches(
+        fb_robot_state,
+        fb_robot_data,
+        measured_torques,
+        *whole_body_controller_ptr_,
+        controller_timestep_msec_*0.001
+    );
 
     estimated_force = residual_estimator_ptr_->getFeetEstimatedForce();
 

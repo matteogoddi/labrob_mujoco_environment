@@ -37,15 +37,8 @@
 
 #include <hrp4_locomotion/globals.h>
 
-bool isTotalBodyLoopClosed = false;
-bool isCoMLoopClosed = false;
-bool isEKFLoopClosed = false;
 bool useSim = false;
 bool useRobot = false;
-
-double startTimeTotalBodyCL = 15000.0;
-double startTimeCoMCL = 15000.0;
-double startTimeEKFCL = 0.0;
 
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
@@ -447,33 +440,6 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
-
-  if (useRobot) {
-    std::cout << "Select closed loop to use:" << std::endl;
-    std::cout << "1. Center of Mass (CoM)" << std::endl;
-    std::cout << "2. Total Body" << std::endl;
-    std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
-    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for CoM and EKF)." << std::endl;
-    std::cout << "Enter your choice: " << std::endl;
-    std::string user_input;
-    std::getline(std::cin, user_input);
-    std::istringstream iss(user_input);
-    std::string token;
-    while (iss >> token) {
-      if (token == "1") {
-        isCoMLoopClosed = true;
-      } else if (token == "2") {
-        isTotalBodyLoopClosed = true;
-      } else if (token == "3") {
-        isEKFLoopClosed = true;
-      } 
-    }
-  } else {
-    isTotalBodyLoopClosed = false;
-    isCoMLoopClosed = true;
-    isEKFLoopClosed = true;
-  }
-  
 
   // Init robot posture:
   mjtNum waist_y_init = 0.0;
