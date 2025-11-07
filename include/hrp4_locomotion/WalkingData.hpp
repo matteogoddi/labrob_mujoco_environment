@@ -5,6 +5,7 @@
 
 #include <hrp4_locomotion/FootstepPlanElement.hpp>
 #include <hrp4_locomotion/WalkingState.hpp>
+#include <hrp4_locomotion/SE3.hpp>
 
 namespace labrob {
 
@@ -32,6 +33,19 @@ class WalkingData {
    * Update walking state and footstep plan with current time.
   */
   void updateWalkingState(int64_t t);
+
+  void initializeWalkingData(
+    double controller_timestep_msec,
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole
+  );
+
+  void addSteps(
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole
+  );
+
+  void removeSteps();
 
 }; // end class WalkingData
 

@@ -6,6 +6,8 @@ extern bool isEKFLoopClosed;
 extern bool isCoMLoopClosed;
 extern bool useSim;
 extern bool useRobot;
+extern bool switchWalkingState;
+extern bool calibratingImu;
 
 extern double startTimeCoMCL;
 extern double startTimeTotalBodyCL;

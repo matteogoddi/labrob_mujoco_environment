@@ -44,6 +44,7 @@ bool isEKFLoopClosed = false;
 bool useSim = false;
 bool useRobot = false;
 
+
 double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKFCL = 0.0;
@@ -56,6 +57,9 @@ using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
 using namespace unitree::common;
 using namespace unitree::robot::b2;
+
+bool switchWalkingState = false;
+bool calibratingImu = false;
 
 Gamepad gamepad_;
 REMOTE_DATA_RX rx_;
@@ -467,6 +471,7 @@ int main(const int argc, const char* argv[]) {
   if (useRobot) {
     std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
     std::cout << "Press 'Y' on the GAMEPAD to end the program." << std::endl;
+    std::cout << "Press 'B' on the GAMEPAD to switch walking state." << std::endl;
     std::cout << "If GAMEPAD is not used, select now which loops to close:" << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "1. Center of Mass (CoM)" << std::endl;
@@ -520,8 +525,10 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
+  // mj_data_ptr->qpos[0] = 10.0;
+  // mj_data_ptr->qpos[1] = 10.0;
 
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.01;
+  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105;
   mj_data_ptr->qpos[3] = 1.0;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
@@ -613,14 +620,27 @@ int main(const int argc, const char* argv[]) {
       if (useRobot) {
 
         if (gamepad_.Y.pressed) {
-          std::cout << "[GAMEPAD] Y premuto -> rilascio motori..." << std::endl;
+          std::cout << "[GAMEPAD] Y pressed -> Deactivating motors..." << std::endl;
           signalHandler(SIGINT);
         }
 
         if (gamepad_.X.on_press) {
           isCoMLoopClosed = !isCoMLoopClosed;
           startTimeCoMCL = mj_data_ptr->time;
-          std::cout << "[GAMEPAD] X premuto -> isCoMLoopClosed: " << isCoMLoopClosed << std::endl;
+          if(isCoMLoopClosed)
+            std::cout << "[GAMEPAD] X pressed -> Closed loop on CoM activated." << std::endl;
+          else
+            std::cout << "[GAMEPAD] X pressed -> Closed loop on CoM deactivated." << std::endl;
+        }
+
+        if (gamepad_.B.on_press) {
+          switchWalkingState = true;
+          std::cout << "[GAMEPAD] B pressed -> Walking state switched." << std::endl;
+        }
+
+        if (gamepad_.A.on_press) {
+          std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
+          calibratingImu = true;
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
@@ -665,7 +685,8 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (true){
+      if (false){
+        auto start_integration = std::chrono::steady_clock::now();
         mj_step1(mj_model_ptr, mj_data_ptr);
   
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -675,11 +696,14 @@ int main(const int argc, const char* argv[]) {
         }
   
         mj_step2(mj_model_ptr, mj_data_ptr);
+
+        auto end_integration = std::chrono::steady_clock::now();
+        auto integration_duration = end_integration - start_integration;
+        if(integration_duration > std::chrono::milliseconds(1))
+          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-      }
-      // double check to ensure that mujoco is active when using the robot
-      //fix the error when using integration "by hand"
-      else{
+
+      }else{
         auto start_integration = std::chrono::steady_clock::now();
         robot_state = walking_manager.getNewRobotState(robot_state);
         // update mujoco state with robot_state
@@ -706,14 +730,13 @@ int main(const int argc, const char* argv[]) {
         }
         mj_forward(mj_model_ptr, mj_data_ptr);
 
-        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
         mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
         mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
         auto end_integration = std::chrono::steady_clock::now();
-        // print if duration of integration is too high
         auto integration_duration = end_integration - start_integration;
         if(integration_duration > std::chrono::milliseconds(1))
           std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
@@ -749,29 +772,18 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 13.5 || std::abs(joint_command[joint_name]) > 100.0) {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "
                       << "tau_ff = " << joint_command[joint_name] << std::endl;
             std::cout << "Disabling robot for safety." << std::endl;
 
-            walking_manager.saveLogs();
-            exit(1);
-          }else if (std::abs(mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]]) > 2 || std::abs(mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]]) > 13.5 || std::abs(mj_data_ptr->ctrl[i]) > 100.0) {
-            std::cout << "Warning: mujoco motor command values too high for joint " << joint_name << ": "
-                      << "qpos = " << mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] << ", "
-                      << "qvel = " << mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] << ", "
-                      << "ctrl = " << mj_data_ptr->ctrl[i] << std::endl;
-            std::cout << "Disabling robot for safety." << std::endl;
-
-            walking_manager.saveLogs();
-            exit(1);
-          }
-          else {
-            motor_command.q_target[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
-            motor_command.dq_target[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
-            motor_command.tau_ff[i] = mj_data_ptr->ctrl[i];
+            signalHandler(SIGINT);
+          }else {
+            motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
+            motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
+            motor_command.tau_ff[i] = joint_command[joint_name];
           }
         }
       

@@ -68,6 +68,11 @@ class WalkingManager {
   Eigen::VectorXd integrated_state_pos;
   Eigen::VectorXd integrated_state_vel;
 
+  double angle_acc_gravity_sum_;
+  int angle_acc_gravity_count_;
+
+  Eigen::Quaterniond rotation_correction;
+
   int njnt;
 
   pinocchio::FrameIndex lsole_idx_;

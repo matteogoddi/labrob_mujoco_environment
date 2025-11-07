@@ -10,6 +10,9 @@ class SE3 {
   SE3();
   SE3(const Eigen::Matrix3d& rotation, const Eigen::Vector3d& translation);
 
+  const Eigen::Matrix3d& rotation() const { return R; }
+  const Eigen::Vector3d& translation() const { return p; }
+
   Eigen::Matrix3d R;
   Eigen::Vector3d p;
 }; // end class SE3

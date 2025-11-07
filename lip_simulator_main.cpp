@@ -4,6 +4,9 @@
 #include <hrp4_locomotion/LIPSimulator.hpp>
 #include <hrp4_locomotion/LIPState.hpp>
 #include <hrp4_locomotion/utils.hpp>
+#include <hrp4_locomotion/globals.h>
+
+bool startWalking = false;
 
 int main() {
   labrob::LIPSimulatorOptions lip_simulator_options;
