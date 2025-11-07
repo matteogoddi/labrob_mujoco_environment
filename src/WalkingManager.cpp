@@ -77,12 +77,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     ef_zmp_position_log_.reserve(max_steps);
 
-    base_estimate_log_.reserve(max_steps);
-    orientation_estimate_log_.reserve(max_steps);
-    left_foot_position_base_estimation_log_.reserve(max_steps);
-    right_foot_position_base_estimation_log_.reserve(max_steps);
-    left_foot_position_with_zero_base_log_.reserve(max_steps);
-    right_foot_position_with_zero_base_log_.reserve(max_steps);
+    // base_estimate_log_.reserve(max_steps);
+    // orientation_estimate_log_.reserve(max_steps);
+    // left_foot_position_base_estimation_log_.reserve(max_steps);
+    // right_foot_position_base_estimation_log_.reserve(max_steps);
+    // left_foot_position_with_zero_base_log_.reserve(max_steps);
+    // right_foot_position_with_zero_base_log_.reserve(max_steps);
 
     imu_accelerometer_log_.reserve(max_steps);
 
@@ -1000,6 +1000,11 @@ WalkingManager::update(
         rotation_correction = sim_imu_orientation * measured_imu_orientation.conjugate();
     }
 
+    if (t_msec_ >= 10000) {
+        Eigen::Quaterniond measured_imu_orientation = quaternionFromRotVec(actual_output.head(3));
+        Eigen::Quaterniond corrected_imu_orientation = rotation_correction * measured_imu_orientation;
+        actual_output.head(3) = rotVecFromQuaternion(corrected_imu_orientation);
+    }
 
 
     ////////////////////////
@@ -1017,21 +1022,21 @@ WalkingManager::update(
                 // if(t_msec_ == startTimeEKFCL){
                 //     std::cout << "EKF loop closed "<< std::endl;
                 // }
-                fb_robot_state = updateEKF(sim_robot_state, actual_output);
-                //TODO: don't know what to do if not using the EKF
-                fb_robot_state.position = sim_robot_state.position;
-                fb_robot_state.linear_velocity = sim_robot_state.linear_velocity;
-                fb_robot_state.orientation = quaternionFromRotVec(actual_output.head(3));
-                // compute mean angle and rotate imu orientation to align acc with gravity
-                if (t_msec_ >= 12000) {
-                    fb_robot_state.orientation = rotation_correction * fb_robot_state.orientation;
-                }
-                fb_robot_state.angular_velocity = sim_robot_state.angular_velocity;
-                //assign joint positions and velocities from actual output
-                for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-                    std::string joint_name = robot_model.names[joint_id + 2];
-                    fb_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
-                    fb_robot_state.joint_state[joint_name].vel = actual_output(3 + njnt + 3 + joint_id);
+                // fb_robot_state = updateEKF(sim_robot_state, actual_output);
+                // //TODO: don't know what to do if not using the EKF
+                // fb_robot_state.position = sim_robot_state.position;
+                // fb_robot_state.linear_velocity = sim_robot_state.linear_velocity;
+                // fb_robot_state.orientation = quaternionFromRotVec(actual_output.head(3));
+                // // compute mean angle and rotate imu orientation to align acc with gravity
+                // if (t_msec_ >= 12000) {
+                //     fb_robot_state.orientation = rotation_correction * fb_robot_state.orientation;
+                // }
+                // fb_robot_state.angular_velocity = sim_robot_state.angular_velocity;
+                // //assign joint positions and velocities from actual output
+                // for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+                //     std::string joint_name = robot_model.names[joint_id + 2];
+                //     fb_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
+                //     fb_robot_state.joint_state[joint_name].vel = actual_output(3 + njnt + 3 + joint_id);
                 }
                 if (!useRobot) {
                     fb_robot_state = sim_robot_state;
@@ -1073,91 +1078,91 @@ WalkingManager::update(
     //     }
     // }
 
-    RobotState base_estimation_robot_state = fb_robot_state;
-    base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
+    // RobotState base_estimation_robot_state = fb_robot_state;
+    // base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
 
-    pinocchio::Data base_estimation_robot_data(robot_model);
-    auto q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
-    pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
-    pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // pinocchio::Data base_estimation_robot_data(robot_model);
+    // auto q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
+    // pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
 
-    double foot_line_angle;
-    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+    // double foot_line_angle;
+    // if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
 
-            Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
-            double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
-            foot_line_angle = left_foot_yaw;
-            // foot_line_angle -= M_PI/2;
+    //         Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+    //         double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
+    //         foot_line_angle = left_foot_yaw;
+    //         // foot_line_angle -= M_PI/2;
             
-        }
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-            Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
-            double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
-            foot_line_angle = right_foot_yaw;
-            // foot_line_angle -= M_PI/2;
-        }
-    }else{
-        // compute left foot yaw angle relative to base frame of simulation
-        Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
-        double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
-        // compute right foot yaw angle relative to base frame of simulation
-        Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
-        double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
-        foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
-        // foot_line_angle -= M_PI/2; // to be aligned with the foot line
-    }
+    //     }
+    //     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+    //         Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+    //         double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
+    //         foot_line_angle = right_foot_yaw;
+    //         // foot_line_angle -= M_PI/2;
+    //     }
+    // }else{
+    //     // compute left foot yaw angle relative to base frame of simulation
+    //     Eigen::Vector3d left_foot_orientation = base_estimation_robot_data.oMf[lsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+    //     double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
+    //     // compute right foot yaw angle relative to base frame of simulation
+    //     Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
+    //     double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
+    //     foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
+    //     // foot_line_angle -= M_PI/2; // to be aligned with the foot line
+    // }
 
-    Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
-    Eigen::Quaterniond q_yaw(yaw_correction);
-    base_estimation_robot_state.orientation = q_yaw * base_estimation_robot_state.orientation;
+    // Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
+    // Eigen::Quaterniond q_yaw(yaw_correction);
+    // base_estimation_robot_state.orientation = q_yaw * base_estimation_robot_state.orientation;
 
-    orientation_estimate_log_.push_back(Eigen::Vector4d(
-        base_estimation_robot_state.orientation.w(),
-        base_estimation_robot_state.orientation.x(),
-        base_estimation_robot_state.orientation.y(),
-        base_estimation_robot_state.orientation.z()
-    ).transpose());
+    // orientation_estimate_log_.push_back(Eigen::Vector4d(
+    //     base_estimation_robot_state.orientation.w(),
+    //     base_estimation_robot_state.orientation.x(),
+    //     base_estimation_robot_state.orientation.y(),
+    //     base_estimation_robot_state.orientation.z()
+    // ).transpose());
 
-    // base_estimation_robot_state.orientation = sim_robot_state.orientation; // TODO: remove this line when testing is done
+    // // base_estimation_robot_state.orientation = sim_robot_state.orientation; // TODO: remove this line when testing is done
 
-    q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
-    pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
-    pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
+    // pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
 
-    left_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[lsole_idx_].translation().transpose());
-    right_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[rsole_idx_].translation().transpose());
+    // left_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[lsole_idx_].translation().transpose());
+    // right_foot_position_with_zero_base_log_.push_back(base_estimation_robot_data.oMf[rsole_idx_].translation().transpose());
 
-    Eigen::Vector3d base_estimate;
+    // Eigen::Vector3d base_estimate;
 
-    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
-        else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) base_estimate =  (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
-        }
-    else{
-        Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
-        Eigen::Vector3d mean_fb_feet = 0.5 * (base_estimation_robot_data.oMf[lsole_idx_].translation() + base_estimation_robot_data.oMf[rsole_idx_].translation());
-        base_estimate = (mean_des_feet - mean_fb_feet);
-        // base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
-    }
+    // if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT) base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
+    //     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) base_estimate =  (right_foot_position - base_estimation_robot_data.oMf[rsole_idx_].translation());
+    //     }
+    // else{
+    //     Eigen::Vector3d mean_des_feet = 0.5 * (left_foot_position + right_foot_position);
+    //     Eigen::Vector3d mean_fb_feet = 0.5 * (base_estimation_robot_data.oMf[lsole_idx_].translation() + base_estimation_robot_data.oMf[rsole_idx_].translation());
+    //     base_estimate = (mean_des_feet - mean_fb_feet);
+    //     // base_estimate =  (left_foot_position - base_estimation_robot_data.oMf[lsole_idx_].translation());
+    // }
 
-    base_estimation_robot_state.position = base_estimate;
+    // base_estimation_robot_state.position = base_estimate;
 
-    q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
-    pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
-    pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
+    // pinocchio::forwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
+    // pinocchio::framesForwardKinematics(robot_model, base_estimation_robot_data, q_base_est);
 
-    auto left_foot_position_base_estimation = base_estimation_robot_data.oMf[lsole_idx_].translation();
-    auto right_foot_position_base_estimation = base_estimation_robot_data.oMf[rsole_idx_].translation();
+    // auto left_foot_position_base_estimation = base_estimation_robot_data.oMf[lsole_idx_].translation();
+    // auto right_foot_position_base_estimation = base_estimation_robot_data.oMf[rsole_idx_].translation();
 
-    left_foot_position_base_estimation_log_.push_back(left_foot_position_base_estimation.transpose());
-    right_foot_position_base_estimation_log_.push_back(right_foot_position_base_estimation.transpose());
+    // left_foot_position_base_estimation_log_.push_back(left_foot_position_base_estimation.transpose());
+    // right_foot_position_base_estimation_log_.push_back(right_foot_position_base_estimation.transpose());
 
-    base_estimate_log_.push_back(base_estimation_robot_state.position.transpose());
+    // base_estimate_log_.push_back(base_estimation_robot_state.position.transpose());
 
-    if (true) {
-        fb_robot_state = base_estimation_robot_state;
-    }
+    // if (true) {
+    //     fb_robot_state = base_estimation_robot_state;
+    // }
 
     ////////////////////
     // END BASE ESTIMATE
@@ -1266,7 +1271,7 @@ WalkingManager::update(
         }
         LipState = LIPState(p_CoM_fb, J_CoM_fb * qdot_fb_filt, zmp_3d_fb);
     }
-    kf_LipState = updateKF(kf_LipState, LipState, ismpc_ptr_->getInput());
+    // kf_LipState = updateKF(kf_LipState, LipState, ismpc_ptr_->getInput());
     auto end_kf = std::chrono::high_resolution_clock::now();
 
     ////////////////////////////////////
@@ -1306,8 +1311,15 @@ WalkingManager::update(
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
-    current_gait_configuration.com.pos = kf_LipState.com_pos_;
-    current_gait_configuration.com.vel = kf_LipState.com_vel_;
+    // current_gait_configuration.com.pos = kf_LipState.com_pos_;
+    // current_gait_configuration.com.vel = kf_LipState.com_vel_;
+
+    current_gait_configuration.com.pos = p_CoM_sim;
+    current_gait_configuration.com.vel = v_CoM_sim;
+    if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
+        current_gait_configuration.com.pos = p_CoM_fb;
+        current_gait_configuration.com.vel = v_CoM_fb;
+    }
     
     current_gait_configuration.torso.pos = sim_robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso_sim.bottomRows<3>() * qdot;
@@ -1350,7 +1362,8 @@ WalkingManager::update(
     auto end_mpc = std::chrono::system_clock::now();
 
     LIPState lip_state;
-    lip_state = discrete_lip_dynamics_ptr_->integrate(kf_LipState, ismpc_ptr_->getInput());
+    // lip_state = discrete_lip_dynamics_ptr_->integrate(kf_LipState, ismpc_ptr_->getInput());
+    lip_state = kf_LipState;
 
     // Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
     // Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
@@ -1706,35 +1719,35 @@ void WalkingManager::saveLogs() {
         imu_accelerometer_file << v.transpose() << "\n";
     }
 
-    std::ofstream base_estimate_file("/tmp/base_estimate.txt");
-    for (auto& v : base_estimate_log_) {
-        base_estimate_file << v.transpose() << "\n";
-    }
+    // std::ofstream base_estimate_file("/tmp/base_estimate.txt");
+    // for (auto& v : base_estimate_log_) {
+    //     base_estimate_file << v.transpose() << "\n";
+    // }
 
-    std::ofstream orientation_estimate_file("/tmp/orientation_estimate.txt");
-    for (auto& v : orientation_estimate_log_) {
-        orientation_estimate_file << v.transpose() << "\n";
-    }        
+    // std::ofstream orientation_estimate_file("/tmp/orientation_estimate.txt");
+    // for (auto& v : orientation_estimate_log_) {
+    //     orientation_estimate_file << v.transpose() << "\n";
+    // }        
 
-    std::ofstream left_foot_position_base_estimation_file("/tmp/left_foot_position_base_estimation.txt");
-    for (auto& v : left_foot_position_base_estimation_log_) {
-        left_foot_position_base_estimation_file << v.transpose() << "\n";
-    }
+    // std::ofstream left_foot_position_base_estimation_file("/tmp/left_foot_position_base_estimation.txt");
+    // for (auto& v : left_foot_position_base_estimation_log_) {
+    //     left_foot_position_base_estimation_file << v.transpose() << "\n";
+    // }
 
-    std::ofstream right_foot_position_base_estimation_file("/tmp/right_foot_position_base_estimation.txt");
-    for (auto& v : right_foot_position_base_estimation_log_) {
-        right_foot_position_base_estimation_file << v.transpose() << "\n";
-    }
+    // std::ofstream right_foot_position_base_estimation_file("/tmp/right_foot_position_base_estimation.txt");
+    // for (auto& v : right_foot_position_base_estimation_log_) {
+    //     right_foot_position_base_estimation_file << v.transpose() << "\n";
+    // }
 
-    std::ofstream left_foot_position_with_zero_base_file("/tmp/left_foot_position_with_zero_base.txt");
-    for (auto& v : left_foot_position_with_zero_base_log_) {
-        left_foot_position_with_zero_base_file << v.transpose() << "\n";
-    }
+    // std::ofstream left_foot_position_with_zero_base_file("/tmp/left_foot_position_with_zero_base.txt");
+    // for (auto& v : left_foot_position_with_zero_base_log_) {
+    //     left_foot_position_with_zero_base_file << v.transpose() << "\n";
+    // }
 
-    std::ofstream right_foot_position_with_zero_base_file("/tmp/right_foot_position_with_zero_base.txt");
-    for (auto& v : right_foot_position_with_zero_base_log_) {
-        right_foot_position_with_zero_base_file << v.transpose() << "\n";
-    }
+    // std::ofstream right_foot_position_with_zero_base_file("/tmp/right_foot_position_with_zero_base.txt");
+    // for (auto& v : right_foot_position_with_zero_base_log_) {
+    //     right_foot_position_with_zero_base_file << v.transpose() << "\n";
+    // }
 
 
     std::ofstream p_lsole_sim_file("/tmp/p_lsole_sim.txt");
