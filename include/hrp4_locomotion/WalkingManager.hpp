@@ -72,6 +72,8 @@ class WalkingManager {
   int angle_acc_gravity_count_;
 
   Eigen::Quaterniond rotation_correction;
+  Eigen::Vector3d imu_accelerometer_sum_ = Eigen::Vector3d::Zero();
+  double imu_accelerometer_count_ = 0;
 
   int njnt;
 
@@ -153,15 +155,6 @@ private:
 
   std::vector<Eigen::Vector3d> ef_zmp_position_log_;
 
-  std::vector<Eigen::Vector3d> base_estimate_log_;
-  std::vector<Eigen::Vector4d> orientation_estimate_log_;
-  std::vector<Eigen::Vector3d> left_foot_position_base_estimation_log_;
-  std::vector<Eigen::Vector3d> right_foot_position_base_estimation_log_;
-  std::vector<Eigen::Vector3d> left_foot_position_with_zero_base_log_;
-  std::vector<Eigen::Vector3d> right_foot_position_with_zero_base_log_;
-
-  std::vector<Eigen::Vector3d> imu_accelerometer_log_;
-
 
   std::vector<Eigen::Vector3d> p_lsole_sim_log_;
   std::vector<Eigen::Vector3d> p_rsole_sim_log_;
@@ -184,6 +177,12 @@ private:
   // std::vector<Eigen::VectorXd> fr_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;
   // ekf state vectors
+  std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
+  std::vector<Eigen::VectorXd> measured_joint_position_log_;
+  std::vector<Eigen::VectorXd> measured_joint_velocity_log_;
+
   std::vector<Eigen::VectorXd> ekf_base_position_log_;
   std::vector<Eigen::VectorXd> ekf_base_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
@@ -198,14 +197,9 @@ private:
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
   // fb state vectors
-  std::vector<Eigen::VectorXd> measured_joint_position_log_;
-  std::vector<Eigen::VectorXd> measured_joint_velocity_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
-  std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
-  std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
+  // std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
+  // std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
+  // std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
 
   std::vector<Eigen::VectorXd> input_torque_log_;
 

@@ -40,14 +40,16 @@
 
 bool isTotalBodyLoopClosed = false;
 bool isCoMLoopClosed = false;
-bool isEKFLoopClosed = false;
+bool isEKFactive = false;
 bool useSim = false;
 bool useRobot = false;
+bool oneTimepress = true;
 
 
 double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
-double startTimeEKFCL = 0.0;
+double startTimeEKF = 0.0;
+double startTimeIMUcalibrating = 0.0;
 
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
@@ -59,7 +61,7 @@ using namespace unitree::common;
 using namespace unitree::robot::b2;
 
 bool switchWalkingState = false;
-bool calibratingImu = false;
+bool IMUcalibrated = false;
 
 Gamepad gamepad_;
 REMOTE_DATA_RX rx_;
@@ -489,13 +491,13 @@ int main(const int argc, const char* argv[]) {
       } else if (token == "2") {
         isTotalBodyLoopClosed = true;
       } else if (token == "3") {
-        isEKFLoopClosed = true;
+        isEKFactive = true;
       } 
     }
   } else {
-    isTotalBodyLoopClosed = false;
+    isTotalBodyLoopClosed = true;
     isCoMLoopClosed = true;
-    isEKFLoopClosed = true;
+    isEKFactive = true;
   }
   
 
@@ -624,7 +626,7 @@ int main(const int argc, const char* argv[]) {
           signalHandler(SIGINT);
         }
 
-        if (gamepad_.X.on_press) {
+        if (gamepad_.X.on_press && isEKFactive) {
           isCoMLoopClosed = !isCoMLoopClosed;
           startTimeCoMCL = mj_data_ptr->time;
           if(isCoMLoopClosed)
@@ -639,8 +641,21 @@ int main(const int argc, const char* argv[]) {
         }
 
         if (gamepad_.A.on_press) {
-          std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
-          calibratingImu = true;
+          if(oneTimepress){
+            std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
+            isIMUcalibrating = true;
+            oneTimepress = false;
+            startTimeIMUcalibrating = mj_data_ptr->time;
+          }
+          else{
+            if(isCoMLoopClosed == true && isEKFactive == true){
+              isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
+              if(isTotalBodyLoopClosed)
+                std::cout << "[GAMEPAD] A pressed -> Total Body closed loop activated." << std::endl;
+              else
+                std::cout << "[GAMEPAD] A pressed -> Total Body closed loop deactivated." << std::endl;
+            }
+          }
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
