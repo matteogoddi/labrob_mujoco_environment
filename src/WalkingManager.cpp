@@ -1003,6 +1003,10 @@ WalkingManager::update(
         }
         Eigen::AngleAxisd angle_axis_rotation(angle, rotation_axis);
         rotation_correction = Eigen::Quaterniond(angle_axis_rotation);
+
+        //rotate to z robot axis from imu feedback orientation
+        //SECOND POSSIBLE ROTATION
+        rotation_correction = sim_robot_state.orientation * quaternionFromRotVec(actual_output.head(3)).conjugate();
     }
 
     if (isEKFactive && t_msec_ >= startTimeEKF) {
@@ -1522,10 +1526,10 @@ WalkingManager::update(
     angular_momentum_log_.push_back(angular_momentum.transpose());
     // log measurements present in actual output
     measured_imu_orientation_log_.push_back(Eigen::Vector4d(
-        quaternionFromRotVec(actual_output.segment<3>(0)).w(),
-        quaternionFromRotVec(actual_output.segment<3>(0)).x(),
-        quaternionFromRotVec(actual_output.segment<3>(0)).y(),
-        quaternionFromRotVec(actual_output.segment<3>(0)).z()
+        quaternionFromRotVec(actual_output.head(3)).w(),
+        quaternionFromRotVec(actual_output.head(3)).x(),
+        quaternionFromRotVec(actual_output.head(3)).y(),
+        quaternionFromRotVec(actual_output.head(3)).z()
     ).transpose());
     measured_imu_angular_velocity_log_.push_back(actual_output.segment<3>(3 + njnt).transpose());
     measured_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());

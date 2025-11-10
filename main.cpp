@@ -44,6 +44,7 @@ bool isEKFactive = false;
 bool useSim = false;
 bool useRobot = false;
 bool oneTimepress = true;
+bool isIMUcalibrating = false;
 
 
 double startTimeTotalBodyCL = 15000.0;
