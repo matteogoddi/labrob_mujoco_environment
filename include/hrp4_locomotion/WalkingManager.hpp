@@ -34,7 +34,7 @@ class WalkingManager {
 
   LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
-  RobotState updateEKF(RobotState sim_robot_state, Eigen::VectorXd actual_output);
+  RobotState updateEKF(Eigen::VectorXd actual_output);
 
   RobotState getNewRobotState(RobotState robot_state);
 

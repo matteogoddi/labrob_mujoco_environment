@@ -98,6 +98,7 @@ class DataBuffer {
 const int G1_NUM_MOTOR = 27;
 struct ImuState {
   std::array<float, 4> quaternion = {};
+  std::array<float, 3> rpy = {};
   std::array<float, 3> omega = {};
   std::array<float, 3> accelerometer = {};
 };
@@ -258,6 +259,10 @@ void imuTorsoHandler(const void* msg) {
   imu_state_data.quaternion[1] = imu_state.quaternion()[1];
   imu_state_data.quaternion[2] = imu_state.quaternion()[2];
   imu_state_data.quaternion[3] = imu_state.quaternion()[3];
+
+  imu_state_data.rpy[0] = imu_state.rpy()[0];
+  imu_state_data.rpy[1] = imu_state.rpy()[1];
+  imu_state_data.rpy[2] = imu_state.rpy()[2];
 
   imu_state_data.omega[0] = imu_state.gyroscope()[0];
   imu_state_data.omega[1] = imu_state.gyroscope()[1];
@@ -531,7 +536,7 @@ int main(const int argc, const char* argv[]) {
   // mj_data_ptr->qpos[0] = 10.0;
   // mj_data_ptr->qpos[1] = 10.0;
 
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105;
+  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
   mj_data_ptr->qpos[3] = 1.0;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
@@ -629,11 +634,13 @@ int main(const int argc, const char* argv[]) {
 
         if (gamepad_.X.on_press && isEKFactive) {
           isCoMLoopClosed = !isCoMLoopClosed;
-          startTimeCoMCL = mj_data_ptr->time;
+          // isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
+          startTimeCoMCL = 1000 * mj_data_ptr->time;
+          // startTimeTotalBodyCL = 1000 * mj_data_ptr->time;
           if(isCoMLoopClosed)
-            std::cout << "[GAMEPAD] X pressed -> Closed loop on CoM activated." << std::endl;
+            std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
           else
-            std::cout << "[GAMEPAD] X pressed -> Closed loop on CoM deactivated." << std::endl;
+            std::cout << "[GAMEPAD] X pressed -> Closed loop deactivated." << std::endl;
         }
 
         if (gamepad_.B.on_press) {
@@ -646,7 +653,7 @@ int main(const int argc, const char* argv[]) {
             std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
             isIMUcalibrating = true;
             oneTimepress = false;
-            startTimeIMUcalibrating = mj_data_ptr->time;
+            startTimeIMUcalibrating = 1000 * mj_data_ptr->time;
           }
           else{
             if(isCoMLoopClosed == true && isEKFactive == true){
@@ -686,6 +693,8 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.accelerometer[1],
           imu_state_data.accelerometer[2]
         );
+
+        // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
@@ -752,6 +761,7 @@ int main(const int argc, const char* argv[]) {
         mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
+
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
         if(integration_duration > std::chrono::milliseconds(1))
