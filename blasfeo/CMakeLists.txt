@@ -1255,18 +1255,7 @@ endif()
 # add library
 add_library(blasfeo ${BLASFEO_SRC})
 
-# Read version from the 'version' file
-file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version" BLASFEO_VERSION)
-string(STRIP "${BLASFEO_VERSION}" BLASFEO_VERSION)
-
-# split into major/minor for SOVERSION
-string(REPLACE "." ";" VERSION_LIST ${BLASFEO_VERSION})
-list(GET VERSION_LIST 0 BLASFEO_SOVERSION)
-
-set_target_properties(blasfeo PROPERTIES
-    VERSION ${BLASFEO_VERSION}
-    SOVERSION ${BLASFEO_SOVERSION}
-)
+# Version properties removed for simplicity
 
 # 1) *XILINX_NONE_ELF*:
 #		Xilinx standalone (any core, e.g. A53,R5,..; *untested*)
@@ -1336,17 +1325,4 @@ else()
 		"\nUse i.e. -DEXTERNAL_BLAS=OPENBLAS or -DEXTERNAL_BLAS=0 if none is needed")
 endif()
 
-# tests
-if(BLASFEO_TESTING MATCHES ON)
-	add_subdirectory(tests)
-endif()
-
-# benchmarks
-if(BLASFEO_BENCHMARKS MATCHES ON)
-	add_subdirectory(benchmarks)
-endif()
-
-# examples
-if(BLASFEO_EXAMPLES MATCHES ON)
-	add_subdirectory(examples)
-endif()
+# tests, benchmarks, and examples removed

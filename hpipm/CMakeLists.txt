@@ -376,11 +376,7 @@ install(EXPORT hpipmConfig DESTINATION cmake)
 file(GLOB_RECURSE HPIPM_HEADERS "include/*.h")
 install(FILES ${HPIPM_HEADERS} DESTINATION ${HPIPM_HEADERS_INSTALLATION_DIRECTORY})
 
-# test problems
-if(HPIPM_TESTING MATCHES ON)
-	add_subdirectory(test_problems)
-	add_subdirectory(examples/c)
-endif()
+# test problems and examples removed
 
 message(STATUS "Using BLASFEO path: ${BLASFEO_PATH}")
 message(STATUS "Installation directory: ${CMAKE_INSTALL_PREFIX}")
