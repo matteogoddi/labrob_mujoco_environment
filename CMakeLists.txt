@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.16...3.30)
 project(pinocchio_example)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -18,11 +18,15 @@ if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   endif()
 endif()
 
-# Manually set INCLUDE_DIRS and LIBRARIES since not handled in blasfeo and hpipm
-set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
-set(hpipm_INCLUDE_DIRS /opt/hpipm/include)
-set(blasfeo_LIBRARIES /opt/blasfeo/lib/libblasfeo.a)
-set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
+# Add local blasfeo and hpipm as subdirectories
+add_subdirectory(blasfeo)
+add_subdirectory(hpipm)
+
+# Set INCLUDE_DIRS and LIBRARIES for local copies
+set(blasfeo_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/blasfeo/include)
+set(hpipm_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/hpipm/include)
+set(blasfeo_LIBRARIES blasfeo)
+set(hpipm_LIBRARIES hpipm)
 
 add_library(
   WalkingControllerLibrary STATIC
