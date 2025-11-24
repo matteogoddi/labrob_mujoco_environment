@@ -36,7 +36,8 @@ class WalkingManager {
 
   RobotState updateEKF(Eigen::VectorXd actual_output);
 
-  RobotState getNewRobotState(RobotState robot_state);
+  RobotState getNewRobotState();
+  RobotState getActualRobotState();
 
   void saveLogs();
 
@@ -98,6 +99,10 @@ class WalkingManager {
 
   LIPState LipState;
   LIPState kf_LipState;
+
+  Eigen::Vector3d fixed_com_pos;
+  Eigen::Vector3d fixed_com_vel;
+  Eigen::Vector3d fixed_zmp_pos;
 
   RobotState fb_robot_state;
 
@@ -200,6 +205,14 @@ private:
   // std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
   // std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
   // std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
+
+
+  std::vector<Eigen::VectorXd> go_base_position_log_;
+  std::vector<Eigen::VectorXd> go_base_velocity_log_;
+  std::vector<Eigen::VectorXd> go_base_orientation_log_;
+  std::vector<Eigen::VectorXd> go_base_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> go_base_accelerometer_log_;
+
 
   std::vector<Eigen::VectorXd> input_torque_log_;
 

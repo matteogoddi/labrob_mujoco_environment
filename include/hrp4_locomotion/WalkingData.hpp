@@ -45,6 +45,11 @@ class WalkingData {
     const labrob::SE3& T_rsole
   );
 
+  void swapStanding(
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole
+  );
+
   void removeSteps();
 
 }; // end class WalkingData

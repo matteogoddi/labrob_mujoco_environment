@@ -123,6 +123,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     sim_joint_position_log_.reserve(max_steps);
     sim_joint_velocity_log_.reserve(max_steps);
 
+
+    go_base_position_log_.reserve(max_steps);
+    go_base_velocity_log_.reserve(max_steps);
+    go_base_orientation_log_.reserve(max_steps);
+    go_base_angular_velocity_log_.reserve(max_steps);
+    go_base_accelerometer_log_.reserve(max_steps);
+
     // estimated_imu_accelerometer_log_.reserve(max_steps);
     // estimated_imu_angular_velocity_log_.reserve(max_steps);
     // estimated_imu_orientation_log_.reserve(max_steps);
@@ -195,6 +202,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     estimated_robot_data = pinocchio::Data(robot_model);
 
     fb_robot_state = initial_robot_state;
+
+    fixed_com_pos = Eigen::Vector3d::Zero();
+    fixed_com_vel = Eigen::Vector3d::Zero();
+    fixed_zmp_pos = Eigen::Vector3d::Zero();
 
     pinocchio::forwardKinematics(robot_model, fb_robot_data, q_init);
     pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_init);
@@ -298,7 +309,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(!useRobot){
+    if(!useRobot && false){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
@@ -422,8 +433,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
 
 
     Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * (njnt + 6));
-    x_pred.head(njnt + 6) = x_estimate.head(njnt + 6) + x_estimate.tail(njnt + 6) * 0.001 * controller_timestep_msec_ 
-        + 0.5 * (0.001 * controller_timestep_msec_) * (0.001 * controller_timestep_msec_) * whole_body_controller_ptr_->get_q_ddot();
+    x_pred.head(njnt + 6) = x_estimate.head(njnt + 6) + x_estimate.tail(njnt + 6) * 0.001 * controller_timestep_msec_;
     x_pred.tail(njnt + 6) = x_estimate.tail(njnt + 6) + whole_body_controller_ptr_->get_q_ddot() * controller_timestep_msec_ * 0.001;
 
 
@@ -530,14 +540,14 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
 
     //PREDICTION COVARIANCE E KALMAN GAIN
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
-    Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
+    // Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
 
     // Eigen::LLT<Eigen::MatrixXd> llt(C * Lambda_ * C.transpose() + R);
     // Eigen::MatrixXd MatInv = llt.solve(Eigen::MatrixXd::Identity(n_ekf_output, n_ekf_output));
     // Kalman_Gain = Lambda_ * C.transpose() * MatInv;
 
-    // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
-    // Kalman_Gain = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
+    Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
+    Kalman_Gain = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
 
     // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
     // Kalman_Gain = Lambda_ * C.transpose();
@@ -783,9 +793,6 @@ WalkingManager::update(
 
     auto start_update = std::chrono::high_resolution_clock::now();
 
-    // Update walking state:
-    walking_data_.updateWalkingState(t_msec_);
-
     double eta2 = std::pow(ismpc_ptr_->getOmega(), 2.0);
     double mass = pinocchio::computeTotalMass(robot_model);
 
@@ -880,28 +887,6 @@ WalkingManager::update(
     //         zmp_3d_sim.y() += (T_rsole_sim.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_sim.z() - T_rsole_sim.translation().z()) * right_foot_force.y() / total_force.z());
     //     }
     // }
-    
-
-    // // compute the angle between the acceleration vector and the gravity vector [0, 0, -9.81]
-    // Eigen::Vector3d gravity_vector(0.0, 0.0, -9.81);
-    // double angle_acc_gravity = std::acos(imu_accelerometer.normalized().dot(gravity_vector.normalized()));
-
-    // //if time is between 3000 and 6000 msec, compute mean angle
-    // if (t_msec_ == 3000) {
-    //     angle_acc_gravity_sum_ = 0.0;
-    //     angle_acc_gravity_count_ = 0;
-    // }
-    // if (t_msec_ >= 12000 && t_msec_ <= 14000) {
-    //     angle_acc_gravity_sum_ += angle_acc_gravity;
-    //     angle_acc_gravity_count_++;
-    // }
-
-    // compute rotation to get to sim_robot_state.orientation from imu_orientation which is obtained from first 3 components of actual output
-    // if (t_msec_ == 10000){
-    //     Eigen::Quaterniond sim_imu_orientation = sim_robot_state.orientation;
-    //     Eigen::Quaterniond measured_imu_orientation = quaternionFromRotVec(actual_output.head(3));
-    //     rotation_correction = sim_imu_orientation * measured_imu_orientation.conjugate();
-    // }
 
     if (isIMUcalibrating){
         if (t_msec_ - startTimeIMUcalibrating <= 2000){
@@ -941,14 +926,14 @@ WalkingManager::update(
     }
 
     if (isEKFactive && t_msec_ >= startTimeEKF) {
-        Eigen::Quaterniond feedback_imu_orientation = quaternionFromRotVec(actual_output.head(3));
-        Eigen::Quaterniond corrected_imu_orientation = rotation_correction * feedback_imu_orientation;
-        actual_output.head(3) = rotVecFromQuaternion(corrected_imu_orientation);
+        // Eigen::Quaterniond feedback_imu_orientation = quaternionFromRotVec(actual_output.head(3));
+        // Eigen::Quaterniond corrected_imu_orientation = rotation_correction * feedback_imu_orientation;
+        // actual_output.head(3) = rotVecFromQuaternion(corrected_imu_orientation);
 
-        Eigen::Matrix3d rotation_matrix = rotation_correction.toRotationMatrix();
-        actual_output.segment(3 + njnt, 3) = rotation_matrix * actual_output.segment(3 + njnt, 3);
+        // Eigen::Matrix3d rotation_matrix = rotation_correction.toRotationMatrix();
+        // actual_output.segment(3 + njnt, 3) = rotation_matrix * actual_output.segment(3 + njnt, 3);
 
-        imu_accelerometer = rotation_matrix * imu_accelerometer;
+        // imu_accelerometer = rotation_matrix * imu_accelerometer;
 
         RobotState base_estimation_robot_state;
         base_estimation_robot_state.position = Eigen::Vector3d(0,0,0);
@@ -958,8 +943,8 @@ WalkingManager::update(
             base_estimation_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
             base_estimation_robot_state.joint_state[joint_name].vel = actual_output(njnt + 3 + 3 + joint_id);
         }
-        base_estimation_robot_state.linear_velocity = Eigen::Vector3d::Zero();
-        base_estimation_robot_state.angular_velocity = Eigen::Vector3d::Zero();
+        base_estimation_robot_state.linear_velocity = go_base_velocity;
+        base_estimation_robot_state.angular_velocity = actual_output.segment(njnt + 3 + 3, 3);
 
         pinocchio::Data base_estimation_robot_data(robot_model);
         auto q_base_est = robot_state_to_pinocchio_joint_configuration(robot_model, base_estimation_robot_state);
@@ -989,10 +974,12 @@ WalkingManager::update(
 
         Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
         Eigen::Quaterniond q_yaw(yaw_correction);
-        actual_output.head(3) = rotVecFromQuaternion(q_yaw * base_estimation_robot_state.orientation);
+        // actual_output.head(3) = rotVecFromQuaternion(q_yaw * base_estimation_robot_state.orientation);
+
+        // go_imu_quaternion = q_yaw * go_imu_quaternion;
 
         //rotate angular velocity as well
-        actual_output.segment(3 + njnt, 3) = q_yaw.toRotationMatrix() * actual_output.segment(3 + njnt, 3);
+        // actual_output.segment(3 + njnt, 3) = q_yaw.toRotationMatrix() * actual_output.segment(3 + njnt, 3);
 
 
     }
@@ -1030,6 +1017,17 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
+                // fb_robot_state.position = go_base_position;
+                // fb_robot_state.linear_velocity = go_base_velocity;
+                // fb_robot_state.angular_velocity = actual_output.segment(njnt + 3, 3);
+                // fb_robot_state.orientation = Eigen::Quaterniond(
+                //     go_imu_quaternion
+                // );
+                // for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+                //     std::string joint_name = robot_model.names[joint_id + 2];
+                //     fb_robot_state.joint_state[joint_name].pos = actual_output(3 + joint_id);
+                //     fb_robot_state.joint_state[joint_name].vel = actual_output(njnt + joint_id + 3 + 3);
+                // }
             }
             else{
                 //TODO: don't know what to do if not using the EKF
@@ -1154,6 +1152,20 @@ WalkingManager::update(
     }
 
 
+    // if (loopClosed){
+    //     walking_data_.swapStanding(
+    //         labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
+    //         labrob::SE3(T_rsole_fb.rotation(), T_rsole_fb.translation())
+    //     );
+    //     fixed_com_pos = p_CoM_fb;
+    //     fixed_com_vel = v_CoM_fb;
+    //     fixed_zmp_pos = zmp_3d_fb;
+    //     loopClosed = false;
+    // }
+    
+    walking_data_.updateWalkingState(t_msec_);
+
+
     /////////////////////////////////////
     // 
     // START KF
@@ -1179,8 +1191,8 @@ WalkingManager::update(
     if (switchWalkingState){
         if (walking_data_.getWalkingState() == WalkingState::Standing) {
             walking_data_.addSteps(
-                labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
-                labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation())
+                labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
+                labrob::SE3(T_rsole_fb.rotation(), T_rsole_fb.translation())
             );
             switchWalkingState = false;
         } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
@@ -1280,9 +1292,18 @@ WalkingManager::update(
     //     mpc_predictions_zmp_log_.push_back(LipState_mpc.zmp_pos_);
     // }
 
-    Eigen::Vector3d p_CoM_des = lip_state.com_pos_;
-    Eigen::Vector3d v_CoM_des = lip_state.com_vel_;
-    Eigen::Vector3d p_ZMP_des = lip_state.zmp_pos_;
+    Eigen::Vector3d p_CoM_des;
+    Eigen::Vector3d v_CoM_des;
+    Eigen::Vector3d p_ZMP_des;
+    if (true){
+        p_CoM_des = lip_state.com_pos_;
+        v_CoM_des = lip_state.com_vel_;
+        p_ZMP_des = lip_state.zmp_pos_;
+    } else {
+        p_CoM_des = fixed_com_pos;
+        v_CoM_des = fixed_com_vel;
+        p_ZMP_des = fixed_zmp_pos;
+    }
 
     // Fill desired gait configuration:
     labrob::GaitConfiguration desired_gait_configuration;
@@ -1290,9 +1311,9 @@ WalkingManager::update(
     desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
     desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
 
-    desired_gait_configuration.com.pos = lip_state.com_pos_;
-    desired_gait_configuration.com.vel = lip_state.com_vel_;
-    desired_gait_configuration.com.acc = eta2 * (lip_state.com_pos_ - lip_state.zmp_pos_) - Eigen::Vector3d(0.0, 0.0, 9.81);
+    desired_gait_configuration.com.pos = p_CoM_des;
+    desired_gait_configuration.com.vel = v_CoM_des;
+    desired_gait_configuration.com.acc = eta2 * (p_CoM_des - p_ZMP_des) - Eigen::Vector3d(0.0, 0.0, 9.81);
 
     // Feet tasks
     if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
@@ -1505,6 +1526,13 @@ WalkingManager::update(
         input_torque_log_.back()(joint_id) = joint_command[joint_name];
     }
 
+
+    go_base_position_log_.push_back(go_base_position.transpose());
+    go_base_velocity_log_.push_back(go_base_velocity.transpose());
+    go_base_orientation_log_.push_back(go_imu_quaternion.transpose());
+    go_base_angular_velocity_log_.push_back(go_imu_gyroscope.transpose());
+    go_base_accelerometer_log_.push_back(go_imu_accelerometer.transpose());
+
     auto end_update = std::chrono::high_resolution_clock::now();
 
 
@@ -1521,7 +1549,7 @@ WalkingManager::update(
     execution_time_wbc_log_.push_back(wbc_duration);
 }
 
-RobotState WalkingManager::getNewRobotState(RobotState robot_state){
+RobotState WalkingManager::getNewRobotState(){
     Eigen::VectorXd wbc_qddot = whole_body_controller_ptr_->get_q_ddot();
     // integrated_state_pos = integrated_state_pos + integrated_state_vel * controller_timestep_msec_ * 0.001 + 0.5 * wbc_qddot * std::pow(controller_timestep_msec_ * 0.001, 2);
     // integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
@@ -1530,6 +1558,30 @@ RobotState WalkingManager::getNewRobotState(RobotState robot_state){
     integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
     integrated_state_pos = integrated_state_pos + integrated_state_vel * controller_timestep_msec_ * 0.001;
 
+    RobotState robot_state;
+    
+    robot_state.position = integrated_state_pos.head<3>();
+    robot_state.orientation = quaternionFromRotVec(integrated_state_pos.segment<3>(3));
+    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+        std::string joint_name = robot_model.names[joint_id + 2];
+        robot_state.joint_state[joint_name].pos = integrated_state_pos(6 + joint_id);
+        robot_state.joint_state[joint_name].vel = integrated_state_vel(6 + joint_id);
+    }
+    robot_state.linear_velocity = integrated_state_vel.head<3>();
+    robot_state.angular_velocity = integrated_state_vel.segment<3>(3);
+    return robot_state;
+}
+
+RobotState WalkingManager::getActualRobotState(){
+    Eigen::VectorXd wbc_qddot = whole_body_controller_ptr_->get_q_ddot();
+    // integrated_state_pos = integrated_state_pos + integrated_state_vel * controller_timestep_msec_ * 0.001 + 0.5 * wbc_qddot * std::pow(controller_timestep_msec_ * 0.001, 2);
+    // integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
+
+
+    // integrated_state_vel = integrated_state_vel + wbc_qddot * controller_timestep_msec_ * 0.001;
+    // integrated_state_pos = integrated_state_pos + integrated_state_vel * controller_timestep_msec_ * 0.001;
+
+    RobotState robot_state;
     
     robot_state.position = integrated_state_pos.head<3>();
     robot_state.orientation = quaternionFromRotVec(integrated_state_pos.segment<3>(3));
@@ -1788,6 +1840,31 @@ void WalkingManager::saveLogs() {
     std::ofstream sim_base_angular_velocity_file("/tmp/sim_base_angular_velocity.txt");
     for (auto& v : sim_base_angular_velocity_log_) {
         sim_base_angular_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream go_base_position_file("/tmp/go_base_position.txt");
+    for (auto& v : go_base_position_log_) {
+        go_base_position_file << v.transpose() << "\n";
+    }
+
+    std::ofstream go_base_velocity_file("/tmp/go_base_velocity.txt");
+    for (auto& v : go_base_velocity_log_) {
+        go_base_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream go_base_orientation_file("/tmp/go_base_orientation.txt");
+    for (auto& v : go_base_orientation_log_) {
+        go_base_orientation_file << v.transpose() << "\n";
+    }
+
+    std::ofstream go_base_angular_velocity_file("/tmp/go_base_angular_velocity.txt");
+    for (auto& v : go_base_angular_velocity_log_) {
+        go_base_angular_velocity_file << v.transpose() << "\n";
+    }
+
+    std::ofstream go_base_accelerometer_file("/tmp/go_base_accelerometer.txt");
+    for (auto& v : go_base_accelerometer_log_) {
+        go_base_accelerometer_file << v.transpose() << "\n";
     }
 
     std::ofstream execution_time_ekf_file("/tmp/execution_time_ekf.txt");

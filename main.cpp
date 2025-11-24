@@ -34,6 +34,7 @@
 #include <unitree/robot/channel/channel_subscriber.hpp>
 #include <unitree/idl/hg/LowCmd_.hpp>
 #include <unitree/idl/hg/LowState_.hpp>
+#include <unitree/idl/go2/SportModeState_.hpp>
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
 #include <hrp4_locomotion/globals.h>
@@ -45,6 +46,8 @@ bool useSim = false;
 bool useRobot = false;
 bool oneTimepress = true;
 bool isIMUcalibrating = false;
+bool xPressed = false;
+bool loopClosed = false;
 
 
 double startTimeTotalBodyCL = 15000.0;
@@ -54,10 +57,17 @@ double startTimeIMUcalibrating = 0.0;
 
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
+Eigen::Vector3d go_base_position = Eigen::Vector3d::Zero();
+Eigen::Vector3d go_base_velocity = Eigen::Vector3d::Zero();
+Eigen::Vector4d go_imu_quaternion = Eigen::Vector4d::Zero();
+Eigen::Vector3d go_imu_gyroscope = Eigen::Vector3d::Zero();
+Eigen::Vector3d go_imu_accelerometer= Eigen::Vector3d::Zero();
+
 #include "MujocoUI.hpp"
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
+using namespace unitree_go::msg::dds_;
 using namespace unitree::common;
 using namespace unitree::robot::b2;
 
@@ -70,6 +80,7 @@ REMOTE_DATA_RX rx_;
 static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
+static const std::string GO_STATE_TOPIC = "rt/odommodestate";
 labrob::WalkingManager walking_manager;
 
 template <typename T>
@@ -112,6 +123,11 @@ struct MotorCommand {
 struct MotorState {
   std::array<float, G1_NUM_MOTOR> q = {};
   std::array<float, G1_NUM_MOTOR> dq = {};
+};
+struct SportModeState {
+  std::array<float, 3> position = {};
+  std::array<float, 3> velocity = {};
+  ImuState imu_state = {};
 };
 
 
@@ -252,7 +268,7 @@ void LowStateHandler(const void* msg){
 
 ImuState imu_state_data;
 void imuTorsoHandler(const void* msg) {
-  IMUState_ imu_state = *(const IMUState_*)msg;
+  unitree_hg::msg::dds_::IMUState_ imu_state = *(const unitree_hg::msg::dds_::IMUState_*)msg;
 
   std::lock_guard<std::mutex> lock(stateMutex);
   imu_state_data.quaternion[0] = imu_state.quaternion()[0];
@@ -271,6 +287,37 @@ void imuTorsoHandler(const void* msg) {
   imu_state_data.accelerometer[0] = imu_state.accelerometer()[0];
   imu_state_data.accelerometer[1] = imu_state.accelerometer()[1];
   imu_state_data.accelerometer[2] = imu_state.accelerometer()[2];
+}
+
+SportModeState state_data;
+void SportModeStateHandler(const void* msg){
+  SportModeState_ sportmodestate = *(const SportModeState_*)msg;
+
+  std::lock_guard<std::mutex> lock(stateMutex);
+  state_data.position[0] = sportmodestate.position()[0];
+  state_data.position[1] = sportmodestate.position()[1];
+  state_data.position[2] = sportmodestate.position()[2];
+
+  state_data.velocity[0] = sportmodestate.velocity()[0];
+  state_data.velocity[1] = sportmodestate.velocity()[1];
+  state_data.velocity[2] = sportmodestate.velocity()[2];
+
+  state_data.imu_state.quaternion[0] = sportmodestate.imu_state().quaternion()[0];
+  state_data.imu_state.quaternion[1] = sportmodestate.imu_state().quaternion()[1];
+  state_data.imu_state.quaternion[2] = sportmodestate.imu_state().quaternion()[2];
+  state_data.imu_state.quaternion[3] = sportmodestate.imu_state().quaternion()[3];
+
+  state_data.imu_state.omega[0] = sportmodestate.imu_state().gyroscope()[0];
+  state_data.imu_state.omega[1] = sportmodestate.imu_state().gyroscope()[1];
+  state_data.imu_state.omega[2] = sportmodestate.imu_state().gyroscope()[2];
+
+  state_data.imu_state.accelerometer[0] = sportmodestate.imu_state().accelerometer()[0];
+  state_data.imu_state.accelerometer[1] = sportmodestate.imu_state().accelerometer()[1];
+  state_data.imu_state.accelerometer[2] = sportmodestate.imu_state().accelerometer()[2];
+  
+  state_data.imu_state.rpy[0] = sportmodestate.imu_state().rpy()[0];
+  state_data.imu_state.rpy[1] = sportmodestate.imu_state().rpy()[1];
+  state_data.imu_state.rpy[2] = sportmodestate.imu_state().rpy()[2];
 }
 
 std::string queryServiceName(std::string form,std::string name)
@@ -501,9 +548,9 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isTotalBodyLoopClosed = true;
-    isCoMLoopClosed = true;
-    isEKFactive = true;
+    isTotalBodyLoopClosed = false;
+    isCoMLoopClosed = false;
+    isEKFactive = false;
   }
   
 
@@ -533,11 +580,11 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  // mj_data_ptr->qpos[0] = 10.0;
-  // mj_data_ptr->qpos[1] = 10.0;
 
   mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
   mj_data_ptr->qpos[3] = 1.0;
+  // mj_data_ptr->qpos[3] = 0.9659;
+  // mj_data_ptr->qpos[6] = 0.2588;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
@@ -580,7 +627,8 @@ int main(const int argc, const char* argv[]) {
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
-  ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
+  ChannelSubscriberPtr<unitree_hg::msg::dds_::IMUState_> imutorso_subscriber;
+  ChannelSubscriberPtr<SportModeState_> sportmodestate_subscriber;
   std::shared_ptr<MotionSwitcherClient> msc;
 
   if(useRobot) {
@@ -607,9 +655,10 @@ int main(const int argc, const char* argv[]) {
     lowcmd_publisher->InitChannel();
     lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
     lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
-    imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
+    imutorso_subscriber.reset(new ChannelSubscriber<unitree_hg::msg::dds_::IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
-    
+    sportmodestate_subscriber.reset(new ChannelSubscriber<SportModeState_>(GO_STATE_TOPIC));
+    sportmodestate_subscriber->InitChannel(std::bind(&SportModeStateHandler, std::placeholders::_1), 1);
   }
 
   auto next_tick = std::chrono::steady_clock::now();
@@ -632,15 +681,23 @@ int main(const int argc, const char* argv[]) {
           signalHandler(SIGINT);
         }
 
-        if (gamepad_.X.on_press && isEKFactive) {
-          isCoMLoopClosed = !isCoMLoopClosed;
-          // isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
-          startTimeCoMCL = 1000 * mj_data_ptr->time;
-          // startTimeTotalBodyCL = 1000 * mj_data_ptr->time;
-          if(isCoMLoopClosed)
-            std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
-          else
-            std::cout << "[GAMEPAD] X pressed -> Closed loop deactivated." << std::endl;
+        if (gamepad_.X.pressed) {
+          if (isEKFactive && !xPressed){
+            xPressed = true;
+            loopClosed = true;
+            isCoMLoopClosed = !isCoMLoopClosed;
+            isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
+            startTimeCoMCL = 1000 * mj_data_ptr->time;
+            startTimeTotalBodyCL = 1000 * mj_data_ptr->time;
+            if(isCoMLoopClosed)
+              std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
+            else
+              std::cout << "[GAMEPAD] X pressed -> Closed loop deactivated." << std::endl;
+          } else if (!isEKFactive){
+              std::cout << "[GAMEPAD] X pressed -> Closed loop did not activate. Activate EKF first" << std::endl;
+          }
+        } else {
+          xPressed = false;
         }
 
         if (gamepad_.B.on_press) {
@@ -694,6 +751,37 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.accelerometer[2]
         );
 
+        go_base_position = Eigen::Vector3d(
+          state_data.position[0],
+          state_data.position[1],
+          state_data.position[2]
+        );
+
+        go_base_velocity = Eigen::Vector3d(
+          state_data.velocity[0],
+          state_data.velocity[1],
+          state_data.velocity[2]
+        );
+
+        go_imu_accelerometer = Eigen::Vector3d(
+          state_data.imu_state.accelerometer[0],
+          state_data.imu_state.accelerometer[1],
+          state_data.imu_state.accelerometer[2]
+        );
+
+        go_imu_gyroscope = Eigen::Vector3d(
+          state_data.imu_state.omega[0],
+          state_data.imu_state.omega[1],
+          state_data.imu_state.omega[2]
+        );
+
+        go_imu_quaternion = Eigen::Vector4d(
+          state_data.imu_state.quaternion[0],
+          state_data.imu_state.quaternion[1],
+          state_data.imu_state.quaternion[2],
+          state_data.imu_state.quaternion[3]
+        );
+
         // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
       }
       // Update walking manager:
@@ -712,6 +800,8 @@ int main(const int argc, const char* argv[]) {
 
       if (false){
         auto start_integration = std::chrono::steady_clock::now();
+
+
         mj_step1(mj_model_ptr, mj_data_ptr);
   
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -730,7 +820,7 @@ int main(const int argc, const char* argv[]) {
 
       }else{
         auto start_integration = std::chrono::steady_clock::now();
-        robot_state = walking_manager.getNewRobotState(robot_state);
+        robot_state = walking_manager.getNewRobotState();
         // update mujoco state with robot_state
         mj_data_ptr->qpos[0] = robot_state.position.x();
         mj_data_ptr->qpos[1] = robot_state.position.y();

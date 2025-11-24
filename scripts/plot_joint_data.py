@@ -69,6 +69,14 @@ if __name__ == '__main__':
     sim_joint_position: np.ndarray = np.loadtxt(folder + '/sim_joint_position.txt')
     sim_joint_velocity: np.ndarray = np.loadtxt(folder + '/sim_joint_velocity.txt')
 
+
+    go_base_position = np.loadtxt(folder + '/go_base_position.txt')
+    go_base_velocity = np.loadtxt(folder + '/go_base_velocity.txt')
+    go_base_orientation = np.loadtxt(folder + '/go_base_orientation.txt')
+    go_base_angular_velocity = np.loadtxt(folder + '/go_base_angular_velocity.txt')
+    go_base_accelerometer = np.loadtxt(folder + '/go_base_accelerometer.txt')
+
+
     execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
     execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
     execution_time_mpc = np.loadtxt(folder + '/execution_time_mpc.txt')
@@ -144,6 +152,13 @@ if __name__ == '__main__':
     measured_imu_angular_velocity = measured_imu_angular_velocity[:num_samples, :]
     measured_imu_accelerometer = measured_imu_accelerometer[:num_samples, :]
 
+
+    go_base_position = go_base_position[:num_samples, :]
+    go_base_velocity = go_base_velocity[:num_samples, :]
+    go_base_orientation = go_base_orientation[:num_samples, :]
+    go_base_angular_velocity = go_base_angular_velocity[:num_samples, :]
+    go_base_accelerometer = go_base_accelerometer[:num_samples, :]
+
     execution_time_ekf = execution_time_ekf[:num_samples]
     execution_time_kf = execution_time_kf[:num_samples]
     execution_time_mpc = execution_time_mpc[:num_samples]
@@ -182,6 +197,8 @@ if __name__ == '__main__':
         os.makedirs('images/forces_torques/joints')
     if not os.path.exists('images/soles'):
         os.makedirs('images/soles')
+    if not os.path.exists('images/go'):
+        os.makedirs('images/go')
 
     grouped_indices = defaultdict(list)
 
@@ -236,6 +253,173 @@ if __name__ == '__main__':
     plt.close(fig)
 
 
+    ##############################
+    # GO PLOTS
+    #############################
+
+     # Plot EKF base position
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_position[:, 0] - ekf_base_position[:, 0], label='go Base Position X', color='blue')
+    ax.plot(t, go_base_position[:, 1] - ekf_base_position[:, 1], label='go Base Position Y', color='orange')
+    ax.plot(t, go_base_position[:, 2] - ekf_base_position[:, 2], label='go Base Position Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Position [m]')
+    ax.set_title('Base Position Error between go estimation and ekfulation')
+    ax.grid(True)
+    ax.legend()
+    # fig.tight_layout()
+    fig.savefig("images/go/base_position_error_plot.png")
+    plt.close(fig)
+
+    # Plot go base velocity
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_velocity[:, 0] - ekf_base_velocity[:, 0], label='go Base Velocity X', color='blue')
+    ax.plot(t, go_base_velocity[:, 1] - ekf_base_velocity[:, 1], label='go Base Velocity Y', color='orange')
+    ax.plot(t, go_base_velocity[:, 2] - ekf_base_velocity[:, 2], label='go Base Velocity Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Velocity [m/s]')
+    ax.set_title('Base Velocity Error between go estimation and ekfulation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_velocity_error_plot.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_position[:, 0], label='go Base position X', color='blue')
+    ax.plot(t, ekf_base_position[:, 0], label='Base position X', color='blue', linestyle = "--")
+    ax.plot(t, go_base_position[:, 1], label='go Base position Y', color='orange')
+    ax.plot(t, ekf_base_position[:, 1], label='Base position Y', color='orange', linestyle = "--")
+    ax.plot(t, go_base_position[:, 2], label='go Base position Z', color='green')
+    ax.plot(t, ekf_base_position[:, 2], label='Base position Z', color='green', linestyle = "--")
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Position [m/s]')
+    ax.set_title('Base Position of go estimation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_position_plot.png")
+    plt.close(fig)
+
+    # Plot go base orientation in quaternion format
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_orientation[:, 0] - ekf_base_orientation[:, 0], label='go Base Orientation W', color='blue')
+    ax.plot(t, go_base_orientation[:, 1] - ekf_base_orientation[:, 1], label='go Base Orientation X', color='orange')
+    ax.plot(t, go_base_orientation[:, 2] - ekf_base_orientation[:, 2], label='go Base Orientation Y', color='green')
+    ax.plot(t, go_base_orientation[:, 3] - ekf_base_orientation[:, 3], label='go Base Orientation Z', color='red')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Orientation [Quaternion]')
+    ax.set_title('Base Orientation Error between go estimation and ekfulation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_orientation_error_plot.png")
+    plt.close(fig)
+
+     # Plot go base orientation in quaternion format
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_orientation[:, 0] - measured_imu_orientation[:, 0], label='go Base Orientation W', color='blue')
+    ax.plot(t, go_base_orientation[:, 1] - measured_imu_orientation[:, 1], label='go Base Orientation X', color='orange')
+    ax.plot(t, go_base_orientation[:, 2] - measured_imu_orientation[:, 2], label='go Base Orientation Y', color='green')
+    ax.plot(t, go_base_orientation[:, 3] - measured_imu_orientation[:, 3], label='go Base Orientation Z', color='red')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Orientation [Quaternion]')
+    ax.set_title('Base Orientation Error between go estimation and measurement')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_orientation_error_imu_state_plot.png")
+    plt.close(fig)
+
+    # Plot go base orientation in quaternion format
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_orientation[:, 0] , label='go Base Orientation W', color='blue')
+    ax.plot(t, go_base_orientation[:, 1], label='go Base Orientation X', color='orange')
+    ax.plot(t, go_base_orientation[:, 2] , label='go Base Orientation Y', color='green')
+    ax.plot(t, go_base_orientation[:, 3], label='go Base Orientation Z', color='red')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Orientation [Quaternion]')
+    ax.set_title('Base Orientation go estimation ')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_orientation_plot.png")
+    plt.close(fig)
+
+    # Plot go base angular velocity
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_angular_velocity[:, 0] - ekf_base_angular_velocity[:, 0], label='go Base Angular Velocity X', color='blue')
+    ax.plot(t, go_base_angular_velocity[:, 1] - ekf_base_angular_velocity[:, 1], label='go Base Angular Velocity Y', color='orange')
+    ax.plot(t, go_base_angular_velocity[:, 2] - ekf_base_angular_velocity[:, 2], label='go Base Angular Velocity Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Angular Velocity [rad/s]')
+    ax.set_title('Angular Velocity Error between go estimation and ekfulation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_angular_velocity_error_plot.png")
+    plt.close(fig)
+
+    # Plot go base angular velocity
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_angular_velocity[:, 0], label='go Base Angular Velocity X', color='blue')
+    ax.plot(t, go_base_angular_velocity[:, 1], label='go Base Angular Velocity Y', color='orange')
+    ax.plot(t, go_base_angular_velocity[:, 2], label='go Base Angular Velocity Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Angular Velocity [rad/s]')
+    ax.set_title('Angular Velocity go')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_angular_velocity_plot.png")
+    plt.close(fig)
+
+    # Plot go base angular velocity
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_accelerometer[:, 0], label='go Base Accelerometer X', color='blue')
+    ax.plot(t, go_base_accelerometer[:, 1], label='go Base Accelerometer Y', color='orange')
+    ax.plot(t, go_base_accelerometer[:, 2], label='go Base Accelerometer Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Accelerometer [rad/s]')
+    ax.set_title('Accelerometer go estimation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_accelerometer_plot.png")
+    plt.close(fig)
+
+    # plot error between go imu and measured imu
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_angular_velocity[:, 0] - measured_imu_angular_velocity[:, 0], label='go IMU Angular Velocity X', color='blue')
+    ax.plot(t, go_base_angular_velocity[:, 1] - measured_imu_angular_velocity[:, 1], label='go IMU Angular Velocity Y', color='orange')
+    ax.plot(t, go_base_angular_velocity[:, 2] - measured_imu_angular_velocity[:, 2], label='go IMU Angular Velocity Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go IMU Angular Velocity Error [rad/s]')
+    ax.set_title('IMU Angular Velocity Error between go estimation and Measured')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/imu_angular_velocity_error_plot.png")
+    plt.close(fig)
+
+    #plot error between go position and ekf base position
+    fig, ax = plt.subplots()
+    ax.plot(t, go_base_position[:, 0] - ekf_base_position[:, 0], label='go Base Position X', color='blue')
+    ax.plot(t, go_base_position[:, 1] - ekf_base_position[:, 1], label='go Base Position Y', color='orange')
+    ax.plot(t, go_base_position[:, 2] - ekf_base_position[:, 2], label='go Base Position Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('go Base Position Error [m]')
+    ax.set_title('Base Position Error between go estimation and ekf')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/go/base_position_error_plot.png")
+    plt.close(fig)
+
+
+
+    
+
 
     #################################
     #  COM AND ZMP PLOTS
@@ -243,8 +427,10 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, fb_zmp_position[:, 0], label='used ZMP X', color='blue', linestyle=':')
     ax.plot(t, fb_zmp_position[:, 1], label='used ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, fb_zmp_position[:, 1], label='used ZMP Y', color='green', linestyle=':')
     ax.plot(t, ef_zmp_position[:, 0], label='not used ZMP X', color='blue', linestyle='--')
     ax.plot(t, ef_zmp_position[:, 1], label='not used ZMP Y', color='orange', linestyle='--')
+    ax.plot(t, ef_zmp_position[:, 2], label='not used ZMP Y', color='green', linestyle='--')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
     ax.set_title('ZMP X & Y Position Feedback')
@@ -256,8 +442,10 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, des_zmp_position[:, 0], label='des ZMP X', color='blue', linestyle=':')
     ax.plot(t, des_zmp_position[:, 1], label='des ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 2], label='des ZMP Y', color='green', linestyle=':')
     ax.plot(t, des_com_position[:, 0], label='des COM X', color='blue', linestyle='-.')
     ax.plot(t, des_com_position[:, 1], label='des COM Y', color='orange', linestyle='-.')
+    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='-.')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
     ax.set_title('ZMP and COM Position Desired')
@@ -669,8 +857,8 @@ if __name__ == '__main__':
     ax.plot(t, sim_base_position[:, 0], label='Base position X', color='blue', linestyle = "--")
     ax.plot(t, ekf_base_position[:, 1], label='EKF Base position Y', color='orange')
     ax.plot(t, sim_base_position[:, 1], label='Base position Y', color='orange', linestyle = "--")
-    ax.plot(t, ekf_base_position[:, 2] - sim_base_position[:, 2], label='EKF Base position Z', color='green')
-    ax.plot(t, sim_base_position[:, 2] - sim_base_position[:, 2], label='Base position Z', color='green', linestyle = "--")
+    ax.plot(t, ekf_base_position[:, 2], label='EKF Base position Z', color='green')
+    ax.plot(t, sim_base_position[:, 2], label='Base position Z', color='green', linestyle = "--")
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('EKF Base Position [m/s]')
     ax.set_title('Base Position of EKF estimation')

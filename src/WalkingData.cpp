@@ -56,7 +56,7 @@ WalkingData::updateWalkingState(int64_t t) {
   if (getWalkingState() == labrob::WalkingState::Init) {
     footstep_plan.front().setWalkingState(labrob::WalkingState::PostureRegulation);
     t0 = t;
-  } else if (getWalkingState() == labrob::WalkingState::Standing) {
+  } else if (getWalkingState() == labrob::WalkingState::Standing && footstep_plan.size() == 1) {
     // Update t0 to keep robot in standing position.
     t0 = t;
   }else if (t >= t0 + footstep_plan.front().getDuration()) {
@@ -100,14 +100,14 @@ WalkingData::addSteps(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole
 ){
-    double swing_foot_trajectory_height = 0.05;
+    double swing_foot_trajectory_height = 0.1;
     double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     int n_steps = 10;
 
-    double double_support_duration = 6000;
-    double single_support_duration = 6000;
+    double double_support_duration = 1000;
+    double single_support_duration = 1000;
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
@@ -192,6 +192,23 @@ WalkingData::addSteps(
         labrob::WalkingState::Standing
     ));
   }
+
+void
+WalkingData::swapStanding(
+  const labrob::SE3& T_lsole,
+  const labrob::SE3& T_rsole
+){
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            labrob::Foot::RIGHT
+        ),
+        0.0,
+        2000,
+        labrob::WalkingState::Standing
+    ));
+}
 
 void
 WalkingData::removeSteps(){
