@@ -83,6 +83,12 @@ class WalkingManager {
   pinocchio::FrameIndex torso_idx_;
   pinocchio::FrameIndex imu_idx_;
 
+
+  int64_t mpc_prediction_horizon_msec = 2000;
+  int64_t mpc_timestep_msec = 100;
+  double foot_constraint_square_length = 0.22;
+  double foot_constraint_square_width = 0.08;
+
   bool walking_data_initialized_ = false;
 
   Eigen::VectorXd q_jnt_des_;
@@ -93,6 +99,7 @@ class WalkingManager {
 
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
+  std::unique_ptr<labrob::ISMPC> ismpc_cl_ptr_;
   std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
 
   Eigen::VectorXd M_armature_;
@@ -103,7 +110,10 @@ class WalkingManager {
   Eigen::Vector3d fixed_com_pos;
   Eigen::Vector3d fixed_com_vel;
   Eigen::Vector3d fixed_zmp_pos;
-
+  Eigen::Matrix3d fixed_T_lsole_fb_rot;
+  Eigen::Vector3d fixed_T_lsole_fb_trans;
+  Eigen::Matrix3d fixed_T_rsole_fb_rot;
+  Eigen::Vector3d fixed_T_rsole_fb_trans;
   RobotState fb_robot_state;
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
@@ -135,6 +145,7 @@ private:
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
+  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_cl_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
@@ -191,6 +202,7 @@ private:
   std::vector<Eigen::VectorXd> ekf_base_position_log_;
   std::vector<Eigen::VectorXd> ekf_base_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
+  std::vector<Eigen::VectorXd> ekf_base_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> ekf_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_joint_position_log_;
   std::vector<Eigen::VectorXd> ekf_joint_velocity_log_;
@@ -198,6 +210,7 @@ private:
   std::vector<Eigen::VectorXd> sim_base_position_log_;
   std::vector<Eigen::VectorXd> sim_base_velocity_log_;
   std::vector<Eigen::VectorXd> sim_base_orientation_log_;
+  std::vector<Eigen::VectorXd> sim_base_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
@@ -210,6 +223,7 @@ private:
   std::vector<Eigen::VectorXd> go_base_position_log_;
   std::vector<Eigen::VectorXd> go_base_velocity_log_;
   std::vector<Eigen::VectorXd> go_base_orientation_log_;
+  std::vector<Eigen::VectorXd> go_base_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> go_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> go_base_accelerometer_log_;
 

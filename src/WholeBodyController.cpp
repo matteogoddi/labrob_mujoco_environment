@@ -40,7 +40,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 100;
+  params.beta = 0;
   params.gamma = 10;
   params.mu = 0.5;
 
@@ -63,8 +63,8 @@ WholeBodyController::WholeBodyController(
 
   robot_data_ = pinocchio::Data(robot_model_);
 
-  lsole_idx_ = robot_model_.getFrameId("left_foot_link");
-  rsole_idx_ = robot_model_.getFrameId("right_foot_link");
+  lsole_idx_ = robot_model_.getFrameId("left_ankle_roll_link");
+  rsole_idx_ = robot_model_.getFrameId("right_ankle_roll_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
 
   J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -160,6 +160,7 @@ WholeBodyController::compute_inverse_dynamics(
   auto err_torso_orientation = err_rotation(desired.torso.pos, current.torso.pos);
   auto err_torso_orientation_vel = desired.torso.vel - current.torso.vel;
 
+
   Eigen::VectorXd err_posture(6 + n_joints_);
   err_posture << Eigen::VectorXd::Zero(6), desired.qjnt - current.qjnt;
   Eigen::VectorXd err_posture_vel(6 + n_joints_); 
@@ -189,7 +190,7 @@ WholeBodyController::compute_inverse_dynamics(
   H_acc += params_.weight_lsole * (J_lsole_.transpose() * J_lsole_);
   H_acc += params_.weight_rsole * (J_rsole_.transpose() * J_rsole_);
   H_acc += params_.weight_torso * (J_torso_.bottomRows<3>().transpose() * J_torso_.bottomRows<3>());
-  H_acc += params_.weight_regulation_matrix * err_posture_selection_matrix;
+  H_acc += params_.weight_regulation * err_posture_selection_matrix;
   H_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       std::pow(sample_time_, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
 
@@ -197,7 +198,7 @@ WholeBodyController::compute_inverse_dynamics(
   f_acc += params_.weight_lsole * J_lsole_.transpose() * (a_lsole_drift - a_lsole_total);
   f_acc += params_.weight_rsole * J_rsole_.transpose() * (a_rsole_drift - a_rsole_total);
   f_acc += params_.weight_torso * J_torso_.bottomRows<3>().transpose() * (a_torso_orientation_drift - a_torso_orientation_total);
-  f_acc += -params_.weight_regulation_matrix * err_posture_selection_matrix * a_jnt_total;
+  f_acc += -params_.weight_regulation * err_posture_selection_matrix * a_jnt_total;
   f_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
 
@@ -233,6 +234,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd cu = c.block(0,0,6,1);
   Eigen::VectorXd ca = c.block(6,0,n_joints_,1);
 
+
   std::vector<Eigen::Vector3d> pcis(4);
   pcis[0] <<  params_.foot_length / 2.0,  params_.foot_width / 2.0, 0.0;
   pcis[1] <<  params_.foot_length / 2.0, -params_.foot_width / 2.0, 0.0;
@@ -246,6 +248,7 @@ WholeBodyController::compute_inverse_dynamics(
     pcis_l[i] = desired.lsole.pos.R * pcis[i];
     pcis_r[i] = desired.rsole.pos.R * pcis[i];
   }
+
 
   Eigen::MatrixXd T_l(6, 3 * n_contacts_);
   Eigen::MatrixXd T_r(6, 3 * n_contacts_);
@@ -268,6 +271,7 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::VectorXd d_min_force_one = -10000.0 * Eigen::VectorXd::Ones(4 * n_contacts_);
   Eigen::VectorXd d_max_force_one = Eigen::VectorXd::Zero(4 * n_contacts_);
+
 
   Eigen::MatrixXd H = Eigen::MatrixXd::Zero(H_acc.rows() + 2 * H_force_one.rows(), H_acc.cols() + 2 * H_force_one.cols());
   H.block(0, 0, H_acc.rows(), H_acc.cols()) = H_acc;
@@ -309,6 +313,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd b(b_acc.rows() + b_no_contact.rows() + b_dyn.rows());
   b << b_acc, b_no_contact, b_dyn;
 
+
   Eigen::MatrixXd C_force_left = Eigen::MatrixXd::Zero(4 * n_contacts_, 3 * n_contacts_);
   for (int i = 0; i < n_contacts_; ++i) {
     C_force_left.block(4 * i, 3 * i, 4, 3) = C_force_block * current.lsole.pos.R.transpose();
@@ -336,6 +341,7 @@ WholeBodyController::compute_inverse_dynamics(
 
   left_foot_wrench_ = T_l * fl;
   right_foot_wrench_ = T_r * fr;
+
 
   JointCommand joint_command;
   for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) n_joints_; ++joint_id) {

@@ -69,6 +69,12 @@ quaternionFromRotVec(const Eigen::Vector3d& rot_vec);
 Eigen::Vector3d
 rotVecFromQuaternion(const Eigen::Quaterniond& q);
 
+Eigen::Vector3d
+rpyFromQuaternion(const Eigen::Quaterniond& q);
+
+Eigen::Vector4d
+quaternionFromRPY(const Eigen::Vector3d& rpy);
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,

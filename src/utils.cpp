@@ -66,6 +66,37 @@ Eigen::Vector3d rotVecFromQuaternion(const Eigen::Quaterniond& q) {
   return axis_angle.axis() * axis_angle.angle();
 }
 
+Eigen::Vector3d rpyFromQuaternion(const Eigen::Quaterniond& q) {
+  Eigen::Vector3d rpy = q.toRotationMatrix().eulerAngles(0, 1, 2);
+  //scale in the range [-pi, pi]
+  if (rpy(0) > 3.14) {
+      rpy(0) -= 3.14;
+  } else if (rpy(0) < -3.14) {
+      rpy(0) += 3.14;
+  }
+  if (rpy(1) > 3.14) {
+      rpy(1) -= 3.14;
+  } else if (rpy(1) < -3.14) {
+      rpy(1) += 3.14;
+  }
+  if (rpy(2) > 3.14) {
+      rpy(2) -= 3.14;
+  } else if (rpy(2) < -3.14) {
+      rpy(2) += 3.14;
+  }
+  return rpy;
+}
+
+Eigen::Vector4d quaternionFromRPY(const Eigen::Vector3d& rpy) {
+  Eigen::AngleAxisd rollAngle(rpy(0), Eigen::Vector3d::UnitX());
+  Eigen::AngleAxisd pitchAngle(rpy(1), Eigen::Vector3d::UnitY());
+  Eigen::AngleAxisd yawAngle(rpy(2), Eigen::Vector3d::UnitZ());
+
+  Eigen::Quaterniond q = yawAngle * pitchAngle * rollAngle;
+  return Eigen::Vector4d(q.w(), q.x(), q.y(), q.z());
+
+} 
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,

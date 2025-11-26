@@ -47,11 +47,11 @@ bool useRobot = false;
 bool oneTimepress = true;
 bool isIMUcalibrating = false;
 bool xPressed = false;
-bool loopClosed = false;
+bool loopClosed = true;
 
 
-double startTimeTotalBodyCL = 15000.0;
-double startTimeCoMCL = 15000.0;
+double startTimeTotalBodyCL = 10000.0;
+double startTimeCoMCL = 10000.0;
 double startTimeEKF = 0.0;
 double startTimeIMUcalibrating = 0.0;
 
@@ -59,7 +59,8 @@ Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 Eigen::Vector3d go_base_position = Eigen::Vector3d::Zero();
 Eigen::Vector3d go_base_velocity = Eigen::Vector3d::Zero();
-Eigen::Vector4d go_imu_quaternion = Eigen::Vector4d::Zero();
+Eigen::Vector4d go_imu_quaternion = Eigen::Vector4d(1,0,0,0);
+Eigen::Vector3d go_imu_rpy = Eigen::Vector3d::Zero();
 Eigen::Vector3d go_imu_gyroscope = Eigen::Vector3d::Zero();
 Eigen::Vector3d go_imu_accelerometer= Eigen::Vector3d::Zero();
 
@@ -548,9 +549,47 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isTotalBodyLoopClosed = false;
-    isCoMLoopClosed = false;
-    isEKFactive = false;
+    isTotalBodyLoopClosed = true;
+    isCoMLoopClosed = true;
+    isEKFactive = true;
+  }
+
+  Eigen::Vector3d starting_base_position = Eigen::Vector3d(0.0, 0.0, 0.792151-0.125+0.0263 - 0.071 + 0.105);
+
+  ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
+  ChannelSubscriberPtr<LowState_> lowstate_subscriber;
+  ChannelSubscriberPtr<unitree_hg::msg::dds_::IMUState_> imutorso_subscriber;
+  ChannelSubscriberPtr<SportModeState_> sportmodestate_subscriber;
+  std::shared_ptr<MotionSwitcherClient> msc;
+
+  if(useRobot) {
+    std::cout << "Using robot with network interface: " << netInterface << std::endl;
+    ChannelFactory::Instance()->Init(0, netInterface);
+    std::cout << "ChannelFactory initialized with interface: " << netInterface << std::endl;
+
+    msc.reset(new MotionSwitcherClient());
+    msc->SetTimeout(5.0f);
+    msc->Init();
+
+    while(queryMotionStatus(msc)){
+      std::cout << "try to deactivate the motion control - related service" << std::endl;
+      int32_t ret = msc->ReleaseMode();
+      if (ret == 0) {
+        std::cout << "Motion control service deactivated successfully." << std::endl;
+      } else {
+        std::cerr << "Failed to deactivate motion control service, retrying..." << std::endl;
+        sleep(5);
+      }
+    }
+
+    lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
+    lowcmd_publisher->InitChannel();
+    lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
+    lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
+    imutorso_subscriber.reset(new ChannelSubscriber<unitree_hg::msg::dds_::IMUState_>(HG_IMU_TORSO));
+    imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
+    sportmodestate_subscriber.reset(new ChannelSubscriber<SportModeState_>(GO_STATE_TOPIC));
+    sportmodestate_subscriber->InitChannel(std::bind(&SportModeStateHandler, std::placeholders::_1), 1);
   }
   
 
@@ -580,8 +619,9 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
+  mj_data_ptr->qpos[0] = starting_base_position[0];
+  mj_data_ptr->qpos[1] = starting_base_position[1];
+  mj_data_ptr->qpos[2] = starting_base_position[2];
   mj_data_ptr->qpos[3] = 1.0;
   // mj_data_ptr->qpos[3] = 0.9659;
   // mj_data_ptr->qpos[6] = 0.2588;
@@ -625,42 +665,6 @@ int main(const int argc, const char* argv[]) {
 
   static int framerate = 60.0;
 
-  ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
-  ChannelSubscriberPtr<LowState_> lowstate_subscriber;
-  ChannelSubscriberPtr<unitree_hg::msg::dds_::IMUState_> imutorso_subscriber;
-  ChannelSubscriberPtr<SportModeState_> sportmodestate_subscriber;
-  std::shared_ptr<MotionSwitcherClient> msc;
-
-  if(useRobot) {
-    std::cout << "Using robot with network interface: " << netInterface << std::endl;
-    ChannelFactory::Instance()->Init(0, netInterface);
-    std::cout << "ChannelFactory initialized with interface: " << netInterface << std::endl;
-
-    msc.reset(new MotionSwitcherClient());
-    msc->SetTimeout(5.0f);
-    msc->Init();
-
-    while(queryMotionStatus(msc)){
-      std::cout << "try to deactivate the motion control - related service" << std::endl;
-      int32_t ret = msc->ReleaseMode();
-      if (ret == 0) {
-        std::cout << "Motion control service deactivated successfully." << std::endl;
-      } else {
-        std::cerr << "Failed to deactivate motion control service, retrying..." << std::endl;
-        sleep(5);
-      }
-    }
-
-    lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
-    lowcmd_publisher->InitChannel();
-    lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
-    lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
-    imutorso_subscriber.reset(new ChannelSubscriber<unitree_hg::msg::dds_::IMUState_>(HG_IMU_TORSO));
-    imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
-    sportmodestate_subscriber.reset(new ChannelSubscriber<SportModeState_>(GO_STATE_TOPIC));
-    sportmodestate_subscriber->InitChannel(std::bind(&SportModeStateHandler, std::placeholders::_1), 1);
-  }
-
   auto next_tick = std::chrono::steady_clock::now();
 
   // Simulation loop:
@@ -671,7 +675,7 @@ int main(const int argc, const char* argv[]) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(6 + mj_model_ptr->nu + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -705,45 +709,30 @@ int main(const int argc, const char* argv[]) {
           std::cout << "[GAMEPAD] B pressed -> Walking state switched." << std::endl;
         }
 
-        if (gamepad_.A.on_press) {
+        if (gamepad_.A.pressed) {
           if(oneTimepress){
-            std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
-            isIMUcalibrating = true;
+            std::cout << "[GAMEPAD] A pressed -> EKF started." << std::endl;
+            isEKFactive = true;
             oneTimepress = false;
-            startTimeIMUcalibrating = 1000 * mj_data_ptr->time;
-          }
-          else{
-            if(isCoMLoopClosed == true && isEKFactive == true){
-              isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
-              if(isTotalBodyLoopClosed)
-                std::cout << "[GAMEPAD] A pressed -> Total Body closed loop activated." << std::endl;
-              else
-                std::cout << "[GAMEPAD] A pressed -> Total Body closed loop deactivated." << std::endl;
-            }
+            startTimeEKF = 1000 * mj_data_ptr->time;
           }
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
 
-        // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
-        actual_output.head<3>() = labrob::rotVecFromQuaternion(Eigen::Quaterniond(
-          imu_state_data.quaternion[0],
-          imu_state_data.quaternion[1],
-          imu_state_data.quaternion[2],
-          imu_state_data.quaternion[3]
+        // save in actual_output: 1) odometry base position 2) imu orientation in quaternions, 2) joint positions, 3) feet velocities
+        actual_output.head<3>() = go_base_position;
+        actual_output.segment(3, 3) = labrob::rotVecFromQuaternion(Eigen::Quaterniond(
+          state_data.imu_state.quaternion[0],
+          state_data.imu_state.quaternion[1],
+          state_data.imu_state.quaternion[2],
+          state_data.imu_state.quaternion[3]
         ));
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          actual_output[3 + i] = motor_state_data.q[i];
-          actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
+          actual_output[6 + i] = motor_state_data.q[i];
         }
-        actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
-        actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
-        actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
 
         imu_accelerometer = Eigen::Vector3d(
           imu_state_data.accelerometer[0],
@@ -782,7 +771,11 @@ int main(const int argc, const char* argv[]) {
           state_data.imu_state.quaternion[3]
         );
 
-        // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
+        go_imu_rpy = Eigen::Vector3d(
+          state_data.imu_state.rpy[0],
+          state_data.imu_state.rpy[1],
+          state_data.imu_state.rpy[2]
+        );
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
@@ -798,7 +791,7 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (false){
+      if (true){
         auto start_integration = std::chrono::steady_clock::now();
 
 
@@ -818,34 +811,37 @@ int main(const int argc, const char* argv[]) {
           std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
+
+
       }else{
         auto start_integration = std::chrono::steady_clock::now();
         robot_state = walking_manager.getNewRobotState();
+        labrob::RobotState fb_robot_state = walking_manager.getActualRobotState();
         // update mujoco state with robot_state
-        mj_data_ptr->qpos[0] = robot_state.position.x();
-        mj_data_ptr->qpos[1] = robot_state.position.y();
-        mj_data_ptr->qpos[2] = robot_state.position.z();
-        mj_data_ptr->qpos[3] = robot_state.orientation.w();
-        mj_data_ptr->qpos[4] = robot_state.orientation.x();
-        mj_data_ptr->qpos[5] = robot_state.orientation.y();
-        mj_data_ptr->qpos[6] = robot_state.orientation.z();
+        mj_data_ptr->qpos[0] = fb_robot_state.position.x();
+        mj_data_ptr->qpos[1] = fb_robot_state.position.y();
+        mj_data_ptr->qpos[2] = fb_robot_state.position.z();
+        mj_data_ptr->qpos[3] = fb_robot_state.orientation.w();
+        mj_data_ptr->qpos[4] = fb_robot_state.orientation.x();
+        mj_data_ptr->qpos[5] = fb_robot_state.orientation.y();
+        mj_data_ptr->qpos[6] = fb_robot_state.orientation.z();
         //rotate the linear velocity from world to body frame
-        Eigen::Vector3d lin_vel_body = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
+        Eigen::Vector3d lin_vel_body = fb_robot_state.orientation.toRotationMatrix() * fb_robot_state.linear_velocity;
         mj_data_ptr->qvel[0] = lin_vel_body.x();
         mj_data_ptr->qvel[1] = lin_vel_body.y();
         mj_data_ptr->qvel[2] = lin_vel_body.z();
-        mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
-        mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
-        mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
+        mj_data_ptr->qvel[3] = fb_robot_state.angular_velocity.x();
+        mj_data_ptr->qvel[4] = fb_robot_state.angular_velocity.y();
+        mj_data_ptr->qvel[5] = fb_robot_state.angular_velocity.z();
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
-          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
+          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
+          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
         mj_forward(mj_model_ptr, mj_data_ptr);
 
-        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
         mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
         mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
