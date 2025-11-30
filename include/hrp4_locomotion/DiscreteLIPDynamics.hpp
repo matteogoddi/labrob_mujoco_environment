@@ -11,6 +11,7 @@ class DiscreteLIPDynamics {
  public:
   DiscreteLIPDynamics(double eta, double timestep_msec);
   LIPState integrate(const LIPState& lip_state, const LIPControlInput& zmp_vel, const Eigen::Vector3d& disturbance=Eigen::Vector3d::Zero());
+  void setOmega(double omega);
  private:
   Eigen::Vector3d updateState(const LIPState& lip_state, double zmpDot, int dim);
 

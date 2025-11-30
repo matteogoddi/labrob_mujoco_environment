@@ -63,8 +63,8 @@ WholeBodyController::WholeBodyController(
 
   robot_data_ = pinocchio::Data(robot_model_);
 
-  lsole_idx_ = robot_model_.getFrameId("left_ankle_roll_link");
-  rsole_idx_ = robot_model_.getFrameId("right_ankle_roll_link");
+  lsole_idx_ = robot_model_.getFrameId("left_foot_link");
+  rsole_idx_ = robot_model_.getFrameId("right_foot_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
 
   J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);

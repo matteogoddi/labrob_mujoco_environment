@@ -6,6 +6,9 @@ from collections import defaultdict
 import matplotlib.cm as cm
 from scipy.spatial.transform import Rotation as R
 import os
+import io
+import imageio.v2 as imageio
+
 
 if __name__ == '__main__':
     #request input from terminal
@@ -79,6 +82,9 @@ if __name__ == '__main__':
     go_base_angular_velocity = np.loadtxt(folder + '/go_base_angular_velocity.txt')
     go_base_accelerometer = np.loadtxt(folder + '/go_base_accelerometer.txt')
 
+    mpc_pred_com_pos = np.loadtxt(folder + '/mpc_pred_com_pos.txt')
+    mpc_pred_com_vel = np.loadtxt(folder + '/mpc_pred_com_vel.txt')
+    mpc_pred_zmp_pos = np.loadtxt(folder + '/mpc_pred_zmp_pos.txt')
 
     execution_time_ekf = np.loadtxt(folder + '/execution_time_ekf.txt')
     execution_time_kf = np.loadtxt(folder + '/execution_time_kf.txt')
@@ -113,13 +119,6 @@ if __name__ == '__main__':
     des_zmp_position = des_zmp_position[:num_samples, :]
 
     ef_zmp_position = ef_zmp_position[:num_samples, :]
-
-    # base_estimate = base_estimate[:num_samples, :]
-    # orientation_estimate = orientation_estimate[:num_samples, :]
-    # left_foot_position_base_estimation = left_foot_position_base_estimation[:num_samples, :]
-    # right_foot_position_base_estimation = right_foot_position_base_estimation[:num_samples, :]
-    # left_foot_position_with_zero_base = left_foot_position_with_zero_base[:num_samples, :]
-    # right_foot_position_with_zero_base = right_foot_position_with_zero_base[:num_samples, :]
 
     p_lsole_sim = p_lsole_sim[:num_samples, :]
     p_rsole_sim = p_rsole_sim[:num_samples, :]
@@ -165,6 +164,10 @@ if __name__ == '__main__':
     go_base_angular_velocity = go_base_angular_velocity[:num_samples, :]
     go_base_accelerometer = go_base_accelerometer[:num_samples, :]
 
+    # mpc_pred_com_pos = mpc_pred_com_pos[:num_samples, :]
+    # mpc_pred_com_vel = mpc_pred_com_vel[:num_samples, :]
+    # mpc_pred_zmp_pos = mpc_pred_zmp_pos[:num_samples, :]
+
     execution_time_ekf = execution_time_ekf[:num_samples]
     execution_time_kf = execution_time_kf[:num_samples]
     execution_time_mpc = execution_time_mpc[:num_samples]
@@ -197,12 +200,71 @@ if __name__ == '__main__':
         os.makedirs('images/soles')
     if not os.path.exists('images/go'):
         os.makedirs('images/go')
+    if not os.path.exists('images/mpc'):
+        os.makedirs('images/mpc')
 
     grouped_indices = defaultdict(list)
 
     for idx, name in enumerate(joint_names):
         base_name = '_'.join(name.split('_')[:2])  # E.g., "left_ankle" da "left_ankle_roll_joint"
         grouped_indices[base_name].append(idx)
+
+    #################################
+    # MPC PREDICTED TRAJECTORIES
+    #################################
+    frames = []
+    mpc_horizon = 20   # numero di predizioni dell'MPC
+
+    num_blocks = num_samples // mpc_horizon
+
+    for block in range(num_blocks):
+        start = block * mpc_horizon
+        end = start + mpc_horizon
+
+        fig, ax = plt.subplots()
+
+        # Plot predizione MPC (solo 20 punti alla volta)
+        ax.plot(
+            t[start:end],
+            mpc_pred_com_pos[start:end, 0],
+            label='MPC Pred COM X',
+            color='blue',
+            linestyle='--'
+        )
+        ax.plot(
+            t[start:end],
+            mpc_pred_com_pos[start:end, 1],
+            label='MPC Pred COM Y',
+            color='orange',
+            linestyle='--'
+        )
+        ax.plot(
+            t[start:end],
+            mpc_pred_com_pos[start:end, 2],
+            label='MPC Pred COM Z',
+            color='green',
+            linestyle='--'
+        )
+
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('COM Position [m]')
+        ax.set_title(f'MPC Predicted COM Position (Block {block})')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+
+        # Salva figura in memoria come immagine
+        buf = io.BytesIO()
+        fig.savefig(buf, format='png')
+        buf.seek(0)
+        frames.append(imageio.imread(buf))
+        plt.close(fig)
+
+    # Salva GIF
+    imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
+
+    
+
 
     #################################
     # JOINT TORQUES & ESTIMATED FORCES ON SOLES
@@ -872,7 +934,7 @@ if __name__ == '__main__':
     ax.plot(t, ekf_base_position[:, 2], label='EKF Base Position Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('EKF Base Position [m]')
-    ax.set_title('Base Position Error between EKF estimation and Simulation')
+    ax.set_title('Base Position of EKF estimation')
     ax.grid(True)
     ax.legend()
     # fig.tight_layout()
@@ -886,7 +948,7 @@ if __name__ == '__main__':
     ax.plot(t, ekf_base_velocity[:, 2], label='EKF Base Velocity Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('EKF Base Velocity [m/s]')
-    ax.set_title('Base Velocity Error between EKF estimation and Simulation')
+    ax.set_title('Base Velocity of EKF estimation')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
@@ -901,11 +963,26 @@ if __name__ == '__main__':
     ax.plot(t, ekf_base_orientation[:, 3], label='EKF Base Orientation Z', color='red')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('EKF Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation Error between EKF estimation and Simulation')
+    ax.set_title('Base Orientation of EKF estimation')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/ekf/base_orientation_plot.png")
+    plt.close(fig)
+
+    #plot error with sim_base_orientation
+    fig, ax = plt.subplots()
+    ax.plot(t, ekf_base_orientation[:, 0] - sim_base_orientation[:, 0], label='EKF Base Orientation W', color='blue')
+    ax.plot(t, ekf_base_orientation[:, 1] - sim_base_orientation[:, 1], label='EKF Base Orientation X', color='orange')
+    ax.plot(t, ekf_base_orientation[:, 2] - sim_base_orientation[:, 2], label='EKF Base Orientation Y', color='green')
+    ax.plot(t, ekf_base_orientation[:, 3] - sim_base_orientation[:, 3], label='EKF Base Orientation Z', color='red')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('EKF Base Orientation Error [Quaternion]')
+    ax.set_title('Base Orientation Error between EKF estimation and Simulation')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/ekf/base_orientation_error_plot.png")
     plt.close(fig)
 
     # Plot EKF base angular velocity
@@ -915,7 +992,7 @@ if __name__ == '__main__':
     ax.plot(t, ekf_base_angular_velocity[:, 2], label='EKF Base Angular Velocity Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('EKF Base Angular Velocity [rad/s]')
-    ax.set_title('Angular Velocity Error between EKF estimation and Simulation')
+    ax.set_title('Angular Velocity of EKF estimation')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()

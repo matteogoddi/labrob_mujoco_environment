@@ -41,6 +41,8 @@ class ISMPC{
   
   double getOmega() const;
 
+  void setOmega(double omega);
+
  private:
   // NOTE: std::clamp available from C++17
   double clamp(double n, double n_min, double n_max);

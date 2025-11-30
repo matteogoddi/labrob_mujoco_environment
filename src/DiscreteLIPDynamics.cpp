@@ -38,4 +38,13 @@ DiscreteLIPDynamics::updateState(const LIPState& lip_state, double zmpDot, int d
   return A_ * currentState + B_ * zmpDot;
 }
 
+void
+DiscreteLIPDynamics::setOmega(double omega) {
+  eta_ = omega;
+  double ch = cosh(eta_ * timestep_);
+  double sh = sinh(eta_ * timestep_);
+  A_ << ch, sh / eta_, 1.0 - ch, eta_ * sh, ch, -eta_ * sh, 0.0, 0.0, 1.0;
+  B_ << timestep_ - sh / eta_, 1.0 - ch, timestep_;
+}
+
 } // end namespace labrob

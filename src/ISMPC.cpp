@@ -3,6 +3,7 @@
 
 namespace labrob {
 
+
 ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
@@ -170,6 +171,9 @@ ISMPC::solve(
   cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.y() - mc_y);
   cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.z() - mc_z);
 
+  // A_zmp_.setZero();
+  // b_zmp_min_.setZero();
+  // b_zmp_max_.setZero();
   // Solve QP
   qp_solver_ptr_->solve(
       cost_function_H_,
@@ -190,6 +194,15 @@ ISMPC::solve(
   input_.x() = zDotOptimalX(0);
   input_.y() = zDotOptimalY(0);
   input_.z() = zDotOptimalZ(0);
+
+  // // Update the state based on the result of the QP
+  // Eigen::Vector3d nextStateX = updateState(zDotOptimalX(0), 0);
+  // Eigen::Vector3d nextStateY = updateState(zDotOptimalY(0), 1);
+  // Eigen::Vector3d nextStateZ = updateState(zDotOptimalZ(0), 2);
+
+  // state_.com_pos_ << nextStateX(0), nextStateY(0), nextStateZ(0);
+  // state_.com_vel_ << nextStateX(1), nextStateY(1), nextStateZ(1);
+  // state_.zmp_pos_ << nextStateX(2), nextStateY(2), nextStateZ(2);
 }
 
 const Eigen::Vector3d& ISMPC::getInput() const {
@@ -209,6 +222,11 @@ const Eigen::VectorXd& ISMPC::getInputSequenceZ() const {
 double
 ISMPC::getOmega() const {
   return omega_;
+}
+
+void
+ISMPC::setOmega(double omega) {
+  omega_ = omega;
 }
 
 double

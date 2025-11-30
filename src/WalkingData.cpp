@@ -104,6 +104,13 @@ WalkingData::addSteps(
     double step_length_x = 0.1;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
+    //rotate the step vector by the yaw angle of the robot. compute the yaw angle from the rotation matrix of the left and right sole
+    double yaw_angle = std::atan2(T_lsole.rotation()(1,0), T_lsole.rotation()(0,0));
+    Eigen::Matrix3d R_yaw;
+    R_yaw = labrob::Rz(yaw_angle);
+    Eigen::Vector3d step_vector = R_yaw * Eigen::Vector3d(step_length_x, step_length_y, 0.0);
+    step_length_x = step_vector.x();
+    step_length_y = step_vector.y();
     int n_steps = 10;
 
     double double_support_duration = 2000;

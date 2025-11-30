@@ -43,8 +43,7 @@ class WalkingManager {
 
   void update(
       const labrob::RobotState& sim_robot_state,
-      labrob::JointCommand& joint_command,
-      Eigen::VectorXd actual_output
+      labrob::JointCommand& joint_command
   );
 
   int64_t get_controller_frequency() const;
@@ -115,6 +114,20 @@ class WalkingManager {
   Eigen::Matrix3d fixed_T_rsole_fb_rot;
   Eigen::Vector3d fixed_T_rsole_fb_trans;
   RobotState fb_robot_state;
+
+  int BASE_IDX;
+  int IMU_ROTVEC_IDX;
+  int JOINTS_IDX;
+  int BASE_VEL_IDX;
+  int JOINTS_VEL_IDX;
+  int LEFT_FOOT_VEL_IDX;
+  int RIGHT_FOOT_VEL_IDX;
+
+  double eta2;
+  double mass;
+
+
+  LIPState des_LipState;
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
   
@@ -214,10 +227,6 @@ private:
   std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
-  // fb state vectors
-  // std::vector<Eigen::VectorXd> estimated_imu_accelerometer_log_;
-  // std::vector<Eigen::VectorXd> estimated_imu_angular_velocity_log_;
-  // std::vector<Eigen::VectorXd> estimated_imu_orientation_log_;
 
 
   std::vector<Eigen::VectorXd> go_base_position_log_;
@@ -227,6 +236,9 @@ private:
   std::vector<Eigen::VectorXd> go_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> go_base_accelerometer_log_;
 
+  std::vector<Eigen::VectorXd> mpc_pred_com_pos_log_;
+  std::vector<Eigen::VectorXd> mpc_pred_com_vel_log_;
+  std::vector<Eigen::VectorXd> mpc_pred_zmp_pos_log_;
 
   std::vector<Eigen::VectorXd> input_torque_log_;
 

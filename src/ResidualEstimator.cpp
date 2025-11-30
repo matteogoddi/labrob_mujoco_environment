@@ -477,13 +477,13 @@ Eigen::VectorXd ResidualEstimator::computeResidualWithWBCWrenches(
     Eigen::MatrixXd J_left_foot(6, robot_model_.nv); 
     J_left_foot.setZero();
     pinocchio::getFrameJacobian(robot_model_, robot_data,
-        robot_model_.getFrameId("left_ankle_roll_link"),
+        robot_model_.getFrameId("left_foot_link"),
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left_foot);
 
     Eigen::MatrixXd J_right_foot(6, robot_model_.nv); 
     J_right_foot.setZero();
     pinocchio::getFrameJacobian(robot_model_, robot_data,
-        robot_model_.getFrameId("right_ankle_roll_link"),
+        robot_model_.getFrameId("right_foot_link"),
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_foot);
     // Use underactuated Jacobians from WBC
     const Eigen::MatrixXd& Jlu = wbc_controller.getLeftFootUnderactuatedJacobian();
@@ -535,13 +535,13 @@ Eigen::VectorXd ResidualEstimator::computeResidualWithWBCWrenches(
     Eigen::MatrixXd J_left(6, robot_model_.nv); 
     J_left.setZero();
     pinocchio::getFrameJacobian(robot_model_, robot_data,
-        robot_model_.getFrameId("left_ankle_roll_link"),
+        robot_model_.getFrameId("left_foot_link"),
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_left);
 
     Eigen::MatrixXd J_right(6, robot_model_.nv); 
     J_right.setZero();
     pinocchio::getFrameJacobian(robot_model_, robot_data,
-        robot_model_.getFrameId("right_ankle_roll_link"),
+        robot_model_.getFrameId("right_foot_link"),
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right);
 
     // I am doing this for segregation of forces and torques elements of the jacobian, as the first 3 contains the linear elemets
