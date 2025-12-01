@@ -205,6 +205,7 @@ WalkingData::swapStanding(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole
 ){
+    footstep_plan.pop_front();
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),

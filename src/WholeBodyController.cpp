@@ -40,7 +40,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 0;
+  params.beta = 100;
   params.gamma = 10;
   params.mu = 0.5;
 

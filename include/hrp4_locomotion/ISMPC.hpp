@@ -43,6 +43,10 @@ class ISMPC{
 
   void setOmega(double omega);
 
+  void resetInput(){
+      input_ = Eigen::Vector3d::Zero();
+  }
+
  private:
   // NOTE: std::clamp available from C++17
   double clamp(double n, double n_min, double n_max);

@@ -1,5 +1,6 @@
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/utils.hpp>
+#include <iostream>
 
 namespace labrob {
 
@@ -9,6 +10,8 @@ DiscreteLIPDynamics::DiscreteLIPDynamics(double eta, double timestep_msec)
   double sh = sinh(eta * timestep_);
   A_ << ch, sh / eta, 1.0 - ch, eta * sh, ch, -eta * sh, 0.0, 0.0, 1.0;
   B_ << timestep_ - sh / eta, 1.0 - ch, timestep_;
+  std::cout << "Dynamic matrix A:\n" << A_ << std::endl;
+  std::cout << "Input matrix B:\n" << B_ << std::endl;
 }
 
 LIPState
@@ -43,8 +46,12 @@ DiscreteLIPDynamics::setOmega(double omega) {
   eta_ = omega;
   double ch = cosh(eta_ * timestep_);
   double sh = sinh(eta_ * timestep_);
+  A_ = Eigen::Matrix3d::Zero();
+  B_ = Eigen::Vector3d::Zero();
   A_ << ch, sh / eta_, 1.0 - ch, eta_ * sh, ch, -eta_ * sh, 0.0, 0.0, 1.0;
   B_ << timestep_ - sh / eta_, 1.0 - ch, timestep_;
+  std::cout << "Dynamic matrix A:\n" << A_ << std::endl;
+  std::cout << "Input matrix B:\n" << B_ << std::endl;
 }
 
 } // end namespace labrob

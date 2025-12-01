@@ -392,7 +392,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(9.81 / com_target_height),
-        0.1 * controller_timestep_msec_
+        0.1
     );
 
     Kalman_Gain = Eigen::MatrixXd::Zero(2 * (njnt + 6), n_ekf_output);
@@ -1105,6 +1105,7 @@ WalkingManager::update(
         fixed_T_rsole_fb_trans = T_rsole_fb.translation();
         double com_target_height = fixed_com_pos.z();
         eta2 = 9.81 / com_target_height;
+        ismpc_ptr_->resetInput();
         ismpc_ptr_->setOmega(std::sqrt(eta2));
         discrete_lip_dynamics_ptr_->setOmega(std::sqrt(eta2));
         discrete_lip_dynamics_ptr_mpc_->setOmega(std::sqrt(eta2));
@@ -1175,16 +1176,16 @@ WalkingManager::update(
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
-    // current_gait_configuration.com.pos = p_CoM_sim;
-    // current_gait_configuration.com.vel = v_CoM_sim;
-    // if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
-    //     current_gait_configuration.com.pos = p_CoM_fb;
-    //     current_gait_configuration.com.vel = v_CoM_fb;
-    // }
+    current_gait_configuration.com.pos = p_CoM_sim;
+    current_gait_configuration.com.vel = v_CoM_sim;
+    if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed){
+        current_gait_configuration.com.pos = p_CoM_fb;
+        current_gait_configuration.com.vel = v_CoM_fb;
+    }
 
 
-    current_gait_configuration.com.pos = kf_LipState.com_pos_;
-    current_gait_configuration.com.vel = kf_LipState.com_vel_;
+    // current_gait_configuration.com.pos = kf_LipState.com_pos_;
+    // current_gait_configuration.com.vel = kf_LipState.com_vel_;
     
     current_gait_configuration.torso.pos = sim_robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso_sim.bottomRows<3>() * qdot;
@@ -1213,16 +1214,16 @@ WalkingManager::update(
     //
     /////////////////////////////////////
 
-    LIPState mpc_LipState_prec = kf_LipState;
+    LIPState mpc_LipState_prec = des_LipState;
 
     auto start_mpc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
         {
-            ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
+            ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
             des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                kf_LipState, 
+                des_LipState, 
                 ismpc_ptr_->getInput()
             );
         }
@@ -1257,7 +1258,7 @@ WalkingManager::update(
     Eigen::Vector3d p_CoM_des;
     Eigen::Vector3d v_CoM_des;
     Eigen::Vector3d p_ZMP_des;
-    if (isTotalBodyLoopClosed && t_msec_ >= startTimeTotalBodyCL && true) {
+    if (isTotalBodyLoopClosed && t_msec_ >= startTimeTotalBodyCL && false) {
         p_CoM_des = fixed_com_pos + Eigen::Vector3d(0.0, 0.0, 0.02);
         v_CoM_des = fixed_com_vel;
         p_ZMP_des = fixed_zmp_pos;
