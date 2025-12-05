@@ -486,8 +486,8 @@ Eigen::VectorXd ResidualEstimator::computeResidualWithWBCWrenches(
         robot_model_.getFrameId("right_foot_link"),
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_right_foot);
     // Use underactuated Jacobians from WBC
-    const Eigen::MatrixXd& Jlu = wbc_controller.getLeftFootUnderactuatedJacobian();
-    const Eigen::MatrixXd& Jru = wbc_controller.getRightFootUnderactuatedJacobian();
+    // const Eigen::MatrixXd& Jlu = wbc_controller.getLeftFootUnderactuatedJacobian();
+    // const Eigen::MatrixXd& Jru = wbc_controller.getRightFootUnderactuatedJacobian();
     
     // Get full wrenches from WBC
     const Eigen::VectorXd& wbc_left_foot_wrench = wbc_controller.getLeftFootWrench();

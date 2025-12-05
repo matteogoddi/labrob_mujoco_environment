@@ -54,6 +54,9 @@ class WalkingManager {
   pinocchio::Data fb_robot_data;
   pinocchio::Data predicted_robot_data;
   pinocchio::Data estimated_robot_data;
+  double mass;
+
+  RobotState fb_robot_state;
 
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
@@ -68,13 +71,6 @@ class WalkingManager {
   Eigen::VectorXd integrated_state_pos;
   Eigen::VectorXd integrated_state_vel;
 
-  double angle_acc_gravity_sum_;
-  int angle_acc_gravity_count_;
-
-  Eigen::Quaterniond rotation_correction;
-  Eigen::Vector3d imu_accelerometer_sum_ = Eigen::Vector3d::Zero();
-  double imu_accelerometer_count_ = 0;
-
   int njnt;
 
   pinocchio::FrameIndex lsole_idx_;
@@ -83,12 +79,10 @@ class WalkingManager {
   pinocchio::FrameIndex imu_idx_;
 
 
-  int64_t mpc_prediction_horizon_msec = 2000;
-  int64_t mpc_timestep_msec = 100;
+  int64_t mpc_prediction_horizon_msec = 1000;
+  int64_t mpc_timestep_msec = 50;
   double foot_constraint_square_length = 0.22;
   double foot_constraint_square_width = 0.08;
-
-  bool walking_data_initialized_ = false;
 
   Eigen::VectorXd q_jnt_des_;
 
@@ -109,11 +103,6 @@ class WalkingManager {
   Eigen::Vector3d fixed_com_pos;
   Eigen::Vector3d fixed_com_vel;
   Eigen::Vector3d fixed_zmp_pos;
-  Eigen::Matrix3d fixed_T_lsole_fb_rot;
-  Eigen::Vector3d fixed_T_lsole_fb_trans;
-  Eigen::Matrix3d fixed_T_rsole_fb_rot;
-  Eigen::Vector3d fixed_T_rsole_fb_trans;
-  RobotState fb_robot_state;
 
   int BASE_IDX;
   int IMU_ROTVEC_IDX;
@@ -124,8 +113,6 @@ class WalkingManager {
   int RIGHT_FOOT_VEL_IDX;
 
   double eta2;
-  double mass;
-
 
   LIPState des_LipState;
 
@@ -149,11 +136,6 @@ private:
       pinocchio::Motion& swing_foot_acceleration
   ) const;
 
-  void swingFootTrajectoryBezier(
-      pinocchio::SE3& swing_foot_pose,
-      pinocchio::Motion& swing_foot_velocity
-  ) const;
-
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
@@ -169,18 +151,22 @@ private:
   std::vector<Eigen::Vector3d> sim_com_position_log_;
   std::vector<Eigen::Vector3d> sim_com_velocity_log_;
   std::vector<Eigen::Vector3d> sim_zmp_position_log_;
+  std::vector<Eigen::Vector3d> sim_com_acceleration_log_;
 
   std::vector<Eigen::Vector3d> fb_com_position_log_;
   std::vector<Eigen::Vector3d> fb_com_velocity_log_;
   std::vector<Eigen::Vector3d> fb_zmp_position_log_;
+  std::vector<Eigen::Vector3d> fb_com_acceleration_log_;
 
   std::vector<Eigen::Vector3d> kf_com_position_log_;
   std::vector<Eigen::Vector3d> kf_com_velocity_log_;
   std::vector<Eigen::Vector3d> kf_zmp_position_log_;
+  std::vector<Eigen::Vector3d> kf_com_acceleration_log_;
 
   std::vector<Eigen::Vector3d> des_com_position_log_;
   std::vector<Eigen::Vector3d> des_com_velocity_log_;
   std::vector<Eigen::Vector3d> des_zmp_position_log_;
+  std::vector<Eigen::Vector3d> des_com_acceleration_log_;
 
   std::vector<Eigen::Vector3d> ef_zmp_position_log_;
 

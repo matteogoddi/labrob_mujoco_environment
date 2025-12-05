@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation as R
 import os
 import io
 import imageio.v2 as imageio
+import cv2
 
 
 if __name__ == '__main__':
@@ -33,6 +34,7 @@ if __name__ == '__main__':
     des_com_position = np.loadtxt(folder + '/des_com_position.txt')
     des_com_velocity = np.loadtxt(folder + '/des_com_velocity.txt')
     des_zmp_position = np.loadtxt(folder + '/des_zmp_position.txt')
+    des_com_acceleration = np.loadtxt(folder + '/des_com_acceleration.txt')
 
     ef_zmp_position = np.loadtxt(folder + '/ef_zmp_position.txt')
 
@@ -117,6 +119,7 @@ if __name__ == '__main__':
     des_com_position = des_com_position[:num_samples, :]
     des_com_velocity = des_com_velocity[:num_samples, :]
     des_zmp_position = des_zmp_position[:num_samples, :]
+    des_com_acceleration = des_com_acceleration[:num_samples, :]
 
     ef_zmp_position = ef_zmp_position[:num_samples, :]
 
@@ -212,56 +215,157 @@ if __name__ == '__main__':
     #################################
     # MPC PREDICTED TRAJECTORIES
     #################################
-    frames = []
-    mpc_horizon = 20   # numero di predizioni dell'MPC
+    #disabilita per ora
+    if False:
+        frames = []
+        mpc_horizon = 20              # number of predicted MPC points
+        mpc_dt = 0.1                  # MPC sample time (0.1 s)
+        prediction_window = mpc_horizon * mpc_dt   # should be 2 seconds
 
-    num_blocks = num_samples // mpc_horizon
+        num_blocks = num_samples
 
-    for block in range(num_blocks):
-        start = block * mpc_horizon
-        end = start + mpc_horizon
+        for block in range(0, num_blocks, 50):
+            # Index range of the predictions in mpc_pred_com_pos
+            start = block * mpc_horizon
+            end = start + mpc_horizon
 
-        fig, ax = plt.subplots()
+            # Compute the real time at which this block starts
+            t0 = t[block]
 
-        # Plot predizione MPC (solo 20 punti alla volta)
-        ax.plot(
-            t[start:end],
-            mpc_pred_com_pos[start:end, 0],
-            label='MPC Pred COM X',
-            color='blue',
-            linestyle='--'
-        )
-        ax.plot(
-            t[start:end],
-            mpc_pred_com_pos[start:end, 1],
-            label='MPC Pred COM Y',
-            color='orange',
-            linestyle='--'
-        )
-        ax.plot(
-            t[start:end],
-            mpc_pred_com_pos[start:end, 2],
-            label='MPC Pred COM Z',
-            color='green',
-            linestyle='--'
-        )
+            # Build the MPC prediction timeline (20 points over exactly 2 seconds)
+            t_pred = np.linspace(t0, t0 + prediction_window, mpc_horizon)
 
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('COM Position [m]')
-        ax.set_title(f'MPC Predicted COM Position (Block {block})')
-        ax.grid(True)
-        ax.legend()
-        fig.tight_layout()
+            fig, ax = plt.subplots()
 
-        # Salva figura in memoria come immagine
-        buf = io.BytesIO()
-        fig.savefig(buf, format='png')
-        buf.seek(0)
-        frames.append(imageio.imread(buf))
-        plt.close(fig)
+            # Plot MPC predicted COM (using uniform 2-second time axis)
+            ax.plot(t_pred, mpc_pred_com_pos[start:end, 0],
+                    label='MPC Pred COM X', linestyle='--')
+            ax.plot(t_pred, mpc_pred_com_pos[start:end, 1],
+                    label='MPC Pred COM Y', linestyle='--')
+            ax.plot(t_pred, mpc_pred_com_pos[start:end, 2],
+                    label='MPC Pred COM Z', linestyle='--')
 
-    # Salva GIF
-    imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('COM Position [m]')
+            ax.set_title(f'MPC Predicted COM Position (Block {block})')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+
+            # Convert figure to image frame
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            frames.append(imageio.imread(buf))
+            plt.close(fig)
+
+        # Save GIF
+        # imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
+        # imageio.mimsave('images/mpc/mpc_com_prediction.mp4', frames, fps=10)
+
+        with imageio.get_writer('images/mpc/mpc_pred_com_pos.mp4', fps=5) as writer:
+            for frame in frames:
+                writer.append_data(frame)
+
+        frames = []
+        mpc_horizon = 20              # number of predicted MPC points
+        mpc_dt = 0.1                  # MPC sample time (0.1 s)
+        prediction_window = mpc_horizon * mpc_dt   # should be 2 seconds
+
+        num_blocks = num_samples
+
+        for block in range(0, num_blocks, 50):
+            # Index range of the predictions in mpc_pred_com_pos
+            start = block * mpc_horizon
+            end = start + mpc_horizon
+
+            # Compute the real time at which this block starts
+            t0 = t[block]
+
+            # Build the MPC prediction timeline (20 points over exactly 2 seconds)
+            t_pred = np.linspace(t0, t0 + prediction_window, mpc_horizon)
+
+            fig, ax = plt.subplots()
+
+            # Plot MPC predicted COM (using uniform 2-second time axis)
+            ax.plot(t_pred, mpc_pred_com_vel[start:end, 0],
+                    label='MPC Pred COM Vel X', linestyle='--')
+            ax.plot(t_pred, mpc_pred_com_vel[start:end, 1],
+                    label='MPC Pred COM Vel Y', linestyle='--')
+            ax.plot(t_pred, mpc_pred_com_vel[start:end, 2],
+                    label='MPC Pred COM Vel Z', linestyle='--')
+
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('COM Velocity [m]')
+            ax.set_title(f'MPC Predicted COM Velocity (Block {block})')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+
+            # Convert figure to image frame
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            frames.append(imageio.imread(buf))
+            plt.close(fig)
+
+        # Save GIF
+        # imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
+
+        with imageio.get_writer('images/mpc/mpc_pred_com_vel.mp4', fps=5) as writer:
+            for frame in frames:
+                writer.append_data(frame)
+
+        frames = []
+        mpc_horizon = 20              # number of predicted MPC points
+        mpc_dt = 0.1                  # MPC sample time (0.1 s)
+        prediction_window = mpc_horizon * mpc_dt   # should be 2 seconds
+
+        num_blocks = num_samples
+
+        for block in range(0, num_blocks, 50):
+            # Index range of the predictions in mpc_pred_com_pos
+            start = block * mpc_horizon
+            end = start + mpc_horizon
+
+            # Compute the real time at which this block starts
+            t0 = t[block]
+
+            # Build the MPC prediction timeline (20 points over exactly 2 seconds)
+            t_pred = np.linspace(t0, t0 + prediction_window, mpc_horizon)
+
+            fig, ax = plt.subplots()
+
+            # Plot MPC predicted ZMP (using uniform 2-second time axis)
+            ax.plot(t_pred, mpc_pred_zmp_pos[start:end, 0],
+                    label='MPC Pred ZMP X', linestyle='--')
+            ax.plot(t_pred, mpc_pred_zmp_pos[start:end, 1],
+                    label='MPC Pred ZMP Y', linestyle='--')
+            ax.plot(t_pred, mpc_pred_zmp_pos[start:end, 2],
+                    label='MPC Pred ZMP Z', linestyle='--')
+
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('ZMP Position [m]')
+            ax.set_title(f'MPC Predicted ZMP Position (Block {block})')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+
+            # Convert figure to image frame
+            buf = io.BytesIO()
+            fig.savefig(buf, format='png')
+            buf.seek(0)
+            frames.append(imageio.imread(buf))
+            plt.close(fig)
+
+        # Save GIF
+        # imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
+
+        with imageio.get_writer('images/mpc/mpc_pred_zmp_pos.mp4', fps=5) as writer:
+            for frame in frames:
+                writer.append_data(frame)
+
+
 
     
 
@@ -538,6 +642,20 @@ if __name__ == '__main__':
     #################################
     #  COM AND ZMP PLOTS
     #################################
+    #plot desired acceleration of com
+    fig, ax = plt.subplots()
+    ax.plot(t, des_com_acceleration[:, 0], label='des COM Acc X', color='blue')
+    ax.plot(t, des_com_acceleration[:, 1], label='des COM Acc Y', color='orange')
+    ax.plot(t, des_com_acceleration[:, 2], label='des COM Acc Z', color='green')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Acceleration [m/s²]')
+    ax.set_title('COM Desired Acceleration')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/des_com_acceleration_plot.png")
+    plt.close(fig)
+
     fig, ax = plt.subplots()
     ax.plot(t, fb_zmp_position[:, 0], label='used ZMP X', color='blue', linestyle=':')
     ax.plot(t, fb_zmp_position[:, 1], label='used ZMP Y', color='orange', linestyle=':')
@@ -554,12 +672,12 @@ if __name__ == '__main__':
     fig.savefig("images/com/fb_used_and_not_used_zmp_plot.png")
 
     fig, ax = plt.subplots()
-    ax.plot(t, des_zmp_position[:, 0], label='des ZMP X', color='blue', linestyle=':')
-    ax.plot(t, des_zmp_position[:, 1], label='des ZMP Y', color='orange', linestyle=':')
-    ax.plot(t, des_zmp_position[:, 2], label='des ZMP Y', color='green', linestyle=':')
+    ax.plot(t, des_zmp_position[:, 0], label='des ZMP X', color='blue')
+    ax.plot(t, des_zmp_position[:, 1], label='des ZMP Y', color='orange')
+    ax.plot(t, des_zmp_position[:, 2], label='des ZMP Z', color='green')
     ax.plot(t, des_com_position[:, 0], label='des COM X', color='blue', linestyle='-.')
     ax.plot(t, des_com_position[:, 1], label='des COM Y', color='orange', linestyle='-.')
-    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='green', linestyle='-.')
+    ax.plot(t, des_com_position[:, 2], label='des COM Z', color='green', linestyle='-.')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
     ax.set_title('ZMP and COM Position Desired')
@@ -567,6 +685,21 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/des_zmp_and_com_plot.png")
+
+    fig, ax = plt.subplots()
+    ax.plot(t, fb_com_position[:, 0], label='FB COM X', color='blue')
+    ax.plot(t, fb_com_position[:, 1], label='FB COM Y', color='orange')
+    ax.plot(t, fb_com_position[:, 2], label='FB COM Z', color='green')
+    ax.plot(t, des_com_position[:, 0], label='des COM X', color='blue', linestyle='-.')
+    ax.plot(t, des_com_position[:, 1], label='des COM Y', color='orange', linestyle='-.')
+    ax.plot(t, des_com_position[:, 2], label='des COM Z', color='green', linestyle='-.')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position [m]')
+    ax.set_title('ZMP and COM Position Desired')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/com/des_vs_fb_com_plot.png")
 
     #plot x position of com, left and right sole
     fig, ax = plt.subplots()
@@ -677,8 +810,8 @@ if __name__ == '__main__':
     fig.savefig("images/com/fb_left_right_sole_and_com_y_plot.png")
 
     fig, ax = plt.subplots()
-    ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='blue', linestyle=':')
-    ax.plot(t, kf_zmp_position[:, 1], label='kf ZMP Y', color='orange', linestyle=':')
+    ax.plot(t, kf_zmp_position[:, 0], label='kf ZMP X', color='blue')
+    ax.plot(t, kf_zmp_position[:, 1], label='kf ZMP Y', color='orange')
     ax.plot(t, kf_com_position[:, 0], label='kf COM X', color='blue', linestyle='-.')
     ax.plot(t, kf_com_position[:, 1], label='kf COM Y', color='orange', linestyle='-.')
     ax.set_xlabel('Time [s]')
@@ -691,9 +824,9 @@ if __name__ == '__main__':
 
 
     fig, ax = plt.subplots()
-    ax.plot(t, fb_zmp_position[:, 0], label='FB ZMP X', color='blue', linestyle='--')
-    ax.plot(t, fb_zmp_position[:, 1], label='FB ZMP Y', color='orange', linestyle='--')
-    ax.plot(t, fb_zmp_position[:, 2], label='FB ZMP Z', color='green', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 0], label='FB ZMP X', color='blue')
+    ax.plot(t, fb_zmp_position[:, 1], label='FB ZMP Y', color='orange')
+    ax.plot(t, fb_zmp_position[:, 2], label='FB ZMP Z', color='green')
     ax.plot(t, des_zmp_position[:, 0], label='Des ZMP X', color='blue', linestyle=':')
     ax.plot(t, des_zmp_position[:, 1], label='Des ZMP Y', color='orange', linestyle=':')
     ax.plot(t, des_zmp_position[:, 2], label='Des ZMP Z', color='green', linestyle=':')
@@ -725,10 +858,12 @@ if __name__ == '__main__':
 
     #plot com sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, fb_com_position[:, 0], label='FB COM X', color='blue', linestyle='--')
-    ax.plot(t, fb_com_position[:, 1], label='FB COM Y', color='orange', linestyle='--')
+    ax.plot(t, fb_com_position[:, 0], label='FB COM X', color='blue')
+    ax.plot(t, fb_com_position[:, 1], label='FB COM Y', color='orange')
+    ax.plot(t, fb_com_position[:, 2], label='FB COM Z', color='green')
     ax.plot(t, des_com_position[:, 0], label='Des COM X', color='blue', linestyle=':')
     ax.plot(t, des_com_position[:, 1], label='Des COM Y', color='orange', linestyle=':')
+    ax.plot(t, des_com_position[:, 2], label='Des COM Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('COM Position [m]')
     ax.set_title('COM Position Simulation vs Feedback vs Desired')
@@ -742,8 +877,10 @@ if __name__ == '__main__':
     fig, ax = plt.subplots()
     ax.plot(t, kf_com_position[:, 0], label='Kf COM X', color='blue')
     ax.plot(t, kf_com_position[:, 1], label='Kf COM Y', color='orange')
+    ax.plot(t, kf_com_position[:, 2], label='Kf COM Z', color='green')
     ax.plot(t, des_com_position[:, 0], label='Des COM X', color='blue', linestyle=':')
     ax.plot(t, des_com_position[:, 1], label='Des COM Y', color='orange', linestyle=':')
+    ax.plot(t, des_com_position[:, 2], label='Des COM Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
     ax.set_title('Filtered vs Desired X & Y COM Position')
@@ -755,10 +892,12 @@ if __name__ == '__main__':
 
     # plot com velocities sim and fb
     fig, ax = plt.subplots()
-    ax.plot(t, fb_com_velocity[:, 0], label='FB COM Vel X', color='blue', linestyle='--')
-    ax.plot(t, fb_com_velocity[:, 1], label='FB COM Vel Y', color='orange', linestyle='--')
+    ax.plot(t, fb_com_velocity[:, 0], label='FB COM Vel X', color='blue')
+    ax.plot(t, fb_com_velocity[:, 1], label='FB COM Vel Y', color='orange')
+    ax.plot(t, fb_com_velocity[:, 2], label='FB COM Vel Z', color='green')
     ax.plot(t, des_com_velocity[:, 0], label='Des COM Vel X', color='blue', linestyle=':')
     ax.plot(t, des_com_velocity[:, 1], label='Des COM Vel Y', color='orange', linestyle=':')
+    ax.plot(t, des_com_velocity[:, 2], label='Des COM Vel Z', color='green', linestyle=':')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Velocity [m/s]')
     ax.set_title('COM Velocity Simulation vs Feedback vs Desired')
@@ -791,12 +930,9 @@ if __name__ == '__main__':
     ##########################
     #plot des, sim and fb lsole position
     fig, ax = plt.subplots()
-    ax.plot(t, p_lsole_sim[:, 0], label='Sim Left Sole X', color='blue')
-    ax.plot(t, p_lsole_sim[:, 1], label='Sim Left Sole Y', color='orange')
-    ax.plot(t, p_lsole_sim[:, 2], label='Sim Left Sole Z', color='green')
-    ax.plot(t, p_lsole_fb[:, 0], label='FB Left Sole X', color='blue', linestyle='--')
-    ax.plot(t, p_lsole_fb[:, 1], label='FB Left Sole Y', color='orange', linestyle='--')
-    ax.plot(t, p_lsole_fb[:, 2], label='FB Left Sole Z', color='green', linestyle='--')
+    ax.plot(t, p_lsole_fb[:, 0], label='FB Left Sole X', color='blue')
+    ax.plot(t, p_lsole_fb[:, 1], label='FB Left Sole Y', color='orange')
+    ax.plot(t, p_lsole_fb[:, 2], label='FB Left Sole Z', color='green')
     ax.plot(t, p_lsole_des[:, 0], label='Des Left Sole X', color='blue', linestyle=':')
     ax.plot(t, p_lsole_des[:, 1], label='Des Left Sole Y', color='orange', linestyle=':')
     ax.plot(t, p_lsole_des[:, 2], label='Des Left Sole Z', color='green', linestyle=':')
@@ -811,12 +947,9 @@ if __name__ == '__main__':
 
     #plot des, sim and fb rsole position
     fig, ax = plt.subplots()
-    ax.plot(t, p_rsole_sim[:, 0], label='Sim Right Sole X', color='blue')
-    ax.plot(t, p_rsole_sim[:, 1], label='Sim Right Sole Y', color='orange')
-    ax.plot(t, p_rsole_sim[:, 2], label='Sim Right Sole Z', color='green')
-    ax.plot(t, p_rsole_fb[:, 0], label='FB Right Sole X', color='blue', linestyle='--')
-    ax.plot(t, p_rsole_fb[:, 1], label='FB Right Sole Y', color='orange', linestyle='--')
-    ax.plot(t, p_rsole_fb[:, 2], label='FB Right Sole Z', color='green', linestyle='--')
+    ax.plot(t, p_rsole_fb[:, 0], label='FB Right Sole X', color='blue')
+    ax.plot(t, p_rsole_fb[:, 1], label='FB Right Sole Y', color='orange')
+    ax.plot(t, p_rsole_fb[:, 2], label='FB Right Sole Z', color='green')
     ax.plot(t, p_rsole_des[:, 0], label='Des Right Sole X', color='blue', linestyle=':')
     ax.plot(t, p_rsole_des[:, 1], label='Des Right Sole Y', color='orange', linestyle=':')
     ax.plot(t, p_rsole_des[:, 2], label='Des Right Sole Z', color='green', linestyle=':')
@@ -829,14 +962,26 @@ if __name__ == '__main__':
     fig.savefig("images/soles/sim_vs_fb_right_sole_position_plot.png")
     plt.close(fig)
 
+    #plot des, sim and fb rsole position
+    fig, ax = plt.subplots()
+    ax.plot(t, p_lsole_fb[:, 2], label='FB Right Sole Y', color='orange')
+    ax.plot(t, p_rsole_fb[:, 2], label='FB Right Sole Z', color='green')
+    ax.plot(t, p_lsole_des[:, 2], label='Des Right Sole Y', color='orange', linestyle=':')
+    ax.plot(t, p_rsole_des[:, 2], label='Des Right Sole Z', color='green', linestyle=':')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Sole Position [m]')
+    ax.set_title('Left and Right Sole Position Simulation vs Feedback')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/soles/lsole_vs_rsole_z_position_plot.png")
+    plt.close(fig)
+
     #plot des, sim and fb lsole velocity
     fig, ax = plt.subplots()
-    ax.plot(t, v_lsole_sim[:, 0], label='Sim Left Sole Vel X', color='blue')
-    ax.plot(t, v_lsole_sim[:, 1], label='Sim Left Sole Vel Y', color='orange')
-    ax.plot(t, v_lsole_sim[:, 2], label='Sim Left Sole Vel Z', color='green')
-    ax.plot(t, v_lsole_fb[:, 0], label='FB Left Sole Vel X', color='blue', linestyle='--')
-    ax.plot(t, v_lsole_fb[:, 1], label='FB Left Sole Vel Y', color='orange', linestyle='--')
-    ax.plot(t, v_lsole_fb[:, 2], label='FB Left Sole Vel Z', color='green', linestyle='--')
+    ax.plot(t, v_lsole_fb[:, 0], label='FB Left Sole Vel X', color='blue')
+    ax.plot(t, v_lsole_fb[:, 1], label='FB Left Sole Vel Y', color='orange')
+    ax.plot(t, v_lsole_fb[:, 2], label='FB Left Sole Vel Z', color='green')
     ax.plot(t, v_lsole_des[:, 0], label='Des Left Sole Vel X', color='blue', linestyle=':')
     ax.plot(t, v_lsole_des[:, 1], label='Des Left Sole Vel Y', color='orange', linestyle=':')
     ax.plot(t, v_lsole_des[:, 2], label='Des Left Sole Vel Z', color='green', linestyle=':')
@@ -851,12 +996,9 @@ if __name__ == '__main__':
 
     #plot des, sim and fb rsole velocity
     fig, ax = plt.subplots()
-    ax.plot(t, v_rsole_sim[:, 0], label='Sim Right Sole Vel X', color='blue')
-    ax.plot(t, v_rsole_sim[:, 1], label='Sim Right Sole Vel Y', color='orange')
-    ax.plot(t, v_rsole_sim[:, 2], label='Sim Right Sole Vel Z', color='green')
-    ax.plot(t, v_rsole_fb[:, 0], label='FB Right Sole Vel X', color='blue', linestyle='--')
-    ax.plot(t, v_rsole_fb[:, 1], label='FB Right Sole Vel Y', color='orange', linestyle='--')
-    ax.plot(t, v_rsole_fb[:, 2], label='FB Right Sole Vel Z', color='green', linestyle='--')
+    ax.plot(t, v_rsole_fb[:, 0], label='FB Right Sole Vel X', color='blue')
+    ax.plot(t, v_rsole_fb[:, 1], label='FB Right Sole Vel Y', color='orange')
+    ax.plot(t, v_rsole_fb[:, 2], label='FB Right Sole Vel Z', color='green')
     ax.plot(t, v_rsole_des[:, 0], label='Des Right Sole Vel X', color='blue', linestyle=':')
     ax.plot(t, v_rsole_des[:, 1], label='Des Right Sole Vel Y', color='orange', linestyle=':')
     ax.plot(t, v_rsole_des[:, 2], label='Des Right Sole Vel Z', color='green', linestyle=':')

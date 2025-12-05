@@ -66,9 +66,7 @@ class WholeBodyController {
   compute_inverse_dynamics(
       const pinocchio::Model& robot_model,
       const labrob::RobotState& robot_state,
-      const labrob::RobotState& fb_filt_robot_state,
       pinocchio::Data& robot_data,
-      pinocchio::Data& fb_robot_data,
       const labrob::GaitConfiguration& current,
       const labrob::GaitConfiguration& desired
   );
@@ -77,8 +75,6 @@ class WholeBodyController {
   Eigen::VectorXd get_flr() const;
   const Eigen::VectorXd& getLeftFootWrench() const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
-  const Eigen::MatrixXd& getLeftFootUnderactuatedJacobian() const;
-  const Eigen::MatrixXd& getRightFootUnderactuatedJacobian() const;
 
  private:
   pinocchio::Model robot_model_;
@@ -112,14 +108,11 @@ class WholeBodyController {
   int n_wbc_variables_;
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
-  int n_slack_;
 
   std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
 
   Eigen::VectorXd left_foot_wrench_;
   Eigen::VectorXd right_foot_wrench_;
-  Eigen::MatrixXd Jlu_;
-  Eigen::MatrixXd Jru_;
 
 };
 

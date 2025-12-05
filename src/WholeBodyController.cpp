@@ -25,23 +25,20 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_regulation = 10.0;
 
   params.weight_q_ddot = 1e-4;
-  params.weight_com = 1e-1;
+  params.weight_com = 1;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
   params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
-  // params.weight_regulation_matrix.block(10, 10, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
-  // params.weight_regulation_matrix.block(16, 16, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
-  //fare matrice identità e asssegnare valori più alti per l'ankle roll
 
   params.cmm_selection_matrix_x = 1e-6;
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 100;
-  params.gamma = 10;
+  params.beta = 0;
+  params.gamma = 30;
   params.mu = 0.5;
 
   params.foot_length = 0.20;
@@ -103,9 +100,7 @@ labrob::JointCommand
 WholeBodyController::compute_inverse_dynamics(
     const pinocchio::Model& robot_model,
     const labrob::RobotState& robot_state,
-    const labrob::RobotState& fb_filt_robot_state,
     pinocchio::Data& robot_data,
-    pinocchio::Data& fb_robot_data,
     const labrob::GaitConfiguration& current,
     const labrob::GaitConfiguration& desired
 ) {
@@ -113,30 +108,23 @@ WholeBodyController::compute_inverse_dynamics(
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
 
-  auto q_fb_filt = robot_state_to_pinocchio_joint_configuration(robot_model_, fb_filt_robot_state);
-  auto qdot_fb_filt = robot_state_to_pinocchio_joint_velocity(robot_model_, fb_filt_robot_state);
-
   // Compute pinocchio terms
   pinocchio::jacobianCenterOfMass(robot_model, robot_data, q);
   pinocchio::computeJointJacobiansTimeVariation(robot_model, robot_data, q, qdot);
   pinocchio::framesForwardKinematics(robot_model, robot_data, q);
-
-  pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_fb_filt);
-  pinocchio::framesForwardKinematics(robot_model, fb_robot_data, q_fb_filt);
 
   pinocchio::getFrameJacobian(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_);
 
   pinocchio::centerOfMass(robot_model, robot_data, q, qdot, 0.0 * qdot); // This is to compute the drift term
-  pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot); // This is to compute the drift term
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
 
-  const auto& J_com = fb_robot_data.Jcom;
+  const auto& J_com = robot_data.Jcom;
   const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
-  const auto& a_com_drift = fb_robot_data.acom[0];
+  const auto& a_com_drift = robot_data.acom[0];
   const auto a_lsole_drift = J_lsole_dot_ * qdot;
   const auto a_rsole_drift = J_rsole_dot_ * qdot;
   const auto a_torso_orientation_drift = J_torso_dot_.bottomRows<3>() * qdot;
@@ -175,11 +163,11 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
-  Eigen::VectorXd a_jnt_total = desired_qddot + params_.Kp_regulation * err_posture + params_.Kd_regulation * err_posture_vel;
-  Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
-  Eigen::VectorXd a_lsole_total = desired.lsole.acc + params_.Kp_motion * err_lsole + params_.Kd_motion * err_lsole_vel;
-  Eigen::VectorXd a_rsole_total = desired.rsole.acc + params_.Kp_motion * err_rsole + params_.Kd_motion * err_rsole_vel;
-  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + params_.Kp_motion * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;
+  Eigen::VectorXd a_jnt_total = desired_qddot + 30 * err_posture + params_.Kd_regulation * err_posture_vel;
+  Eigen::VectorXd a_com_total = desired.com.acc + 60 * err_com + 10 * err_com_vel;
+  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 180 * err_lsole + 30 * err_lsole_vel;
+  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 180 * err_rsole + 30 * err_rsole_vel;
+  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 30 * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
@@ -355,10 +343,6 @@ WholeBodyController::compute_inverse_dynamics(
 Eigen::VectorXd WholeBodyController::get_q_ddot() const {
   return q_ddot_;
 }
-
-
-const Eigen::MatrixXd& WholeBodyController::getLeftFootUnderactuatedJacobian() const { return Jlu_; }
-const Eigen::MatrixXd& WholeBodyController::getRightFootUnderactuatedJacobian() const { return Jru_; }
 
 Eigen::VectorXd WholeBodyController::get_flr() const {
   return flr;

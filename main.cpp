@@ -54,9 +54,6 @@ bool switchWalkingState = false;
 double startTimeTotalBodyCL = 10000.0;
 double startTimeCoMCL = 10000.0;
 double startTimeEKF = 0.0;
-double startTimeIMUcalibrating = 0.0;
-
-Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 Eigen::Vector3d go_base_position = Eigen::Vector3d::Zero();
 Eigen::Vector3d go_base_velocity = Eigen::Vector3d::Zero();
@@ -139,28 +136,20 @@ struct SportModeState {
 
 // Stiffness for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kp{
-  700, 700, 700, 1000, 900, 500,      // legs sx
-  700, 700, 700, 1000, 900, 500,      // legs dx
+  700, 700, 700, 1000, 900, 600,      // legs sx
+  700, 700, 700, 1000, 900, 600,      // legs dx
   400,                   // waist
-  300, 300, 300, 300,  200, 200, 200,  // arms sx
-  300, 300, 300, 300,  200, 200, 200   // arms dx
+  400, 400, 400, 400,  200, 200, 200,  // arms sx
+  400, 400, 400, 400,  200, 200, 200   // arms dx
 };
-
-// std::array<float, G1_NUM_MOTOR> Kp = {
-//   25, 25, 25, 25, 25, 25, // legs sx
-//   25, 25, 25, 25, 25, 25, // legs dx
-//   25, 25, 25,                   // waist
-//   25, 25, 25, 25, 25, 25, 25,   // arms sx
-//   25, 25, 25, 25, 25, 25, 25    // arms dx
-// };
 
 // Damping for all G1 Joints
 std::array<float, G1_NUM_MOTOR> Kd{
-  10, 10, 10, 10, 10, 10,     // legs sx
-  10, 10, 10, 10, 10, 10,     // legs dx
-  10,             // waist
-  10, 10, 10, 10, 10, 10, 10,  // arms sx
-  10, 10, 10, 10, 10, 10, 10   // arms dx
+  15, 15, 15, 15, 15, 15,     // legs sx
+  15, 15, 15, 15, 15, 15,     // legs dx
+  15,             // waist
+  15, 15, 15, 15, 15, 15, 15,  // arms sx
+  15, 15, 15, 15, 15, 15, 15   // arms dx
 };
 
 //assign at each value of kd twice the square root of the corresponding kp value
@@ -523,16 +512,13 @@ int main(const int argc, const char* argv[]) {
   char loadError[kErrorLength] = "";
   const char* mjcf_filepath = "../g1_mj_description/stair_steps.xml";
   mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
-  if (!mj_model_ptr) {
-    std::cerr << "Error loading model: " << loadError << std::endl;
-    return -1;
-  }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   if (useRobot) {
     std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
     std::cout << "Press 'Y' on the GAMEPAD to end the program." << std::endl;
     std::cout << "Press 'B' on the GAMEPAD to switch walking state." << std::endl;
+    std::cout << "Press 'A' on the GAMEPAD to start EKF." << std::endl;
     std::cout << "If GAMEPAD is not used, select now which loops to close:" << std::endl;
     std::cout << "Options:" << std::endl;
     std::cout << "1. Center of Mass (CoM)" << std::endl;
@@ -554,12 +540,10 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isTotalBodyLoopClosed = false;
-    isCoMLoopClosed = false;
-    isEKFactive = false;
+    isTotalBodyLoopClosed = true;
+    isCoMLoopClosed = true;
+    isEKFactive = true;
   }
-
-  Eigen::Vector3d starting_base_position = Eigen::Vector3d(0.0, 0.0, 0.792151-0.125+0.0263 - 0.071 + 0.105);
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
@@ -604,8 +588,8 @@ int main(const int argc, const char* argv[]) {
   mjtNum r_hip_r_init = -0.04;
   mjtNum r_hip_p_init = -0.44;
   mjtNum r_knee_init = 0.95;
-  mjtNum r_ankle_p_init = -0.49;
-  mjtNum r_ankle_r_init = 0.07;
+  mjtNum r_ankle_p_init = -0.47;
+  mjtNum r_ankle_r_init = 0.03;
   mjtNum l_hip_y_init = 0.0;
   mjtNum l_hip_r_init = -r_hip_r_init;
   mjtNum l_hip_p_init = r_hip_p_init;
@@ -620,18 +604,19 @@ int main(const int argc, const char* argv[]) {
   mjtNum l_shoulder_r_init = -r_shoulder_r_init;
   mjtNum l_shoulder_y_init = 0.0;
   mjtNum l_elbow_p_init = r_elbow_p_init;
+  Eigen::Vector3d starting_base_position = Eigen::Vector3d(0.0, 0.0, 0.727451);
 
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  mj_data_ptr->qpos[0] = starting_base_position[0];
-  mj_data_ptr->qpos[1] = starting_base_position[1];
-  mj_data_ptr->qpos[2] = starting_base_position[2];
-  mj_data_ptr->qpos[3] = 1.0;
-  // mj_data_ptr->qpos[3] = 0.9659;
-  // mj_data_ptr->qpos[6] = 0.2588;
-  // mj_data_ptr->qpos[3] = 0.70710678;
-  // mj_data_ptr->qpos[6] = -0.70710678;
+  mj_data_ptr->qpos[0] = 0.174261;
+  mj_data_ptr->qpos[1] = -0.215733;
+  mj_data_ptr->qpos[2] = 0.727451;
+  // mj_data_ptr->qpos[3] = 0.977184;
+  // mj_data_ptr->qpos[4] = 0.00626451;
+  // mj_data_ptr->qpos[5] = -0.025531;
+  // mj_data_ptr->qpos[6] = -0.210762;
+  mj_data_ptr->qpos[3] = 1;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
@@ -665,7 +650,6 @@ int main(const int argc, const char* argv[]) {
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  
   walking_manager.init(robot_state, armatures);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
@@ -696,7 +680,7 @@ int main(const int argc, const char* argv[]) {
             loopClosed = true;
             isCoMLoopClosed = !isCoMLoopClosed;
             isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
-            startTimeCoMCL = 1000 * mj_data_ptr->time;
+            startTimeCoMCL = 1000 * mj_data_ptr->time + 10000;
             startTimeTotalBodyCL = 1000 * mj_data_ptr->time;
             if(isCoMLoopClosed)
               std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
@@ -757,7 +741,7 @@ int main(const int argc, const char* argv[]) {
         go_base_position = Eigen::Vector3d(
           state_data.position[0],
           state_data.position[1],
-          state_data.position[2]
+          state_data.position[2] + 0.061273
         );
 
         go_base_velocity = Eigen::Vector3d(
@@ -793,16 +777,6 @@ int main(const int argc, const char* argv[]) {
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
-      // #pragma omp parallel sections num_threads(2)
-      // {
-      //   #pragma omp section
-      //   {
-      //     walking_manager.update(robot_state, joint_command, actual_output);
-      //   }
-      //   #pragma omp section
-      //   {
-      //   }
-      // } // end of parallel sections
       walking_manager.update(robot_state, joint_command);
 
       if (false){
@@ -825,9 +799,7 @@ int main(const int argc, const char* argv[]) {
           std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
-
-
-      }else{
+      } else {
         auto start_integration = std::chrono::steady_clock::now();
         robot_state = walking_manager.getNewRobotState();
         labrob::RobotState fb_robot_state = walking_manager.getActualRobotState();

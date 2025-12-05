@@ -101,7 +101,7 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole
 ){
     double swing_foot_trajectory_height = 0.05;
-    double step_length_x = 0.1;
+    double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     //rotate the step vector by the yaw angle of the robot. compute the yaw angle from the rotation matrix of the left and right sole
@@ -113,8 +113,8 @@ WalkingData::addSteps(
     step_length_y = step_vector.y();
     int n_steps = 10;
 
-    double double_support_duration = 2000;
-    double single_support_duration = 2000;
+    double double_support_duration = 6000;
+    double single_support_duration = 6000;
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
@@ -206,6 +206,16 @@ WalkingData::swapStanding(
   const labrob::SE3& T_rsole
 ){
     footstep_plan.pop_front();
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            labrob::Foot::RIGHT
+        ),
+        0.0,
+        2000,
+        labrob::WalkingState::Init
+    ));
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),

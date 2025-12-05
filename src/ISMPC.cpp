@@ -194,15 +194,6 @@ ISMPC::solve(
   input_.x() = zDotOptimalX(0);
   input_.y() = zDotOptimalY(0);
   input_.z() = zDotOptimalZ(0);
-
-  // // Update the state based on the result of the QP
-  // Eigen::Vector3d nextStateX = updateState(zDotOptimalX(0), 0);
-  // Eigen::Vector3d nextStateY = updateState(zDotOptimalY(0), 1);
-  // Eigen::Vector3d nextStateZ = updateState(zDotOptimalZ(0), 2);
-
-  // state_.com_pos_ << nextStateX(0), nextStateY(0), nextStateZ(0);
-  // state_.com_vel_ << nextStateX(1), nextStateY(1), nextStateZ(1);
-  // state_.zmp_pos_ << nextStateX(2), nextStateY(2), nextStateZ(2);
 }
 
 const Eigen::Vector3d& ISMPC::getInput() const {

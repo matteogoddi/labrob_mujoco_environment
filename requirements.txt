@@ -2,3 +2,4 @@ matplotlib
 seaborn
 imageio
 scipy
+imageio-ffmpeg
