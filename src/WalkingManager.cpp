@@ -254,13 +254,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     R = Eigen::MatrixXd::Zero(n_ekf_output, n_ekf_output);
 
     // 1) Base position (m)
-    R.block(BASE_IDX, BASE_IDX, 3, 3) = 1e-3 * Eigen::Matrix3d::Identity();
+    R.block(BASE_IDX, BASE_IDX, 3, 3) = 1e-5 * Eigen::Matrix3d::Identity();
 
     // 2) imu orientation (quat)
-    R.block(IMU_ROTVEC_IDX, IMU_ROTVEC_IDX, 3, 3) = 1e-3 * Eigen::MatrixXd::Identity(3, 3);
+    R.block(IMU_ROTVEC_IDX, IMU_ROTVEC_IDX, 3, 3) = 1e-5 * Eigen::MatrixXd::Identity(3, 3);
 
     // 3) Joint position (rad)
-    R.block(JOINTS_IDX, JOINTS_IDX, njnt, njnt) = 1e-2 * Eigen::MatrixXd::Identity(njnt, njnt);
+    R.block(JOINTS_IDX, JOINTS_IDX, njnt, njnt) = 1e-1 * Eigen::MatrixXd::Identity(njnt, njnt);
 
     // 4) Base linear velocity (m/s)
     R.block(BASE_VEL_IDX, BASE_VEL_IDX, 3, 3) = 1e-1 * Eigen::MatrixXd::Identity(3, 3);
@@ -272,7 +272,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 6, 6) = 1e-2 * Eigen::MatrixXd::Identity(6, 6);
 
     // 6) Joint velocity (rad/s)
-    R.block(JOINTS_VEL_IDX, JOINTS_VEL_IDX, njnt, njnt) = 1000 * Eigen::MatrixXd::Identity(njnt, njnt);
+    R.block(JOINTS_VEL_IDX, JOINTS_VEL_IDX, njnt, njnt) = 1 * Eigen::MatrixXd::Identity(njnt, njnt);
 
     x_estimate = Eigen::VectorXd::Zero(2 * (njnt + 6));
     x_estimate.head(3) = q_init.head(3);
@@ -993,8 +993,8 @@ WalkingManager::update(
     if (loopClosed && t_msec_ >= startTimeTotalBodyCL && isTotalBodyLoopClosed) {
         
         walking_data_.swapStanding(
-            labrob::SE3(T_lsole_fb.rotation(), Eigen::Vector3d(T_lsole_fb.translation().x(), T_lsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_lsole_fb.translation().z())/2)),
-            labrob::SE3(T_rsole_fb.rotation(), Eigen::Vector3d(T_rsole_fb.translation().x(), T_rsole_fb.translation().y(), (T_rsole_fb.translation().z() + T_rsole_fb.translation().z())/2))
+            labrob::SE3(T_lsole_fb.rotation(), Eigen::Vector3d(T_lsole_fb.translation().x(), T_lsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_rsole_fb.translation().z())/2)),
+            labrob::SE3(T_rsole_fb.rotation(), Eigen::Vector3d(T_rsole_fb.translation().x(), T_rsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_rsole_fb.translation().z())/2))
         );
         fixed_com_pos = p_CoM_fb;
         fixed_com_vel = v_CoM_fb;
@@ -1122,8 +1122,8 @@ WalkingManager::update(
     if (switchWalkingState){
         if (walking_data_.getWalkingState() == WalkingState::Standing) {
             walking_data_.addSteps(
-                labrob::SE3(T_lsole_fb.rotation(), Eigen::Vector3d(T_lsole_fb.translation().x(), T_lsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_lsole_fb.translation().z())/2)),
-                labrob::SE3(T_rsole_fb.rotation(), Eigen::Vector3d(T_rsole_fb.translation().x(), T_rsole_fb.translation().y(), (T_rsole_fb.translation().z() + T_rsole_fb.translation().z())/2))
+                labrob::SE3(T_lsole_fb.rotation(), Eigen::Vector3d(T_lsole_fb.translation().x(), T_lsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_rsole_fb.translation().z())/2)),
+                labrob::SE3(T_rsole_fb.rotation(), Eigen::Vector3d(T_rsole_fb.translation().x(), T_rsole_fb.translation().y(), (T_lsole_fb.translation().z() + T_rsole_fb.translation().z())/2))
             );
             switchWalkingState = false;
         } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {

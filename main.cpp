@@ -825,12 +825,12 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
+        // mj_forward(mj_model_ptr, mj_data_ptr);
 
-        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        // mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+        // mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
+        // mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
 
