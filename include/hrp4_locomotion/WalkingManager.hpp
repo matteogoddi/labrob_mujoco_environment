@@ -184,6 +184,12 @@ private:
   std::vector<Eigen::Vector3d> v_lsole_des_log_;
   std::vector<Eigen::Vector3d> v_rsole_des_log_;
 
+  
+  std::vector<Eigen::Vector3d> fb_lsole_orientation_log_;
+  std::vector<Eigen::Vector3d> fb_rsole_orientation_log_;
+  std::vector<Eigen::Vector3d> des_lsole_orientation_log_;
+  std::vector<Eigen::Vector3d> des_rsole_orientation_log_;
+
   std::vector<Eigen::Vector3d> estimated_force_lsole_log_;
   std::vector<Eigen::Vector3d> estimated_force_rsole_log_;
   

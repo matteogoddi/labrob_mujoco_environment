@@ -38,13 +38,6 @@ if __name__ == '__main__':
 
     ef_zmp_position = np.loadtxt(folder + '/ef_zmp_position.txt')
 
-    # base_estimate = np.loadtxt(folder + '/base_estimate.txt')
-    # orientation_estimate = np.loadtxt(folder + '/orientation_estimate.txt')
-    # left_foot_position_base_estimation = np.loadtxt(folder + '/left_foot_position_base_estimation.txt')
-    # right_foot_position_base_estimation = np.loadtxt(folder + '/right_foot_position_base_estimation.txt')
-    # left_foot_position_with_zero_base = np.loadtxt(folder + '/left_foot_position_with_zero_base.txt')
-    # right_foot_position_with_zero_base = np.loadtxt(folder + '/right_foot_position_with_zero_base.txt')
-
     p_lsole_sim = np.loadtxt(folder + '/p_lsole_sim.txt')
     p_rsole_sim = np.loadtxt(folder + '/p_rsole_sim.txt')
     v_lsole_sim = np.loadtxt(folder + '/v_lsole_sim.txt')
@@ -57,6 +50,11 @@ if __name__ == '__main__':
     p_rsole_des = np.loadtxt(folder + '/p_rsole_des.txt')
     v_lsole_des = np.loadtxt(folder + '/v_lsole_des.txt')
     v_rsole_des = np.loadtxt(folder + '/v_rsole_des.txt')
+
+    fb_lsole_orientation = np.loadtxt(folder + '/fb_lsole_orientation.txt')
+    fb_rsole_orientation = np.loadtxt(folder + '/fb_rsole_orientation.txt')
+    des_lsole_orientation = np.loadtxt(folder + '/des_lsole_orientation.txt')
+    des_rsole_orientation = np.loadtxt(folder + '/des_rsole_orientation.txt')
 
     estimated_force_lsole = np.loadtxt(folder + '/estimated_force_lsole.txt')
     estimated_force_rsole = np.loadtxt(folder + '/estimated_force_rsole.txt')
@@ -99,9 +97,6 @@ if __name__ == '__main__':
     measured_imu_orientation: np.ndarray = np.loadtxt(folder + '/measured_imu_orientation.txt')
     measured_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/measured_imu_angular_velocity.txt')
     measured_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/measured_imu_accelerometer.txt')
-    # estimated_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/estimated_imu_accelerometer.txt')
-    # estimated_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/estimated_imu_angular_velocity.txt')
-    # estimated_imu_orientation: np.ndarray = np.loadtxt(folder + '/estimated_imu_orientation.txt')
 
 
     num_samples = sim_joint_position.shape[0] - 10
@@ -121,6 +116,11 @@ if __name__ == '__main__':
     des_zmp_position = des_zmp_position[:num_samples, :]
     des_com_acceleration = des_com_acceleration[:num_samples, :]
 
+    fb_lsole_orientation = fb_lsole_orientation[:num_samples, :]
+    fb_rsole_orientation = fb_rsole_orientation[:num_samples, :]
+    des_lsole_orientation = des_lsole_orientation[:num_samples, :]
+    des_rsole_orientation = des_rsole_orientation[:num_samples, :]
+
     ef_zmp_position = ef_zmp_position[:num_samples, :]
 
     p_lsole_sim = p_lsole_sim[:num_samples, :]
@@ -135,6 +135,8 @@ if __name__ == '__main__':
     p_rsole_des = p_rsole_des[:num_samples, :]
     v_lsole_des = v_lsole_des[:num_samples, :]
     v_rsole_des = v_rsole_des[:num_samples, :]
+
+
 
     estimated_force_lsole = estimated_force_lsole[:num_samples, :]
     estimated_force_rsole = estimated_force_rsole[:num_samples, :]
@@ -261,7 +263,6 @@ if __name__ == '__main__':
 
         # Save GIF
         # imageio.mimsave('images/mpc/mpc_com_prediction.gif', frames, duration=0.2)
-        # imageio.mimsave('images/mpc/mpc_com_prediction.mp4', frames, fps=10)
 
         with imageio.get_writer('images/mpc/mpc_pred_com_pos.mp4', fps=5) as writer:
             for frame in frames:
@@ -856,23 +857,6 @@ if __name__ == '__main__':
     fig.savefig("images/com/kf_vs_des_zmp_plot.png")
     plt.close(fig)
 
-    #plot com sim and fb
-    fig, ax = plt.subplots()
-    ax.plot(t, fb_com_position[:, 0], label='FB COM X', color='blue')
-    ax.plot(t, fb_com_position[:, 1], label='FB COM Y', color='orange')
-    ax.plot(t, fb_com_position[:, 2], label='FB COM Z', color='green')
-    ax.plot(t, des_com_position[:, 0], label='Des COM X', color='blue', linestyle=':')
-    ax.plot(t, des_com_position[:, 1], label='Des COM Y', color='orange', linestyle=':')
-    ax.plot(t, des_com_position[:, 2], label='Des COM Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('COM Position [m]')
-    ax.set_title('COM Position Simulation vs Feedback vs Desired')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_vs_des_com_plot.png")
-    plt.close(fig)
-
     #plot filtered com sim and fb
     fig, ax = plt.subplots()
     ax.plot(t, kf_com_position[:, 0], label='Kf COM X', color='blue')
@@ -975,6 +959,39 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/soles/lsole_vs_rsole_z_position_plot.png")
+    plt.close(fig)
+
+    #plot des, sim and fb rsole position
+    fig, ax = plt.subplots()
+    ax.plot(t, fb_lsole_orientation[:, 0], label='FB Right Sole X', color='orange')
+    ax.plot(t, des_lsole_orientation[:, 0], label='Des Right Sole X', color='orange', linestyle=':')
+    ax.plot(t, fb_lsole_orientation[:, 1], label='FB Right Sole Y', color='blue')
+    ax.plot(t, des_lsole_orientation[:, 1], label='Des Right Sole Y', color='blue', linestyle=':')
+    ax.plot(t, fb_lsole_orientation[:, 2], label='FB Right Sole Z', color='green')
+    ax.plot(t, des_lsole_orientation[:, 2], label='Des Right Sole Z', color='green', linestyle=':')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Sole Position [m]')
+    ax.set_title('Left and Right Sole Position Simulation vs Feedback')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/soles/lsole_orientation_plot.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, fb_rsole_orientation[:, 0], label='FB Right Sole X', color='green')
+    ax.plot(t, des_rsole_orientation[:, 0], label='Des Right Sole X', color='green', linestyle=':')
+    ax.plot(t, fb_rsole_orientation[:, 1], label='FB Right Sole Y', color='blue')
+    ax.plot(t, des_rsole_orientation[:, 1], label='Des Right Sole Y', color='blue', linestyle=':')
+    ax.plot(t, fb_rsole_orientation[:, 2], label='FB Right Sole Z', color='red')
+    ax.plot(t, des_rsole_orientation[:, 2], label='Des Right Sole Z', color='red', linestyle=':')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Right Sole Position [m]')
+    ax.set_title('Left and Right Sole Position Simulation vs Feedback')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/soles/rsole_orientation_plot.png")
     plt.close(fig)
 
     #plot des, sim and fb lsole velocity
@@ -1172,7 +1189,7 @@ if __name__ == '__main__':
     for i in range(num_joints):
         color = colormap(i % 10)
         linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_velocity[:, i] - sim_joint_velocity[:, i]
+        error = ekf_joint_velocity[:, i]
         ax.plot(t, error,
                 label=joint_names[i].strip(),
                 color=color,
@@ -1230,92 +1247,6 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/ekf/joint_velocities_error_vs_feedback_plot.png")
     plt.close(fig)
-
-    # # plot imu orientation estimated
-    # fig, ax = plt.subplots()
-    # ax.plot(t, estimated_imu_orientation[:, 0], label='estimated IMU Orientation W', color='blue')
-    # ax.plot(t, estimated_imu_orientation[:, 1], label='estimated IMU Orientation X', color='orange')
-    # ax.plot(t, estimated_imu_orientation[:, 2], label='estimated IMU Orientation Y', color='green')
-    # ax.plot(t, estimated_imu_orientation[:, 3], label='estimated IMU Orientation Z', color='red')
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('estimated IMU Orientation [Quaternion]')
-    # ax.set_title('estimated IMU Orientation')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig("images/ekf/estimated_imu_orientation_plot.png")
-    # plt.close(fig)
-
-    # # plot imu accelerometer estimated
-    # # fig, ax = plt.subplots()
-    # # ax.plot(t, estimated_imu_accelerometer[:, 0], label='estimated IMU Accelerometer X', color='blue')
-    # # ax.plot(t, estimated_imu_accelerometer[:, 1], label='estimated IMU Accelerometer Y', color='orange')
-    # # ax.plot(t, estimated_imu_accelerometer[:, 2], label='estimated IMU Accelerometer Z', color='green')
-    # # ax.set_xlabel('Time [s]')
-    # # ax.set_ylabel('estimated IMU Accelerometer [m/s^2]')
-    # # ax.set_title('estimated IMU Accelerometer')
-    # # ax.grid(True)
-    # # ax.legend()
-    # # fig.tight_layout()
-    # # fig.savefig("images/ekf/estimated_imu_accelerometer_plot.png")
-    # # plt.close(fig)
-
-    # # plot imu angular velocity estimated
-    # fig, ax = plt.subplots()
-    # ax.plot(t, estimated_imu_angular_velocity[:, 0], label='estimated IMU Angular Velocity X', color='blue')
-    # ax.plot(t, estimated_imu_angular_velocity[:, 1], label='estimated IMU Angular Velocity Y', color='orange')
-    # ax.plot(t, estimated_imu_angular_velocity[:, 2], label='estimated IMU Angular Velocity Z', color='green')
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('estimated IMU Angular Velocity [rad/s]')
-    # ax.set_title('estimated IMU Angular Velocity')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig("images/ekf/estimated_imu_angular_velocity_plot.png")
-    # plt.close(fig)
-
-    # plot error between real and estimated imu accelerometer
-    # fig, ax = plt.subplots()
-    # ax.plot(t, measured_imu_accelerometer[:, 0] - estimated_imu_accelerometer[:, 0], label='IMU Accelerometer X Error', color='blue')
-    # ax.plot(t, measured_imu_accelerometer[:, 1] - estimated_imu_accelerometer[:, 1], label='IMU Accelerometer Y Error', color='orange')
-    # ax.plot(t, measured_imu_accelerometer[:, 2] - estimated_imu_accelerometer[:, 2], label='IMU Accelerometer Z Error', color='green')
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('IMU Accelerometer Error [m/s^2]')
-    # ax.set_title('IMU Accelerometer Error: Real - estimated')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig("images/ekf/imu_accelerometer_error_plot.png")
-    # plt.close(fig)
-
-    # plot error between real and estimated imu angular velocity
-    # fig, ax = plt.subplots()
-    # ax.plot(t, measured_imu_angular_velocity[:, 0] - estimated_imu_angular_velocity[:, 0], label='IMU Angular Velocity X Error', color='blue')
-    # ax.plot(t, measured_imu_angular_velocity[:, 1] - estimated_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y Error', color='orange')
-    # ax.plot(t, measured_imu_angular_velocity[:, 2] - estimated_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z Error', color='green')
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('IMU Angular Velocity Error [rad/s]')
-    # ax.set_title('IMU Angular Velocity Error: Real - estimated')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig("images/ekf/imu_angular_velocity_error_plot.png")
-    # plt.close(fig)
-
-    # # plot error between real and estimated imu orientation
-    # fig, ax = plt.subplots()
-    # ax.plot(t, measured_imu_orientation[:, 0] - estimated_imu_orientation[:, 0], label='IMU Orientation W Error', color='blue')
-    # ax.plot(t, measured_imu_orientation[:, 1] - estimated_imu_orientation[:, 1], label='IMU Orientation X Error', color='orange')
-    # ax.plot(t, measured_imu_orientation[:, 2] - estimated_imu_orientation[:, 2], label='IMU Orientation Y Error', color='green')
-    # ax.plot(t, measured_imu_orientation[:, 3] - estimated_imu_orientation[:, 3], label='IMU Orientation Z Error', color='red')
-    # ax.set_xlabel('Time [s]')
-    # ax.set_ylabel('IMU Orientation Error [Quaternion]')
-    # ax.set_title('IMU Orientation Error: Real - estimated')
-    # ax.grid(True)
-    # ax.legend()
-    # fig.tight_layout()
-    # fig.savefig("images/ekf/imu_orientation_error_plot.png")
-    # plt.close(fig)
 
     ##########################
     #  FEEDBACK PLOTS

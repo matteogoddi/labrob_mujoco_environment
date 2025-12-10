@@ -870,7 +870,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 105.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "

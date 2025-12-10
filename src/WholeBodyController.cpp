@@ -37,12 +37,12 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 0;
+  params.beta = 150;
   params.gamma = 30;
   params.mu = 0.5;
 
-  params.foot_length = 0.20;
-  params.foot_width = 0.07; 
+  params.foot_length = 0.18;
+  params.foot_width = 0.06; 
 
   return params;
 }
@@ -137,6 +137,8 @@ WholeBodyController::compute_inverse_dynamics(
       pinocchio::SE3(desired.lsole.pos.R, desired.lsole.pos.p),
       pinocchio::SE3(current.lsole.pos.R, current.lsole.pos.p)
   );
+
+  // std::cout << err_lsole.transpose() << std::endl;
   auto err_lsole_vel = desired.lsole.vel - current.lsole.vel;
 
   auto err_rsole = err_frameplacement(
@@ -163,10 +165,10 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
-  Eigen::VectorXd a_jnt_total = desired_qddot + 30 * err_posture + params_.Kd_regulation * err_posture_vel;
-  Eigen::VectorXd a_com_total = desired.com.acc + 60 * err_com + 10 * err_com_vel;
-  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 180 * err_lsole + 30 * err_lsole_vel;
-  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 180 * err_rsole + 30 * err_rsole_vel;
+  Eigen::VectorXd a_jnt_total = desired_qddot + 40 * err_posture + params_.Kd_regulation * err_posture_vel;
+  Eigen::VectorXd a_com_total = desired.com.acc + 100 * err_com + 25 * err_com_vel;
+  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 50 * err_lsole + 10 * err_lsole_vel;
+  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 50 * err_rsole + 10 * err_rsole_vel;
   Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 30 * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;
 
   // Build cost function
