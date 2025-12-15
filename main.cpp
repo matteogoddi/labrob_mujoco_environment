@@ -31,6 +31,7 @@
 
 //VISC1
 #include <hrp4_locomotion/MomentumObserver.hpp>
+#include <hrp4_locomotion/HumanoidContactForcesEstimator.hpp>
 
 
 #include <unitree/robot/channel/channel_publisher.hpp>
@@ -746,11 +747,14 @@ int main(const int argc, const char* argv[]) {
   file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
   file.close();
 
-
+  auto lsole_idx = walking_manager.robot_model.getFrameId("left_foot_link");
+  auto rsole_idx = walking_manager.robot_model.getFrameId("right_foot_link");
   Eigen::VectorXd Ko_gains(walking_manager.robot_model.nv);
   Ko_gains.setConstant(50);
   MomentumObserver sim_observer(Ko_gains, walking_manager.robot_model, walking_manager.sim_robot_data, 0.001, 0.1/0.001,  1.0e-4);
   MomentumObserver real_observer(Ko_gains, walking_manager.robot_model, walking_manager.fb_robot_data, 0.001, 0.1/0.001,  1.0e-4);
+  HumanoidContactForcesEstimator sim_contact_forces_estimator(sim_observer, walking_manager.robot_model, walking_manager.sim_robot_data, lsole_idx, rsole_idx);
+  HumanoidContactForcesEstimator real_contact_forces_estimator(real_observer, walking_manager.robot_model, walking_manager.fb_robot_data, lsole_idx, rsole_idx);
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -904,7 +908,7 @@ int main(const int argc, const char* argv[]) {
         tau_tot.tail(mj_model_ptr->nu) = tau;
         auto sim_q = robot_state_to_pinocchio_joint_configuration(walking_manager.robot_model, robot_state);
         auto sim_qdot = robot_state_to_pinocchio_joint_velocity(walking_manager.robot_model, robot_state);
-        auto r_sim = sim_observer.update(sim_q, sim_qdot, tau_tot);
+        auto r_sim = sim_contact_forces_estimator.update(sim_q, sim_qdot, tau_tot);
         labrob::append_vector_to_csv("residuo_simulazione.csv", r_sim, mj_data_ptr->time);
 
         //Real Robot Data
@@ -920,53 +924,32 @@ int main(const int argc, const char* argv[]) {
 
         //real_q.head(7) << 0, 0, 0, 0, 0 ,0 ,1;
         //real_qdot.head(6) << 0, 0, 0, 0, 0, 0;
-        auto r_real = real_observer.update(real_q, real_qdot, tau_tot);
+        auto r_real = real_contact_forces_estimator.update(real_q, real_qdot, tau_tot);
         labrob::append_vector_to_csv("residuo_reale.csv", r_real, mj_data_ptr->time);
 
         
         std::shared_ptr<labrob::WholeBodyController> whole_body_controller_ptr = walking_manager.getWholeBodyControllerPointer();
-        auto sim_Jlsole = whole_body_controller_ptr->getLeftFootUnderactuatedJacobian();
-        auto sim_Jrsole = whole_body_controller_ptr->getRightFootUnderactuatedJacobian();
-        Eigen::MatrixXd sim_J_stack(sim_Jlsole.rows() + sim_Jrsole.rows(), sim_Jlsole.cols());
-        sim_J_stack.topRows(sim_Jlsole.rows()) = sim_Jlsole;
-        sim_J_stack.bottomRows(sim_Jrsole.rows()) = sim_Jrsole;
+        
 
         //Eigen::JacobiSVD<Eigen::MatrixXd> svd(sim_J_stack);
         //double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
         //std::cout << "Condition Number of sim_J_stack: " << cond << std::endl;
 
-        Eigen::VectorXd sim_reconstructed_wrench = Eigen::VectorXd::Zero(12);
         Eigen::VectorXd sim_wl = Eigen::VectorXd::Zero(6);
         Eigen::VectorXd sim_wr = Eigen::VectorXd::Zero(6);
-        sim_reconstructed_wrench = sim_observer.reconstructForceWrench(sim_J_stack);
-
-        sim_wl = sim_reconstructed_wrench.head(6);
-        sim_wr = sim_reconstructed_wrench.tail(6);
+        sim_wl = sim_contact_forces_estimator.getLeftFootWrench();
+        sim_wr = sim_contact_forces_estimator.getRightFootWrench();
 
         labrob::append_vector_to_csv("sim_left_wrench.csv", sim_wl, mj_data_ptr->time);
         labrob::append_vector_to_csv("sim_right_wrench.csv", sim_wr, mj_data_ptr->time);
         //TIME PRINT
         //std::cout << "time: " << mj_data_ptr->time << std::endl;
         
-        auto lsole_idx = walking_manager.robot_model.getFrameId("left_foot_link");
-        auto rsole_idx = walking_manager.robot_model.getFrameId("right_foot_link");
-        Eigen::MatrixXd real_Jlsole = Eigen::MatrixXd::Zero(6, walking_manager.robot_model.nv);
-        Eigen::MatrixXd real_Jrsole = Eigen::MatrixXd::Zero(6, walking_manager.robot_model.nv);
-        pinocchio::framesForwardKinematics(walking_manager.robot_model, walking_manager.fb_robot_data, real_q);
-        pinocchio::updateFramePlacements(walking_manager.robot_model, walking_manager.fb_robot_data);
-        pinocchio::getFrameJacobian(walking_manager.robot_model, walking_manager.fb_robot_data, rsole_idx, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, real_Jrsole);
-        pinocchio::getFrameJacobian(walking_manager.robot_model, walking_manager.fb_robot_data, lsole_idx, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, real_Jlsole);
-        Eigen::MatrixXd real_J_stack(real_Jlsole.rows() + real_Jrsole.rows(), real_Jlsole.cols());
-        real_J_stack.topRows(real_Jlsole.rows()) = real_Jlsole;
-        real_J_stack.bottomRows(real_Jrsole.rows()) = real_Jrsole;
-
-        Eigen::VectorXd real_reconstructed_wrench = Eigen::VectorXd::Zero(12);
+        
         Eigen::VectorXd real_wl = Eigen::VectorXd::Zero(6);
         Eigen::VectorXd real_wr = Eigen::VectorXd::Zero(6);
-        real_reconstructed_wrench = real_observer.reconstructForceWrench(real_J_stack);
-
-        real_wl = real_reconstructed_wrench.head(6);
-        real_wr = real_reconstructed_wrench.tail(6);
+        real_wl = real_contact_forces_estimator.getLeftFootWrench();
+        real_wr = real_contact_forces_estimator.getRightFootWrench();
         labrob::append_vector_to_csv("real_left_wrench.csv", real_wl, mj_data_ptr->time);
         labrob::append_vector_to_csv("real_right_wrench.csv", real_wr, mj_data_ptr->time);
         

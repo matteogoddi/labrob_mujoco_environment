@@ -37,12 +37,12 @@ def plot_subplot(ax, dataframe, title, ylabel, y_cols_prefix, legend_prefix):
     ax.grid(True, linestyle='--', alpha=0.6)
     ax.legend(loc='upper right', fontsize='18', framealpha=1.0)
     # Imposta i limiti dell'asse x come nell'immagine di esempio
-    ax.set_xlim(9, 22)
+    ax.set_xlim(0, 5)
     ax.set_ylim(-100, 300)
 
 # --- 2. CARICAMENTO DATI ---
 # Assumiamo di avere file CSV separati per ogni set di dati
-# Sostituisci i nomi dei file con i tuoi se diversi
+# Sostituisci i nom<|fim_middle|>AccessException: file not found
 try:
     left_sim_obs = pd.read_csv("sim_left_wrench.csv")
     left_real_obs = pd.read_csv("real_left_wrench.csv")

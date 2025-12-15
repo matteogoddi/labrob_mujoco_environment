@@ -44,6 +44,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WholeBodyController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/MomentumObserver.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/HumanoidContactForcesEstimator.cpp
 )
 
 target_include_directories(WalkingControllerLibrary
