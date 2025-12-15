@@ -29,6 +29,9 @@
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/gamepad.hpp>
 
+//VISC1
+#include <hrp4_locomotion/MomentumObserver.hpp>
+
 
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
@@ -38,6 +41,8 @@
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
 #include <hrp4_locomotion/globals.h>
+
+template <typename T> struct TD;
 
 bool isTotalBodyLoopClosed = false;
 bool isCoMLoopClosed = false;
@@ -663,6 +668,89 @@ int main(const int argc, const char* argv[]) {
 
   auto next_tick = std::chrono::steady_clock::now();
 
+  //FILE INITIALIZATION - VISC1
+  //for (int i = 0; i < 8; ++i) {
+  //  std::ofstream file;
+  //  std::string filename = "contact_point_" + std::to_string(i) + ".csv";
+  //  file.open(filename, std::ios::out);
+  //  file << "Time, p_1, p_2, p_3" << std::endl;
+  //  file.close();
+  //}
+
+  //for (int i = 0; i < 8; ++i) {
+  //  std::ofstream file;
+  //  std::string filename = "contact_force_" + std::to_string(i) + ".csv";
+  //  file.open(filename, std::ios::out);
+  //  file << "Time, f_1, f_2, f_3" << std::endl;
+  //  file.close();
+  //}
+  
+  std::ofstream file;
+  file.open("residuo_reale.csv", std::ios::out);
+  file << "Time" << ", ";
+    for (int i = 1; i <= walking_manager.robot_model.nv; i++) {
+        file << "r_" << i;
+        if (i != walking_manager.robot_model.nv)
+          file << ", ";
+    }
+  file << std::endl;
+  file.close();
+
+  file.open("residuo_simulazione.csv", std::ios::out);
+  file << "Time" << ", ";
+    for (int i = 1; i <= walking_manager.robot_model.nv; i++) {
+        file << "r_" << i;
+        if (i != walking_manager.robot_model.nv)
+          file << ", ";
+    }
+  file << std::endl;
+  file.close();
+
+  file.open("ZMP.csv", std::ios::out);
+  file << "Time, p_1, p_2, p_3" << std::endl;
+  file.close();
+  
+  file.open("COM.csv", std::ios::out);
+  file << "Time, p_1, p_2, p_3" << std::endl;
+  file.close();
+
+  file.open("sim_left_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("sim_right_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("real_left_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("real_right_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("mujoco_left_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("mujoco_right_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("error_left_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+  file.open("error_right_wrench.csv", std::ios::out);
+  file << "Time, f_1, f_2, f_3, f_4, f_5, f_6" << std::endl;
+  file.close();
+
+
+  Eigen::VectorXd Ko_gains(walking_manager.robot_model.nv);
+  Ko_gains.setConstant(50);
+  MomentumObserver sim_observer(Ko_gains, walking_manager.robot_model, walking_manager.sim_robot_data, 0.001, 0.1/0.001,  1.0e-4);
+  MomentumObserver real_observer(Ko_gains, walking_manager.robot_model, walking_manager.fb_robot_data, 0.001, 0.1/0.001,  1.0e-4);
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -671,7 +759,7 @@ int main(const int argc, const char* argv[]) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(6 + mj_model_ptr->nu + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -726,21 +814,22 @@ int main(const int argc, const char* argv[]) {
         std::lock_guard<std::mutex> lock(stateMutex);
 
         // save in actual_output: 1) imu orientation in quaternions, 2) joint positions, 3) imu angular velocity 4) joint velocities 5) imu accelerometer
-        actual_output.head<3>() = labrob::rotVecFromQuaternion(Eigen::Quaterniond(
-          imu_state_data.quaternion[0],
-          imu_state_data.quaternion[1],
-          imu_state_data.quaternion[2],
-          imu_state_data.quaternion[3]
+        actual_output.head(3) << state_data.position[0], state_data.position[1], state_data.position[2];
+        actual_output.segment(3,3) = labrob::rotVecFromQuaternion(Eigen::Quaterniond(
+          state_data.imu_state.quaternion[0],
+          state_data.imu_state.quaternion[1],
+          state_data.imu_state.quaternion[2],
+          state_data.imu_state.quaternion[3]
         ));
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          actual_output[3 + i] = motor_state_data.q[i];
-          actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
+          actual_output[6 + i] = motor_state_data.q[i];  //STATO REALE DEL ROBOT - VISC1
+          //actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
         }
-        actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
-        actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
-        actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
+        //actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
+        //actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
+        //actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
         // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
@@ -798,24 +887,158 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (false){
+      if (true){ //MUJOCO LOOP
         auto start_integration = std::chrono::steady_clock::now();
 
 
         mj_step1(mj_model_ptr, mj_data_ptr);
-  
+
+        Eigen::VectorXd tau_tot = Eigen::VectorXd::Zero(6 + mj_model_ptr->nu);
+        Eigen::VectorXd tau = Eigen::VectorXd::Zero(mj_model_ptr->nu);
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
           mj_data_ptr->ctrl[i] = joint_command[joint_name];
+          tau[i] = joint_command[joint_name];
         }
-  
+        tau_tot.tail(mj_model_ptr->nu) = tau;
+        auto sim_q = robot_state_to_pinocchio_joint_configuration(walking_manager.robot_model, robot_state);
+        auto sim_qdot = robot_state_to_pinocchio_joint_velocity(walking_manager.robot_model, robot_state);
+        auto r_sim = sim_observer.update(sim_q, sim_qdot, tau_tot);
+        labrob::append_vector_to_csv("residuo_simulazione.csv", r_sim, mj_data_ptr->time);
+
+        //Real Robot Data
+        Eigen::VectorXd real_q = Eigen::VectorXd::Zero(mj_model_ptr->nq);
+        Eigen::VectorXd real_qdot = Eigen::VectorXd::Zero(mj_model_ptr->nv);
+        for (int i = 0; i < mj_model_ptr->nu; ++i){
+            real_q[7+i] = motor_state_data.q[i];
+            real_qdot[6+i] = motor_state_data.dq[i];
+
+        }
+        real_q.head(7) << walking_manager.fb_robot_state.position.head(3), 0, 0, 0, 1; // walking_manager.fb_robot_state.position.tail(4);
+        real_qdot.head(6) << walking_manager.fb_robot_state.linear_velocity, walking_manager.fb_robot_state.angular_velocity;
+
+        //real_q.head(7) << 0, 0, 0, 0, 0 ,0 ,1;
+        //real_qdot.head(6) << 0, 0, 0, 0, 0, 0;
+        auto r_real = real_observer.update(real_q, real_qdot, tau_tot);
+        labrob::append_vector_to_csv("residuo_reale.csv", r_real, mj_data_ptr->time);
+
+        
+        std::shared_ptr<labrob::WholeBodyController> whole_body_controller_ptr = walking_manager.getWholeBodyControllerPointer();
+        auto sim_Jlsole = whole_body_controller_ptr->getLeftFootUnderactuatedJacobian();
+        auto sim_Jrsole = whole_body_controller_ptr->getRightFootUnderactuatedJacobian();
+        Eigen::MatrixXd sim_J_stack(sim_Jlsole.rows() + sim_Jrsole.rows(), sim_Jlsole.cols());
+        sim_J_stack.topRows(sim_Jlsole.rows()) = sim_Jlsole;
+        sim_J_stack.bottomRows(sim_Jrsole.rows()) = sim_Jrsole;
+
+        //Eigen::JacobiSVD<Eigen::MatrixXd> svd(sim_J_stack);
+        //double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
+        //std::cout << "Condition Number of sim_J_stack: " << cond << std::endl;
+
+        Eigen::VectorXd sim_reconstructed_wrench = Eigen::VectorXd::Zero(12);
+        Eigen::VectorXd sim_wl = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd sim_wr = Eigen::VectorXd::Zero(6);
+        sim_reconstructed_wrench = sim_observer.reconstructForceWrench(sim_J_stack);
+
+        sim_wl = sim_reconstructed_wrench.head(6);
+        sim_wr = sim_reconstructed_wrench.tail(6);
+
+        labrob::append_vector_to_csv("sim_left_wrench.csv", sim_wl, mj_data_ptr->time);
+        labrob::append_vector_to_csv("sim_right_wrench.csv", sim_wr, mj_data_ptr->time);
+        //TIME PRINT
+        //std::cout << "time: " << mj_data_ptr->time << std::endl;
+        
+        auto lsole_idx = walking_manager.robot_model.getFrameId("left_foot_link");
+        auto rsole_idx = walking_manager.robot_model.getFrameId("right_foot_link");
+        Eigen::MatrixXd real_Jlsole = Eigen::MatrixXd::Zero(6, walking_manager.robot_model.nv);
+        Eigen::MatrixXd real_Jrsole = Eigen::MatrixXd::Zero(6, walking_manager.robot_model.nv);
+        pinocchio::framesForwardKinematics(walking_manager.robot_model, walking_manager.fb_robot_data, real_q);
+        pinocchio::updateFramePlacements(walking_manager.robot_model, walking_manager.fb_robot_data);
+        pinocchio::getFrameJacobian(walking_manager.robot_model, walking_manager.fb_robot_data, rsole_idx, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, real_Jrsole);
+        pinocchio::getFrameJacobian(walking_manager.robot_model, walking_manager.fb_robot_data, lsole_idx, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, real_Jlsole);
+        Eigen::MatrixXd real_J_stack(real_Jlsole.rows() + real_Jrsole.rows(), real_Jlsole.cols());
+        real_J_stack.topRows(real_Jlsole.rows()) = real_Jlsole;
+        real_J_stack.bottomRows(real_Jrsole.rows()) = real_Jrsole;
+
+        Eigen::VectorXd real_reconstructed_wrench = Eigen::VectorXd::Zero(12);
+        Eigen::VectorXd real_wl = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd real_wr = Eigen::VectorXd::Zero(6);
+        real_reconstructed_wrench = real_observer.reconstructForceWrench(real_J_stack);
+
+        real_wl = real_reconstructed_wrench.head(6);
+        real_wr = real_reconstructed_wrench.tail(6);
+        labrob::append_vector_to_csv("real_left_wrench.csv", real_wl, mj_data_ptr->time);
+        labrob::append_vector_to_csv("real_right_wrench.csv", real_wr, mj_data_ptr->time);
+        
+        //ZMP
+
+        auto left_foot_force = real_wl.head(3);
+        auto right_foot_force = real_wr.head(3);
+        auto total_force =  left_foot_force + right_foot_force;
+        double mass = pinocchio::computeTotalMass(walking_manager.robot_model);
+        double eta2 = walking_manager.eta2;
+        Eigen::VectorXd zmp_3d_fb = Eigen::VectorXd::Zero(3);
+        zmp_3d_fb.z() = walking_manager.fb_robot_state.position(2) - total_force.z() / (mass * eta2);
+        zmp_3d_fb.x() = 0.0;
+        zmp_3d_fb.y() = 0.0;
+        auto T_lsole_fb = walking_manager.fb_robot_data.oMf[lsole_idx];
+        auto T_rsole_fb = walking_manager.fb_robot_data.oMf[rsole_idx];
+
+        
+        
+        if (total_force.z() > 1e-5) {
+            if (left_foot_force.z() > 1e-5) {
+                zmp_3d_fb.x() += (T_lsole_fb.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_lsole_fb.translation().z()) * left_foot_force.x() / total_force.z());
+                zmp_3d_fb.y() += (T_lsole_fb.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_lsole_fb.translation().z()) * left_foot_force.y() / total_force.z());
+            }
+            if (right_foot_force.z() > 1e-5) {
+                zmp_3d_fb.x() += (T_rsole_fb.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_rsole_fb.translation().z()) * right_foot_force.x() / total_force.z());
+                zmp_3d_fb.y() += (T_rsole_fb.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d_fb.z() - T_rsole_fb.translation().z()) * right_foot_force.y() / total_force.z());
+            }
+        }
+
+        labrob::append_vector_to_csv("ZMP.csv", zmp_3d_fb, mj_data_ptr->time);
+        labrob::append_vector_to_csv("COM.csv", walking_manager.fb_robot_data.com[0], mj_data_ptr->time);
+
+        //GETTING MUJOCO CONTACT POINTS AND FORCES - VISC1
+        //std::cout << "Num contact: " << robot_state.contact_points.size() << std::endl;
+        pinocchio::framesForwardKinematics(walking_manager.robot_model, walking_manager.sim_robot_data, sim_q);
+        pinocchio::updateFramePlacements(walking_manager.robot_model, walking_manager.sim_robot_data);
+        auto pl = walking_manager.sim_robot_data.oMf[lsole_idx].translation();
+        auto pr = walking_manager.sim_robot_data.oMf[rsole_idx].translation();
+
+        Eigen::VectorXd mj_wl = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd mj_wr = Eigen::VectorXd::Zero(6);
+        for (int i = 0; i < robot_state.contact_points.size(); ++i) {
+            auto &pi = robot_state.contact_points[i];
+            auto &fi = robot_state.contact_forces[i];
+
+            auto d_l = pi - pl;
+            auto d_r = pi - pr;
+            if(d_l.norm() < d_r.norm()){ //forza applicata al piede sinistro
+                mj_wl.head(3) += fi;
+                mj_wl.tail(3) += d_l.cross(fi);
+            }else{ //forza applicata al piede destro
+                mj_wr.head(3) += fi;
+                mj_wr.tail(3) += d_r.cross(fi);
+            }
+        }
+
+        //Eigen::MatrixXd T_l = Eigen::MatrixXd::Zero(6, 12); 
+        //Eigen::MatrixXd T_r = Eigen::MatrixXd::Zero(6, 12);
+        //T_l = whole_body_controller_ptr->getLeftFootForceToWrenchTransformation();
+        //T_r = whole_body_controller_ptr->getRightFootForceToWrenchTransformation();
+        labrob::append_vector_to_csv("mujoco_left_wrench.csv", mj_wl, mj_data_ptr->time);
+        labrob::append_vector_to_csv("mujoco_right_wrench.csv", mj_wr, mj_data_ptr->time);
+        labrob::append_vector_to_csv("error_left_wrench.csv", mj_wl - sim_wl, mj_data_ptr->time);
+        labrob::append_vector_to_csv("error_right_wrench.csv", mj_wr - sim_wr, mj_data_ptr->time);
+
         mj_step2(mj_model_ptr, mj_data_ptr);
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
-        if(integration_duration > std::chrono::milliseconds(1))
-          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
+        //if(integration_duration > std::chrono::milliseconds(1))
+        //  std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
       }else{

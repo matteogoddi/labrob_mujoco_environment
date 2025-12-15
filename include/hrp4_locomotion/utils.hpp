@@ -117,6 +117,12 @@ void saveFootstepPlan(
     const std::string& file_path
 );
 
+void append_vector_to_csv(
+    const std::string& filename,
+    const Eigen::VectorXd& vec,
+    double current_time
+);
+
 } // end namespace labrob
 
 #endif // LABROB_UTILS_HPP_

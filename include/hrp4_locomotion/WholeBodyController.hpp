@@ -79,6 +79,8 @@ class WholeBodyController {
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
   const Eigen::MatrixXd& getLeftFootUnderactuatedJacobian() const;
   const Eigen::MatrixXd& getRightFootUnderactuatedJacobian() const;
+  const Eigen::MatrixXd& getLeftFootForceToWrenchTransformation() const;
+  const Eigen::MatrixXd& getRightFootForceToWrenchTransformation() const;
 
  private:
   pinocchio::Model robot_model_;
@@ -120,6 +122,9 @@ class WholeBodyController {
   Eigen::VectorXd right_foot_wrench_;
   Eigen::MatrixXd Jlu_;
   Eigen::MatrixXd Jru_;
+
+  Eigen::MatrixXd T_l;
+  Eigen::MatrixXd T_r;
 
 };
 

@@ -84,6 +84,9 @@ WholeBodyController::WholeBodyController(
   n_wbc_equalities_ = 6 + 2 * 6 + 3 * n_contacts_;
   n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
 
+  T_l = Eigen::MatrixXd::Zero(6, 3 * n_contacts_);
+  T_r = Eigen::MatrixXd::Zero(6, 3 * n_contacts_);
+
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 0;
        joint_id < (pinocchio::JointIndex) n_joints_;
@@ -247,8 +250,7 @@ WholeBodyController::compute_inverse_dynamics(
     pcis_r[i] = desired.rsole.pos.R * pcis[i];
   }
 
-  Eigen::MatrixXd T_l(6, 3 * n_contacts_);
-  Eigen::MatrixXd T_r(6, 3 * n_contacts_);
+
   Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
   T_l << I3, I3, I3, I3,
          pinocchio::skew(pcis_l[0]), pinocchio::skew(pcis_l[1]), pinocchio::skew(pcis_l[2]), pinocchio::skew(pcis_l[3]);
@@ -351,8 +353,11 @@ Eigen::VectorXd WholeBodyController::get_q_ddot() const {
 }
 
 
-const Eigen::MatrixXd& WholeBodyController::getLeftFootUnderactuatedJacobian() const { return Jlu_; }
-const Eigen::MatrixXd& WholeBodyController::getRightFootUnderactuatedJacobian() const { return Jru_; }
+const Eigen::MatrixXd& WholeBodyController::getLeftFootUnderactuatedJacobian() const { return J_lsole_; }
+const Eigen::MatrixXd& WholeBodyController::getRightFootUnderactuatedJacobian() const { return J_rsole_; }
+
+const Eigen::MatrixXd& WholeBodyController::getLeftFootForceToWrenchTransformation() const { return T_l; }
+const Eigen::MatrixXd& WholeBodyController::getRightFootForceToWrenchTransformation() const { return T_r; }
 
 Eigen::VectorXd WholeBodyController::get_flr() const {
   return flr;

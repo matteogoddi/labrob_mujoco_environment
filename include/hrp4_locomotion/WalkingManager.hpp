@@ -49,10 +49,14 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
 
- protected:
   pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
   pinocchio::Data fb_robot_data;
+  RobotState fb_robot_state;
+  double eta2;
+  std::shared_ptr<WholeBodyController> getWholeBodyControllerPointer();
+
+ protected:
   pinocchio::Data predicted_robot_data;
   pinocchio::Data estimated_robot_data;
 
@@ -104,7 +108,7 @@ class WalkingManager {
   Eigen::Vector3d fixed_com_vel;
   Eigen::Vector3d fixed_zmp_pos;
 
-  RobotState fb_robot_state;
+ 
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
   

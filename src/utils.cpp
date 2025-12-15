@@ -526,4 +526,23 @@ void saveFootstepPlan(
   }
 }
 
+void append_vector_to_csv(
+    const std::string& filename, 
+    const Eigen::VectorXd& vec,
+    double current_time
+  ) {
+    const static Eigen::IOFormat CsvFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n");
+
+    std::ofstream file;
+    file.open(filename, std::ios::app);
+
+    if (!file.is_open()) {
+        std::cerr << "ERRORE: Impossibile aprire il file " << filename << std::endl;
+        return;
+    }
+
+    file << current_time << ", ";
+    file << vec.transpose().format(CsvFormat) << std::endl;
+}
+
 } // end namespace labrob
