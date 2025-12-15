@@ -16,11 +16,12 @@ class HumanoidContactForcesEstimator{
         Eigen::VectorXd getLeftFootWrench();
         Eigen::VectorXd getRightFootWrench();
         
-        MomentumObserver momentum_observer;
+        
 
     protected:
 
     private:
+        MomentumObserver momentum_observer;
         pinocchio::Model robot_model;
         pinocchio::Data robot_data;
         int left_foot_frame_id;
