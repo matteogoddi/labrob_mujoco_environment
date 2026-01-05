@@ -58,6 +58,7 @@ if __name__ == '__main__':
 
     estimated_force_lsole = np.loadtxt(folder + '/estimated_force_lsole.txt')
     estimated_force_rsole = np.loadtxt(folder + '/estimated_force_rsole.txt')
+    # wbc_accelerations = np.loadtxt(folder + '/wbc_accelerations.txt')
 
     ekf_base_position = np.loadtxt(folder + '/ekf_base_position.txt')
     ekf_base_velocity = np.loadtxt(folder + '/ekf_base_velocity.txt')
@@ -140,6 +141,7 @@ if __name__ == '__main__':
 
     estimated_force_lsole = estimated_force_lsole[:num_samples, :]
     estimated_force_rsole = estimated_force_rsole[:num_samples, :]
+    # wbc_accelerations = wbc_accelerations[:num_samples, :]
     
     ekf_base_position = ekf_base_position[:num_samples, :]
     ekf_base_velocity = ekf_base_velocity[:num_samples, :]
@@ -182,6 +184,7 @@ if __name__ == '__main__':
         
     delta = 1 / 500  # Assuming a control frequency of 500 Hz
     t = np.linspace(0.0, delta * num_samples, num_samples)
+    num_joints = 27
 
     if not os.path.exists('images/simulation/positions'):
         os.makedirs('images/simulation/positions')
@@ -390,6 +393,47 @@ if __name__ == '__main__':
         plt.close(fig)
         figs.append(fig)
 
+    # fig, ax = plt.subplots()
+    # ax.plot(t, wbc_accelerations[:, 0], label='Acceleration X', color='blue')
+    # ax.plot(t, wbc_accelerations[:, 1], label='Acceleration Y', color='orange')
+    # ax.plot(t, wbc_accelerations[:, 2], label='Acceleration Z', color='green')
+    # ax.set_xlabel('Time [s]')
+    # ax.set_ylabel('Acceleration [N]')
+    # ax.set_title('Acceleration base')
+    # ax.grid(True)
+    # ax.legend()
+    # fig.tight_layout()
+    # fig.savefig("images/forces_torques/wbc_base_linear_acceleration.png")
+    # plt.close(fig)
+
+    # fig, ax = plt.subplots()
+    # ax.plot(t, wbc_accelerations[:, 3], label='Acceleration X', color='blue')
+    # ax.plot(t, wbc_accelerations[:, 4], label='Acceleration Y', color='orange')
+    # ax.plot(t, wbc_accelerations[:, 5], label='Acceleration Z', color='green')
+    # ax.set_xlabel('Time [s]')
+    # ax.set_ylabel('Acceleration [N]')
+    # ax.set_title('Acceleration base')
+    # ax.grid(True)
+    # ax.legend()
+    # fig.tight_layout()
+    # fig.savefig("images/forces_torques/wbc_base_angular_acceleration.png")
+    # plt.close(fig)
+
+    # figs = []
+    # for group_name, indices in grouped_indices.items():
+    #     fig, ax = plt.subplots()
+    #     for i in indices:
+    #         ax.plot(t, wbc_accelerations[:, i + 6], label=joint_names[i].strip())
+    #     ax.set_xlabel('Time [s]')
+    #     ax.set_ylabel('Acceleration [rad/s^2]')
+    #     ax.set_title(f'WBC Acceleration - {group_name}')
+    #     ax.grid(True)
+    #     ax.legend()
+    #     fig.tight_layout()
+    #     fig.savefig(f"images/forces_torques/joints/{group_name}_acceleration.png")
+    #     plt.close(fig)
+    #     figs.append(fig)
+
     fig, ax = plt.subplots()
     ax.plot(t, estimated_force_lsole[:, 0], label='Estimated Force Left Sole X', color='blue')
     ax.plot(t, estimated_force_lsole[:, 1], label='Estimated Force Left Sole Y', color='orange')
@@ -549,20 +593,6 @@ if __name__ == '__main__':
 
     # Plot go base orientation in quaternion format
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation_rpy[:, 0] - sim_base_orientation_rpy[:, 0], label='go Base Orientation R', color='blue')
-    ax.plot(t, go_base_orientation_rpy[:, 1] - sim_base_orientation_rpy[:, 1], label='go Base Orientation P', color='orange')
-    ax.plot(t, go_base_orientation_rpy[:, 2] - sim_base_orientation_rpy[:, 2], label='go Base Orientation Y', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Base Orientation [RPY]')
-    ax.set_title('Base Orientation Error between go estimation and sim')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/go/base_orientation_rpy_go_sim_error_plot.png")
-    plt.close(fig)
-
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
     ax.plot(t, go_base_orientation_rpy[:, 0], label='go Base Orientation R', color='blue')
     ax.plot(t, go_base_orientation_rpy[:, 1], label='go Base Orientation P', color='orange')
     ax.plot(t, go_base_orientation_rpy[:, 2], label='go Base Orientation Y', color='green')
@@ -573,21 +603,6 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/go/base_orientation_rpy_plot.png")
-    plt.close(fig)
-
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation[:, 0] - measured_imu_orientation[:, 0], label='go Base Orientation W', color='blue')
-    ax.plot(t, go_base_orientation[:, 1] - measured_imu_orientation[:, 1], label='go Base Orientation X', color='orange')
-    ax.plot(t, go_base_orientation[:, 2] - measured_imu_orientation[:, 2], label='go Base Orientation Y', color='green')
-    ax.plot(t, go_base_orientation[:, 3] - measured_imu_orientation[:, 3], label='go Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('go Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation Error between go estimation and measurement')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/go/base_orientation_error_imu_state_plot.png")
     plt.close(fig)
 
     # Plot go base orientation in quaternion format
@@ -604,39 +619,6 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/go/base_orientation_plot.png")
     plt.close(fig)
-
-    # Plot error orientation between go and ekf
-    fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation[:, 0] - ekf_base_orientation[:, 0], label='go Base Orientation W', color='blue')
-    ax.plot(t, go_base_orientation[:, 1] - ekf_base_orientation[:, 1], label='go Base Orientation X', color='orange')
-    ax.plot(t, go_base_orientation[:, 2] - ekf_base_orientation[:, 2], label='go Base Orientation Y', color='green')
-    ax.plot(t, go_base_orientation[:, 3] - ekf_base_orientation[:, 3], label='go Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('go Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation Error between go estimation and ekf')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/go/base_orientation_error_plot.png")
-    plt.close(fig)
-
-
-    #plot error between go position and ekf base position
-    fig, ax = plt.subplots()
-    ax.plot(t, go_base_position[:, 0] - ekf_base_position[:, 0], label='go Base Position X', color='blue')
-    ax.plot(t, go_base_position[:, 1] - ekf_base_position[:, 1], label='go Base Position Y', color='orange')
-    ax.plot(t, go_base_position[:, 2] - ekf_base_position[:, 2], label='go Base Position Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('go Base Position Error [m]')
-    ax.set_title('Base Position Error between go estimation and ekf')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/go/base_position_error_plot.png")
-    plt.close(fig)
-
-
-
     
 
 
@@ -837,7 +819,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_vs_des_zmp_plot.png")
+    fig.savefig("images/com/fb_vs_des_zmp_plot.png")
     plt.close(fig)
 
     #plot filtered zmp sim and fb
@@ -888,7 +870,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/com/sim_vs_fb_vs_des_com_velocity_plot.png")
+    fig.savefig("images/com/fb_vs_des_com_velocity_plot.png")
     plt.close(fig)
 
     # plot filtered com velocities sim and fb
@@ -1129,21 +1111,6 @@ if __name__ == '__main__':
     fig.savefig("images/ekf/base_orientation_plot.png")
     plt.close(fig)
 
-    #plot error with sim_base_orientation
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_orientation[:, 0] - sim_base_orientation[:, 0], label='EKF Base Orientation W', color='blue')
-    ax.plot(t, ekf_base_orientation[:, 1] - sim_base_orientation[:, 1], label='EKF Base Orientation X', color='orange')
-    ax.plot(t, ekf_base_orientation[:, 2] - sim_base_orientation[:, 2], label='EKF Base Orientation Y', color='green')
-    ax.plot(t, ekf_base_orientation[:, 3] - sim_base_orientation[:, 3], label='EKF Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Orientation Error [Quaternion]')
-    ax.set_title('Base Orientation Error between EKF estimation and Simulation')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_orientation_error_plot.png")
-    plt.close(fig)
-
     # Plot EKF base angular velocity
     fig, ax = plt.subplots()
     ax.plot(t, ekf_base_angular_velocity[:, 0], label='EKF Base Angular Velocity X', color='blue')
@@ -1156,29 +1123,6 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/ekf/base_angular_velocity_plot.png")
-    plt.close(fig)
-
-    # Plot position error between ekf joint position and simulated joint position
-    fig, ax = plt.subplots(figsize=(18, 12))
-    num_joints = sim_joint_position.shape[1]
-    colormap = plt.colormaps['tab10'] 
-    line_styles = ['-', '--', '-.', ':']
-    for i in range(num_joints):
-        color = colormap(i % 10)
-        linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_position[:, i] - sim_joint_position[:, i]
-        ax.plot(t, error,
-                label=joint_names[i].strip(),
-                color=color,
-                linestyle=linestyle,
-                linewidth=2)
-    ax.set_xlabel('Time [s]', fontsize=14)
-    ax.set_ylabel('Position [rad]', fontsize=14)
-    ax.set_title('Joint Position Error between EKF estimation and Simulation', fontsize=16)
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12, loc='upper right', ncol=2)
-    fig.tight_layout()
-    fig.savefig("images/ekf/joint_position_error_plot.png")
     plt.close(fig)
 
 
@@ -1197,7 +1141,7 @@ if __name__ == '__main__':
                 linewidth=2)
     ax.set_xlabel('Time [s]', fontsize=14)
     ax.set_ylabel('Velocity [rad/s]', fontsize=14)
-    ax.set_title('Joint Velocity Error between EKF estimation and Simulation', fontsize=16)
+    ax.set_title('Joint Velocity of EKF estimation', fontsize=16)
     ax.grid(True, which='both', linestyle='--', alpha=0.5)
     ax.legend(fontsize=12, loc='upper right', ncol=2)
     fig.tight_layout()
@@ -1267,21 +1211,6 @@ if __name__ == '__main__':
     fig.savefig("images/feedback/measured_imu_orientation_quaternion_plot.png")
     plt.close(fig)
 
-    #convert quaternion w x y z to euler angles and plot them not using R
-    measured_imu_orientation_euler = R.from_quat(measured_imu_orientation[:, 0:4].copy()).as_euler('xyz', degrees=True)
-    fig, ax = plt.subplots()
-    ax.plot(t, measured_imu_orientation_euler[:, 0], label='IMU Orientation Roll', color='blue')
-    ax.plot(t, measured_imu_orientation_euler[:, 1], label='IMU Orientation Pitch', color='orange')
-    ax.plot(t, measured_imu_orientation_euler[:, 2], label='IMU Orientation Yaw', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('IMU Orientation [Degrees]')
-    ax.set_title('IMU Orientation in Euler Angles')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/measured_imu_orientation_euler_plot.png")
-    plt.close(fig)
-
     # plot imu angular velocity
     fig, ax = plt.subplots()
     ax.plot(t, measured_imu_angular_velocity[:, 0], label='IMU Angular Velocity X', color='blue')
@@ -1328,7 +1257,6 @@ if __name__ == '__main__':
         fig, ax = plt.subplots()
         for i in indices:
             ax.plot(t, measured_joint_position[:, i], label=joint_names[i])
-            ax.plot(t, sim_joint_position[:, i], label=f"{joint_names[i].strip()} Simulation", linestyle='--')
             ax.plot(t, ekf_joint_position[:, i], label=f"{joint_names[i].strip()} EKF", linestyle=':')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Position [rad]')
@@ -1341,20 +1269,22 @@ if __name__ == '__main__':
         fig.savefig(f"images/feedback/positions/{group_name}_fb_position_plot.png")
         plt.close(fig)
 
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, measured_joint_velocity[:, i], label=joint_names[i])
+            ax.plot(t, ekf_joint_velocity[:, i], label=f"{joint_names[i].strip()} EKF", linestyle=':')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity [rad/s]')
+        ax.set_title(group_name.replace('_', ' ').title())
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        figs.append(fig)
 
-    # plot velocity error between input command and feedback joint velocity, everything in one single plot
-    fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(measured_joint_velocity.shape[1]):
-        error = measured_joint_velocity[:, i] - sim_joint_velocity[:, i]
-        ax.plot(t, error, label=joint_names[i].strip())
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Velocity Error [rad/s]')
-    ax.set_title('Velocity Error between Simulation and Feedback Joint Velocity')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig(f"images/feedback/velocity_error_plot.png")
-    plt.close(fig)
+        fig.savefig(f"images/feedback/velocities/{group_name}_fb_velocity_plot.png")
+        plt.close(fig)
 
 
     ##########################

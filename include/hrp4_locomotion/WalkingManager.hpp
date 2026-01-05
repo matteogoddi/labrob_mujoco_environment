@@ -192,6 +192,7 @@ private:
 
   std::vector<Eigen::Vector3d> estimated_force_lsole_log_;
   std::vector<Eigen::Vector3d> estimated_force_rsole_log_;
+  std::vector<Eigen::VectorXd> wbc_accelerations_log_;
   
   std::vector<Eigen::Vector3d> angular_momentum_log_;
   // std::vector<Eigen::VectorXd> fl_log_;

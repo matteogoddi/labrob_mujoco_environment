@@ -588,8 +588,8 @@ int main(const int argc, const char* argv[]) {
   mjtNum r_hip_r_init = -0.04;
   mjtNum r_hip_p_init = -0.44;
   mjtNum r_knee_init = 0.95;
-  mjtNum r_ankle_p_init = -0.47;
-  mjtNum r_ankle_r_init = 0.03;
+  mjtNum r_ankle_p_init = -0.50;
+  mjtNum r_ankle_r_init = 0.00;
   mjtNum l_hip_y_init = 0.0;
   mjtNum l_hip_r_init = -r_hip_r_init;
   mjtNum l_hip_p_init = r_hip_p_init;
@@ -827,10 +827,10 @@ int main(const int argc, const char* argv[]) {
         }
         // mj_forward(mj_model_ptr, mj_data_ptr);
 
-        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        // mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        // mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        // mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
+        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
 

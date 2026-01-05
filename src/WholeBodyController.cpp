@@ -41,8 +41,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = 30;
   params.mu = 0.5;
 
-  params.foot_length = 0.18;
-  params.foot_width = 0.06; 
+  params.foot_length = 0.20;
+  params.foot_width = 0.07; 
 
   return params;
 }
@@ -165,8 +165,8 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
-  Eigen::VectorXd a_jnt_total = desired_qddot + 50 * err_posture + params_.Kd_regulation * err_posture_vel;
-  Eigen::VectorXd a_com_total = desired.com.acc + 110 * err_com + 40 * err_com_vel;
+  Eigen::VectorXd a_jnt_total = desired_qddot + 75 * err_posture + params_.Kd_regulation * err_posture_vel;
+  Eigen::VectorXd a_com_total = desired.com.acc + 55 * err_com + 40 * err_com_vel;
   Eigen::VectorXd a_lsole_total = desired.lsole.acc + 100 * err_lsole + 20 * err_lsole_vel;
   Eigen::VectorXd a_rsole_total = desired.rsole.acc + 100 * err_rsole + 20 * err_rsole_vel;
   Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 40 * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;

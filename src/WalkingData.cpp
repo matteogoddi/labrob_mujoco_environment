@@ -113,8 +113,19 @@ WalkingData::addSteps(
     step_length_y = step_vector.y();
     int n_steps = 10;
 
-    double double_support_duration = 6000;
-    double single_support_duration = 6000;
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            labrob::Foot::RIGHT
+        ),
+        0.0,
+        2000,
+        labrob::WalkingState::Standing
+    ));
+
+    double double_support_duration = 3000;
+    double single_support_duration = 3000;
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
