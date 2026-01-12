@@ -540,9 +540,9 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isTotalBodyLoopClosed = true;
-    isCoMLoopClosed = true;
-    isEKFactive = true;
+    isTotalBodyLoopClosed = false;
+    isCoMLoopClosed = false;
+    isEKFactive = false;
   }
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
@@ -779,7 +779,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (false){
+      if (true){
         auto start_integration = std::chrono::steady_clock::now();
 
 
@@ -825,7 +825,7 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        // mj_forward(mj_model_ptr, mj_data_ptr);
+        mj_forward(mj_model_ptr, mj_data_ptr);
 
         mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
