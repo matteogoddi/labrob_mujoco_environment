@@ -38,6 +38,8 @@ class ISMPC{
   const Eigen::VectorXd& getInputSequenceX() const;
   const Eigen::VectorXd& getInputSequenceY() const;
   const Eigen::VectorXd& getInputSequenceZ() const;
+
+  Eigen::Vector3d getStabConstraintOffset() const;
   
   double getOmega() const;
 

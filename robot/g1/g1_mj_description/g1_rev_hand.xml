@@ -1,4 +1,4 @@
-<mujoco model="g1_29dof_lock_waist_with_hand_rev_1_0">
+<mujoco model="g1_rev_hand">
   <compiler angle="radian" meshdir="meshes"/>
 
   <option timestep="0.002" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />

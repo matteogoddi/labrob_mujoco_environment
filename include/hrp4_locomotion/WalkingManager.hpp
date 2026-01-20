@@ -34,6 +34,17 @@ class WalkingManager {
 
   LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
+  Eigen::VectorXd propagateState(
+      const Eigen::VectorXd& x,
+      const Eigen::VectorXd& q_ddot,
+      double dt);
+
+  Eigen::MatrixXd computeNumericalA(
+      const Eigen::VectorXd& x,
+      const Eigen::VectorXd& q_ddot,
+      double dt
+  );
+
   RobotState updateEKF(Eigen::VectorXd actual_output);
 
   RobotState getNewRobotState();
@@ -170,6 +181,12 @@ private:
 
   std::vector<Eigen::Vector3d> ef_zmp_position_log_;
 
+  std::vector<Eigen::Vector3d> torso_orientation_log_;
+  std::vector<Eigen::Vector3d> torso_angular_velocity_log_;
+  std::vector<Eigen::Vector3d> des_torso_orientation_log_;
+  std::vector<Eigen::Vector3d> des_torso_angular_velocity_log_;
+
+
 
   std::vector<Eigen::Vector3d> p_lsole_sim_log_;
   std::vector<Eigen::Vector3d> p_rsole_sim_log_;
@@ -233,7 +250,13 @@ private:
   std::vector<Eigen::VectorXd> mpc_pred_com_vel_log_;
   std::vector<Eigen::VectorXd> mpc_pred_zmp_pos_log_;
 
+  std::vector<Eigen::VectorXd> mpc_zmp_velocity_log_;
+  std::vector<Eigen::VectorXd> con_zmp_velocity_log_;
+
   std::vector<Eigen::VectorXd> input_torque_log_;
+  
+  std::vector<double> parameters_log_;
+
 
   std::vector<Eigen::MatrixXd> kalman_gain_log_;
 

@@ -42,7 +42,8 @@ class WalkingData {
 
   void addSteps(
     const labrob::SE3& T_lsole,
-    const labrob::SE3& T_rsole
+    const labrob::SE3& T_rsole,
+    const double yaw_angle
   );
 
   void swapStanding(

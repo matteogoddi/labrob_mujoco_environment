@@ -210,6 +210,15 @@ const Eigen::VectorXd& ISMPC::getInputSequenceZ() const {
   return zDotOptimalZ;
 }
 
+//return A_eq^-1*b_eq
+Eigen::Vector3d
+ISMPC::getStabConstraintOffset() const {
+  //use ldlt
+  Eigen::VectorXd offset = A_eq_.ldlt().solve(b_eq_);
+  //return only first 3 elements (x,y,z)
+  return Eigen::Vector3d(offset(0), offset(1), offset(2));
+}
+
 double
 ISMPC::getOmega() const {
   return omega_;

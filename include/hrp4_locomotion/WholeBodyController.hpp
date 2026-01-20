@@ -30,6 +30,9 @@ struct WholeBodyControllerParams {
   double Kp_regulation;
   double Kd_regulation;
 
+  Eigen::MatrixXd Kp_joint_matrix;
+  Eigen::MatrixXd Kd_joint_matrix;
+
   double weight_q_ddot;
   double weight_com;
   double weight_lsole;

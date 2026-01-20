@@ -39,20 +39,19 @@
 
 #include <hrp4_locomotion/globals.h>
 
-bool isTotalBodyLoopClosed = false;
-bool isCoMLoopClosed = false;
+bool isWBCLoopClosed = false;
+bool isMPCLoopClosed = false;
 bool isEKFactive = false;
 bool useSim = false;
 bool useRobot = false;
 bool oneTimepress = true;
-bool isIMUcalibrating = false;
 bool xPressed = false;
 bool loopClosed = true;
 bool switchWalkingState = false;
 
 
-double startTimeTotalBodyCL = 10000.0;
-double startTimeCoMCL = 10000.0;
+double startTimeWBCCL = 1000.0;
+double startTimeMPCCL = 1000.0;
 double startTimeEKF = 0.0;
 
 Eigen::Vector3d go_base_position = Eigen::Vector3d::Zero();
@@ -510,7 +509,7 @@ int main(const int argc, const char* argv[]) {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* mjcf_filepath = "../g1_mj_description/stair_steps.xml";
+  const char* mjcf_filepath = "../robot/g1/g1_mj_description/stair_steps.xml";
   mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
@@ -532,17 +531,17 @@ int main(const int argc, const char* argv[]) {
     std::string token;
     while (iss >> token) {
       if (token == "1") {
-        isCoMLoopClosed = true;
+        isMPCLoopClosed = true;
       } else if (token == "2") {
-        isTotalBodyLoopClosed = true;
+        isWBCLoopClosed = true;
       } else if (token == "3") {
         isEKFactive = true;
       } 
     }
   } else {
-    isTotalBodyLoopClosed = false;
-    isCoMLoopClosed = false;
-    isEKFactive = false;
+    isWBCLoopClosed = true;
+    isMPCLoopClosed = true;
+    isEKFactive = true;
   }
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
@@ -583,34 +582,34 @@ int main(const int argc, const char* argv[]) {
   
 
   // Init robot posture:
-  mjtNum waist_y_init = 0.0;
-  mjtNum r_hip_y_init = -0.005;
-  mjtNum r_hip_r_init = -0.04;
-  mjtNum r_hip_p_init = -0.44;
-  mjtNum r_knee_init = 0.95;
-  mjtNum r_ankle_p_init = -0.50;
-  mjtNum r_ankle_r_init = 0.00;
+  mjtNum l_hip_p_init = -0.44;
+  mjtNum l_hip_r_init = 0.04;
   mjtNum l_hip_y_init = 0.0;
-  mjtNum l_hip_r_init = -r_hip_r_init;
-  mjtNum l_hip_p_init = r_hip_p_init;
-  mjtNum l_knee_init = r_knee_init;
-  mjtNum l_ankle_p_init = r_ankle_p_init;
-  mjtNum l_ankle_r_init = -r_ankle_r_init;
-  mjtNum r_shoulder_p_init = 0.07;
-  mjtNum r_shoulder_r_init = -0.12;
-  mjtNum r_shoulder_y_init = 0.0;
-  mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
-  mjtNum l_shoulder_p_init = r_shoulder_p_init;
-  mjtNum l_shoulder_r_init = -r_shoulder_r_init;
+  mjtNum l_knee_init = 0.95;
+  mjtNum l_ankle_p_init = -0.50;
+  mjtNum l_ankle_r_init = 0.0;
+  mjtNum r_hip_p_init = l_hip_p_init;
+  mjtNum r_hip_r_init = -l_hip_r_init;
+  mjtNum r_hip_y_init = l_hip_y_init;
+  mjtNum r_knee_init = l_knee_init;
+  mjtNum r_ankle_p_init = l_ankle_p_init;
+  mjtNum r_ankle_r_init = l_ankle_r_init;
+  mjtNum waist_y_init = 0.0;
+  mjtNum l_shoulder_p_init = 0.07;
+  mjtNum l_shoulder_r_init = 0.25;
   mjtNum l_shoulder_y_init = 0.0;
-  mjtNum l_elbow_p_init = r_elbow_p_init;
+  mjtNum l_elbow_p_init = 3.14 / 2.0 - 0.44;
+  mjtNum r_shoulder_p_init = l_shoulder_p_init;
+  mjtNum r_shoulder_r_init = -l_shoulder_r_init;
+  mjtNum r_shoulder_y_init = l_shoulder_y_init;
+  mjtNum r_elbow_p_init = l_elbow_p_init;
   Eigen::Vector3d starting_base_position = Eigen::Vector3d(0.0, 0.0, 0.727451);
 
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  mj_data_ptr->qpos[0] = 0.174261;
-  mj_data_ptr->qpos[1] = -0.215733;
+  // mj_data_ptr->qpos[0] = 0.174261;
+  // mj_data_ptr->qpos[1] = -0.215733;
   mj_data_ptr->qpos[2] = 0.727451;
   // mj_data_ptr->qpos[3] = 0.977184;
   // mj_data_ptr->qpos[4] = 0.00626451;
@@ -678,11 +677,11 @@ int main(const int argc, const char* argv[]) {
           if (isEKFactive && !xPressed){
             xPressed = true;
             loopClosed = true;
-            isCoMLoopClosed = !isCoMLoopClosed;
-            isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
-            startTimeCoMCL = 1000 * mj_data_ptr->time + 10000;
-            startTimeTotalBodyCL = 1000 * mj_data_ptr->time;
-            if(isCoMLoopClosed)
+            isMPCLoopClosed = !isMPCLoopClosed;
+            isWBCLoopClosed = !isWBCLoopClosed;
+            startTimeMPCCL = 1000 * mj_data_ptr->time + 5000;
+            startTimeWBCCL = 1000 * mj_data_ptr->time;
+            if(isMPCLoopClosed)
               std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
             else
               std::cout << "[GAMEPAD] X pressed -> Closed loop deactivated." << std::endl;
@@ -779,7 +778,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (true){
+      if (false){
         auto start_integration = std::chrono::steady_clock::now();
 
 
@@ -825,7 +824,7 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
+        // mj_forward(mj_model_ptr, mj_data_ptr);
 
         mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);

@@ -1,6 +1,6 @@
 <mujoco model="unitreeg1 scene">
 
-  <include file="g1_29dof_lock_waist_with_hand_rev_1_0.xml"/>
+  <include file="g1_rev_hand.xml"/>
   <!-- <include file="unitreeg1_2.xml"/> -->
 
   <!-- <visual>
@@ -50,8 +50,8 @@
   </asset>
   <worldbody>
     <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
-    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
-    <!-- <geom name="floor1" pos="0 0 -0.1" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".1 .1 .1" priority="1" material="groundplane" /> -->
+    <!-- <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/> -->
+    <geom name="floor1" pos="0 0 0" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
   </worldbody>
 
 </mujoco>

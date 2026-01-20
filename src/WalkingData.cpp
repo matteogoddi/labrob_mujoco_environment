@@ -98,22 +98,20 @@ WalkingData::initializeWalkingData(
 void
 WalkingData::addSteps(
   const labrob::SE3& T_lsole,
-  const labrob::SE3& T_rsole
+  const labrob::SE3& T_rsole,
+  const double yaw_angle
 ){
     double swing_foot_trajectory_height = 0.06;
-    double step_length_x = 0.2;
+    double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    //rotate the step vector by the yaw angle of the robot. compute the yaw angle from the rotation matrix of the left and right sole
-    double yaw_angle = std::atan2(T_lsole.rotation()(1,0), T_lsole.rotation()(0,0));
-    Eigen::Matrix3d R_yaw;
-    R_yaw = labrob::Rz(yaw_angle);
+    Eigen::Matrix3d R_yaw =labrob::Rz(yaw_angle);
     Eigen::Vector3d step_vector = R_yaw * Eigen::Vector3d(step_length_x, step_length_y, 0.0);
     step_length_x = step_vector.x();
     step_length_y = step_vector.y();
-    int n_steps = 10;
-    double double_support_duration = 100;
-    double single_support_duration = 300;
+    int n_steps = 6;
+    double double_support_duration = 600;
+    double single_support_duration = 600;
 
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(

@@ -1,17 +1,17 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
-extern bool isTotalBodyLoopClosed;
+extern bool isWBCLoopClosed;
 extern bool isEKFactive;
-extern bool isCoMLoopClosed;
+extern bool isMPCLoopClosed;
 extern bool useSim;
 extern bool useRobot;
 extern bool switchWalkingState;
 extern bool oneTimepress;
 extern bool loopClosed;
 
-extern double startTimeCoMCL;
-extern double startTimeTotalBodyCL;
+extern double startTimeMPCCL;
+extern double startTimeWBCCL;
 extern double startTimeEKF;
 
 extern Eigen::Vector3d go_base_position;

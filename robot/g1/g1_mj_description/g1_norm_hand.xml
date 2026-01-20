@@ -1,7 +1,7 @@
-<mujoco model="g1_29dof_lock_waist">
+<mujoco model="g1_norm_hand">
   <compiler angle="radian" meshdir="meshes"/>
 
-  <option timestep="0.002" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />
+  <option timestep="0.002" iterations="200" tolerance="1e-8" solver="Newton" jacobian="dense" cone="pyramidal" />
    <!-- <option>-->
   <!--    <flag contact="disable" gravity="disable" />-->
   <!--  </option> -->
