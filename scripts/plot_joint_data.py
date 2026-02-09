@@ -24,10 +24,10 @@ if __name__ == '__main__':
     parameters_log = np.loadtxt(folder + '/parameters_log.txt')
 
     startTimeWBCCL = parameters_log
-    startPlot = int(0.001 * startTimeWBCCL * 500)  # Assuming a control frequency of 500 Hz
+    startPlot = int(0.001 * startTimeWBCCL * 500 + 1000)  # Assuming a control frequency of 500 Hz
 
     sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')
-    num_samples = sim_com_position.shape[0] - 10
+    num_samples = sim_com_position.shape[0] - 5000
     sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')[startPlot:num_samples, :]
     sim_com_velocity =  np.loadtxt(folder + '/sim_com_velocity.txt')[startPlot:num_samples, :]
     sim_zmp_position =  np.loadtxt(folder + '/sim_zmp_position.txt')[startPlot:num_samples, :]
@@ -112,6 +112,54 @@ if __name__ == '__main__':
     measured_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/measured_imu_angular_velocity.txt')[startPlot:num_samples, :]
     measured_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/measured_imu_accelerometer.txt')[startPlot:num_samples, :]
         
+    # rotate relative positions depending on the actual yaw angle
+    for i in range(num_samples - startPlot):
+        yaw = go_base_orientation_rpy[0, 2]
+        rotation_matrix = np.array([
+            [np.cos(yaw), -np.sin(yaw), 0],
+            [np.sin(yaw),  np.cos(yaw), 0],
+            [0,            0,           1]
+        ])
+        p_lsole_fb[i, :] = rotation_matrix.T @ p_lsole_fb[i, :]
+        p_rsole_fb[i, :] = rotation_matrix.T @ p_rsole_fb[i, :]
+        p_lsole_des[i, :] = rotation_matrix.T @ p_lsole_des[i, :]
+        p_rsole_des[i, :] = rotation_matrix.T @ p_rsole_des[i, :]
+        kf_com_position[i, :] = rotation_matrix.T @ kf_com_position[i, :]
+        kf_zmp_position[i, :] = rotation_matrix.T @ kf_zmp_position[i, :]
+        des_com_position[i, :] = rotation_matrix.T @ des_com_position[i, :]
+        des_zmp_position[i, :] = rotation_matrix.T @ des_zmp_position[i, :]
+
+
+    reference_positions = np.array([
+        -0.44,  # l_hip_p
+        0.04,  # l_hip_r
+        0.0,  # l_hip_y
+        0.95,  # l_knee
+        -0.50,  # l_ankle_p
+        0.00,  # l_ankle_r
+        -0.44,  # r_hip_p
+        -0.04,  # r_hip_r
+        0.0,  # r_hip_y
+        0.95,  # r_knee
+        -0.50,  # r_ankle_p
+        0.00,  # r_ankle_r
+        0.0,  # waist_y
+        0.07,  # l_shoulder_p
+        0.25,  # l_shoulder_r
+        0.0,  # l_shoulder_y
+        3.14 / 2.0 - 0.44,   # l_elbow_p
+        0.0, # wrist_roll
+        0.0, # wrist_pitch
+        0.0, # wrist_yaw
+        0.07,  # r_shoulder_p
+        -0.25,  # r_shoulder_r
+        0.0,  # r_shoulder_y
+        3.14 / 2.0 - 0.44,  # r_elbow_p
+        0.0, # wrist_roll
+        0.0, # wrist_pitch
+        0.0 # wrist_yaw
+    ])
+
     delta = 1 / 500  # Assuming a control frequency of 500 Hz
     t = np.linspace(0.0, delta * (num_samples - startPlot), num_samples - startPlot)
     num_joints = 27
@@ -124,8 +172,16 @@ if __name__ == '__main__':
         os.makedirs('images/feedback/positions')
     if not os.path.exists('images/feedback/velocities'):
         os.makedirs('images/feedback/velocities')
+    if not os.path.exists('images/feedback/comparison/positions'):
+        os.makedirs('images/feedback/comparison/positions')
+    if not os.path.exists('images/feedback/comparison/velocities'):
+        os.makedirs('images/feedback/comparison/velocities')
     if not os.path.exists('images/ekf'):
         os.makedirs('images/ekf')
+    if not os.path.exists('images/ekf/positions'):
+        os.makedirs('images/ekf/positions')
+    if not os.path.exists('images/ekf/velocities'):
+        os.makedirs('images/ekf/velocities')
     if not os.path.exists('images/execution_times'):
         os.makedirs('images/execution_times')
     if not os.path.exists('images/com'):
@@ -140,6 +196,10 @@ if __name__ == '__main__':
         os.makedirs('images/forces_torques/joints')
     if not os.path.exists('images/soles'):
         os.makedirs('images/soles')
+    if not os.path.exists('images/soles/references'):
+        os.makedirs('images/soles/references')
+    if not os.path.exists('images/soles/errors'):
+        os.makedirs('images/soles/errors')
     if not os.path.exists('images/mpc'):
         os.makedirs('images/mpc')
 
@@ -437,12 +497,12 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
-        t, des_com_position[:, 0],
+        t, des_com_position[:, 0] - des_com_position[0, 0],
         label=r'Desired CoM Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, des_com_position[:, 1],
+        t, des_com_position[:, 1] - des_com_position[0, 1],
         label=r'Desired CoM Position $y$',
         linewidth=2.0
     )
@@ -505,12 +565,12 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
-        t, des_zmp_position[:, 0],
+        t, des_zmp_position[:, 0] - des_zmp_position[0, 0],
         label=r'Desired ZMP Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, des_zmp_position[:, 1],
+        t, des_zmp_position[:, 1] - des_zmp_position[0, 1],
         label=r'Desired ZMP Position $y$',
         linewidth=2.0
     )
@@ -645,23 +705,23 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
-        t, des_zmp_position[:,0],
+        t, des_zmp_position[:, 0] - des_zmp_position[0, 0],
         label=r'Desired ZMP Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, kf_zmp_position[:,0],
+        t, kf_zmp_position[:, 0] - kf_zmp_position[0, 0],
         label=r'Actual ZMP Position $x$',
         linewidth=2.0,
         linestyle='--'
     )
     ax.plot(
-        t, des_zmp_position[:, 1],
+        t, des_zmp_position[:, 1] - des_zmp_position[0, 1],
         label=r'Desired ZMP Position $y$',
         linewidth=2.0
     )
     ax.plot(
-        t, des_zmp_position[:, 1],
+        t, des_zmp_position[:, 1] - kf_zmp_position[0, 1],
         label=r'Actual ZMP Position $y$',
         linewidth=2.0,
         linestyle='--'
@@ -697,23 +757,23 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
-        t, des_com_position[:,0],
+        t, des_com_position[:,0] - des_com_position[0, 0],
         label=r'Desired CoM Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, kf_com_position[:,0],
+        t, kf_com_position[:,0] - kf_com_position[0, 0],
         label=r'Actual CoM Position $x$',
         linewidth=2.0,
         linestyle='--'
     )
     ax.plot(
-        t, des_com_position[:, 1],
+        t, des_com_position[:, 1] - des_com_position[0, 1],
         label=r'Desired CoM Position $y$',
         linewidth=2.0
     )
     ax.plot(
-        t, des_com_position[:, 1],
+        t, kf_com_position[:, 1] - kf_com_position[0, 1],
         label=r'Actual CoM Position $y$',
         linewidth=2.0,
         linestyle='--'
@@ -801,22 +861,22 @@ if __name__ == '__main__':
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
-        t, kf_com_position[:, 0],
+        t, kf_com_position[:, 0] - kf_com_position[0, 0],
         label=r'CoM Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, kf_zmp_position[:, 0],
+        t, kf_zmp_position[:, 0] - kf_zmp_position[0, 0],
         label=r'ZMP Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, p_lsole_fb[:, 0],
+        t, p_lsole_fb[:, 0] - p_lsole_fb[0, 0],
         label=r'Left Foot Position $x$',
         linewidth=2.0
     )
     ax.plot(
-        t, p_rsole_fb[:, 0],
+        t, p_rsole_fb[:, 0] - p_rsole_fb[0, 0],
         label=r'Right Foot Position $x$',
         linewidth=2.0
     )
@@ -897,138 +957,541 @@ if __name__ == '__main__':
     ##########################
     #  FEET PLOT
     ##########################
-    #plot des, sim and fb lsole position
-    fig, ax = plt.subplots()
-    ax.plot(t, p_lsole_fb[:, 0], label='FB Left Sole X', color='blue')
-    ax.plot(t, p_lsole_fb[:, 1], label='FB Left Sole Y', color='orange')
-    ax.plot(t, p_lsole_fb[:, 2], label='FB Left Sole Z', color='green')
-    ax.plot(t, p_lsole_des[:, 0], label='Des Left Sole X', color='blue', linestyle=':')
-    ax.plot(t, p_lsole_des[:, 1], label='Des Left Sole Y', color='orange', linestyle=':')
-    ax.plot(t, p_lsole_des[:, 2], label='Des Left Sole Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Left Sole Position [m]')
-    ax.set_title('Left Sole Position Simulation vs Feedback')
-    ax.grid(True)
-    ax.legend()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_lsole_des[:, 0],
+        label=r'Desired Left Sole Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 1],
+        label=r'Desired Left Sole Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 2],
+        label=r'Desired Left Sole Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Desired Left Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/soles/sim_vs_fb_left_sole_position_plot.png")
+    fig.savefig(
+        "images/soles/references/desired_left_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    #plot des, sim and fb rsole position
-    fig, ax = plt.subplots()
-    ax.plot(t, p_rsole_fb[:, 0], label='FB Right Sole X', color='blue')
-    ax.plot(t, p_rsole_fb[:, 1], label='FB Right Sole Y', color='orange')
-    ax.plot(t, p_rsole_fb[:, 2], label='FB Right Sole Z', color='green')
-    ax.plot(t, p_rsole_des[:, 0], label='Des Right Sole X', color='blue', linestyle=':')
-    ax.plot(t, p_rsole_des[:, 1], label='Des Right Sole Y', color='orange', linestyle=':')
-    ax.plot(t, p_rsole_des[:, 2], label='Des Right Sole Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Right Sole Position [m]')
-    ax.set_title('Right Sole Position Simulation vs Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_lsole_des[:, 0],
+        label=r'Desired Right Sole Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 1],
+        label=r'Desired Right Sole Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 2],
+        label=r'Desired Right Sole Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Desired Right Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/soles/sim_vs_fb_right_sole_position_plot.png")
+    fig.savefig(
+        "images/soles/references/desired_right_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    #plot des, sim and fb rsole position
-    fig, ax = plt.subplots()
-    ax.plot(t, p_lsole_fb[:, 2], label='FB Right Sole Y', color='orange')
-    ax.plot(t, p_rsole_fb[:, 2], label='FB Right Sole Z', color='green')
-    ax.plot(t, p_lsole_des[:, 2], label='Des Right Sole Y', color='orange', linestyle=':')
-    ax.plot(t, p_rsole_des[:, 2], label='Des Right Sole Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Right Sole Position [m]')
-    ax.set_title('Left and Right Sole Position Simulation vs Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_lsole_des[:, 0] - p_lsole_fb[:, 0],
+        label=r'Left Sole Position Error $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 1] - p_lsole_fb[:, 1],
+        label=r'Left Sole Position Error $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 2] - p_lsole_fb[:, 2],
+        label=r'Left Sole Position Error $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Error between Desired and Actual Left Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/soles/lsole_vs_rsole_z_position_plot.png")
+    fig.savefig(
+        "images/soles/errors/error_left_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    #plot des, sim and fb lsole velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, v_lsole_fb[:, 0], label='FB Left Sole Vel X', color='blue')
-    ax.plot(t, v_lsole_fb[:, 1], label='FB Left Sole Vel Y', color='orange')
-    ax.plot(t, v_lsole_fb[:, 2], label='FB Left Sole Vel Z', color='green')
-    ax.plot(t, v_lsole_des[:, 0], label='Des Left Sole Vel X', color='blue', linestyle=':')
-    ax.plot(t, v_lsole_des[:, 1], label='Des Left Sole Vel Y', color='orange', linestyle=':')
-    ax.plot(t, v_lsole_des[:, 2], label='Des Left Sole Vel Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Left Sole Velocity [m/s]')
-    ax.set_title('Left Sole Velocity Simulation vs Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_rsole_des[:, 0] - p_rsole_fb[:, 0],
+        label=r'Right Sole Position Error $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_des[:, 1] - p_rsole_fb[:, 1],
+        label=r'Right Sole Position Error $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_des[:, 2] - p_rsole_fb[:, 2],
+        label=r'Right Sole Position Error $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Error between Desired and Actual Right Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/soles/sim_vs_fb_left_sole_velocity_plot.png")
+    fig.savefig(
+        "images/soles/errors/error_right_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    #plot des, sim and fb rsole velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, v_rsole_fb[:, 0], label='FB Right Sole Vel X', color='blue')
-    ax.plot(t, v_rsole_fb[:, 1], label='FB Right Sole Vel Y', color='orange')
-    ax.plot(t, v_rsole_fb[:, 2], label='FB Right Sole Vel Z', color='green')
-    ax.plot(t, v_rsole_des[:, 0], label='Des Right Sole Vel X', color='blue', linestyle=':')
-    ax.plot(t, v_rsole_des[:, 1], label='Des Right Sole Vel Y', color='orange', linestyle=':')
-    ax.plot(t, v_rsole_des[:, 2], label='Des Right Sole Vel Z', color='green', linestyle=':')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Right Sole Velocity [m/s]')
-    ax.set_title('Right Sole Velocity Simulation vs Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_lsole_fb[:, 0] - p_lsole_fb[0, 0],
+        label=r'Actual Left Sole Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 0] - p_lsole_des[0, 0],
+        label=r'Desired Left Sole Position $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, p_lsole_fb[:, 1],
+        label=r'Actual Left Sole Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 1],
+        label=r'Desired Left Sole Position $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, p_lsole_fb[:, 2],
+        label=r'Actual Left Sole Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_des[:, 2],
+        label=r'Desired Left Sole Position $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Comparison between Desired and Actual Left Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/soles/sim_vs_fb_right_sole_velocity_plot.png")
+    fig.savefig(
+        "images/soles/errors/comparison_left_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, p_rsole_fb[:, 0] - p_rsole_fb[0, 0],
+        label=r'Actual Right Sole Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_des[:, 0] - p_rsole_des[0, 0],
+        label=r'Desired Right Sole Position $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, p_rsole_fb[:, 1],
+        label=r'Actual Right Sole Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_des[:, 1],
+        label=r'Desired Right Sole Position $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, p_rsole_fb[:, 2],
+        label=r'Actual Right Sole Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_des[:, 2],
+        label=r'Desired Right Sole Position $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Comparison between Desired and Actual Right Sole Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/soles/errors/comparison_right_sole_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, v_lsole_des[:, 0] - v_lsole_fb[:, 0],
+        label=r'Left Sole Velocity Error $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_lsole_des[:, 1] - v_lsole_fb[:, 1],
+        label=r'Left Sole Velocity Error $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_lsole_des[:, 2] - v_lsole_fb[:, 2],
+        label=r'Left Sole Velocity Error $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Error between Desired and Actual Left Sole Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/soles/errors/error_left_sole_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, v_rsole_des[:, 0] - v_rsole_fb[:, 0],
+        label=r'Right Sole Velocity Error $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_rsole_des[:, 1] - v_rsole_fb[:, 1],
+        label=r'Right Sole Velocity Error $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_rsole_des[:, 2] - v_rsole_fb[:, 2],
+        label=r'Right Sole Velocity Error $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Error between Desired and Actual Right Sole Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/soles/errors/error_right_sole_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, v_lsole_fb[:, 0],
+        label=r'Actual Left Sole Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_lsole_des[:, 0],
+        label=r'Desired Left Sole Velocity $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, v_lsole_fb[:, 1],
+        label=r'Actual Left Sole Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_lsole_des[:, 1],
+        label=r'Desired Left Sole Velocity $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, v_lsole_fb[:, 2],
+        label=r'Actual Left Sole Velocity $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_lsole_des[:, 2],
+        label=r'Desired Left Sole Velocity $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Comparison between Desired and Actual Left Sole Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/soles/errors/comparison_left_sole_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, v_rsole_fb[:, 0],
+        label=r'Actual Right Sole Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_rsole_des[:, 0],
+        label=r'Desired Right Sole Velocity $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, v_rsole_fb[:, 1],
+        label=r'Actual Right Sole Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_rsole_des[:, 1],
+        label=r'Desired Right Sole Velocity $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, v_rsole_fb[:, 2],
+        label=r'Actual Right Sole Velocity $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, v_rsole_des[:, 2],
+        label=r'Desired Right Sole Velocity $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Comparison between Desired and Actual Right Sole Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/soles/errors/comparison_right_sole_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
 
     ##########################
-    #  SIMULATION JOINTS PLOTS
+    #  SIMULATIONS PLOTS
     ##########################
     
 
     figs = []
     for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
-            ax.plot(t, sim_joint_position[:, i], label=joint_names[i])
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Position [rad]')
-        ax.set_title(group_name.replace('_', ' ').title())
-        ax.grid(True)
-        ax.legend()
+            ax.plot(
+                t, sim_joint_position[:, i],
+                label=r'Actual Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+            ax.plot(
+                t, ekf_joint_position[:, i],
+                label=r'Filtered Position' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0,
+                linestyle='--'
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
+        fig.savefig(
+            f"images/simulation/positions/{group_name}_position_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
         figs.append(fig)
-
-        fig.savefig(f"images/simulation/positions/{group_name}_position_plot.png")
         plt.close(fig)
 
     figs = []
     for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
-            ax.plot(t, sim_joint_velocity[:, i], label=joint_names[i])
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Angular velocities [rad/s]')
-        ax.set_title(group_name.replace('_', ' ').title())
-        ax.grid(True)
-        ax.legend()
+            ax.plot(
+                t, sim_joint_velocity[:, i],
+                label=r'Actual Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+            ax.plot(
+                t, ekf_joint_velocity[:, i],
+                label=r'Filtered Velocity' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0,
+                linestyle='--'
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
+        fig.savefig(
+            f"images/simulation/velocities/{group_name}_velocity_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
         figs.append(fig)
-
-        fig.savefig(f"images/simulation/velocities/{group_name}_velocities_plot.png")
         plt.close(fig)
 
-    #plot simulation joint velocities
-    fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(sim_joint_velocity.shape[1]):
-        ax.plot(t, sim_joint_velocity[:, i], label=joint_names[i].strip())
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Velocity [rad/s]')
-    ax.set_title('Simulation Joint Velocities')
-    ax.grid(True)
+    # plot mean squared error between ekf joint position and simulated joint position
+    mse_position = np.mean((ekf_joint_position - sim_joint_position) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), mse_position, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Mean Squared Error $[rad^2]$', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Joint Position and Simulated Joint Position', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint","") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/simulation/joint_position_mse_plot.png")
+    plt.close(fig)
+
+    #plot mean squared error between ekf joint velocity and simulated joint velocity
+    mse_velocity = np.mean((ekf_joint_velocity - sim_joint_velocity) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), mse_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Mean Squared Error $[rad^2]$', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Joint Velocity and Simulated Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint","") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/simulation/joint_velocity_mse_plot.png")
+    plt.close(fig)
+
+    #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
+    mse_base_position = np.mean((ekf_base_position - sim_base_position) ** 2, axis=0)
+    mse_base_velocity = np.mean((ekf_base_velocity - sim_base_velocity) ** 2, axis=0)
+    mse_base_orientation = np.mean((ekf_base_orientation - sim_base_orientation) ** 2, axis=0)
+    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - sim_base_angular_velocity) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(3), mse_base_position, label='Position MSE', color='skyblue', alpha=0.7)
+    ax.bar(range(3, 6), mse_base_velocity, label='Velocity MSE', color='orange', alpha=0.7)
+    ax.bar(range(6, 10), mse_base_orientation, label='Orientation MSE', color='green', alpha=0.7)
+    ax.bar(range(10, 13), mse_base_angular_velocity, label='Angular Velocity MSE', color='red', alpha=0.7)
+    ax.set_xlabel('Base State Index', fontsize=14)
+    ax.set_ylabel('Mean Squared Error', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_xticks(range(13))
+    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
+                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/simulation/velocities/simulation_joint_velocities_plot.png")
+    fig.savefig("images/simulation/base_states_mse_plot.png")
     plt.close(fig)
 
 
@@ -1037,6 +1500,62 @@ if __name__ == '__main__':
     ##########################
     #  EKF PLOTS
     ##########################
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in indices:
+            ax.plot(
+                t, ekf_joint_position[:, i],
+                label=r'Filtered Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/ekf/positions/{group_name}_position_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
+        figs.append(fig)
+        plt.close(fig)
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in indices:
+            ax.plot(
+                t, ekf_joint_velocity[:, i],
+                label=r'Filtered Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/ekf/velocities/{group_name}_velocity_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
+        figs.append(fig)
+        plt.close(fig)
     
     # Plot EKF base position
     fig, ax = plt.subplots()
@@ -1165,6 +1684,135 @@ if __name__ == '__main__':
     ##########################
     #  FEEDBACK PLOTS
     ##########################
+
+    # plot mean squared error between ekf joint position and simulated joint position
+    mse_position = np.mean((ekf_joint_position - measured_joint_position) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), mse_position, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Mean Squared Error', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Joint Position and Feedback Joint Position', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_position_mse_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf joint position and simulated joint position
+    variance_position = np.var(ekf_joint_position - measured_joint_position, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_position, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance between EKF Joint Position and Feedback Joint Position', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_position_variance_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf joint position and simulated joint position
+    variance_velocity = np.var(ekf_joint_velocity - measured_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_velocity_variance_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf base position and simulated base position, orientation, velocity, angular velocity
+    variance_base_position = np.var(ekf_base_position - go_base_position, axis=0)
+    variance_base_velocity = np.var(ekf_base_velocity - go_base_velocity, axis=0)
+    variance_base_orientation = np.var(ekf_base_orientation - go_base_orientation, axis=0)
+    variance_base_angular_velocity = np.var(ekf_base_angular_velocity - go_base_angular_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(3), variance_base_position, label='Position Variance', color='skyblue', alpha=0.7)
+    ax.bar(range(3, 6), variance_base_velocity, label='Velocity Variance', color='orange', alpha=0.7)
+    ax.bar(range(6, 10), variance_base_orientation, label='Orientation Variance', color='green', alpha=0.7)
+    ax.bar(range(10, 13), variance_base_angular_velocity, label='Angular Velocity Variance', color='red', alpha=0.7)
+    ax.set_xlabel('Base State Index', fontsize=14)
+    ax.set_ylabel('Variance', fontsize=14)
+    ax.set_title('Variance between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_xticks(range(13))
+    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
+                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/feedback/base_states_variance_plot.png")
+    plt.close(fig)
+
+    #plot variance of measured joint velocity
+    variance_measured_velocity = np.var(measured_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_measured_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_velocity_measured_variance_plot.png")
+    plt.close(fig)
+
+    #plot variance of ekf joint velocity
+    variance_ekf_velocity = np.var(ekf_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_ekf_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_velocity_filtered_variance_plot.png")
+    plt.close(fig)
+
+
+    #plot mean squared error between ekf joint velocity and simulated joint velocity
+    mse_velocity = np.mean((ekf_joint_velocity - measured_joint_velocity) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), mse_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Mean Squared Error', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/feedback/joint_velocity_mse_plot.png")
+    plt.close(fig)
+
+    #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
+    mse_base_position = np.mean((ekf_base_position - go_base_position) ** 2, axis=0)
+    mse_base_velocity = np.mean((ekf_base_velocity - go_base_velocity) ** 2, axis=0)
+    mse_base_orientation = np.mean((ekf_base_orientation - go_base_orientation) ** 2, axis=0)
+    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - go_base_angular_velocity) ** 2, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(3), mse_base_position, label='Position MSE', color='skyblue', alpha=0.7)
+    ax.bar(range(3, 6), mse_base_velocity, label='Velocity MSE', color='orange', alpha=0.7)
+    ax.bar(range(6, 10), mse_base_orientation, label='Orientation MSE', color='green', alpha=0.7)
+    ax.bar(range(10, 13), mse_base_angular_velocity, label='Angular Velocity MSE', color='red', alpha=0.7)
+    ax.set_xlabel('Base State Index', fontsize=14)
+    ax.set_ylabel('Mean Squared Error', fontsize=14)
+    ax.set_title('Mean Squared Error between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_xticks(range(13))
+    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
+                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/feedback/base_states_mse_plot.png")
+    plt.close(fig)
 
     #plot torso orientation error
     fig, ax = plt.subplots()
@@ -1369,68 +2017,128 @@ if __name__ == '__main__':
     fig.savefig("images/feedback/measured_joint_velocity_plot.png")
     plt.close(fig)
 
-
-    reference_positions = np.array([
-        -0.44,  # l_hip_p
-        0.04,  # l_hip_r
-        0.0,  # l_hip_y
-        0.95,  # l_knee
-        -0.50,  # l_ankle_p
-        0.00,  # l_ankle_r
-        -0.44,  # r_hip_p
-        -0.04,  # r_hip_r
-        0.0,  # r_hip_y
-        0.95,  # r_knee
-        -0.50,  # r_ankle_p
-        0.00,  # r_ankle_r
-        0.0,  # waist_y
-        0.07,  # l_shoulder_p
-        0.25,  # l_shoulder_r
-        0.0,  # l_shoulder_y
-        3.14 / 2.0 - 0.44,   # l_elbow_p
-        0.0, # wrist_roll
-        0.0, # wrist_pitch
-        0.0, # wrist_yaw
-        0.07,  # r_shoulder_p
-        -0.25,  # r_shoulder_r
-        0.0,  # r_shoulder_y
-        3.14 / 2.0 - 0.44,  # r_elbow_p
-        0.0, # wrist_roll
-        0.0, # wrist_pitch
-        0.0 # wrist_yaw
-    ])
-
     figs = []
     for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
-            ax.plot(t, measured_joint_position[:, i], label=f"{joint_names[i].strip()} FB" )
-            ax.plot(t, ekf_joint_position[:, i], label=f"{joint_names[i].strip()} EKF", linestyle='--')
-            ax.hlines(reference_positions[i], t[0], t[-1], colors='gray', linestyles=':', label=f"{joint_names[i].strip()} Ref")
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Position [rad]')
-        ax.set_title(group_name.replace('_', ' ').title())
-        ax.grid(True)
-        ax.legend()
+            ax.plot(
+                t, measured_joint_position[:, i],
+                label=r'Actual Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+            ax.plot(
+                t, ekf_joint_position[:, i],
+                label=r'Filtered Position' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0,
+                linestyle='--'
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/comparison/positions/{group_name}_position_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
         figs.append(fig)
-        fig.savefig(f"images/feedback/positions/{group_name}_fb_position_plot.png")
         plt.close(fig)
 
     figs = []
     for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
-            ax.plot(t, measured_joint_velocity[:, i], label=f"{joint_names[i].strip()} FB" )
-            ax.plot(t, ekf_joint_velocity[:, i], label=f"{joint_names[i].strip()} EKF", linestyle=':')
-        ax.set_xlabel('Time [s]')
-        ax.set_ylabel('Velocity [rad/s]')
-        ax.set_title(group_name.replace('_', ' ').title())
-        ax.grid(True)
-        ax.legend()
+            ax.plot(
+                t, measured_joint_velocity[:, i],
+                label=r'Actual Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+            ax.plot(
+                t, ekf_joint_velocity[:, i],
+                label=r'Filtered Velocity' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0,
+                linestyle='--'
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/comparison/velocities/{group_name}_velocity_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
         figs.append(fig)
-        fig.savefig(f"images/feedback/velocities/{group_name}_fb_velocity_plot.png")
+        plt.close(fig)
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in indices:
+            ax.plot(
+                t, measured_joint_position[:, i],
+                label=r'Measured Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/positions/{group_name}_position_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
+        figs.append(fig)
+        plt.close(fig)
+
+    figs = []
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in indices:
+            ax.plot(
+                t, measured_joint_velocity[:, i],
+                label=r'Measured Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                linewidth=2.0
+            )
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.legend(
+            loc='upper left',
+            frameon=True,
+            fontsize=7
+        )
+        ax.tick_params(axis='both', labelsize=10)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/velocities/{group_name}_velocity_plot.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
+        figs.append(fig)
         plt.close(fig)
 
 

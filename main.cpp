@@ -778,7 +778,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (false){
+      if (true){
         auto start_integration = std::chrono::steady_clock::now();
 
 
