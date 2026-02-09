@@ -27,21 +27,11 @@ set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JsonConverter.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPSimulator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/LIPState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JointCommand.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotState.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/SE3.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WholeBodyController.cpp
 )
 
@@ -73,16 +63,4 @@ target_link_libraries(main
   pinocchio::pinocchio
   WalkingControllerLibrary
   unitree_sdk2
-)
-
-add_executable(lip_simulator_main
-lip_simulator_main.cpp
-)
-target_include_directories(lip_simulator_main
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-target_link_libraries(lip_simulator_main
-  pinocchio::pinocchio
-  WalkingControllerLibrary
 )

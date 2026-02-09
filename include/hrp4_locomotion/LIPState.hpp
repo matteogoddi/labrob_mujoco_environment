@@ -12,7 +12,9 @@ class LIPState {
       const Eigen::Vector3d& com_pos,
       const Eigen::Vector3d& com_vel,
       const Eigen::Vector3d& zmp_pos
-  );
+  ) : com_pos_(com_pos),
+    com_vel_(com_vel),
+    zmp_pos_(zmp_pos) {}
 
   Eigen::Vector3d com_pos_;
   Eigen::Vector3d com_vel_;

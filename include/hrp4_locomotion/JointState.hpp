@@ -17,13 +17,10 @@ struct JointData {
 class JointState {
   using JointStateMap = std::unordered_map<std::string, labrob::JointData>;
  public:
-  labrob::JointData operator[](const std::string& key) const;
-
-  labrob::JointData& operator[](const std::string& key);
-
-  JointStateMap::iterator begin();
-
-  JointStateMap::iterator end();
+  labrob::JointData operator[](const std::string& key) const {return joint_state_.at(key);}
+  labrob::JointData& operator[](const std::string& key) {return joint_state_[key];}
+  JointStateMap::iterator begin(){return joint_state_.begin();}
+  JointStateMap::iterator end(){return joint_state_.end();}
 
  protected:
   JointStateMap joint_state_;
