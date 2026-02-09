@@ -3,7 +3,7 @@
 
 #include <Eigen/Core>
 
-#include <hrp4_locomotion/JointState.hpp>
+// #include <hrp4_locomotion/JointState.hpp>
 #include <hrp4_locomotion/SE3.hpp>
 
 namespace labrob {

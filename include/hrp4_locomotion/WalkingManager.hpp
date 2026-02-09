@@ -12,7 +12,7 @@
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
-#include <hrp4_locomotion/JointState.hpp>
+// #include <hrp4_locomotion/JointState.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
