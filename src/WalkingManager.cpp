@@ -115,12 +115,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     sim_joint_position_log_.reserve(max_steps);
     sim_joint_velocity_log_.reserve(max_steps);
 
-    go_base_position_log_.reserve(max_steps);
-    go_base_velocity_log_.reserve(max_steps);
-    go_base_orientation_log_.reserve(max_steps);
-    go_base_orientation_rpy_log_.reserve(max_steps);
-    go_base_angular_velocity_log_.reserve(max_steps);
-    go_base_accelerometer_log_.reserve(max_steps);
+    odometry_base_position_log_.reserve(max_steps);
+    odometry_base_velocity_log_.reserve(max_steps);
+    odometry_imu_orientation_log_.reserve(max_steps);
+    odometry_imu_orientation_rpy_log_.reserve(max_steps);
 
     execution_time_wbc_log_.reserve(max_steps);
     execution_time_mpc_log_.reserve(max_steps);
@@ -885,8 +883,8 @@ WalkingManager::update(
     Eigen::Vector3d right_foot_force = estimated_force.tail(3);
     Eigen::Vector3d total_force = left_foot_force + right_foot_force;
 
-    auto q = robot_state_to_pinocchio_joint_configuration(robot_model, sim_robot_state);
-    auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model, sim_robot_state);
+    auto q = sim_robot_state.get_pinocchio_joint_configuration(robot_model);
+    auto qdot = sim_robot_state.get_pinocchio_joint_velocity(robot_model);
 
     // Perform forward kinematics on the whole tree and update robot data:
     pinocchio::forwardKinematics(robot_model, sim_robot_data, q);
@@ -974,37 +972,18 @@ WalkingManager::update(
     // }
 
     Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(n_ekf_output);
-
-    if(!useRobot){
-        actual_output.segment(BASE_IDX, 3) = sim_robot_state.position;
-        Eigen::Quaterniond sim_orientation_quat = Eigen::Quaterniond(
-            sim_robot_data.oMf[imu_idx_].rotation()
-        );
-        actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
-            sim_orientation_quat.w(), sim_orientation_quat.x(), sim_orientation_quat.y(), sim_orientation_quat.z()
-        ));
-        for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-            std::string joint_name = robot_model.names[joint_id + 2];
-            actual_output(JOINTS_IDX + joint_id) = sim_robot_state.joint_state[joint_name].pos;
-            // actual_output(JOINTS_VEL_IDX + joint_id) = sim_robot_state.joint_state[joint_name].vel;
-        }
-        // actual_output.segment(BASE_VEL_IDX, 3) = sim_robot_state.linear_velocity;
-        // actual_output.segment(LEFT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
-        // actual_output.segment(RIGHT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
-    } else {
-        actual_output.segment(BASE_IDX, 3) = go_base_position;
-        actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
-            go_imu_quaternion[0], go_imu_quaternion[1], go_imu_quaternion[2], go_imu_quaternion[3]
-        ));
-        for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-            std::string joint_name = robot_model.names[joint_id + 2];
-            actual_output(JOINTS_IDX + joint_id) = measured_joint_position(joint_id);
-            // actual_output(JOINTS_VEL_IDX + joint_id) = measured_joint_velocity(joint_id);
-        }
-        // actual_output.segment(BASE_VEL_IDX, 3) = go_base_velocity;
-        // actual_output.segment(LEFT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
-        // actual_output.segment(RIGHT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
+    actual_output.segment(BASE_IDX, 3) = odometry_base_position;
+    actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
+        odometry_imu_quaternion[0], odometry_imu_quaternion[1], odometry_imu_quaternion[2], odometry_imu_quaternion[3]
+    ));
+    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+        std::string joint_name = robot_model.names[joint_id + 2];
+        actual_output(JOINTS_IDX + joint_id) = measured_joint_position(joint_id);
+        // actual_output(JOINTS_VEL_IDX + joint_id) = measured_joint_velocity(joint_id);
     }
+    // actual_output.segment(BASE_VEL_IDX, 3) = odometry_base_velocity;
+    // actual_output.segment(LEFT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
+    // actual_output.segment(RIGHT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
 
     ////////////////////////
     // BASE ESTIMATION
@@ -1537,7 +1516,7 @@ WalkingManager::update(
     angular_momentum_log_.push_back(angular_momentum.transpose());
     // log measurements present in actual output
     measured_imu_orientation_log_.push_back(measured_imu_quaternion.transpose());
-    measured_imu_angular_velocity_log_.push_back(Eigen::Vector3d::Zero().transpose());
+    measured_imu_angular_velocity_log_.push_back(measured_imu_angular_velocity.transpose());
     measured_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
     measured_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
@@ -1592,12 +1571,10 @@ WalkingManager::update(
     des_torso_orientation_log_.push_back(desired_gait_configuration.torso.pos.eulerAngles(0,1,2).transpose());
     des_torso_angular_velocity_log_.push_back(desired_gait_configuration.torso.vel.tail<3>().transpose());
 
-    go_base_position_log_.push_back(go_base_position.transpose());
-    go_base_velocity_log_.push_back(go_base_velocity.transpose());
-    go_base_orientation_log_.push_back(go_imu_quaternion.transpose());
-    go_base_orientation_rpy_log_.push_back(go_imu_rpy.transpose());
-    go_base_angular_velocity_log_.push_back(go_imu_omega.transpose());
-    go_base_accelerometer_log_.push_back(go_imu_accelerometer.transpose());
+    odometry_base_position_log_.push_back(odometry_base_position.transpose());
+    odometry_base_velocity_log_.push_back(odometry_base_velocity.transpose());
+    odometry_imu_orientation_log_.push_back(odometry_imu_quaternion.transpose());
+    odometry_imu_orientation_rpy_log_.push_back(odometry_imu_rpy.transpose());
 
     auto end_update = std::chrono::high_resolution_clock::now();
 
@@ -1900,34 +1877,24 @@ void WalkingManager::saveLogs() {
         sim_base_angular_velocity_file << v.transpose() << "\n";
     }
 
-    std::ofstream go_base_position_file("/tmp/go_base_position.txt");
-    for (auto& v : go_base_position_log_) {
-        go_base_position_file << v.transpose() << "\n";
+    std::ofstream odometry_base_position_file("/tmp/odometry_base_position.txt");
+    for (auto& v : odometry_base_position_log_) {
+        odometry_base_position_file << v.transpose() << "\n";
     }
 
-    std::ofstream go_base_velocity_file("/tmp/go_base_velocity.txt");
-    for (auto& v : go_base_velocity_log_) {
-        go_base_velocity_file << v.transpose() << "\n";
+    std::ofstream odometry_base_velocity_file("/tmp/odometry_base_velocity.txt");
+    for (auto& v : odometry_base_velocity_log_) {
+        odometry_base_velocity_file << v.transpose() << "\n";
     }
 
-    std::ofstream go_base_orientation_file("/tmp/go_base_orientation.txt");
-    for (auto& v : go_base_orientation_log_) {
-        go_base_orientation_file << v.transpose() << "\n";
+    std::ofstream odometry_imu_orientation_file("/tmp/odometry_imu_orientation.txt");
+    for (auto& v : odometry_imu_orientation_log_) {
+        odometry_imu_orientation_file << v.transpose() << "\n";
     }
 
-    std::ofstream go_base_orientation_rpy_file("/tmp/go_base_orientation_rpy.txt");
-    for (auto& v : go_base_orientation_rpy_log_) {
-        go_base_orientation_rpy_file << v.transpose() << "\n";  
-    }
-
-    std::ofstream go_base_angular_velocity_file("/tmp/go_base_angular_velocity.txt");
-    for (auto& v : go_base_angular_velocity_log_) {
-        go_base_angular_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream go_base_accelerometer_file("/tmp/go_base_accelerometer.txt");
-    for (auto& v : go_base_accelerometer_log_) {
-        go_base_accelerometer_file << v.transpose() << "\n";
+    std::ofstream odometry_imu_orientation_rpy_file("/tmp/odometry_imu_orientation_rpy.txt");
+    for (auto& v : odometry_imu_orientation_rpy_log_) {
+        odometry_imu_orientation_rpy_file << v.transpose() << "\n";  
     }
 
     std::ofstream mpc_pred_com_pos_file("/tmp/mpc_pred_com_pos.txt");

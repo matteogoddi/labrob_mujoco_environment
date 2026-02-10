@@ -12,7 +12,6 @@
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
-// #include <hrp4_locomotion/JointState.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
@@ -203,6 +202,11 @@ private:
   // std::vector<Eigen::VectorXd> fr_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;
   // ekf state vectors
+
+  std::vector<Eigen::VectorXd> odometry_base_position_log_;
+  std::vector<Eigen::VectorXd> odometry_base_velocity_log_;
+  std::vector<Eigen::VectorXd> odometry_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> odometry_imu_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
   std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
@@ -224,14 +228,6 @@ private:
   std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
   std::vector<Eigen::VectorXd> sim_joint_position_log_;
   std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
-
-
-  std::vector<Eigen::VectorXd> go_base_position_log_;
-  std::vector<Eigen::VectorXd> go_base_velocity_log_;
-  std::vector<Eigen::VectorXd> go_base_orientation_log_;
-  std::vector<Eigen::VectorXd> go_base_orientation_rpy_log_;
-  std::vector<Eigen::VectorXd> go_base_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> go_base_accelerometer_log_;
 
   std::vector<Eigen::VectorXd> mpc_pred_com_pos_log_;
   std::vector<Eigen::VectorXd> mpc_pred_com_vel_log_;

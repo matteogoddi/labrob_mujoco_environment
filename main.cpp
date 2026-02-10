@@ -53,18 +53,16 @@ double startTimeWBCCL = 1000.0;
 double startTimeMPCCL = 1000.0;
 double startTimeEKF = 0.0;
 
-Eigen::Vector3d go_base_position = Eigen::Vector3d::Zero();
-Eigen::Vector3d go_base_velocity = Eigen::Vector3d::Zero();
-Eigen::Vector4d go_imu_quaternion = Eigen::Vector4d(1,0,0,0);
-Eigen::Vector3d go_imu_rpy = Eigen::Vector3d::Zero();
-Eigen::Vector3d go_imu_omega = Eigen::Vector3d::Zero();
-Eigen::Vector3d go_imu_accelerometer= Eigen::Vector3d::Zero();
+Eigen::Vector3d odometry_base_position = Eigen::Vector3d::Zero();
+Eigen::Vector3d odometry_base_velocity = Eigen::Vector3d::Zero();
+Eigen::Vector4d odometry_imu_quaternion = Eigen::Vector4d(1,0,0,0);
+Eigen::Vector3d odometry_imu_rpy = Eigen::Vector3d::Zero();
 
 Eigen::VectorXd measured_joint_position = Eigen::VectorXd::Zero(27);
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(27);
 Eigen::Vector4d measured_imu_quaternion = Eigen::Vector4d(1,0,0,0);
 Eigen::Vector3d measured_imu_rpy = Eigen::Vector3d::Zero();
-Eigen::Vector3d measured_imu_omega = Eigen::Vector3d::Zero();
+Eigen::Vector3d measured_imu_angular_velocity = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_accelerometer= Eigen::Vector3d::Zero();
 
 using namespace unitree::robot;
@@ -695,80 +693,49 @@ int main(const int argc, const char* argv[]) {
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
-
-        measured_imu_accelerometer = Eigen::Vector3d(
-          imu_state_data.accelerometer[0],
-          imu_state_data.accelerometer[1],
-          imu_state_data.accelerometer[2]
-        );
-
-        measured_imu_omega = Eigen::Vector3d(
-          imu_state_data.omega[0],
-          imu_state_data.omega[1],
-          imu_state_data.omega[2]
-        );
-
-        measured_imu_quaternion = Eigen::Vector4d(
-          imu_state_data.quaternion[0],
-          imu_state_data.quaternion[1],
-          imu_state_data.quaternion[2],
-          imu_state_data.quaternion[3]
-        );
-        measured_imu_rpy = Eigen::Vector3d(
-          imu_state_data.rpy[0],
-          imu_state_data.rpy[1],
-          imu_state_data.rpy[2]
-        );
-
+        measured_imu_accelerometer = Eigen::Vector3d(imu_state_data.accelerometer[0], imu_state_data.accelerometer[1], imu_state_data.accelerometer[2]);
+        measured_imu_angular_velocity = Eigen::Vector3d(imu_state_data.omega[0], imu_state_data.omega[1], imu_state_data.omega[2]);
+        measured_imu_quaternion = Eigen::Vector4d(imu_state_data.quaternion[0], imu_state_data.quaternion[1], imu_state_data.quaternion[2], imu_state_data.quaternion[3]);
+        measured_imu_rpy = Eigen::Vector3d(imu_state_data.rpy[0], imu_state_data.rpy[1], imu_state_data.rpy[2]);
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           measured_joint_position[i] = motor_state_data.q[i];
           measured_joint_velocity[i] = motor_state_data.dq[i];
         }
-
-        go_base_position = Eigen::Vector3d(
+        odometry_base_position = Eigen::Vector3d(
           state_data.position[0],
           state_data.position[1],
           state_data.position[2] + 0.061273
         );
-
-        go_base_velocity = Eigen::Vector3d(
-          state_data.velocity[0],
-          state_data.velocity[1],
-          state_data.velocity[2]
-        );
-
-        go_imu_accelerometer = Eigen::Vector3d(
-          state_data.imu_state.accelerometer[0],
-          state_data.imu_state.accelerometer[1],
-          state_data.imu_state.accelerometer[2]
-        );
-
-        go_imu_omega = Eigen::Vector3d(
-          state_data.imu_state.omega[0],
-          state_data.imu_state.omega[1],
-          state_data.imu_state.omega[2]
-        );
-
-        go_imu_quaternion = Eigen::Vector4d(
-          state_data.imu_state.quaternion[0],
-          state_data.imu_state.quaternion[1],
-          state_data.imu_state.quaternion[2],
-          state_data.imu_state.quaternion[3]
-        );
-
-        go_imu_rpy = Eigen::Vector3d(
-          state_data.imu_state.rpy[0],
-          state_data.imu_state.rpy[1],
-          state_data.imu_state.rpy[2]
-        );
+        odometry_base_velocity = Eigen::Vector3d(state_data.velocity[0], state_data.velocity[1], state_data.velocity[2]);
+        odometry_imu_quaternion = Eigen::Vector4d(state_data.imu_state.quaternion[0], state_data.imu_state.quaternion[1], state_data.imu_state.quaternion[2], state_data.imu_state.quaternion[3]);
+        odometry_imu_rpy = Eigen::Vector3d(state_data.imu_state.rpy[0], state_data.imu_state.rpy[1], state_data.imu_state.rpy[2]);
       }
+
+      // if not useRobot take measurements from the mujoco state (for now we are not simulating noise, but we could add it here)
+      else {
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          measured_joint_position[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+          measured_joint_velocity[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
+        }
+        measured_imu_quaternion = Eigen::Vector4d(mj_data_ptr->qpos[3], mj_data_ptr->qpos[4], mj_data_ptr->qpos[5], mj_data_ptr->qpos[6]);
+        measured_imu_rpy = labrob::rpyFromQuaternion(Eigen::Quaterniond(measured_imu_quaternion(0), measured_imu_quaternion(1), measured_imu_quaternion(2), measured_imu_quaternion(3)));
+        measured_imu_angular_velocity = Eigen::Vector3d(mj_data_ptr->qvel[3], mj_data_ptr->qvel[4], mj_data_ptr->qvel[5]);
+        measured_imu_accelerometer = Eigen::Vector3d(0, 0, 9.81);
+        odometry_base_position = Eigen::Vector3d(mj_data_ptr->qpos[0], mj_data_ptr->qpos[1], mj_data_ptr->qpos[2]);
+        odometry_base_velocity = Eigen::Vector3d(mj_data_ptr->qvel[0], mj_data_ptr->qvel[1], mj_data_ptr->qvel[2]);
+        odometry_imu_quaternion = measured_imu_quaternion;
+        odometry_imu_rpy = measured_imu_rpy;
+
+      }
+
       // Update walking manager:
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
       if (true){
         auto start_integration = std::chrono::steady_clock::now();
-
 
         mj_step1(mj_model_ptr, mj_data_ptr);
   
@@ -783,7 +750,7 @@ int main(const int argc, const char* argv[]) {
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
         if(integration_duration > std::chrono::milliseconds(1))
-          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
+          std::cout << "Warning: mujoco render took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
       } else {

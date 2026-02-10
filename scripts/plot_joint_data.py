@@ -24,6 +24,8 @@ if __name__ == '__main__':
     endPlot = input("Enter the time (in seconds) at which you want to end the plots (or press Enter to plot all data): ")
     if endPlot != '':
         endPlot = int(float(endPlot) * 500)  # Assuming a control frequency of 500 Hz
+    else:
+        endPlot = 10
 
     joint_names = open(folder + '/joint_names.txt').readlines()
 
@@ -32,8 +34,9 @@ if __name__ == '__main__':
     startTimeWBCCL = parameters_log
     startPlot = int(0.001 * startTimeWBCCL * 500 + 1000)  # Assuming a control frequency of 500 Hz
 
-    fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')[startPlot:num_samples, :]
+    fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')
     num_samples = fb_com_position.shape[0] - endPlot
+    fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')[startPlot:num_samples, :]
     fb_com_velocity = np.loadtxt(folder + '/fb_com_velocity.txt')[startPlot:num_samples, :]
     fb_zmp_position = np.loadtxt(folder + '/fb_zmp_position.txt')[startPlot:num_samples, :]
     kf_com_position =  np.loadtxt(folder + '/kf_com_position.txt')[startPlot:num_samples, :]
@@ -86,14 +89,6 @@ if __name__ == '__main__':
     des_torso_orientation = np.loadtxt(folder + '/des_torso_orientation.txt')[startPlot:num_samples, :]
     des_torso_angular_velocity = np.loadtxt(folder + '/des_torso_angular_velocity.txt')[startPlot:num_samples, :]
 
-
-    go_base_position = np.loadtxt(folder + '/go_base_position.txt')[startPlot:num_samples, :]
-    go_base_velocity = np.loadtxt(folder + '/go_base_velocity.txt')[startPlot:num_samples, :]
-    go_base_orientation = np.loadtxt(folder + '/go_base_orientation.txt')[startPlot:num_samples, :]
-    go_base_orientation_rpy = np.loadtxt(folder + '/go_base_orientation_rpy.txt')[startPlot:num_samples, :]
-    go_base_angular_velocity = np.loadtxt(folder + '/go_base_angular_velocity.txt')[startPlot:num_samples, :]
-    go_base_accelerometer = np.loadtxt(folder + '/go_base_accelerometer.txt')[startPlot:num_samples, :]
-
     mpc_pred_com_pos = np.loadtxt(folder + '/mpc_pred_com_pos.txt')
     mpc_pred_com_vel = np.loadtxt(folder + '/mpc_pred_com_vel.txt')
     mpc_pred_zmp_pos = np.loadtxt(folder + '/mpc_pred_zmp_pos.txt')
@@ -104,6 +99,10 @@ if __name__ == '__main__':
     execution_time_wbc = np.loadtxt(folder + '/execution_time_wbc.txt')[startPlot:num_samples]
     execution_time_update = np.loadtxt(folder + '/execution_time_update.txt')[startPlot:num_samples]
 
+    odometry_base_position = np.loadtxt(folder + '/odometry_base_position.txt')[startPlot:num_samples, :]
+    odometry_base_velocity = np.loadtxt(folder + '/odometry_base_velocity.txt')[startPlot:num_samples, :]
+    odometry_imu_orientation = np.loadtxt(folder + '/odometry_imu_orientation.txt')[startPlot:num_samples, :]
+    odometry_imu_orientation_rpy = np.loadtxt(folder + '/odometry_imu_orientation_rpy.txt')[startPlot:num_samples, :]
     measured_joint_position: np.ndarray = np.loadtxt(folder +'/measured_joint_position.txt')[startPlot:num_samples, :]
     measured_joint_velocity: np.ndarray = np.loadtxt(folder +'/measured_joint_velocity.txt')[startPlot:num_samples, :]
     measured_imu_orientation: np.ndarray = np.loadtxt(folder + '/measured_imu_orientation.txt')[startPlot:num_samples, :]
@@ -112,7 +111,7 @@ if __name__ == '__main__':
         
     # rotate relative positions depending on the actual yaw angle
     for i in range(num_samples - startPlot):
-        yaw = go_base_orientation_rpy[0, 2]
+        yaw = odometry_imu_orientation_rpy[0, 2]
         rotation_matrix = np.array([
             [np.cos(yaw), -np.sin(yaw), 0],
             [np.sin(yaw),  np.cos(yaw), 0],
@@ -1726,10 +1725,10 @@ if __name__ == '__main__':
     plt.close(fig)
 
     #plot variance between ekf base position and simulated base position, orientation, velocity, angular velocity
-    variance_base_position = np.var(ekf_base_position - go_base_position, axis=0)
-    variance_base_velocity = np.var(ekf_base_velocity - go_base_velocity, axis=0)
-    variance_base_orientation = np.var(ekf_base_orientation - go_base_orientation, axis=0)
-    variance_base_angular_velocity = np.var(ekf_base_angular_velocity - go_base_angular_velocity, axis=0)
+    variance_base_position = np.var(ekf_base_position - odometry_base_position, axis=0)
+    variance_base_velocity = np.var(ekf_base_velocity - odometry_base_velocity, axis=0)
+    variance_base_orientation = np.var(ekf_base_orientation - odometry_imu_orientation, axis=0)
+    variance_base_angular_velocity = np.var(ekf_base_angular_velocity - measured_imu_angular_velocity, axis=0)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(3), variance_base_position, label='Position Variance', color='skyblue', alpha=0.7)
     ax.bar(range(3, 6), variance_base_velocity, label='Velocity Variance', color='orange', alpha=0.7)
@@ -1791,10 +1790,10 @@ if __name__ == '__main__':
     plt.close(fig)
 
     #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
-    mse_base_position = np.mean((ekf_base_position - go_base_position) ** 2, axis=0)
-    mse_base_velocity = np.mean((ekf_base_velocity - go_base_velocity) ** 2, axis=0)
-    mse_base_orientation = np.mean((ekf_base_orientation - go_base_orientation) ** 2, axis=0)
-    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - go_base_angular_velocity) ** 2, axis=0)
+    mse_base_position = np.mean((ekf_base_position - odometry_base_position) ** 2, axis=0)
+    mse_base_velocity = np.mean((ekf_base_velocity - odometry_base_velocity) ** 2, axis=0)
+    mse_base_orientation = np.mean((ekf_base_orientation - odometry_imu_orientation) ** 2, axis=0)
+    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - measured_imu_angular_velocity) ** 2, axis=0)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(3), mse_base_position, label='Position MSE', color='skyblue', alpha=0.7)
     ax.bar(range(3, 6), mse_base_velocity, label='Velocity MSE', color='orange', alpha=0.7)
@@ -1841,9 +1840,9 @@ if __name__ == '__main__':
 
     # Plot EKF base position
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_position[:, 0] - ekf_base_position[:, 0], label='Base Position Error X', color='blue')
-    ax.plot(t, go_base_position[:, 1] - ekf_base_position[:, 1], label='Base Position Error Y', color='orange')
-    ax.plot(t, go_base_position[:, 2] - ekf_base_position[:, 2], label='Base Position Error Z', color='green')
+    ax.plot(t, odometry_base_position[:, 0] - ekf_base_position[:, 0], label='Base Position Error X', color='blue')
+    ax.plot(t, odometry_base_position[:, 1] - ekf_base_position[:, 1], label='Base Position Error Y', color='orange')
+    ax.plot(t, odometry_base_position[:, 2] - ekf_base_position[:, 2], label='Base Position Error Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
     ax.set_title('Base Position Error between odometry and ekf')
@@ -1855,9 +1854,9 @@ if __name__ == '__main__':
 
     # Plot go base velocity
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_velocity[:, 0] - ekf_base_velocity[:, 0], label='Error Base Velocity X', color='blue')
-    ax.plot(t, go_base_velocity[:, 1] - ekf_base_velocity[:, 1], label='Error Base Velocity Y', color='orange')
-    ax.plot(t, go_base_velocity[:, 2] - ekf_base_velocity[:, 2], label='Error Base Velocity Z', color='green')
+    ax.plot(t, odometry_base_velocity[:, 0] - ekf_base_velocity[:, 0], label='Error Base Velocity X', color='blue')
+    ax.plot(t, odometry_base_velocity[:, 1] - ekf_base_velocity[:, 1], label='Error Base Velocity Y', color='orange')
+    ax.plot(t, odometry_base_velocity[:, 2] - ekf_base_velocity[:, 2], label='Error Base Velocity Z', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Velocity [m/s]')
     ax.set_title('Base Velocity Error between fb velocity and ekf')
@@ -1868,11 +1867,11 @@ if __name__ == '__main__':
     plt.close(fig)
 
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_position[:, 0], label='Odom Base position X', color='blue')
+    ax.plot(t, odometry_base_position[:, 0], label='Odom Base position X', color='blue')
     ax.plot(t, ekf_base_position[:, 0], label='EKF Base position X', color='blue', linestyle = "--")
-    ax.plot(t, go_base_position[:, 1], label='Odom Base position Y', color='orange')
+    ax.plot(t, odometry_base_position[:, 1], label='Odom Base position Y', color='orange')
     ax.plot(t, ekf_base_position[:, 1], label='EKF Base position Y', color='orange', linestyle = "--")
-    ax.plot(t, go_base_position[:, 2], label='Odom Base position Z', color='green')
+    ax.plot(t, odometry_base_position[:, 2], label='Odom Base position Z', color='green')
     ax.plot(t, ekf_base_position[:, 2], label='EKF Base position Z', color='green', linestyle = "--")
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m/s]')
@@ -1885,11 +1884,11 @@ if __name__ == '__main__':
 
     #plot go base position and fb com position
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_position[:, 0], label='Odom Base position X', color='blue')
+    ax.plot(t, odometry_base_position[:, 0], label='Odom Base position X', color='blue')
     ax.plot(t, fb_com_position[:, 0], label='FB COM position X', color='blue', linestyle = "--")
-    ax.plot(t, go_base_position[:, 1], label='Odom Base position Y', color='orange')
+    ax.plot(t, odometry_base_position[:, 1], label='Odom Base position Y', color='orange')
     ax.plot(t, fb_com_position[:, 1], label='FB COM position Y', color='orange', linestyle = "--")
-    ax.plot(t, go_base_position[:, 2], label='Odom Base position Z', color='green')
+    ax.plot(t, odometry_base_position[:, 2], label='Odom Base position Z', color='green')
     ax.plot(t, fb_com_position[:, 2], label='FB COM position Z', color='green', linestyle = "--")
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m/s]')
@@ -1903,10 +1902,10 @@ if __name__ == '__main__':
 
     # Plot go base orientation in quaternion format
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation[:, 0] - ekf_base_orientation[:, 0], label='Odom Base Orientation W', color='blue')
-    ax.plot(t, go_base_orientation[:, 1] - ekf_base_orientation[:, 1], label='Odom Base Orientation X', color='orange')
-    ax.plot(t, go_base_orientation[:, 2] - ekf_base_orientation[:, 2], label='Odom Base Orientation Y', color='green')
-    ax.plot(t, go_base_orientation[:, 3] - ekf_base_orientation[:, 3], label='Odom Base Orientation Z', color='red')
+    ax.plot(t, odometry_imu_orientation[:, 0] - ekf_base_orientation[:, 0], label='Odom Base Orientation W', color='blue')
+    ax.plot(t, odometry_imu_orientation[:, 1] - ekf_base_orientation[:, 1], label='Odom Base Orientation X', color='orange')
+    ax.plot(t, odometry_imu_orientation[:, 2] - ekf_base_orientation[:, 2], label='Odom Base Orientation Y', color='green')
+    ax.plot(t, odometry_imu_orientation[:, 3] - ekf_base_orientation[:, 3], label='Odom Base Orientation Z', color='red')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Orientation [Quaternion]')
     ax.set_title('Base Orientation Error between fb and ekf')
@@ -1918,9 +1917,9 @@ if __name__ == '__main__':
 
     # Plot go base orientation in quaternion format
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation_rpy[:, 0] - ekf_base_orientation_rpy[:, 0], label='Error Base Orientation R', color='blue')
-    ax.plot(t, go_base_orientation_rpy[:, 1] - ekf_base_orientation_rpy[:, 1], label='Error Base Orientation P', color='orange')
-    ax.plot(t, go_base_orientation_rpy[:, 2] - ekf_base_orientation_rpy[:, 2], label='Error Base Orientation Y', color='green')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 0] - ekf_base_orientation_rpy[:, 0], label='Error Base Orientation R', color='blue')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 1] - ekf_base_orientation_rpy[:, 1], label='Error Base Orientation P', color='orange')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 2] - ekf_base_orientation_rpy[:, 2], label='Error Base Orientation Y', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Base Orientation [RPY]')
     ax.set_title('Base Orientation Error between fb and ekf')
@@ -1932,9 +1931,9 @@ if __name__ == '__main__':
 
     # Plot go base orientation in quaternion format
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation_rpy[:, 0], label='FB Base Orientation R', color='blue')
-    ax.plot(t, go_base_orientation_rpy[:, 1], label='FB Base Orientation P', color='orange')
-    ax.plot(t, go_base_orientation_rpy[:, 2], label='FB Base Orientation Y', color='green')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 0], label='FB Base Orientation R', color='blue')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 1], label='FB Base Orientation P', color='orange')
+    ax.plot(t, odometry_imu_orientation_rpy[:, 2], label='FB Base Orientation Y', color='green')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Base Orientation [RPY]')
     ax.set_title('Base Orientation Feedback')
@@ -1946,10 +1945,10 @@ if __name__ == '__main__':
 
     # Plot go base orientation in quaternion format
     fig, ax = plt.subplots()
-    ax.plot(t, go_base_orientation[:, 0] , label='FB Base Orientation W', color='blue')
-    ax.plot(t, go_base_orientation[:, 1], label='FB Base Orientation X', color='orange')
-    ax.plot(t, go_base_orientation[:, 2] , label='FB Base Orientation Y', color='green')
-    ax.plot(t, go_base_orientation[:, 3], label='FB Base Orientation Z', color='red')
+    ax.plot(t, odometry_imu_orientation[:, 0] , label='FB Base Orientation W', color='blue')
+    ax.plot(t, odometry_imu_orientation[:, 1], label='FB Base Orientation X', color='orange')
+    ax.plot(t, odometry_imu_orientation[:, 2] , label='FB Base Orientation Y', color='green')
+    ax.plot(t, odometry_imu_orientation[:, 3], label='FB Base Orientation Z', color='red')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('go Base Orientation [Quaternion]')
     ax.set_title('Base Orientation Feedback')
