@@ -716,18 +716,17 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          measured_joint_position[i] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
-          measured_joint_velocity[i] = mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]];
+          measured_joint_position[i] = robot_state.joint_state[joint_name].pos;
+          measured_joint_velocity[i] = robot_state.joint_state[joint_name].vel;
         }
-        measured_imu_quaternion = Eigen::Vector4d(mj_data_ptr->qpos[3], mj_data_ptr->qpos[4], mj_data_ptr->qpos[5], mj_data_ptr->qpos[6]);
+        measured_imu_quaternion = Eigen::Vector4d(robot_state.orientation.w(), robot_state.orientation.x(), robot_state.orientation.y(), robot_state.orientation.z());
         measured_imu_rpy = labrob::rpyFromQuaternion(Eigen::Quaterniond(measured_imu_quaternion(0), measured_imu_quaternion(1), measured_imu_quaternion(2), measured_imu_quaternion(3)));
-        measured_imu_angular_velocity = Eigen::Vector3d(mj_data_ptr->qvel[3], mj_data_ptr->qvel[4], mj_data_ptr->qvel[5]);
+        measured_imu_angular_velocity = Eigen::Vector3d(robot_state.angular_velocity.x(), robot_state.angular_velocity.y(), robot_state.angular_velocity.z());
         measured_imu_accelerometer = Eigen::Vector3d(0, 0, 9.81);
-        odometry_base_position = Eigen::Vector3d(mj_data_ptr->qpos[0], mj_data_ptr->qpos[1], mj_data_ptr->qpos[2]);
-        odometry_base_velocity = Eigen::Vector3d(mj_data_ptr->qvel[0], mj_data_ptr->qvel[1], mj_data_ptr->qvel[2]);
+        odometry_base_position = Eigen::Vector3d(robot_state.position.x(), robot_state.position.y(), robot_state.position.z());
+        odometry_base_velocity = Eigen::Vector3d(robot_state.linear_velocity.x(), robot_state.linear_velocity.y(), robot_state.linear_velocity.z());
         odometry_imu_quaternion = measured_imu_quaternion;
         odometry_imu_rpy = measured_imu_rpy;
-
       }
 
       // Update walking manager:
