@@ -55,10 +55,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     cov_mod_zmp = 1.0;
 
     int64_t max_steps = 50000;
-
-    sim_com_position_log_.reserve(max_steps);
-    sim_com_velocity_log_.reserve(max_steps);
-    sim_zmp_position_log_.reserve(max_steps);
     
     fb_com_position_log_.reserve(max_steps);
     fb_com_velocity_log_.reserve(max_steps);
@@ -75,10 +71,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     ef_zmp_position_log_.reserve(max_steps);
 
-    p_lsole_sim_log_.reserve(max_steps);
-    p_rsole_sim_log_.reserve(max_steps);
-    v_lsole_sim_log_.reserve(max_steps);
-    v_rsole_sim_log_.reserve(max_steps);
     p_lsole_fb_log_.reserve(max_steps);
     p_rsole_fb_log_.reserve(max_steps);
     v_lsole_fb_log_.reserve(max_steps);
@@ -146,8 +138,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     mpc_zmp_velocity_log_.reserve(max_steps);
     con_zmp_velocity_log_.reserve(max_steps);
-
-    kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
     std::string robot_description_filename = "../robot/g1/g1_description/g1_rev_hand.urdf";
@@ -684,8 +674,6 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
     // Kalman_Gain = Lambda_ * C.transpose();
     // Kalman_Gain = S.ldlt().solve(Kalman_Gain.transpose()).transpose();
-
-    // kalman_gain_log_.push_back(Kalman_Gain);
 
     P_ = (Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) - Kalman_Gain * C) * Lambda_;
 
@@ -1514,27 +1502,20 @@ WalkingManager::update(
     prev_angular_momentum_ = angular_momentum;
 
 
-    sim_com_position_log_.push_back(p_CoM_sim.transpose());
     fb_com_position_log_.push_back(p_CoM_fb.transpose());
     kf_com_position_log_.push_back(kf_LipState.com_pos_.transpose());
     des_com_position_log_.push_back(p_CoM_des.transpose());
 
-    sim_com_velocity_log_.push_back(v_CoM_sim.transpose());
     fb_com_velocity_log_.push_back(v_CoM_fb.transpose());
     kf_com_velocity_log_.push_back((kf_LipState.com_vel_).transpose());
     des_com_velocity_log_.push_back(v_CoM_des.transpose());
 
-    sim_zmp_position_log_.push_back(zmp_3d_sim.transpose());
     fb_zmp_position_log_.push_back(zmp_3d_fb.transpose());
     kf_zmp_position_log_.push_back(kf_LipState.zmp_pos_.transpose());
     des_zmp_position_log_.push_back(p_ZMP_des.transpose());
 
     des_com_acceleration_log_.push_back(desired_gait_configuration.com.acc.transpose());
 
-    p_lsole_sim_log_.push_back(T_lsole_sim.translation().transpose());
-    p_rsole_sim_log_.push_back(T_rsole_sim.translation().transpose());
-    v_lsole_sim_log_.push_back(v_lsole_sim.head<3>().transpose());
-    v_rsole_sim_log_.push_back(v_rsole_sim.head<3>().transpose());
     p_lsole_fb_log_.push_back(T_lsole_fb.translation().transpose());
     p_rsole_fb_log_.push_back(T_rsole_fb.translation().transpose());
     v_lsole_fb_log_.push_back(v_lsole_fb.head<3>().transpose());
@@ -1682,40 +1663,11 @@ RobotState WalkingManager::getActualRobotState(){
 
 void WalkingManager::saveLogs() {
 
-    //compute mean kalman gain matrix and save it to a file
-    Eigen::MatrixXd mean_Kalman_Gain = Eigen::MatrixXd::Zero(kalman_gain_log_[0].rows(), kalman_gain_log_[0].cols());
-    for (auto& Kalman_Gain : kalman_gain_log_) {
-        mean_Kalman_Gain += Kalman_Gain;
-    }
-    mean_Kalman_Gain /= kalman_gain_log_.size();
-    std::ofstream mean_kalman_gain_file("../mean_kalman_gain.txt");
-    for (int i = 0; i < mean_Kalman_Gain.rows(); ++i) {
-        for (int j = 0; j < mean_Kalman_Gain.cols(); ++j) {
-            mean_kalman_gain_file << mean_Kalman_Gain(i, j);
-            if (j < mean_Kalman_Gain.cols() - 1) mean_kalman_gain_file << " ";
-        }
-        mean_kalman_gain_file << "\n";
-    }
 
     std::ofstream joint_names_file("/tmp/joint_names.txt");
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
         std::string joint_name = robot_model.names[joint_id + 2];
         joint_names_file << joint_name << "\n";
-    }
-
-    std::ofstream sim_com_position_file("/tmp/sim_com_position.txt");
-    for (auto& v : sim_com_position_log_) {
-        sim_com_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_com_velocity_file("/tmp/sim_com_velocity.txt");
-    for (auto& v : sim_com_velocity_log_) {
-        sim_com_velocity_file << v.transpose() << "\n";
-    }
-
-    std::ofstream sim_zmp_position_file("/tmp/sim_zmp_position.txt");
-    for (auto& v : sim_zmp_position_log_) {
-        sim_zmp_position_file << v.transpose() << "\n";
     }
 
     std::ofstream fb_com_position_file("/tmp/fb_com_position.txt");
@@ -1771,25 +1723,6 @@ void WalkingManager::saveLogs() {
     std::ofstream ef_zmp_position_file("/tmp/ef_zmp_position.txt");
     for (auto& v : ef_zmp_position_log_) {
         ef_zmp_position_file << v.transpose() << "\n";
-    }
-
-    std::ofstream p_lsole_sim_file("/tmp/p_lsole_sim.txt");
-    for (auto& v : p_lsole_sim_log_) {
-        p_lsole_sim_file << v.transpose() << "\n";
-    }
-    std::ofstream p_rsole_sim_file("/tmp/p_rsole_sim.txt");
-    for (auto& v : p_rsole_sim_log_) {
-        p_rsole_sim_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_lsole_sim_file("/tmp/v_lsole_sim.txt");
-    for (auto& v : v_lsole_sim_log_) {
-        v_lsole_sim_file << v.transpose() << "\n";
-    }
-
-    std::ofstream v_rsole_sim_file("/tmp/v_rsole_sim.txt");
-    for (auto& v : v_rsole_sim_log_) {
-        v_rsole_sim_file << v.transpose() << "\n";
     }
 
     std::ofstream p_lsole_fb_file("/tmp/p_lsole_fb.txt");

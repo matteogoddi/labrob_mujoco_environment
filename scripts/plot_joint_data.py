@@ -13,12 +13,18 @@ import cv2
 
 if __name__ == '__main__':
     #request input from terminal
-    number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
-    if number == '0':
+    expNumber = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
+    if expNumber == '0':
         folder = '/tmp'
+        expType = "Simulation"
     else:
-        folder = 'experiments/experiment_' + number
-    
+        folder = 'experiments/experiment_' + expNumber
+        expType = "Experiment"
+
+    endPlot = input("Enter the time (in seconds) at which you want to end the plots (or press Enter to plot all data): ")
+    if endPlot != '':
+        endPlot = int(float(endPlot) * 500)  # Assuming a control frequency of 500 Hz
+
     joint_names = open(folder + '/joint_names.txt').readlines()
 
     parameters_log = np.loadtxt(folder + '/parameters_log.txt')
@@ -26,12 +32,8 @@ if __name__ == '__main__':
     startTimeWBCCL = parameters_log
     startPlot = int(0.001 * startTimeWBCCL * 500 + 1000)  # Assuming a control frequency of 500 Hz
 
-    sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')
-    num_samples = sim_com_position.shape[0] - 5000
-    sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')[startPlot:num_samples, :]
-    sim_com_velocity =  np.loadtxt(folder + '/sim_com_velocity.txt')[startPlot:num_samples, :]
-    sim_zmp_position =  np.loadtxt(folder + '/sim_zmp_position.txt')[startPlot:num_samples, :]
     fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')[startPlot:num_samples, :]
+    num_samples = fb_com_position.shape[0] - endPlot
     fb_com_velocity = np.loadtxt(folder + '/fb_com_velocity.txt')[startPlot:num_samples, :]
     fb_zmp_position = np.loadtxt(folder + '/fb_zmp_position.txt')[startPlot:num_samples, :]
     kf_com_position =  np.loadtxt(folder + '/kf_com_position.txt')[startPlot:num_samples, :]
@@ -46,10 +48,6 @@ if __name__ == '__main__':
 
     ef_zmp_position = np.loadtxt(folder + '/ef_zmp_position.txt')[startPlot:num_samples, :]
 
-    p_lsole_sim = np.loadtxt(folder + '/p_lsole_sim.txt')[startPlot:num_samples, :]
-    p_rsole_sim = np.loadtxt(folder + '/p_rsole_sim.txt')[startPlot:num_samples, :]
-    v_lsole_sim = np.loadtxt(folder + '/v_lsole_sim.txt')[startPlot:num_samples, :]
-    v_rsole_sim = np.loadtxt(folder + '/v_rsole_sim.txt')[startPlot:num_samples, :]
     p_lsole_fb = np.loadtxt(folder + '/p_lsole_fb.txt')[startPlot:num_samples, :]
     p_rsole_fb = np.loadtxt(folder + '/p_rsole_fb.txt')[startPlot:num_samples, :]
     v_lsole_fb = np.loadtxt(folder + '/v_lsole_fb.txt')[startPlot:num_samples, :]

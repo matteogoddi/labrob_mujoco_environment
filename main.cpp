@@ -29,7 +29,6 @@
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/gamepad.hpp>
 
-
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
 #include <unitree/idl/hg/LowCmd_.hpp>
@@ -38,6 +37,7 @@
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
 #include <hrp4_locomotion/globals.h>
+#include "MujocoUI.hpp"
 
 bool isWBCLoopClosed = false;
 bool isMPCLoopClosed = false;
@@ -48,7 +48,6 @@ bool oneTimepress = true;
 bool xPressed = false;
 bool loopClosed = true;
 bool switchWalkingState = false;
-
 
 double startTimeWBCCL = 1000.0;
 double startTimeMPCCL = 1000.0;
@@ -67,8 +66,6 @@ Eigen::Vector4d measured_imu_quaternion = Eigen::Vector4d(1,0,0,0);
 Eigen::Vector3d measured_imu_rpy = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_omega = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_accelerometer= Eigen::Vector3d::Zero();
-
-#include "MujocoUI.hpp"
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
@@ -160,6 +157,7 @@ std::array<float, G1_NUM_MOTOR> Kd{
 //   2*sqrt(Kp[22]), 2*sqrt(Kp[23]), 2*sqrt(Kp[24]), 2*sqrt(Kp[25]), 2*sqrt(Kp[26]), 2*sqrt(Kp[27]), 2*sqrt(Kp[28]) // arms dx
 // };
 
+//TODO is it better to use DataBuffers?
 std::mutex stateMutex;
 DataBuffer<MotorState> motor_state_buffer_;
 DataBuffer<MotorCommand> motor_command_buffer_;
@@ -201,6 +199,38 @@ std::map<std::string, int> joint_name_to_index = {
   {"right_wrist_roll_joint", 26},
   {"right_wrist_pitch_joint", 27}, // NOTE INVALID for g1 23dof
   {"right_wrist_yaw_joint", 28}      // NOTE INVALID for g1 23dof
+};
+
+// create a map assigning each joint name to its initial position 
+// recall that pitch and yaw should be the same, while roll should be opposite for left and right joints
+std::map<std::string, mjtNum> joint_initial_positions = {
+  {"left_hip_pitch_joint", -0.44},
+  {"left_hip_roll_joint", 0.04}, 
+  {"left_hip_yaw_joint", 0.0},
+  {"left_knee_joint", 0.95},
+  {"left_ankle_pitch_joint", -0.50},
+  {"left_ankle_roll_joint", 0.0},
+  {"right_hip_pitch_joint", -0.44},
+  {"right_hip_roll_joint", -0.04},
+  {"right_hip_yaw_joint", 0.0},
+  {"right_knee_joint", 0.95},
+  {"right_ankle_pitch_joint", -0.50},
+  {"right_ankle_roll_joint", 0.0},
+  {"waist_yaw_joint", 0.0},
+  {"left_shoulder_pitch_joint", 0.07},
+  {"left_shoulder_roll_joint", 0.25},
+  {"left_shoulder_yaw_joint", 0.0},
+  {"left_elbow_joint", 1.13},
+  {"left_wrist_roll_joint", 0.0},
+  {"left_wrist_pitch_joint", 0.0},
+  {"left_wrist_yaw_joint", 0.0},
+  {"right_shoulder_pitch_joint", 0.07},
+  {"right_shoulder_roll_joint", -0.25},
+  {"right_shoulder_yaw_joint", 0.0},
+  {"right_elbow_joint", 1.13},
+  {"right_wrist_roll_joint", 0.0},
+  {"right_wrist_pitch_joint", 0.0},
+  {"right_wrist_yaw_joint", 0.0},
 };
 
 inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
@@ -514,16 +544,15 @@ int main(const int argc, const char* argv[]) {
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
   if (useRobot) {
-    std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
     std::cout << "Press 'Y' on the GAMEPAD to end the program." << std::endl;
-    std::cout << "Press 'B' on the GAMEPAD to switch walking state." << std::endl;
     std::cout << "Press 'A' on the GAMEPAD to start EKF." << std::endl;
+    std::cout << "Press 'X' on the GAMEPAD to start Closed Loop on Whole Body." << std::endl;
+    std::cout << "Press 'B' on the GAMEPAD to switch walking state." << std::endl;
     std::cout << "If GAMEPAD is not used, select now which loops to close:" << std::endl;
     std::cout << "Options:" << std::endl;
-    std::cout << "1. Center of Mass (CoM)" << std::endl;
-    std::cout << "2. Total Body" << std::endl;
-    std::cout << "3. Extended Kalman Filter (EKF)" << std::endl;
-    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 3' for CoM and EKF)." << std::endl;
+    std::cout << "1. MPC (starting in 20 seconds)" << std::endl;
+    std::cout << "2. WBC (starting in 15 seconds)" << std::endl;
+    std::cout << "You can select multiple options by entering their numbers separated by spaces (e.g., '1 2' for MPC and WBC)." << std::endl;
     std::cout << "Enter your choice: " << std::endl;
     std::string user_input;
     std::getline(std::cin, user_input);
@@ -532,10 +561,10 @@ int main(const int argc, const char* argv[]) {
     while (iss >> token) {
       if (token == "1") {
         isMPCLoopClosed = true;
+        startTimeMPCCL = 20000;
       } else if (token == "2") {
         isWBCLoopClosed = true;
-      } else if (token == "3") {
-        isEKFactive = true;
+        startTimeWBCCL = 15000;
       } 
     }
   } else {
@@ -579,65 +608,24 @@ int main(const int argc, const char* argv[]) {
     sportmodestate_subscriber.reset(new ChannelSubscriber<SportModeState_>(GO_STATE_TOPIC));
     sportmodestate_subscriber->InitChannel(std::bind(&SportModeStateHandler, std::placeholders::_1), 1);
   }
-  
-
-  // Init robot posture:
-  mjtNum l_hip_p_init = -0.44;
-  mjtNum l_hip_r_init = 0.04;
-  mjtNum l_hip_y_init = 0.0;
-  mjtNum l_knee_init = 0.95;
-  mjtNum l_ankle_p_init = -0.50;
-  mjtNum l_ankle_r_init = 0.0;
-  mjtNum r_hip_p_init = l_hip_p_init;
-  mjtNum r_hip_r_init = -l_hip_r_init;
-  mjtNum r_hip_y_init = l_hip_y_init;
-  mjtNum r_knee_init = l_knee_init;
-  mjtNum r_ankle_p_init = l_ankle_p_init;
-  mjtNum r_ankle_r_init = l_ankle_r_init;
-  mjtNum waist_y_init = 0.0;
-  mjtNum l_shoulder_p_init = 0.07;
-  mjtNum l_shoulder_r_init = 0.25;
-  mjtNum l_shoulder_y_init = 0.0;
-  mjtNum l_elbow_p_init = 3.14 / 2.0 - 0.44;
-  mjtNum r_shoulder_p_init = l_shoulder_p_init;
-  mjtNum r_shoulder_r_init = -l_shoulder_r_init;
-  mjtNum r_shoulder_y_init = l_shoulder_y_init;
-  mjtNum r_elbow_p_init = l_elbow_p_init;
-  Eigen::Vector3d starting_base_position = Eigen::Vector3d(0.0, 0.0, 0.727451);
 
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  // mj_data_ptr->qpos[0] = 0.174261;
-  // mj_data_ptr->qpos[1] = -0.215733;
   mj_data_ptr->qpos[2] = 0.727451;
   // mj_data_ptr->qpos[3] = 0.977184;
   // mj_data_ptr->qpos[4] = 0.00626451;
   // mj_data_ptr->qpos[5] = -0.025531;
   // mj_data_ptr->qpos[6] = -0.210762;
   mj_data_ptr->qpos[3] = 1;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_pitch_joint")]] = r_hip_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_knee_joint")]] = r_knee_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_ankle_pitch_joint")]] = r_ankle_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_ankle_roll_joint")]] = r_ankle_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_yaw_joint")]] = l_hip_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_roll_joint")]] = l_hip_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_pitch_joint")]] = l_hip_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_knee_joint")]] = l_knee_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_ankle_pitch_joint")]] = l_ankle_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_ankle_roll_joint")]] = l_ankle_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_pitch_joint")]] = r_shoulder_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_roll_joint")]] = r_shoulder_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_yaw_joint")]] = r_shoulder_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_elbow_joint")]] = r_elbow_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_pitch_joint")]] = l_shoulder_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_roll_joint")]] = l_shoulder_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
 
+  for (int i = 0; i < mj_model_ptr->njnt; ++i) {
+    const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
+    if (joint_initial_positions.find(name) != joint_initial_positions.end()) {
+      int qpos_addr = mj_model_ptr->jnt_qposadr[i];
+      mj_data_ptr->qpos[qpos_addr] = joint_initial_positions[name];
+    }
+  }
 
   std::map<std::string, double> armatures;
   for (int i = 0; i < mj_model_ptr->nu; ++i) {

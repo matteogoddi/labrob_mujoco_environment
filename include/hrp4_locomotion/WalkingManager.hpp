@@ -103,13 +103,13 @@ class WalkingManager {
 
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
-  std::unique_ptr<labrob::ISMPC> ismpc_cl_ptr_;
   std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
 
   Eigen::VectorXd M_armature_;
 
   LIPState LipState;
   LIPState kf_LipState;
+  LIPState des_LipState;
 
   Eigen::Vector3d fixed_com_pos;
   Eigen::Vector3d fixed_com_vel;
@@ -124,8 +124,6 @@ class WalkingManager {
   int RIGHT_FOOT_VEL_IDX;
 
   double eta2;
-
-  LIPState des_LipState;
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
   
@@ -151,7 +149,6 @@ private:
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
-  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_cl_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
@@ -159,10 +156,6 @@ private:
   Eigen::MatrixXd Kalman_Gain; 
 
   // Logs
-  std::vector<Eigen::Vector3d> sim_com_position_log_;
-  std::vector<Eigen::Vector3d> sim_com_velocity_log_;
-  std::vector<Eigen::Vector3d> sim_zmp_position_log_;
-  std::vector<Eigen::Vector3d> sim_com_acceleration_log_;
 
   std::vector<Eigen::Vector3d> fb_com_position_log_;
   std::vector<Eigen::Vector3d> fb_com_velocity_log_;
@@ -186,12 +179,6 @@ private:
   std::vector<Eigen::Vector3d> des_torso_orientation_log_;
   std::vector<Eigen::Vector3d> des_torso_angular_velocity_log_;
 
-
-
-  std::vector<Eigen::Vector3d> p_lsole_sim_log_;
-  std::vector<Eigen::Vector3d> p_rsole_sim_log_;
-  std::vector<Eigen::Vector3d> v_lsole_sim_log_;
-  std::vector<Eigen::Vector3d> v_rsole_sim_log_;
   std::vector<Eigen::Vector3d> p_lsole_fb_log_;
   std::vector<Eigen::Vector3d> p_rsole_fb_log_;
   std::vector<Eigen::Vector3d> v_lsole_fb_log_;
@@ -256,9 +243,6 @@ private:
   std::vector<Eigen::VectorXd> input_torque_log_;
   
   std::vector<double> parameters_log_;
-
-
-  std::vector<Eigen::MatrixXd> kalman_gain_log_;
 
   //execution time logs
   std::vector<long long> execution_time_wbc_log_;
