@@ -105,7 +105,7 @@ WalkingData::addSteps(
     double step_length_x = 0.2;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    Eigen::Matrix3d R_yaw =labrob::Rz(yaw_angle);
+    Eigen::Matrix3d R_yaw = labrob::Rz(yaw_angle);
     Eigen::Vector3d step_vector = R_yaw * Eigen::Vector3d(step_length_x, step_length_y, 0.0);
     step_length_x = step_vector.x();
     step_length_y = step_vector.y();

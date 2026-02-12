@@ -218,16 +218,11 @@ private:
   std::vector<Eigen::VectorXd> ekf_base_orientation_log_;
   std::vector<Eigen::VectorXd> ekf_base_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> ekf_base_angular_velocity_log_;
+  std::vector<Eigen::VectorXd> ekf_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> ekf_imu_orientation_rpy_log_;
+  std::vector<Eigen::VectorXd> ekf_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> ekf_joint_position_log_;
   std::vector<Eigen::VectorXd> ekf_joint_velocity_log_;
-  // sim state vectors
-  std::vector<Eigen::VectorXd> sim_base_position_log_;
-  std::vector<Eigen::VectorXd> sim_base_velocity_log_;
-  std::vector<Eigen::VectorXd> sim_base_orientation_log_;
-  std::vector<Eigen::VectorXd> sim_base_orientation_rpy_log_;
-  std::vector<Eigen::VectorXd> sim_base_angular_velocity_log_;
-  std::vector<Eigen::VectorXd> sim_joint_position_log_;
-  std::vector<Eigen::VectorXd> sim_joint_velocity_log_;
 
   std::vector<Eigen::VectorXd> mpc_pred_com_pos_log_;
   std::vector<Eigen::VectorXd> mpc_pred_com_vel_log_;

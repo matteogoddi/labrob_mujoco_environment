@@ -611,11 +611,12 @@ int main(const int argc, const char* argv[]) {
     mj_data_ptr->qpos[i] = 0.0;
   }
   mj_data_ptr->qpos[2] = 0.727451;
-  // mj_data_ptr->qpos[3] = 0.977184;
-  // mj_data_ptr->qpos[4] = 0.00626451;
-  // mj_data_ptr->qpos[5] = -0.025531;
-  // mj_data_ptr->qpos[6] = -0.210762;
-  mj_data_ptr->qpos[3] = 1;
+
+  mj_data_ptr->qpos[4] = 0.0;
+  mj_data_ptr->qpos[5] = 0.0;
+  mj_data_ptr->qpos[6] = 0.247404;
+  mj_data_ptr->qpos[3] = 0.9689124;
+  // mj_data_ptr->qpos[3] = 1;
 
   for (int i = 0; i < mj_model_ptr->njnt; ++i) {
     const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
@@ -710,25 +711,7 @@ int main(const int argc, const char* argv[]) {
         odometry_imu_quaternion = Eigen::Vector4d(state_data.imu_state.quaternion[0], state_data.imu_state.quaternion[1], state_data.imu_state.quaternion[2], state_data.imu_state.quaternion[3]);
         odometry_imu_rpy = Eigen::Vector3d(state_data.imu_state.rpy[0], state_data.imu_state.rpy[1], state_data.imu_state.rpy[2]);
       }
-
-      // if not useRobot take measurements from the mujoco state (for now we are not simulating noise, but we could add it here)
-      else {
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          measured_joint_position[i] = robot_state.joint_state[joint_name].pos;
-          measured_joint_velocity[i] = robot_state.joint_state[joint_name].vel;
-        }
-        measured_imu_quaternion = Eigen::Vector4d(robot_state.orientation.w(), robot_state.orientation.x(), robot_state.orientation.y(), robot_state.orientation.z());
-        measured_imu_rpy = labrob::rpyFromQuaternion(Eigen::Quaterniond(measured_imu_quaternion(0), measured_imu_quaternion(1), measured_imu_quaternion(2), measured_imu_quaternion(3)));
-        measured_imu_angular_velocity = Eigen::Vector3d(robot_state.angular_velocity.x(), robot_state.angular_velocity.y(), robot_state.angular_velocity.z());
-        measured_imu_accelerometer = Eigen::Vector3d(0, 0, 9.81);
-        odometry_base_position = Eigen::Vector3d(robot_state.position.x(), robot_state.position.y(), robot_state.position.z());
-        odometry_base_velocity = Eigen::Vector3d(robot_state.linear_velocity.x(), robot_state.linear_velocity.y(), robot_state.linear_velocity.z());
-        odometry_imu_quaternion = measured_imu_quaternion;
-        odometry_imu_rpy = measured_imu_rpy;
-      }
-
+      
       // Update walking manager:
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);

@@ -74,15 +74,11 @@ if __name__ == '__main__':
     ekf_base_orientation = np.loadtxt(folder + '/ekf_base_orientation.txt')[startPlot:num_samples, :]
     ekf_base_orientation_rpy = np.loadtxt(folder + '/ekf_base_orientation_rpy.txt')[startPlot:num_samples, :]
     ekf_base_angular_velocity = np.loadtxt(folder + '/ekf_base_angular_velocity.txt')[startPlot:num_samples, :]
+    ekf_imu_orientation = np.loadtxt(folder + '/ekf_imu_orientation.txt')[startPlot:num_samples, :]
+    ekf_imu_orientation_rpy = np.loadtxt(folder + '/ekf_imu_orientation_rpy.txt')[startPlot:num_samples, :]
+    ekf_imu_angular_velocity = np.loadtxt(folder + '/ekf_imu_angular_velocity.txt')[startPlot:num_samples, :]
     ekf_joint_position = np.loadtxt(folder + '/ekf_joint_position.txt')[startPlot:num_samples, :]
     ekf_joint_velocity = np.loadtxt(folder + '/ekf_joint_velocity.txt')[startPlot:num_samples, :]
-    sim_base_position = np.loadtxt(folder + '/sim_base_position.txt')[startPlot:num_samples, :]
-    sim_base_velocity = np.loadtxt(folder + '/sim_base_velocity.txt')[startPlot:num_samples, :]
-    sim_base_orientation = np.loadtxt(folder + '/sim_base_orientation.txt')[startPlot:num_samples, :]
-    sim_base_orientation_rpy = np.loadtxt(folder + '/sim_base_orientation_rpy.txt')[startPlot:num_samples, :]
-    sim_base_angular_velocity = np.loadtxt(folder + '/sim_base_angular_velocity.txt')[startPlot:num_samples, :]
-    sim_joint_position: np.ndarray = np.loadtxt(folder + '/sim_joint_position.txt')[startPlot:num_samples, :]
-    sim_joint_velocity: np.ndarray = np.loadtxt(folder + '/sim_joint_velocity.txt')[startPlot:num_samples, :]
 
     torso_orientation = np.loadtxt(folder + '/torso_orientation.txt')[startPlot:num_samples, :]
     torso_angular_velocity = np.loadtxt(folder + '/torso_angular_velocity.txt')[startPlot:num_samples, :]
@@ -161,38 +157,32 @@ if __name__ == '__main__':
     t = np.linspace(0.0, delta * (num_samples - startPlot), num_samples - startPlot)
     num_joints = 27
 
-    if not os.path.exists('images/simulation/positions'):
-        os.makedirs('images/simulation/positions')
-    if not os.path.exists('images/simulation/velocities'):
-        os.makedirs('images/simulation/velocities')
-    if not os.path.exists('images/feedback/positions'):
-        os.makedirs('images/feedback/positions')
-    if not os.path.exists('images/feedback/velocities'):
-        os.makedirs('images/feedback/velocities')
-    if not os.path.exists('images/feedback/comparison/positions'):
-        os.makedirs('images/feedback/comparison/positions')
-    if not os.path.exists('images/feedback/comparison/velocities'):
-        os.makedirs('images/feedback/comparison/velocities')
-    if not os.path.exists('images/ekf'):
-        os.makedirs('images/ekf')
-    if not os.path.exists('images/ekf/positions'):
-        os.makedirs('images/ekf/positions')
-    if not os.path.exists('images/ekf/velocities'):
-        os.makedirs('images/ekf/velocities')
+    if not os.path.exists('images/feedback/joints/positions'):
+        os.makedirs('images/feedback/joints/positions')
+    if not os.path.exists('images/feedback/joints/velocities'):
+        os.makedirs('images/feedback/joints/velocities')
+    if not os.path.exists('images/feedback/base'):
+        os.makedirs('images/feedback/base')
+    if not os.path.exists('images/ekf/joints/positions'):
+        os.makedirs('images/ekf/joints/positions')
+    if not os.path.exists('images/ekf/joints/velocities'):
+        os.makedirs('images/ekf/joints/velocities')
+    if not os.path.exists('images/ekf/joints/error/positions'):
+        os.makedirs('images/ekf/joints/error/positions')
+    if not os.path.exists('images/ekf/joints/error/velocities'):
+        os.makedirs('images/ekf/joints/error/velocities')
+    if not os.path.exists('images/ekf/base/errors'):
+        os.makedirs('images/ekf/base/errors')
+    if not os.path.exists('images/ekf/performance'):
+        os.makedirs('images/ekf/performance')
     if not os.path.exists('images/execution_times'):
         os.makedirs('images/execution_times')
-    if not os.path.exists('images/com'):
-        os.makedirs('images/com')
     if not os.path.exists('images/com/references'):
         os.makedirs('images/com/references')
     if not os.path.exists('images/com/errors'):
         os.makedirs('images/com/errors')
-    if not os.path.exists('images/forces_torques'):
-        os.makedirs('images/forces_torques')
     if not os.path.exists('images/forces_torques/joints'):
         os.makedirs('images/forces_torques/joints')
-    if not os.path.exists('images/soles'):
-        os.makedirs('images/soles')
     if not os.path.exists('images/soles/references'):
         os.makedirs('images/soles/references')
     if not os.path.exists('images/soles/errors'):
@@ -1368,18 +1358,18 @@ if __name__ == '__main__':
     plt.close(fig)
 
 
+
     ##########################
-    #  SIMULATIONS PLOTS
+    #  EKF PLOTS
     ##########################
-    
 
     figs = []
     for group_name, indices in grouped_indices.items():
         fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
             ax.plot(
-                t, sim_joint_position[:, i],
-                label=r'Actual Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                t, measured_joint_position[:, i],
+                label=r'Measured Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
                 linewidth=2.0
             )
             ax.plot(
@@ -1400,7 +1390,7 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/simulation/positions/{group_name}_position_plot.png",
+            f"images/ekf/joints/positions/{group_name}_position_plot.png",
             dpi=300,
             bbox_inches='tight'
         )
@@ -1412,8 +1402,8 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
             ax.plot(
-                t, sim_joint_velocity[:, i],
-                label=r'Actual Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                t, measured_joint_velocity[:, i],
+                label=r'Measured Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
                 linewidth=2.0
             )
             ax.plot(
@@ -1434,77 +1424,20 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/simulation/velocities/{group_name}_velocity_plot.png",
+            f"images/ekf/joints/velocities/{group_name}_velocity_plot.png",
             dpi=300,
             bbox_inches='tight'
         )
         figs.append(fig)
         plt.close(fig)
 
-    # plot mean squared error between ekf joint position and simulated joint position
-    mse_position = np.mean((ekf_joint_position - sim_joint_position) ** 2, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), mse_position, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Mean Squared Error $[rad^2]$', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Joint Position and Simulated Joint Position', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint","") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/simulation/joint_position_mse_plot.png")
-    plt.close(fig)
-
-    #plot mean squared error between ekf joint velocity and simulated joint velocity
-    mse_velocity = np.mean((ekf_joint_velocity - sim_joint_velocity) ** 2, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), mse_velocity, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Mean Squared Error $[rad^2]$', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Joint Velocity and Simulated Joint Velocity', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint","") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/simulation/joint_velocity_mse_plot.png")
-    plt.close(fig)
-
-    #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
-    mse_base_position = np.mean((ekf_base_position - sim_base_position) ** 2, axis=0)
-    mse_base_velocity = np.mean((ekf_base_velocity - sim_base_velocity) ** 2, axis=0)
-    mse_base_orientation = np.mean((ekf_base_orientation - sim_base_orientation) ** 2, axis=0)
-    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - sim_base_angular_velocity) ** 2, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(3), mse_base_position, label='Position MSE', color='skyblue', alpha=0.7)
-    ax.bar(range(3, 6), mse_base_velocity, label='Velocity MSE', color='orange', alpha=0.7)
-    ax.bar(range(6, 10), mse_base_orientation, label='Orientation MSE', color='green', alpha=0.7)
-    ax.bar(range(10, 13), mse_base_angular_velocity, label='Angular Velocity MSE', color='red', alpha=0.7)
-    ax.set_xlabel('Base State Index', fontsize=14)
-    ax.set_ylabel('Mean Squared Error', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Base States and Simulated Base States', fontsize=16)
-    ax.set_xticks(range(13))
-    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
-                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/simulation/base_states_mse_plot.png")
-    plt.close(fig)
-
-
-
-
-    ##########################
-    #  EKF PLOTS
-    ##########################
-
     figs = []
     for group_name, indices in grouped_indices.items():
         fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
             ax.plot(
-                t, ekf_joint_position[:, i],
-                label=r'Filtered Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                t, measured_joint_position[:, i] - ekf_joint_position[:, i],
+                label=r'Error Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
                 linewidth=2.0
             )
         ax.set_xlabel('Time [s]', fontsize=11)
@@ -1519,7 +1452,7 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/ekf/positions/{group_name}_position_plot.png",
+            f"images/ekf/joints/error/positions/error_{group_name}_position_plot.png",
             dpi=300,
             bbox_inches='tight'
         )
@@ -1531,8 +1464,8 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=(7, 4))
         for i in indices:
             ax.plot(
-                t, ekf_joint_velocity[:, i],
-                label=r'Filtered Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
+                t, measured_joint_velocity[:, i] - ekf_joint_velocity[:, i],
+                label=r'Error Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
                 linewidth=2.0
             )
         ax.set_xlabel('Time [s]', fontsize=11)
@@ -1547,95 +1480,14 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/ekf/velocities/{group_name}_velocity_plot.png",
+            f"images/ekf/joints/error/velocities/error_{group_name}_velocity_plot.png",
             dpi=300,
             bbox_inches='tight'
         )
         figs.append(fig)
         plt.close(fig)
-    
-    # Plot EKF base position
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_position[:, 0], label='EKF Base Position X', color='blue')
-    ax.plot(t, ekf_base_position[:, 1], label='EKF Base Position Y', color='orange')
-    ax.plot(t, ekf_base_position[:, 2], label='EKF Base Position Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Position [m]')
-    ax.set_title('Base Position of EKF estimation')
-    ax.grid(True)
-    ax.legend()
-    # fig.tight_layout()
-    fig.savefig("images/ekf/base_position_plot.png")
-    plt.close(fig)
 
-    # Plot EKF base velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_velocity[:, 0], label='EKF Base Velocity X', color='blue')
-    ax.plot(t, ekf_base_velocity[:, 1], label='EKF Base Velocity Y', color='orange')
-    ax.plot(t, ekf_base_velocity[:, 2], label='EKF Base Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Velocity [m/s]')
-    ax.set_title('Base Velocity of EKF estimation')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_velocity_plot.png")
-    plt.close(fig)
-
-    # Plot EKF base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_orientation[:, 0], label='EKF Base Orientation W', color='blue')
-    ax.plot(t, ekf_base_orientation[:, 1], label='EKF Base Orientation X', color='orange')
-    ax.plot(t, ekf_base_orientation[:, 2], label='EKF Base Orientation Y', color='green')
-    ax.plot(t, ekf_base_orientation[:, 3], label='EKF Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation of EKF estimation')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_orientation_plot.png")
-    plt.close(fig)
-
-    # Plot EKF base angular velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, ekf_base_angular_velocity[:, 0], label='EKF Base Angular Velocity X', color='blue')
-    ax.plot(t, ekf_base_angular_velocity[:, 1], label='EKF Base Angular Velocity Y', color='orange')
-    ax.plot(t, ekf_base_angular_velocity[:, 2], label='EKF Base Angular Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('EKF Base Angular Velocity [rad/s]')
-    ax.set_title('Angular Velocity of EKF estimation')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/ekf/base_angular_velocity_plot.png")
-    plt.close(fig)
-
-
-    # Plot velocity error between ekf joint velocity and simulated joint velocity
-    fig, ax = plt.subplots(figsize=(18, 12))
-    colormap = plt.colormaps['tab10'] 
-    line_styles = ['-', '--', '-.', ':']
-    for i in range(num_joints):
-        color = colormap(i % 10)
-        linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_velocity[:, i]
-        ax.plot(t, error,
-                label=joint_names[i].strip(),
-                color=color,
-                linestyle=linestyle,
-                linewidth=2)
-    ax.set_xlabel('Time [s]', fontsize=14)
-    ax.set_ylabel('Velocity [rad/s]', fontsize=14)
-    ax.set_title('Joint Velocity of EKF estimation', fontsize=16)
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12, loc='upper right', ncol=2)
-    fig.tight_layout()
-    fig.savefig("images/ekf/joint_velocities_plot.png")
-    plt.close(fig)
-
-    #plot position error between ekf joint position and fb joint position
-    fig, ax = plt.subplots(figsize=(18, 12))
+    fig, ax = plt.subplots(figsize=(7, 4))
     colormap = plt.colormaps['tab10'] 
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
@@ -1647,40 +1499,229 @@ if __name__ == '__main__':
                 color=color,
                 linestyle=linestyle,
                 linewidth=2)
-    ax.set_xlabel('Time [s]', fontsize=14)
-    ax.set_ylabel('Position [rad]', fontsize=14)
-    ax.set_title('Joint Position Error between EKF estimation and Feedback', fontsize=16)
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12, loc='upper right', ncol=2)
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{rad}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured Joints Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=4
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/ekf/joint_position_error_vs_feedback_plot.png")
+    fig.savefig(
+        "images/ekf/joints/error/error_joint_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    #plot velocity error between ekf joint velocity and fb joint velocity
-    fig, ax = plt.subplots(figsize=(18, 12))
+    fig, ax = plt.subplots(figsize=(7, 4))
     colormap = plt.colormaps['tab10'] 
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
         color = colormap(i % 10)
         linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_velocity[:, i] - measured_joint_velocity[:, i]
+        error = ekf_joint_position[:, i] - measured_joint_position[:, i]
         ax.plot(t, error,
                 label=joint_names[i].strip(),
                 color=color,
                 linestyle=linestyle,
                 linewidth=2)
-    ax.set_xlabel('Time [s]', fontsize=14)
-    ax.set_ylabel('Velocity [rad/s]', fontsize=14)
-    ax.set_title('Joint Velocity Error between EKF estimation and Feedback', fontsize=16)
-    ax.grid(True, which='both', linestyle='--', alpha=0.5)
-    ax.legend(fontsize=12, loc='upper right', ncol=2)
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured Joints Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=4
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/ekf/joint_velocities_error_vs_feedback_plot.png")
+    fig.savefig(
+        "images/ekf/joints/error/error_joint_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    ##########################
-    #  FEEDBACK PLOTS
-    ##########################
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_position[:, 0],
+        label=r'EKF Base Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 1],
+        label=r'EKF Base Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 2],
+        label=r'EKF Base Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('EKF Base Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/base_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_velocity[:, 0],
+        label=r'EKF Base Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 1],
+        label=r'EKF Base Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 2],
+        label=r'EKF Base Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('EKF Base Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/base_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_orientation[:, 0],
+        label=r'EKF Base Orientation $W$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_orientation[:, 1],
+        label=r'EKF Base Orientation $X$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_orientation[:, 2],
+        label=r'EKF Base Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_orientation[:, 3],
+        label=r'EKF Base Orientation $Z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
+    ax.set_title('EKF Base Orientation Quat', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/base_orientation_quat_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_orientation_rpy[:, 0],
+        label=r'EKF Base Orientation $R$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_orientation_rpy[:, 1],
+        label=r'EKF Base Orientation $P$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_orientation_rpy[:, 2],
+        label=r'EKF Base Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{grad}$]', fontsize=11)
+    ax.set_title('EKF Base Orientation RPY', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/base_orientation_rpy_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_angular_velocity[:, 0],
+        label=r'EKF Base Angular Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_angular_velocity[:, 1],
+        label=r'EKF Base Angular Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_angular_velocity[:, 2],
+        label=r'EKF Base Angular Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('EKF Base Angular Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/base_angular_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
 
     # plot mean squared error between ekf joint position and simulated joint position
     mse_position = np.mean((ekf_joint_position - measured_joint_position) ** 2, axis=0)
@@ -1693,87 +1734,8 @@ if __name__ == '__main__':
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     fig.tight_layout()
-    fig.savefig("images/feedback/joint_position_mse_plot.png")
+    fig.savefig("images/ekf/performance/mse_joint_position_plot.png")
     plt.close(fig)
-
-    #plot variance between ekf joint position and simulated joint position
-    variance_position = np.var(ekf_joint_position - measured_joint_position, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), variance_position, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance between EKF Joint Position and Feedback Joint Position', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/feedback/joint_position_variance_plot.png")
-    plt.close(fig)
-
-    #plot variance between ekf joint position and simulated joint position
-    variance_velocity = np.var(ekf_joint_velocity - measured_joint_velocity, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), variance_velocity, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/feedback/joint_velocity_variance_plot.png")
-    plt.close(fig)
-
-    #plot variance between ekf base position and simulated base position, orientation, velocity, angular velocity
-    variance_base_position = np.var(ekf_base_position - odometry_base_position, axis=0)
-    variance_base_velocity = np.var(ekf_base_velocity - odometry_base_velocity, axis=0)
-    variance_base_orientation = np.var(ekf_base_orientation - odometry_imu_orientation, axis=0)
-    variance_base_angular_velocity = np.var(ekf_base_angular_velocity - measured_imu_angular_velocity, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(3), variance_base_position, label='Position Variance', color='skyblue', alpha=0.7)
-    ax.bar(range(3, 6), variance_base_velocity, label='Velocity Variance', color='orange', alpha=0.7)
-    ax.bar(range(6, 10), variance_base_orientation, label='Orientation Variance', color='green', alpha=0.7)
-    ax.bar(range(10, 13), variance_base_angular_velocity, label='Angular Velocity Variance', color='red', alpha=0.7)
-    ax.set_xlabel('Base State Index', fontsize=14)
-    ax.set_ylabel('Variance', fontsize=14)
-    ax.set_title('Variance between EKF Base States and Simulated Base States', fontsize=16)
-    ax.set_xticks(range(13))
-    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
-                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/base_states_variance_plot.png")
-    plt.close(fig)
-
-    #plot variance of measured joint velocity
-    variance_measured_velocity = np.var(measured_joint_velocity, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), variance_measured_velocity, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/feedback/joint_velocity_measured_variance_plot.png")
-    plt.close(fig)
-
-    #plot variance of ekf joint velocity
-    variance_ekf_velocity = np.var(ekf_joint_velocity, axis=0)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(range(num_joints), variance_ekf_velocity, color='skyblue')
-    ax.set_xlabel('Joint Index', fontsize=14)
-    ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
-    ax.set_xticks(range(num_joints))
-    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
-    ax.grid(axis='y', linestyle='--', alpha=0.7)
-    fig.tight_layout()
-    fig.savefig("images/feedback/joint_velocity_filtered_variance_plot.png")
-    plt.close(fig)
-
 
     #plot mean squared error between ekf joint velocity and simulated joint velocity
     mse_velocity = np.mean((ekf_joint_velocity - measured_joint_velocity) ** 2, axis=0)
@@ -1786,7 +1748,7 @@ if __name__ == '__main__':
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     fig.tight_layout()
-    fig.savefig("images/feedback/joint_velocity_mse_plot.png")
+    fig.savefig("images/ekf/performance/mse_joint_velocity_plot.png")
     plt.close(fig)
 
     #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
@@ -1808,7 +1770,85 @@ if __name__ == '__main__':
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/feedback/base_states_mse_plot.png")
+    fig.savefig("images/ekf/performance/mse_base_states_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf joint position and simulated joint position
+    variance_position = np.var(ekf_joint_position - measured_joint_position, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_position, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance between EKF Joint Position and Feedback Joint Position', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/ekf/performance/var_joint_position_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf joint position and simulated joint position
+    variance_velocity = np.var(ekf_joint_velocity - measured_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/ekf/performance/var_joint_velocity_plot.png")
+    plt.close(fig)
+
+    #plot variance between ekf base position and simulated base position, orientation, velocity, angular velocity
+    variance_base_position = np.var(ekf_base_position - odometry_base_position, axis=0)
+    variance_base_velocity = np.var(ekf_base_velocity - odometry_base_velocity, axis=0)
+    variance_base_orientation = np.var(ekf_base_orientation - odometry_imu_orientation, axis=0)
+    variance_base_angular_velocity = np.var(ekf_base_angular_velocity - measured_imu_angular_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(3), variance_base_position, label='Position Variance', color='skyblue', alpha=0.7)
+    ax.bar(range(3, 6), variance_base_velocity, label='Velocity Variance', color='orange', alpha=0.7)
+    ax.bar(range(6, 10), variance_base_orientation, label='Orientation Variance', color='green', alpha=0.7)
+    ax.bar(range(10, 13), variance_base_angular_velocity, label='Angular Velocity Variance', color='red', alpha=0.7)
+    ax.set_xlabel('Base State Index', fontsize=14)
+    ax.set_ylabel('Variance', fontsize=14)
+    ax.set_title('Variance between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_xticks(range(13))
+    ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
+                        'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/ekf/performance/var_base_states_plot.png")
+    plt.close(fig)
+
+    #plot variance of measured joint velocity
+    variance_measured_velocity = np.var(measured_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_measured_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/ekf/performance/var_joint_velocity_measured_plot.png")
+    plt.close(fig)
+
+    #plot variance of ekf joint velocity
+    variance_ekf_velocity = np.var(ekf_joint_velocity, axis=0)
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.bar(range(num_joints), variance_ekf_velocity, color='skyblue')
+    ax.set_xlabel('Joint Index', fontsize=14)
+    ax.set_ylabel(r'Variance', fontsize=14)
+    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_xticks(range(num_joints))
+    ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    fig.tight_layout()
+    fig.savefig("images/ekf/performance/var_joint_velocity_filtered_plot.png")
     plt.close(fig)
 
     #plot torso orientation error
@@ -1822,7 +1862,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/feedback/torso_orientation_error_plot.png")
+    fig.savefig("images/ekf/torso_orientation_error_plot.png")
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -1835,170 +1875,742 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/feedback/torso_angular_velocity_plot.png")
-    plt.close(fig)
-
-    # Plot EKF base position
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_base_position[:, 0] - ekf_base_position[:, 0], label='Base Position Error X', color='blue')
-    ax.plot(t, odometry_base_position[:, 1] - ekf_base_position[:, 1], label='Base Position Error Y', color='orange')
-    ax.plot(t, odometry_base_position[:, 2] - ekf_base_position[:, 2], label='Base Position Error Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Position [m]')
-    ax.set_title('Base Position Error between odometry and ekf')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/base_position_error_plot.png")
-    plt.close(fig)
-
-    # Plot go base velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_base_velocity[:, 0] - ekf_base_velocity[:, 0], label='Error Base Velocity X', color='blue')
-    ax.plot(t, odometry_base_velocity[:, 1] - ekf_base_velocity[:, 1], label='Error Base Velocity Y', color='orange')
-    ax.plot(t, odometry_base_velocity[:, 2] - ekf_base_velocity[:, 2], label='Error Base Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Velocity [m/s]')
-    ax.set_title('Base Velocity Error between fb velocity and ekf')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/base_velocity_error_plot.png")
-    plt.close(fig)
-
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_base_position[:, 0], label='Odom Base position X', color='blue')
-    ax.plot(t, ekf_base_position[:, 0], label='EKF Base position X', color='blue', linestyle = "--")
-    ax.plot(t, odometry_base_position[:, 1], label='Odom Base position Y', color='orange')
-    ax.plot(t, ekf_base_position[:, 1], label='EKF Base position Y', color='orange', linestyle = "--")
-    ax.plot(t, odometry_base_position[:, 2], label='Odom Base position Z', color='green')
-    ax.plot(t, ekf_base_position[:, 2], label='EKF Base position Z', color='green', linestyle = "--")
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Position [m/s]')
-    ax.set_title('Base Position of go estimation and ekf')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/base_position_plot.png")
-    plt.close(fig)
-
-    #plot go base position and fb com position
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_base_position[:, 0], label='Odom Base position X', color='blue')
-    ax.plot(t, fb_com_position[:, 0], label='FB COM position X', color='blue', linestyle = "--")
-    ax.plot(t, odometry_base_position[:, 1], label='Odom Base position Y', color='orange')
-    ax.plot(t, fb_com_position[:, 1], label='FB COM position Y', color='orange', linestyle = "--")
-    ax.plot(t, odometry_base_position[:, 2], label='Odom Base position Z', color='green')
-    ax.plot(t, fb_com_position[:, 2], label='FB COM position Z', color='green', linestyle = "--")
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Position [m/s]')
-    ax.set_title('Base Position of odometry and FB COM position')
-    ax.grid(True)
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("images/feedback/base_position_fb_com_position_plot.png")
+    fig.savefig("images/ekf/torso_angular_velocity_plot.png")
     plt.close(fig)
 
 
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_imu_orientation[:, 0] - ekf_base_orientation[:, 0], label='Odom Base Orientation W', color='blue')
-    ax.plot(t, odometry_imu_orientation[:, 1] - ekf_base_orientation[:, 1], label='Odom Base Orientation X', color='orange')
-    ax.plot(t, odometry_imu_orientation[:, 2] - ekf_base_orientation[:, 2], label='Odom Base Orientation Y', color='green')
-    ax.plot(t, odometry_imu_orientation[:, 3] - ekf_base_orientation[:, 3], label='Odom Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Orientation [Quaternion]')
-    ax.set_title('Base Orientation Error between fb and ekf')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_position[:, 0],
+        label=r'EKF Base Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 1],
+        label=r'EKF Base Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 2],
+        label=r'EKF Base Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_position[:, 0],
+        label=r'Measured Base Position $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_base_position[:, 1],
+        label=r'Measured Base Position $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_base_position[:, 2],
+        label=r'Measured Base Position $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Comparison between EKF and Measured Base Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/base_orientation_error_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/comparison_base_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_imu_orientation_rpy[:, 0] - ekf_base_orientation_rpy[:, 0], label='Error Base Orientation R', color='blue')
-    ax.plot(t, odometry_imu_orientation_rpy[:, 1] - ekf_base_orientation_rpy[:, 1], label='Error Base Orientation P', color='orange')
-    ax.plot(t, odometry_imu_orientation_rpy[:, 2] - ekf_base_orientation_rpy[:, 2], label='Error Base Orientation Y', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Base Orientation [RPY]')
-    ax.set_title('Base Orientation Error between fb and ekf')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_velocity[:, 0],
+        label=r'EKF Base Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 1],
+        label=r'EKF Base Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 2],
+        label=r'EKF Base Velocity $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_velocity[:, 0],
+        label=r'Measured Base Velocity $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_base_velocity[:, 1],
+        label=r'Measured Base Velocity $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_base_velocity[:, 2],
+        label=r'Measured Base Velocity $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Comparison between EKF and Measured Base Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/base_orientation_rpy_error_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/comparison_base_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_imu_orientation_rpy[:, 0], label='FB Base Orientation R', color='blue')
-    ax.plot(t, odometry_imu_orientation_rpy[:, 1], label='FB Base Orientation P', color='orange')
-    ax.plot(t, odometry_imu_orientation_rpy[:, 2], label='FB Base Orientation Y', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('Base Orientation [RPY]')
-    ax.set_title('Base Orientation Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_orientation[:, 0],
+        label=r'EKF IMU Orientation $W$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 1],
+        label=r'EKF IMU Orientation $X$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 2],
+        label=r'EKF IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 3],
+        label=r'EKF IMU Orientation $Z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 0],
+        label=r'Measured IMU Orientation $W$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 1],
+        label=r'Measured IMU Orientation $X$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 2],
+        label=r'Measured IMU Orientation $Y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 3],
+        label=r'Measured IMU Orientation $Z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
+    ax.set_title('Comparison between EKF and Measured IMU Orientation Quat', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/base_orientation_rpy_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/comparison_imu_orientation_quat_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    # Plot go base orientation in quaternion format
-    fig, ax = plt.subplots()
-    ax.plot(t, odometry_imu_orientation[:, 0] , label='FB Base Orientation W', color='blue')
-    ax.plot(t, odometry_imu_orientation[:, 1], label='FB Base Orientation X', color='orange')
-    ax.plot(t, odometry_imu_orientation[:, 2] , label='FB Base Orientation Y', color='green')
-    ax.plot(t, odometry_imu_orientation[:, 3], label='FB Base Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('go Base Orientation [Quaternion]')
-    ax.set_title('Base Orientation Feedback')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 0],
+        label=r'EKF IMU Orientation $R$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 1],
+        label=r'EKF IMU Orientation $P$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 2],
+        label=r'EKF IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 0],
+        label=r'Measured IMU Orientation $R$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 1],
+        label=r'Measured IMU Orientation $P$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 2],
+        label=r'Measured IMU Orientation $Y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
+    ax.set_title('Comparison between EKF and Measured IMU Orientation RPY', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/base_orientation_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/comparison_imu_orientation_rpy_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    # plot imu orientation
-    fig, ax = plt.subplots()
-    ax.plot(t, measured_imu_orientation[:, 0], label='IMU Orientation W', color='blue')
-    ax.plot(t, measured_imu_orientation[:, 1], label='IMU Orientation X', color='orange')
-    ax.plot(t, measured_imu_orientation[:, 2], label='IMU Orientation Y', color='green')
-    ax.plot(t, measured_imu_orientation[:, 3], label='IMU Orientation Z', color='red')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('IMU Orientation [Quaternion]')
-    ax.set_title('IMU Orientation')
-    ax.grid(True)
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 0],
+        label=r'EKF IMU Angular Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 1],
+        label=r'EKF IMU Angular Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 2],
+        label=r'EKF IMU Angular Velocity $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 0],
+        label=r'Measured IMU Angular Velocity $x$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 1],
+        label=r'Measured IMU Angular Velocity $y$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 2],
+        label=r'Measured IMU Angular Velocity $z$',
+        linewidth=2.0,
+        linestyle='--'
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
+    ax.set_title('Comparison between EKF and Measured IMU Angular Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/measured_imu_orientation_quaternion_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/comparison_imu_angular_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
-    # plot imu angular velocity
-    fig, ax = plt.subplots()
-    ax.plot(t, measured_imu_angular_velocity[:, 0], label='IMU Angular Velocity X', color='blue')
-    ax.plot(t, measured_imu_angular_velocity[:, 1], label='IMU Angular Velocity Y', color='orange')
-    ax.plot(t, measured_imu_angular_velocity[:, 2], label='IMU Angular Velocity Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('IMU Angular Velocity [rad/s]')
-    ax.set_title('IMU Angular Velocity')
-    ax.grid(True)
-    ax.legend()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_position[:, 0] - odometry_base_position[:, 0],
+        label=r'Error Base Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 1] - odometry_base_position[:, 1],
+        label=r'Error Base Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_position[:, 2] - odometry_base_position[:, 2],
+        label=r'Error Base Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured Base Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/measured_imu_angular_velocity_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/error_base_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
-    
-    # plot imu accelerometer
-    fig, ax = plt.subplots()
-    ax.plot(t, measured_imu_accelerometer[:, 0], label='IMU Accelerometer X', color='blue')
-    ax.plot(t, measured_imu_accelerometer[:, 1], label='IMU Accelerometer Y', color='orange')
-    ax.plot(t, measured_imu_accelerometer[:, 2], label='IMU Accelerometer Z', color='green')
-    ax.set_xlabel('Time [s]')
-    ax.set_ylabel('IMU Accelerometer [m/s^2]')
-    ax.set_title('IMU Accelerometer')
-    ax.grid(True)
-    ax.legend()
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_base_velocity[:, 0] - odometry_base_velocity[:, 0],
+        label=r'EKF Base Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 1] - odometry_base_velocity[:, 1],
+        label=r'EKF Base Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_base_velocity[:, 2] - odometry_base_velocity[:, 2],
+        label=r'EKF Base Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured Base Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
-    fig.savefig("images/feedback/measured_imu_accelerometer_plot.png")
+    fig.savefig(
+        "images/ekf/base/errors/error_base_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_orientation[:, 0] - odometry_imu_orientation[:, 0],
+        label=r'Error IMU Orientation $W$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 1] - odometry_imu_orientation[:, 1],
+        label=r'Error IMU Orientation $X$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 2] - odometry_imu_orientation[:, 2],
+        label=r'Error IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation[:, 3] - odometry_imu_orientation[:, 3],
+        label=r'Error IMU Orientation $Z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured IMU Orientation Quat', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/errors/error_imu_orientation_quat_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 0] - odometry_imu_orientation_rpy[:, 0],
+        label=r'Error IMU Orientation $R$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 1] - odometry_imu_orientation_rpy[:, 1],
+        label=r'Error IMU Orientation $P$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_orientation_rpy[:, 2] - odometry_imu_orientation_rpy[:, 2],
+        label=r'Error IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured IMU Orientation RPY', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/errors/error_imu_orientation_rpy_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 0] - measured_imu_angular_velocity[:, 0],
+        label=r'Error IMU Angular Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 1] - measured_imu_angular_velocity[:, 1],
+        label=r'Error IMU Angular Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, ekf_imu_angular_velocity[:, 2] - measured_imu_angular_velocity[:, 2],
+        label=r'Error IMU Angular Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
+    ax.set_title('Error between EKF and Measured IMU Angular Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/errors/error_imu_angular_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+
+    ##########################
+    #  FEEDBACK PLOTS
+    ##########################
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, odometry_base_position[:, 0],
+        label=r'Odometry Base Position $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_position[:, 1],
+        label=r'Odometry Base Position $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_position[:, 2],
+        label=r'Odometry Base Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Odometry Base Position', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/odometry_base_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, odometry_base_velocity[:, 0],
+        label=r'Odometry Base Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_velocity[:, 1],
+        label=r'Odometry Base Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_base_velocity[:, 2],
+        label=r'Odometry Base Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
+    ax.set_title('Odometry Base Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/odometry_base_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, odometry_imu_orientation[:, 0],
+        label=r'Odometry IMU Orientation $W$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 1],
+        label=r'Odometry IMU Orientation $X$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 2],
+        label=r'Odometry IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation[:, 3],
+        label=r'Odometry IMU Orientation $Z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
+    ax.set_title('Odometry IMU Orientation Quat', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/odometry_imu_orientation_quat_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 0],
+        label=r'Odometry IMU Orientation $R$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 1],
+        label=r'Odometry IMU Orientation $P$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, odometry_imu_orientation_rpy[:, 2],
+        label=r'Odometry IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
+    ax.set_title('Odometry IMU Orientation RPY', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/odometry_imu_orientation_rpy_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, measured_imu_orientation[:, 0],
+        label=r'Measured IMU Orientation $W$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_orientation[:, 1],
+        label=r'Measured IMU Orientation $X$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_orientation[:, 2],
+        label=r'Measured IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_orientation[:, 3],
+        label=r'Measured IMU Orientation $Z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
+    ax.set_title('Measured IMU Orientation Quat', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/measured_imu_orientation_quat_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    # fig, ax = plt.subplots(figsize=(7, 4))
+    # ax.plot(
+    #     t, measured_imu_orientation_rpy[:, 0],
+    #     label=r'Measured IMU Orientation $R$',
+    #     linewidth=2.0
+    # )
+    # ax.plot(
+    #     t, measured_imu_orientation_rpy[:, 1],
+    #     label=r'Measured IMU Orientation $P$',
+    #     linewidth=2.0
+    # )
+    # ax.plot(
+    #     t, measured_imu_orientation_rpy[:, 2],
+    #     label=r'Measured IMU Orientation $Y$',
+    #     linewidth=2.0
+    # )
+    # ax.set_xlabel('Time [s]', fontsize=11)
+    # ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
+    # ax.set_title('Measured IMU Orientation RPY', fontsize=12)
+    # ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    # ax.legend(
+    #     loc='best',
+    #     frameon=True,
+    #     fontsize=9
+    # )
+    # ax.tick_params(axis='both', labelsize=10)
+    # fig.tight_layout()
+    # fig.savefig(
+    #     "images/feedback/base/measured_imu_orientation_rpy_plot.png",
+    #     dpi=300,
+    #     bbox_inches='tight'
+    # )
+    # plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 0],
+        label=r'Measured IMU Angular Velocity $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 1],
+        label=r'Measured IMU Angular Velocity $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_angular_velocity[:, 2],
+        label=r'Measured IMU Angular Velocity $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
+    ax.set_title('Measured Base Angular Velocity', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/measured_imu_angular_velocity_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, measured_imu_accelerometer[:, 0],
+        label=r'Measured IMU Acceleration $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_accelerometer[:, 1],
+        label=r'Measured IMU Acceleration $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_accelerometer[:, 2],
+        label=r'Measured IMU Acceleration $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Acceleration [$\mathrm{m/s^2}$]', fontsize=11)
+    ax.set_title('Measured IMU Acceleration', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/measured_imu_acceleration_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
     # plot feedback joint velocity
@@ -2011,76 +2623,8 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/feedback/measured_joint_velocity_plot.png")
+    fig.savefig("images/feedback/joints/velocities/overall_joint_velocity_plot.png")
     plt.close(fig)
-
-    figs = []
-    for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots(figsize=(7, 4))
-        for i in indices:
-            ax.plot(
-                t, measured_joint_position[:, i],
-                label=r'Actual Position'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
-                linewidth=2.0
-            )
-            ax.plot(
-                t, ekf_joint_position[:, i],
-                label=r'Filtered Position' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
-                linewidth=2.0,
-                linestyle='--'
-            )
-        ax.set_xlabel('Time [s]', fontsize=11)
-        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
-        ax.legend(
-            loc='upper left',
-            frameon=True,
-            fontsize=7
-        )
-        ax.tick_params(axis='both', labelsize=10)
-        fig.tight_layout()
-        fig.savefig(
-            f"images/feedback/comparison/positions/{group_name}_position_plot.png",
-            dpi=300,
-            bbox_inches='tight'
-        )
-        figs.append(fig)
-        plt.close(fig)
-
-    figs = []
-    for group_name, indices in grouped_indices.items():
-        fig, ax = plt.subplots(figsize=(7, 4))
-        for i in indices:
-            ax.plot(
-                t, measured_joint_velocity[:, i],
-                label=r'Actual Velocity'+ f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
-                linewidth=2.0
-            )
-            ax.plot(
-                t, ekf_joint_velocity[:, i],
-                label=r'Filtered Velocity' + f' {joint_names[i].replace(group_name, "").replace("_", "").replace("joint", "")}',
-                linewidth=2.0,
-                linestyle='--'
-            )
-        ax.set_xlabel('Time [s]', fontsize=11)
-        ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
-        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
-        ax.legend(
-            loc='upper left',
-            frameon=True,
-            fontsize=7
-        )
-        ax.tick_params(axis='both', labelsize=10)
-        fig.tight_layout()
-        fig.savefig(
-            f"images/feedback/comparison/velocities/{group_name}_velocity_plot.png",
-            dpi=300,
-            bbox_inches='tight'
-        )
-        figs.append(fig)
-        plt.close(fig)
 
     figs = []
     for group_name, indices in grouped_indices.items():
@@ -2092,7 +2636,7 @@ if __name__ == '__main__':
                 linewidth=2.0
             )
         ax.set_xlabel('Time [s]', fontsize=11)
-        ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
+        ax.set_ylabel(r'Position [$\mathrm{rad}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
         ax.legend(
@@ -2103,7 +2647,7 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/feedback/positions/{group_name}_position_plot.png",
+            f"images/feedback/joints/positions/{group_name}_position_plot.png",
             dpi=300,
             bbox_inches='tight'
         )
@@ -2131,7 +2675,7 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=10)
         fig.tight_layout()
         fig.savefig(
-            f"images/feedback/velocities/{group_name}_velocity_plot.png",
+            f"images/feedback/joints/velocities/{group_name}_velocity_plot.png",
             dpi=300,
             bbox_inches='tight'
         )

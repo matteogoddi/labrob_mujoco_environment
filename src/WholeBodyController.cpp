@@ -34,7 +34,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-1;
-  params.weight_angular_momentum = 1e-4;
+  params.weight_angular_momentum = 1e-1;
   params.weight_regulation = 1e-4;
   params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
 
@@ -42,7 +42,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 0;
+  params.beta = 150;
   params.gamma = 30;
   params.mu = 0.5;
 
@@ -332,10 +332,9 @@ WholeBodyController::compute_inverse_dynamics(
   flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
-  Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
-
   left_foot_wrench_ = T_l * fl;
   right_foot_wrench_ = T_r * fr;
+  Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * left_foot_wrench_ - Jra.transpose() * right_foot_wrench_;
 
 
   JointCommand joint_command;

@@ -69,19 +69,19 @@ Eigen::Vector3d rotVecFromQuaternion(const Eigen::Quaterniond& q) {
 Eigen::Vector3d rpyFromQuaternion(const Eigen::Quaterniond& q) {
   Eigen::Vector3d rpy = q.toRotationMatrix().eulerAngles(0, 1, 2);
   //scale in the range [-pi, pi]
-  if (rpy(0) > 3.14) {
+  if (rpy(0) > 3.14/2) {
       rpy(0) -= 3.14;
-  } else if (rpy(0) < -3.14) {
+  } else if (rpy(0) < -3.14/2) {
       rpy(0) += 3.14;
   }
-  if (rpy(1) > 3.14) {
+  if (rpy(1) > 3.14/2) {
       rpy(1) -= 3.14;
-  } else if (rpy(1) < -3.14) {
+  } else if (rpy(1) < -3.14/2) {
       rpy(1) += 3.14;
   }
-  if (rpy(2) > 3.14) {
+  if (rpy(2) > 3.14/2) {
       rpy(2) -= 3.14;
-  } else if (rpy(2) < -3.14) {
+  } else if (rpy(2) < -3.14/2) {
       rpy(2) += 3.14;
   }
   return rpy;
