@@ -9,12 +9,15 @@
 #include <mutex>
 #include <shared_mutex>
 #include <filesystem>
+#include <cstring>
 
 #include <thread>
 #include <iomanip>
 #include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
+#include <cmath>
+#include <sstream>
 
 // Pinocchio
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -71,6 +74,7 @@ static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
 labrob::WalkingManager walking_manager;
+labrob::WalkingManager r2_walking_manager; // second robot manager (opt-in)
 
 template <typename T>
 class DataBuffer {
@@ -443,14 +447,89 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
   return robot_state;
 }
 
+labrob::RobotState
+robot2_state_from_mujoco(mjModel* m, mjData* d, int r2_qposadr, int r2_dofadr) {
+  labrob::RobotState robot_state;
+
+  if (r2_qposadr >= 0) {
+    robot_state.position = Eigen::Vector3d(
+      d->qpos[r2_qposadr + 0], d->qpos[r2_qposadr + 1], d->qpos[r2_qposadr + 2]
+    );
+
+    robot_state.orientation = Eigen::Quaterniond(
+      d->qpos[r2_qposadr + 3], d->qpos[r2_qposadr + 4], d->qpos[r2_qposadr + 5], d->qpos[r2_qposadr + 6]
+    );
+  }
+
+  if (r2_dofadr >= 0) {
+    Eigen::Vector3d world_lin_vel(
+      d->qvel[r2_dofadr + 0], d->qvel[r2_dofadr + 1], d->qvel[r2_dofadr + 2]
+    );
+    robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() * world_lin_vel;
+    robot_state.angular_velocity = Eigen::Vector3d(
+      d->qvel[r2_dofadr + 3], d->qvel[r2_dofadr + 4], d->qvel[r2_dofadr + 5]
+    );
+  }
+
+  for (int j = 1; j < m->njnt; ++j) {
+    const char* name_c = mj_id2name(m, mjOBJ_JOINT, j);
+    if (!name_c) continue;
+    std::string joint_name(name_c);
+    if (joint_name.rfind("r2_", 0) != 0) continue;
+    int qadr = m->jnt_qposadr[j];
+    int dadr = m->jnt_dofadr[j];
+    std::string base_name = joint_name.substr(3);
+    robot_state.joint_state[base_name].pos = d->qpos[qadr];
+    robot_state.joint_state[base_name].vel = d->qvel[dadr];
+  }
+
+  static double force[6];
+  static double result[3];
+  Eigen::Vector3d sum = Eigen::Vector3d::Zero();
+  robot_state.contact_points.clear();
+  robot_state.contact_forces.clear();
+  for (int i = 0; i < d->ncon; ++i) {
+    const mjContact& con = d->contact[i];
+    const char* g1 = mj_id2name(m, mjOBJ_GEOM, con.geom1);
+    const char* g2 = mj_id2name(m, mjOBJ_GEOM, con.geom2);
+    const char* b1 = mj_id2name(m, mjOBJ_BODY, m->geom_bodyid[con.geom1]);
+    const char* b2 = mj_id2name(m, mjOBJ_BODY, m->geom_bodyid[con.geom2]);
+    auto is_r2 = [](const char* n){ return n && strncmp(n, "r2_", 3) == 0; };
+    if (!is_r2(g1) && !is_r2(g2) && !is_r2(b1) && !is_r2(b2)) continue;
+
+    mj_contactForce(m, d, i, force);
+    mju_mulMatVec(result, con.frame, force, 3, 3);
+    for (int row = 0; row < 3; ++row) {
+      result[row] = 0;
+      for (int col = 0; col < 3; ++col) {
+        result[row] += con.frame[3 * col + row] * force[col];
+      }
+    }
+    Eigen::Vector3d f_contact(result[0], result[1], result[2]);
+    Eigen::Vector3d p_contact(con.pos[0], con.pos[1], con.pos[2]);
+    robot_state.contact_points.push_back(p_contact);
+    robot_state.contact_forces.push_back(f_contact);
+    sum += f_contact;
+  }
+  robot_state.total_force = sum;
+
+  return robot_state;
+}
+
 int main(const int argc, const char* argv[]) {
 
   std::string netInterface;
+  bool r2Walking = false; // enable second robot walking manager
+
+  int r2_base_qposadr = -1;
+  int r2_base_dofadr = -1;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--sim") {
         useSim = true;
+    } else if (a == "--r2-walking") {
+      r2Walking = true;
     } else if (a == "--robot" && i + 1 < argc) {
         useRobot = true;
         useSim = true;
@@ -468,13 +547,33 @@ int main(const int argc, const char* argv[]) {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* mjcf_filepath = "../g1_mj_description/stair_steps.xml";
+  const char* mjcf_filepath = "../g1_mj_description/transportation_cooperation.xml";
   mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
   if (!mj_model_ptr) {
     std::cerr << "Error loading model: " << loadError << std::endl;
     return -1;
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
+
+  struct EqInfo { int id; };
+
+  auto get_eqid = [&](const std::string& name)->EqInfo{
+    int id = mj_name2id(mj_model_ptr, mjOBJ_EQUALITY, name.c_str());
+    if(id < 0){
+      std::cerr << "ERROR: equality not found: " << name << std::endl;
+    }
+    return {id};
+  };
+
+  EqInfo eq_lf = get_eqid("eq_lf");
+  EqInfo eq_lb = get_eqid("eq_lb");
+  EqInfo eq_rf = get_eqid("eq_rf");
+  EqInfo eq_rb = get_eqid("eq_rb");
+
+  std::ofstream eq_force_file("/tmp/box_connect_forces.txt");
+  eq_force_file << std::fixed << std::setprecision(8);
+  eq_force_file << "time lf_x lf_y lf_z lb_x lb_y lb_z rf_x rf_y rf_z rb_x rb_y rb_z\n";
+
 
   if (useRobot) {
     std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
@@ -533,11 +632,7 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  // mj_data_ptr->qpos[0] = 10.0;
-  // mj_data_ptr->qpos[1] = 10.0;
-
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
-  mj_data_ptr->qpos[3] = 1.0;
+  // Set Robot1 initial joint positions:
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
@@ -554,25 +649,174 @@ int main(const int argc, const char* argv[]) {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_pitch_joint")]] = r_shoulder_p_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_roll_joint")]] = r_shoulder_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_yaw_joint")]] = r_shoulder_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_elbow_joint")]] = r_elbow_p_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_elbow_joint")]] = r_elbow_p_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_pitch_joint")]] = l_shoulder_p_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_roll_joint")]] = l_shoulder_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
+
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_waist_yaw_joint")]] = waist_y_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_hip_yaw_joint")]] = r_hip_y_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_hip_roll_joint")]] = r_hip_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_hip_pitch_joint")]] = r_hip_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_knee_joint")]] = r_knee_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_ankle_pitch_joint")]] = r_ankle_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_ankle_roll_joint")]] = r_ankle_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_hip_yaw_joint")]] = l_hip_y_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_hip_roll_joint")]] = l_hip_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_hip_pitch_joint")]] = l_hip_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_knee_joint")]] = l_knee_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_ankle_pitch_joint")]] = l_ankle_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_ankle_roll_joint")]] = l_ankle_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_shoulder_pitch_joint")]] = r_shoulder_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_shoulder_roll_joint")]] = r_shoulder_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_shoulder_yaw_joint")]] = r_shoulder_y_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_right_elbow_joint")]] = r_elbow_p_init; 
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_shoulder_pitch_joint")]] = l_shoulder_p_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_shoulder_roll_joint")]] = l_shoulder_r_init;
+  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_shoulder_yaw_joint")]] = l_shoulder_y_init;
+  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_elbow_joint")]] = l_elbow_p_init;
+
+  // Initialize free bases (both robots) explicitly: [x,y,z,qw,qx,qy,qz]
+  // Robot1: keep original height; Robot2: in front of Robot1, facing it (yaw = 180°).
+  {
+    int free_count = 0;
+    for (int j = 0; j < mj_model_ptr->njnt; ++j) {
+      if (mj_model_ptr->jnt_type[j] == mjJNT_FREE) {
+        int adr = mj_model_ptr->jnt_qposadr[j];
+        int dof_adr = mj_model_ptr->jnt_dofadr[j];
+        if (free_count == 0) {
+          // Robot 1 (original position)
+          mj_data_ptr->qpos[adr + 0] = 0.0; // x
+          mj_data_ptr->qpos[adr + 1] = 0.0; // y
+          mj_data_ptr->qpos[adr + 2] = 0.792151 - 0.125 + 0.0263 - 0.071 + 0.105 - 0.010526; // z
+          mj_data_ptr->qpos[adr + 3] = 1.0;  // qw
+          mj_data_ptr->qpos[adr + 4] = 0.0;  // qx
+          mj_data_ptr->qpos[adr + 5] = 0.0;  // qy
+          mj_data_ptr->qpos[adr + 6] = 0.0;  // qz
+        } else if (free_count == 1) {
+          // Robot 2 (in front of Robot 1, facing it)
+          mj_data_ptr->qpos[adr + 0] = 1.0; // x forward
+          mj_data_ptr->qpos[adr + 1] = 0.0; // y
+          mj_data_ptr->qpos[adr + 2] = 0.792151 - 0.125 + 0.0263 - 0.071 + 0.105 - 0.010526; // same z
+          // Face Robot 1: yaw = pi (forward direction points toward Robot 1)
+          mj_data_ptr->qpos[adr + 3] = 0.0;  // qw = cos(pi/2)
+          mj_data_ptr->qpos[adr + 4] = 0.0;  // qx
+          mj_data_ptr->qpos[adr + 5] = 0.0;  // qy
+          mj_data_ptr->qpos[adr + 6] = 1.0;  // qz = sin(pi/2)
+          r2_base_qposadr = adr;
+          r2_base_dofadr = dof_adr;
+        }
+        free_count++;
+      }
+    }
+  }
+
+  // Place the carry box at the midpoint between the two robots' grasp sites and align its x-axis between them
+  {
+    int box_jid = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "carry_box_free");
+    if (box_jid >= 0) {
+      auto get_site_pos = [&](const char* name, Eigen::Vector3d& out) {
+        int sid = mj_name2id(mj_model_ptr, mjOBJ_SITE, name);
+        if (sid < 0) return false;
+        out = Eigen::Map<const Eigen::Vector3d>(mj_data_ptr->site_xpos + 3 * sid);
+        return true;
+      };
+
+      // Need forward kinematics for current joint initializations
+      mj_forward(mj_model_ptr, mj_data_ptr);
+
+      Eigen::Vector3d r1_left = Eigen::Vector3d::Zero();
+      Eigen::Vector3d r1_right = Eigen::Vector3d::Zero();
+      Eigen::Vector3d r2_left = Eigen::Vector3d::Zero();
+      Eigen::Vector3d r2_right = Eigen::Vector3d::Zero();
+      bool ok = get_site_pos("r1_left_hand_grasp", r1_left)
+              & get_site_pos("r1_right_hand_grasp", r1_right)
+              & get_site_pos("r2_left_hand_grasp", r2_left)
+              & get_site_pos("r2_right_hand_grasp", r2_right);
+      if (ok) {
+        Eigen::Vector3d r1_mid = 0.5 * (r1_left + r1_right);
+        Eigen::Vector3d r2_mid = 0.5 * (r2_left + r2_right);
+        Eigen::Vector3d center = 0.5 * (r1_mid + r2_mid);
+
+        // Align box x-axis from Robot1 toward Robot2 in the horizontal plane
+        Eigen::Vector3d dir = r2_mid - r1_mid;
+        dir.z() = 0.0;
+        if (dir.norm() < 1e-6) {
+          dir = Eigen::Vector3d::UnitX();
+        }
+        double yaw = std::atan2(dir.y(), dir.x());
+        Eigen::AngleAxisd yaw_rot(yaw, Eigen::Vector3d::UnitZ());
+        Eigen::Quaterniond q(yaw_rot);
+
+        int adr = mj_model_ptr->jnt_qposadr[box_jid];
+        mj_data_ptr->qpos[adr + 0] = center.x();
+        mj_data_ptr->qpos[adr + 1] = center.y();
+        mj_data_ptr->qpos[adr + 2] = center.z();
+        mj_data_ptr->qpos[adr + 3] = q.w();
+        mj_data_ptr->qpos[adr + 4] = q.x();
+        mj_data_ptr->qpos[adr + 5] = q.y();
+        mj_data_ptr->qpos[adr + 6] = q.z();
+      }
+    }
+  }
 
 
+  // robot1 joint armatures (exclude r2_*):
   std::map<std::string, double> armatures;
   for (int i = 0; i < mj_model_ptr->nu; ++i) {
     int joint_id = mj_model_ptr->actuator_trnid[i * 2];
     std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+    if (joint_name.rfind("r2_", 0) == 0) continue; // skip Robot2 joints
     int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
     armatures[joint_name] = mj_model_ptr->dof_armature[dof_id];
+  }
+  // robot2 joint armatures (only r2_*):
+  std::map<std::string, double> r2_armatures;
+  if (r2Walking) {
+    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+      int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+      std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+      if (joint_name.rfind("r2_", 0) != 0) continue;
+      int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
+      std::string base_name = joint_name.substr(3);
+      r2_armatures[base_name] = mj_model_ptr->dof_armature[dof_id];
+    }
   }
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  
+
+  // Make Robot1 walk forward (+x in world) by setting step before init/plan
+  walking_manager.set_step_length_x(0.1);
   walking_manager.init(robot_state, armatures);
+
+  if (r2Walking) {
+    // Robot2 faces Robot1 (yaw=pi), so use positive step to move toward Robot1 along its forward axis
+    r2_walking_manager.set_step_length_x(-0.1);
+  }
+
+  // Keep Robot2 state in世界坐标，单独拷贝一份旋转后传给r2_walking_manager，避免循环时再次旋转引起“飞来”
+  labrob::RobotState r2_robot_state = robot2_state_from_mujoco(mj_model_ptr, mj_data_ptr, r2_base_qposadr, r2_base_dofadr);
+  if (r2Walking) {
+    labrob::RobotState r2_state_mgr_init = r2_robot_state; // copy world state
+    Eigen::Quaterniond r2_rot_world_to_mgr(Eigen::AngleAxisd(-M_PI, Eigen::Vector3d::UnitZ()));
+    Eigen::Matrix3d r2_R_world_to_mgr = r2_rot_world_to_mgr.toRotationMatrix();
+    r2_state_mgr_init.orientation = r2_rot_world_to_mgr * r2_state_mgr_init.orientation;
+    r2_state_mgr_init.position = r2_R_world_to_mgr * r2_state_mgr_init.position;
+    r2_state_mgr_init.linear_velocity = r2_R_world_to_mgr * r2_state_mgr_init.linear_velocity;
+    r2_state_mgr_init.angular_velocity = r2_R_world_to_mgr * r2_state_mgr_init.angular_velocity;
+    for (auto &p : r2_state_mgr_init.contact_points) {
+      p = r2_R_world_to_mgr * p;
+    }
+    for (auto &f : r2_state_mgr_init.contact_forces) {
+      f = r2_R_world_to_mgr * f;
+    }
+    r2_state_mgr_init.total_force = r2_R_world_to_mgr * r2_state_mgr_init.total_force;
+    r2_walking_manager.init(r2_state_mgr_init, r2_armatures);
+  } else {
+    r2_walking_manager.init(r2_robot_state, r2_armatures);
+  }
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -623,6 +867,7 @@ int main(const int argc, const char* argv[]) {
       auto start_sleep = std::chrono::steady_clock::now();
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      Eigen::VectorXd r2_actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -698,6 +943,7 @@ int main(const int argc, const char* argv[]) {
       }
       // Update walking manager:
       labrob::JointCommand joint_command;
+      labrob::JointCommand r2_joint_command;
       // #pragma omp parallel sections num_threads(2)
       // {
       //   #pragma omp section
@@ -709,7 +955,29 @@ int main(const int argc, const char* argv[]) {
       //   }
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
+      // Transform r2 state into manager frame (rotate -pi around z to align facing +x)
+      const Eigen::Quaterniond r2_rot_world_to_mgr(Eigen::AngleAxisd(-M_PI, Eigen::Vector3d::UnitZ()));
+      const Eigen::Matrix3d r2_R_world_to_mgr = r2_rot_world_to_mgr.toRotationMatrix();
+      const Eigen::Quaterniond r2_rot_mgr_to_world = r2_rot_world_to_mgr.conjugate();
+      const Eigen::Matrix3d r2_R_mgr_to_world = r2_rot_mgr_to_world.toRotationMatrix();
 
+      labrob::RobotState r2_state_mgr = r2_robot_state;
+      r2_state_mgr.orientation = r2_rot_world_to_mgr * r2_state_mgr.orientation;
+      r2_state_mgr.position = r2_R_world_to_mgr * r2_state_mgr.position;
+      r2_state_mgr.linear_velocity = r2_R_world_to_mgr * r2_state_mgr.linear_velocity;
+      r2_state_mgr.angular_velocity = r2_R_world_to_mgr * r2_state_mgr.angular_velocity;
+      for (auto &p : r2_state_mgr.contact_points) {
+        p = r2_R_world_to_mgr * p;
+      }
+      for (auto &f : r2_state_mgr.contact_forces) {
+        f = r2_R_world_to_mgr * f;
+      }
+      r2_state_mgr.total_force = r2_R_world_to_mgr * r2_state_mgr.total_force;
+
+      r2_walking_manager.update(r2_state_mgr, r2_joint_command, r2_actual_output);
+      // Encapsulated Robot 2 manager update and writeback
+      //handleRobot2Walking(mj_model_ptr, mj_data_ptr, r2Walking, walking_manager_r2, robot_state_r2);
+      // std::cout<<"10"<<std::endl;
       if (false){
         auto start_integration = std::chrono::steady_clock::now();
         mj_step1(mj_model_ptr, mj_data_ptr);
@@ -731,7 +999,7 @@ int main(const int argc, const char* argv[]) {
       }else{
         auto start_integration = std::chrono::steady_clock::now();
         robot_state = walking_manager.getNewRobotState(robot_state);
-        // update mujoco state with robot_state
+        // update mujoco state with robot_state (Robot 1)
         mj_data_ptr->qpos[0] = robot_state.position.x();
         mj_data_ptr->qpos[1] = robot_state.position.y();
         mj_data_ptr->qpos[2] = robot_state.position.z();
@@ -750,17 +1018,93 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          if (joint_name.rfind("r2_", 0) == 0) continue; // keep Robot2 untouched here
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
 
-        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
-        mj_data_ptr->time += 0.002;
+        // mj_forward(mj_model_ptr, mj_data_ptr);
+
+        // // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+        // mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+        // mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
+        // mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+
+        // Robot2 action:
+        r2_robot_state = r2_walking_manager.getNewRobotState(r2_state_mgr);
+        // Transform back to world frame
+        r2_robot_state.orientation = r2_rot_mgr_to_world * r2_robot_state.orientation;
+        r2_robot_state.position = r2_R_mgr_to_world * r2_robot_state.position;
+        r2_robot_state.linear_velocity = r2_R_mgr_to_world * r2_robot_state.linear_velocity;
+        r2_robot_state.angular_velocity = r2_R_mgr_to_world * r2_robot_state.angular_velocity;
+        if (r2_base_qposadr >= 0) {
+          mj_data_ptr->qpos[r2_base_qposadr + 0] = r2_robot_state.position.x();
+          mj_data_ptr->qpos[r2_base_qposadr + 1] = r2_robot_state.position.y();
+          mj_data_ptr->qpos[r2_base_qposadr + 2] = r2_robot_state.position.z();
+          mj_data_ptr->qpos[r2_base_qposadr + 3] = r2_robot_state.orientation.w();
+          mj_data_ptr->qpos[r2_base_qposadr + 4] = r2_robot_state.orientation.x();
+          mj_data_ptr->qpos[r2_base_qposadr + 5] = r2_robot_state.orientation.y();
+          mj_data_ptr->qpos[r2_base_qposadr + 6] = r2_robot_state.orientation.z();
+        }
+        if (r2_base_dofadr >= 0) {
+          Eigen::Vector3d r2_lin_vel_body = r2_robot_state.orientation.toRotationMatrix() * r2_robot_state.linear_velocity;
+          mj_data_ptr->qvel[r2_base_dofadr + 0] = r2_lin_vel_body.x();
+          mj_data_ptr->qvel[r2_base_dofadr + 1] = r2_lin_vel_body.y();
+          mj_data_ptr->qvel[r2_base_dofadr + 2] = r2_lin_vel_body.z();
+          mj_data_ptr->qvel[r2_base_dofadr + 3] = r2_robot_state.angular_velocity.x();
+          mj_data_ptr->qvel[r2_base_dofadr + 4] = r2_robot_state.angular_velocity.y();
+          mj_data_ptr->qvel[r2_base_dofadr + 5] = r2_robot_state.angular_velocity.z();
+        }
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          if (joint_name.rfind("r2_", 0) != 0) continue;
+          std::string base_name = joint_name.substr(3);
+          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = r2_robot_state.joint_state[base_name].pos;
+          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = r2_robot_state.joint_state[base_name].vel;
+        }
+
+        // Run a full dynamics step so contacts (hands-box-ground) generate forces and move the box.
+        mj_step(mj_model_ptr, mj_data_ptr);
+
+        if(eq_force_file.is_open()){
+          std::ostringstream oss;
+          oss << std::fixed << std::setprecision(8);
+
+          oss << mj_data_ptr->time;
+
+          auto append_eq3 = [&](const EqInfo& eq){
+            double fx = NAN, fy = NAN, fz = NAN;
+            int found = 0;
+
+            for(int i=0; i < mj_data_ptr->nefc; ++i){
+              if(mj_data_ptr->efc_type[i] != mjCNSTR_EQUALITY) continue;
+              if(mj_data_ptr->efc_id[i]   != eq.id) continue;
+
+              if(found == 0) fx = mj_data_ptr->efc_force[i];
+              if(found == 1) fy = mj_data_ptr->efc_force[i];
+              if(found == 2) fz = mj_data_ptr->efc_force[i];
+              found++;
+              if(found >= 3) break;
+            }
+
+            // 永远补齐三列
+            oss << " " << fx << " " << fy << " " << fz;
+          };
+
+          append_eq3(eq_lf);
+          append_eq3(eq_lb);
+          append_eq3(eq_rf);
+          append_eq3(eq_rb);
+
+          oss << "\n";
+          eq_force_file << oss.str();
+
+          // 可选：每隔一段 flush，减少中途崩掉产生半行的概率
+          // if(((int)(mj_data_ptr->time / mj_model_ptr->opt.timestep)) % 2000 == 0) eq_force_file.flush();
+        }
+
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;

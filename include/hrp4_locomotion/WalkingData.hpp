@@ -42,7 +42,8 @@ class WalkingData {
 
   void addSteps(
     const labrob::SE3& T_lsole,
-    const labrob::SE3& T_rsole
+    const labrob::SE3& T_rsole,
+    double step_length_x = 0.1
   );
 
   void removeSteps();

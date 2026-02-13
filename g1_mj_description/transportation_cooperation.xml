@@ -1,0 +1,118 @@
+<mujoco model="unitreeg1 scene">
+
+  <include file="unitreeg1_2.xml"/>
+
+  <include file="unitreeg1_2_trans.xml"/>
+
+  <!-- <visual>
+    <headlight diffuse="0.6 0.6 0.6"  ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512"
+        height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4"
+        rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="1 1"
+        reflectance="0.2"/>
+    <hfield name="hf1" size="5 5 0.01 0.01" file="texture/heightmap.png" />
+  </asset>
+
+  <worldbody>
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor1" pos="0 0 -0.105" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
+  </worldbody> -->
+
+  <!-- Remove hard connects; rely on contact + frictional grasp -->
+
+  <!-- setup scene -->
+  <!-- <asset>
+    <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <hfield name="hf1" size="5 5 0.01 0.01" file="texture/heightmap.png" />
+  </asset>
+  <worldbody>
+    <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor1" pos="0 0 -0.105" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
+  </worldbody> -->
+
+  <statistic center="1.0 0.7 1.0" extent="0.8"/>
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0.9 0.9 0.9"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="-140" elevation="-20"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <hfield name="hf1" size="5 5 0.01 0.01" file="texture/heightmap.png" />
+  </asset>
+  <worldbody>
+    <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
+    <!-- Explicit contact flags so the box collides with ground -->
+    <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="1" conaffinity="1" friction="1.2 0.2 0.02" condim="4" solref="0.001 1" solimp="0.99 0.99 0.001"/>
+    <!-- <geom name="floor1" pos="0 0 -0.1" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".1 .1 .1" priority="1" material="groundplane" /> -->
+    <!-- Cooperative box follows hands via soft connects; initial pose above ground -->
+    <body name="carry_box" pos="0.5 0 1.20">
+      <joint name="carry_box_free" type="free"/>
+
+      <geom name="carry_box_geom" type="box"
+        size="0.12 0.05 0.05" mass="10"
+        rgba="0.3 0.6 0.9 1"
+        friction="1.2 1.2 0.1"
+        solref="0.001 1"
+        solimp="0.9 0.9 0.001"
+        margin="0.003"/>
+
+      <!-- Visual axes to show carry_box orientation (render-only, no contact) -->
+      <geom name="carry_box_axis_x" type="capsule" fromto="0 0 0 0.15 0 0" size="0.01"
+        rgba="1 0 0 1" contype="0" conaffinity="0" density="0" group="0"/>
+      <geom name="carry_box_axis_y" type="capsule" fromto="0 0 0 0 0.15 0" size="0.01"
+        rgba="0 1 0 1" contype="0" conaffinity="0" density="0" group="0"/>
+      <geom name="carry_box_axis_z" type="capsule" fromto="0 0 0 0 0 0.15" size="0.01"
+        rgba="0 0 1 1" contype="0" conaffinity="0" density="0" group="0"/>
+
+      <!-- Box grasp sites, adjusted for even narrower box -->
+      <site name="box_left_front"  size="0.014" pos="-0.12 0.05 0"  rgba="1 0 0 1"/>
+      <site name="box_left_back"   size="0.014" pos="-0.12 -0.05 0" rgba="0 1 0 1"/>
+      <site name="box_right_front" size="0.014" pos="0.12 -0.05 0"   rgba="0 0.35 1 1"/>
+      <site name="box_right_back"  size="0.014" pos="0.12 0.05 0"  rgba="1 1 0 1"/>
+
+      <!-- Add massless contact pads for real hand-box collisions -->
+      <geom name="box_left_front_pad"  type="box" pos="-0.12 0.05 0"  size="0.012 0.02 0.01" contype="1" conaffinity="1" group="0" density="0" rgba="1 0 0 0.35" friction="1.5 1.2 0.05"/>
+      <geom name="box_left_back_pad"   type="box" pos="-0.12 -0.05 0" size="0.012 0.02 0.01" contype="1" conaffinity="1" group="0" density="0" rgba="0 1 0 0.35" friction="1.5 1.2 0.05"/>
+      <geom name="box_right_front_pad" type="box" pos="0.12 -0.05 0"   size="0.012 0.02 0.01" contype="1" conaffinity="1" group="0" density="0" rgba="0 0.35 1 0.35" friction="1.5 1.2 0.05"/>
+      <geom name="box_right_back_pad"  type="box" pos="0.12 0.05 0"  size="0.012 0.02 0.01" contype="1" conaffinity="1" group="0" density="0" rgba="1 1 0 0.35" friction="1.5 1.2 0.05"/>
+    </body>
+
+  </worldbody>
+
+  <!-- Soft bilateral connects so both hands share load; still allow contact/friction to act -->
+  <equality>
+    <connect name="eq_lf" site1="box_left_front"  site2="r1_left_hand_grasp"  solref="0.02 1" solimp="0.9 0.9 0.001"/>
+    <connect name="eq_lb" site1="box_left_back"   site2="r1_right_hand_grasp" solref="0.02 1" solimp="0.9 0.9 0.001"/>
+    <connect name="eq_rf" site1="box_right_front" site2="r2_left_hand_grasp"  solref="0.02 1" solimp="0.9 0.9 0.001"/>
+    <connect name="eq_rb" site1="box_right_back"  site2="r2_right_hand_grasp" solref="0.02 1" solimp="0.9 0.9 0.001"/>
+  </equality>
+
+  <sensor>
+    <!-- Forces/Torques at the 4 grasp sites on the box -->
+    <force  name="F_box_left_front"  site="box_left_front"/>
+    <torque name="T_box_left_front"  site="box_left_front"/>
+
+    <force  name="F_box_left_back"   site="box_left_back"/>
+    <torque name="T_box_left_back"   site="box_left_back"/>
+
+    <force  name="F_box_right_front" site="box_right_front"/>
+    <torque name="T_box_right_front" site="box_right_front"/>
+
+    <force  name="F_box_right_back"  site="box_right_back"/>
+    <torque name="T_box_right_back"  site="box_right_back"/>
+  </sensor>
+
+
+</mujoco>

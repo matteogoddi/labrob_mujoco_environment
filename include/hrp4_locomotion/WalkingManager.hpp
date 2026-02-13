@@ -48,6 +48,8 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
 
+  void set_step_length_x(float step_length_x) { step_length_x_ = step_length_x; }
+
  protected:
   pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
@@ -110,6 +112,8 @@ class WalkingManager {
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
 
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
+
+  double step_length_x_ = -0.1; // default backward step for Robot1
 
 private:
 

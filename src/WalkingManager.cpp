@@ -301,7 +301,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     if(!useRobot){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
+            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
+            step_length_x_
         );
     };
     
@@ -1180,7 +1181,8 @@ WalkingManager::update(
         if (walking_data_.getWalkingState() == WalkingState::Standing) {
             walking_data_.addSteps(
                 labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
-                labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation())
+                labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation()),
+                step_length_x_
             );
             switchWalkingState = false;
         } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
