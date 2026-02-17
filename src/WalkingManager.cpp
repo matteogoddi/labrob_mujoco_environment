@@ -135,7 +135,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     mpc_zmp_velocity_log_.reserve(max_steps);
     con_zmp_velocity_log_.reserve(max_steps);
 
-    /READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
+    //READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
     std::string robot_description_filename = "../robot/g1/g1_description/g1_rev_hand.urdf";
 
