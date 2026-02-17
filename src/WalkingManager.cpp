@@ -363,7 +363,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //labrob::readFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
     //labrob::readArgosFootstepPlan(footstep_plan_path, walking_data_.footstep_plan);
 
-    //INIT LIP MODEL, IS-MPC, WHOLE-BODY CONTROLLER AND DISCRETE LIP DYNAMICS
+    // INIT LIP MODEL, IS-MPC, WHOLE-BODY CONTROLLER AND DISCRETE LIP DYNAMICS
 
     Eigen::Vector3d p_CoM_sim = sim_robot_data.com[0];
     double com_target_height = p_CoM_sim.z() - T_lsole_init.translation().z();
@@ -402,7 +402,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         0.001 * mpc_timestep_msec
     );
 
-    //INIT KALMAN GAIN FOR EKF
+    // INIT KALMAN GAIN FOR EKF
 
     Kalman_Gain = Eigen::MatrixXd::Zero(2 * (njnt + 6), n_ekf_output);
     // std::ifstream kalman_gain_file("../mean_kalman_gain.txt");
@@ -417,7 +417,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //     std::cerr << "Unable to open file mean_kalman_gain.txt";
     // }
 
-    //GET JACOBIANS FOR EKF OUTPUTS
+    // GET JACOBIANS FOR EKF OUTPUTS
 
     J_imu_est = Eigen::MatrixXd::Zero(6, njnt + 6);
     pinocchio::getFrameJacobian(
@@ -457,7 +457,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     return true;
 }
 
-//PROPAGATE STATE FUNCTION START TO COMPUTE NUMERICAL A MATRIX FOR EKF
+// PROPAGATE STATE FUNCTION START TO COMPUTE NUMERICAL A MATRIX FOR EKF
 
 Eigen::VectorXd WalkingManager::propagateState(
     const Eigen::VectorXd& x,
@@ -496,7 +496,7 @@ Eigen::VectorXd WalkingManager::propagateState(
     return x_next;
 }
 
-//NUMERICAL A COMPUTATION FUNCTION START
+// NUMERICAL A COMPUTATION FUNCTION START
 
 Eigen::MatrixXd WalkingManager::computeNumericalA(
     const Eigen::VectorXd& x,
@@ -564,7 +564,7 @@ Eigen::MatrixXd WalkingManager::computeNumericalA(
     return A;
 }
 
-//EKF FUNCTION START
+// EKF FUNCTION START
 
 RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
 
@@ -584,13 +584,13 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     //     }
     // }
 
-    //INIT X PRED
+    // INIT X PRED
 
     Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * (njnt + 6));
     // x_pred.segment(njnt + 6, njnt + 6) = x_estimate.segment(njnt + 6, njnt + 6) + (whole_body_controller_ptr_->get_q_ddot()) * controller_timestep_msec_ * 0.001;
     // x_pred.head(njnt + 6) = x_estimate.head(njnt + 6) + x_estimate.segment(njnt + 6, njnt + 6) * 0.001 * controller_timestep_msec_;
 
-    //INTEGRATE STATE USING PINOCCHIO::INTEGRATE
+    // INTEGRATE STATE USING PINOCCHIO::INTEGRATE
 
     Eigen::VectorXd q_current = Eigen::VectorXd::Zero(njnt + 7 + njnt + 6);
     q_current.head(3) = x_estimate.head(3);
@@ -614,7 +614,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     x_pred.segment(3 + 3, njnt) = q_next.segment(7, njnt);
     x_pred.tail(njnt + 6) = x_estimate.tail(njnt + 6) + whole_body_controller_ptr_->get_q_ddot() * controller_timestep_msec_ * 0.001;
 
-    //TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
+    // TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
 
     Eigen::VectorXd q_pred = Eigen::VectorXd::Zero(njnt + 7);
     q_pred.head(3) = x_pred.head(3);
@@ -626,7 +626,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     );
     q_pred.tail(njnt) = x_pred.segment(3 + 3, njnt);
 
-    //COMPUTE PINOCCHIO QUANTITIES FOR PREDICTION AND JACOBIANS
+    // COMPUTE PINOCCHIO QUANTITIES FOR PREDICTION AND JACOBIANS
 
     pinocchio::forwardKinematics(robot_model, predicted_robot_data, q_pred);
     pinocchio::jacobianCenterOfMass(robot_model, predicted_robot_data, q_pred);
@@ -658,7 +658,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
         J_right_foot_pred
     );
 
-    //INIT Y PRED
+    // INIT Y PRED
 
     Eigen::Quaterniond pred_imu_orientation = Eigen::Quaterniond(
         predicted_robot_data.oMf[imu_idx_].rotation()
@@ -667,7 +667,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     y_pred.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(pred_imu_orientation);
     y_pred.segment(JOINTS_IDX, njnt) = q_pred.tail(njnt);
 
-    //ADDITIONAL OUTPUTS FOR EKF
+    // ADDITIONAL OUTPUTS FOR EKF
 
     // y_pred.segment(BASE_VEL_IDX, 3) = x_pred.segment(6 + njnt, 3);
     // y_pred.segment(3 + njnt + 3, 3) = J_imu_est.bottomRows(3) * x_pred.tail(njnt + 6);
@@ -676,14 +676,14 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     // y_pred.segment(JOINTS_VEL_IDX, njnt) = x_pred.segment(6 + 6 + njnt, njnt);
 
 
-    //C MATRIX:
+    // C MATRIX:
 
     Eigen::MatrixXd C = Eigen::MatrixXd::Zero(n_ekf_output, 2 * (njnt + 6));
     C.block(BASE_IDX, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
     C.block(IMU_ROTVEC_IDX, 0, 3, njnt + 6) = J_imu_est.bottomRows(3);
     C.block(JOINTS_IDX, 6, njnt, njnt) = Eigen::MatrixXd::Identity(njnt, njnt);
 
-    //ADDITIONAL OUTPUTS FOR EKF
+    // ADDITIONAL OUTPUTS FOR EKF
 
     // C.block(BASE_VEL_IDX, njnt + 6, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
     // C.block(3 + njnt + 3, njnt + 6, 3, njnt + 6) = J_imu_est.bottomRows(3);
@@ -691,12 +691,12 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     // C.block(LEFT_FOOT_VEL_IDX, njnt + 6, 6, njnt + 6) = J_left_foot_est;
     // C.block(RIGHT_FOOT_VEL_IDX, njnt + 6, 6, njnt + 6) = J_right_foot_est;
 
-    //A MATRIX:
+    // A MATRIX:
 
     // Eigen::MatrixXd A = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6));
     // A.block(0, njnt + 6, njnt + 6, njnt + 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(njnt + 6, njnt + 6);
 
-    //UNCOMMENT ABOVE TO USE APPROXIMATED A. UNCOMMENT BELOW TO USE NUMERICAL A
+    // UNCOMMENT ABOVE TO USE APPROXIMATED A. UNCOMMENT BELOW TO USE NUMERICAL A
 
     Eigen::MatrixXd A = computeNumericalA(x_estimate,
                       whole_body_controller_ptr_->get_q_ddot(),
@@ -714,7 +714,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
     Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
 
-    //ALTERNATIVE WAYS TO COMPUTE KALMAN GAIN BELOW (USE IF INVERSION TOO SLOW)
+    // ALTERNATIVE WAYS TO COMPUTE KALMAN GAIN BELOW (USE IF INVERSION TOO SLOW)
 
     // Eigen::LLT<Eigen::MatrixXd> llt(C * Lambda_ * C.transpose() + R);
     // Eigen::MatrixXd MatInv = llt.solve(Eigen::MatrixXd::Identity(n_ekf_output, n_ekf_output));
@@ -727,17 +727,17 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     // Kalman_Gain = Lambda_ * C.transpose();
     // Kalman_Gain = S.ldlt().solve(Kalman_Gain.transpose()).transpose();
 
-    //PROCESS COVARIANCE MATRIX UPDATE
+    // PROCESS COVARIANCE MATRIX UPDATE
 
     P_ = (Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) - Kalman_Gain * C) * Lambda_;
 
     y_actual = actual_output;
 
-    //STATE ESTIMATE
+    // STATE ESTIMATE
 
     x_estimate = x_pred + Kalman_Gain * (y_actual - y_pred);
 
-    //TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
+    // TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
 
     Eigen::VectorXd q_estimate = Eigen::VectorXd::Zero(njnt + 7);
     q_estimate.head(3) = x_estimate.head(3);
@@ -749,7 +749,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     );
     q_estimate.tail(njnt) = x_estimate.segment(3 + 3, njnt);
 
-    //COMPUTE PINOCCHIO QUANTITIES FOR ESTIMATE AND JACOBIANS
+    // COMPUTE PINOCCHIO QUANTITIES FOR ESTIMATE AND JACOBIANS
 
     pinocchio::forwardKinematics(robot_model, estimated_robot_data, q_estimate);
     pinocchio::jacobianCenterOfMass(robot_model, estimated_robot_data, q_estimate);
@@ -781,7 +781,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
         J_right_foot_est
     );
 
-    //FILL CURRENT STATE FOR ACTUAL RETURN
+    // FILL CURRENT STATE FOR ACTUAL RETURN
 
     RobotState current_state;
 
@@ -798,12 +798,12 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
     return current_state;
 }
 
-//KF FUNCTION START FOR LIP STATE ESTIMATION
+// KF FUNCTION START FOR LIP STATE ESTIMATION
 
 LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
   double omega = ismpc_ptr_->getOmega();
 
-  //DYNAMIC AND INPUT MATRICES
+  // DYNAMIC AND INPUT MATRICES
 
   double ch = cosh(omega*controller_timestep_msec_*0.001);
   double sh = sinh(omega*controller_timestep_msec_*0.001);
@@ -840,16 +840,16 @@ LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eig
   double input_y = input.y();
   double input_z = input.z();
 
-  //X_PRED BY DYNAMICS AND UPDATE COVARIANCE
+  // X_PRED BY DYNAMICS AND UPDATE COVARIANCE
 
   Eigen::VectorXd x_pred = F_kf * x_est + G_kf * input_x;
   Eigen::MatrixXd cov_x_pred = F_kf * cov_x * F_kf.transpose() + Q_kf;
 
-  //KALMAN GAIN
+  // KALMAN GAIN
 
   Eigen::MatrixXd K_kf = cov_x_pred * H_kf.transpose() * (H_kf * cov_x_pred * H_kf.transpose() + R_kf).inverse();
 
-  //STATE ESTIMATE (SPLIT INTO X,Y AND Z)
+  // STATE ESTIMATE (SPLIT INTO X,Y AND Z)
 
   x_est = x_pred + K_kf * (x_measure - H_kf * x_pred);
   cov_x = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_x_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
@@ -870,7 +870,7 @@ LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eig
   z_est = z_pred + K_kf * (z_measure - H_kf * z_pred);
   cov_z = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_z_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
 
-  //FILL CURRENT STATE FOR RETURN
+  // FILL CURRENT STATE FOR RETURN
 
   current.com_pos_ = Eigen::Vector3d(x_est(0), y_est(0), z_est(0));
   current.com_vel_ = Eigen::Vector3d(x_est(1), y_est(1), z_est(1));
@@ -879,7 +879,7 @@ LIPState WalkingManager::updateKF(LIPState filtered, LIPState current, const Eig
   return current;
 }
 
-//UPDATE FUNCTION START
+// UPDATE FUNCTION START
 
 void
 WalkingManager::update(
@@ -889,13 +889,13 @@ WalkingManager::update(
 
     auto start_update = std::chrono::high_resolution_clock::now();
 
-    //SET FORCE ESTIMATION 
+    // SET FORCE ESTIMATION 
 
     Eigen::Vector3d left_foot_force = estimated_force.head(3);
     Eigen::Vector3d right_foot_force = estimated_force.tail(3);
     Eigen::Vector3d total_force = left_foot_force + right_foot_force;
 
-    //UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
+    // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
 
     auto q = sim_robot_state.get_pinocchio_joint_configuration(robot_model);
     auto qdot = sim_robot_state.get_pinocchio_joint_velocity(robot_model);
@@ -991,12 +991,13 @@ WalkingManager::update(
     //     }
     // }
 
+    // SAVE IMU CALIBRATION SAMPLES AND COMPUTE CALIBRATION MATRIX AFTER 10 SECONDS (FOR 2 SECONDS)
+
     if(imuCalibration && t_msec_ >= 10000 && t_msec_ <= 12000){
         acc_samples.push_back(measured_imu_accelerometer.transpose());
     } else if (imuCalibration && t_msec_ > 12000){
         imuCalibration = false;
         imu_calibration_matrix = labrob::calibrateImuRotation(acc_samples, sim_robot_data.oMf[imu_idx_].rotation());
-        //save imu_calibration_matrix to file
         std::ofstream imu_calib_file("imu_calibration_matrix.txt");
         if (imu_calib_file.is_open()) {
             imu_calib_file << imu_calibration_matrix << std::endl;
@@ -1134,7 +1135,7 @@ WalkingManager::update(
         J_imu_fb
     );
 
-    //IF USE ROBOT, USE FEEDBACK FEET POSITIONS FOR STEPS
+    // IF USE ROBOT, USE FEEDBACK FEET POSITIONS FOR STEPS
 
     if (loopClosed && t_msec_ >= startTimeWBCCL && isWBCLoopClosed && useRobot) {
         
@@ -1170,7 +1171,7 @@ WalkingManager::update(
         loopClosed = false;
     }
 
-    //ZMP POSITION UPDATE
+    // ZMP POSITION UPDATE
 
     Eigen::Vector3d zmp_3d_fb;
 
@@ -1339,7 +1340,7 @@ WalkingManager::update(
         current_gait_configuration.torso.vel = J_torso_sim.bottomRows<3>() * qdot;
     }
 
-    // feet 
+    //feet 
     if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
         current_gait_configuration.lsole.pos = labrob::SE3(fb_robot_data.oMf[lsole_idx_].rotation(), fb_robot_data.oMf[lsole_idx_].translation());
         current_gait_configuration.lsole.vel = J_lsole_fb * qdot_fb_filt;
