@@ -996,6 +996,15 @@ WalkingManager::update(
     } else if (imuCalibration && t_msec_ > 12000){
         imuCalibration = false;
         imu_calibration_matrix = labrob::calibrateImuRotation(acc_samples, sim_robot_data.oMf[imu_idx_].rotation());
+        //save imu_calibration_matrix to file
+        std::ofstream imu_calib_file("imu_calibration_matrix.txt");
+        if (imu_calib_file.is_open()) {
+            imu_calib_file << imu_calibration_matrix << std::endl;
+            imu_calib_file.close();
+            std::cout << "IMU calibration matrix saved to imu_calibration_matrix.txt" << std::endl;
+        } else {
+            std::cerr << "Unable to open file to save IMU calibration matrix" << std::endl;
+        }
     }
 
     // USE SIM VALUES IF NOT USING ROBOT
