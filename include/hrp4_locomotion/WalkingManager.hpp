@@ -12,11 +12,12 @@
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
+#include <hrp4_locomotion/ResidualEstimator.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
+#include <hrp4_locomotion/StateFiltering.hpp>
 #include <hrp4_locomotion/WalkingData.hpp>
 #include <hrp4_locomotion/utils.hpp>
 #include <hrp4_locomotion/WholeBodyController.hpp>
-#include <hrp4_locomotion/ResidualEstimator.hpp>
 
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
@@ -68,6 +69,9 @@ class WalkingManager {
 
   RobotState fb_robot_state;
 
+  Eigen::Matrix3d imu_calibration_matrix;
+  std::vector<Eigen::Vector3d> acc_samples;
+  
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
   Eigen::MatrixXd R;

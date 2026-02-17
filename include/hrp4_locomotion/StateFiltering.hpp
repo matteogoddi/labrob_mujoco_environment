@@ -44,7 +44,7 @@ struct EKFState
 // =======================
 Eigen::Matrix3d calibrateImuRotation(
     const std::vector<Eigen::Vector3d>& acc_samples,
-    const pinocchio::SE3& base_in_world);
+    const Eigen::Matrix3d& R_world_base);
 
 // =======================
 // EKF class

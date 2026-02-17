@@ -9,6 +9,7 @@ extern bool useRobot;
 extern bool switchWalkingState;
 extern bool oneTimepress;
 extern bool loopClosed;
+extern bool imuCalibration;
 
 extern double startTimeMPCCL;
 extern double startTimeWBCCL;

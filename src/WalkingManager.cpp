@@ -135,7 +135,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     mpc_zmp_velocity_log_.reserve(max_steps);
     con_zmp_velocity_log_.reserve(max_steps);
 
-    //READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
+    // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
     std::string robot_description_filename = "../robot/g1/g1_description/g1_rev_hand.urdf";
 
@@ -172,7 +172,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         initial_robot_state
     );
 
-    //INIT ROBOT STATE, DATA AND PINOCCHIO QUANTITIES
+    // INIT ROBOT STATE, DATA AND PINOCCHIO QUANTITIES
 
     pinocchio::forwardKinematics(robot_model, sim_robot_data, q_init);
     pinocchio::jacobianCenterOfMass(robot_model, sim_robot_data, q_init);
@@ -199,7 +199,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     fixed_com_vel = Eigen::Vector3d::Zero();
     fixed_zmp_pos = Eigen::Vector3d::Zero();
 
-    //INIT FEEDBACK, PREDICTED AND ESTIMATED ROBOT DATA AND COMPUTING PINOCCHIO QUANTITIES
+    // INIT FEEDBACK, PREDICTED AND ESTIMATED ROBOT DATA AND COMPUTING PINOCCHIO QUANTITIES
 
     pinocchio::forwardKinematics(robot_model, fb_robot_data, q_init);
     pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_init);
@@ -224,7 +224,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // LEFT_FOOT_VEL_IDX = JOINTS_VEL_IDX + njnt;
     // RIGHT_FOOT_VEL_IDX = LEFT_FOOT_VEL_IDX + 6;
 
-    //STATE COVARIANCE MATRIX
+    // STATE COVARIANCE MATRIX
 
     n_ekf_output = JOINTS_IDX + njnt; 
 
@@ -234,7 +234,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     P_.block(3,3,3,3) = Eigen::MatrixXd::Identity(3, 3) * 1;
     P_.block(njnt + 6 + 3, njnt + 6 + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
 
-    //PROCESS NOISE COVARIANCE MATRIX
+    // PROCESS NOISE COVARIANCE MATRIX
 
     Q = Eigen::MatrixXd::Zero(2*(njnt+6), 2*(njnt+6));
 
@@ -253,7 +253,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //joint velocities
     Q.block(2*6+njnt, 2*6+njnt, njnt, njnt) = 1e-4 * Eigen::MatrixXd::Identity(njnt,njnt);
 
-    //OUTPUT NOISE COVARIANCE MATRIX
+    // OUTPUT NOISE COVARIANCE MATRIX
 
     R = Eigen::MatrixXd::Zero(n_ekf_output, n_ekf_output);
 
@@ -280,7 +280,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     //feet velocity
     // R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 12, 12) = 1e-1 * Eigen::MatrixXd::Identity(12, 12);
 
-    //INIT ESTIMATE STATE AND OUTPUT
+    // INIT ESTIMATE STATE AND OUTPUT
 
     x_estimate = Eigen::VectorXd::Zero(2 * (njnt + 6));
     x_estimate.head(3) = q_init.head(3);
@@ -292,7 +292,27 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     y_actual = Eigen::VectorXd::Zero(n_ekf_output);
     y_estimate = Eigen::VectorXd::Zero(n_ekf_output);
 
-    //GET INDICES OF INTEREST AND ARMATURES
+    // IMU CALIBRATION (IF CALIBRATION MATRIX ALREADY EXISTS)
+
+    imu_calibration_matrix = Eigen::Matrix3d::Identity();
+
+    if (!imuCalibration) {
+        std::ifstream imu_calibration_file("../imu_calibration_matrix.txt");
+        if (imu_calibration_file.is_open()) {
+            for (int i = 0; i < 3; i++) {
+                for (int j = 0; j < 3; j++) {
+                    imu_calibration_matrix(i, j) = 0.0;
+                    imu_calibration_file >> imu_calibration_matrix(i, j);
+                }
+            }
+            imu_calibration_file.close();
+            std::cout << "IMU calibration matrix loaded successfully." << std::endl;
+        } else {
+            std::cout << "[WARNING]: unable to open file imu_calibration_matrix.txt. IMU will not be calibrated." << std::endl;
+        }
+    }
+
+    // GET INDICES OF INTEREST AND ARMATURES
 
     lsole_idx_ = robot_model.getFrameId("left_foot_link");
     rsole_idx_ = robot_model.getFrameId("right_foot_link");
@@ -309,17 +329,17 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         M_armature_(joint_id) = armatures[joint_name];
     }
 
-    //SET JOINT DES AS INITIAL POSE
+    // SET JOINT DES AS INITIAL POSE
 
     q_jnt_des_ = q_init.tail(njnt);
 
-    //CONTROLLER FREQUENCY
+    // CONTROLLER FREQUENCY
 
     // TODO: init using node handle.
     controller_frequency_ = 500;
     controller_timestep_msec_ = 1000 / controller_frequency_;
 
-    //WALKING DATA INIT WITH INITIAL FEET POSES
+    // WALKING DATA INIT WITH INITIAL FEET POSES
 
     walking_data_.initializeWalkingData(
         controller_timestep_msec_,
@@ -971,6 +991,13 @@ WalkingManager::update(
     //     }
     // }
 
+    if(imuCalibration && t_msec_ >= 10000 && t_msec_ <= 12000){
+        acc_samples.push_back(measured_imu_accelerometer.transpose());
+    } else if (imuCalibration && t_msec_ > 12000){
+        imuCalibration = false;
+        imu_calibration_matrix = labrob::calibrateImuRotation(acc_samples, sim_robot_data.oMf[imu_idx_].rotation());
+    }
+
     // USE SIM VALUES IF NOT USING ROBOT
 
     if (!useRobot){
@@ -1572,7 +1599,7 @@ WalkingManager::update(
     odometry_base_position_log_.push_back(odometry_base_position.transpose());
     odometry_base_velocity_log_.push_back(odometry_base_velocity.transpose());
     odometry_imu_orientation_log_.push_back(odometry_imu_quaternion.transpose());
-    odometry_imu_orientation_rpy_log_.push_back(odometry_imu_rpy.transpose());
+    odometry_imu_orientation_rpy_log_.push_back((imu_calibration_matrix * odometry_imu_rpy).transpose());
     measured_imu_orientation_log_.push_back(measured_imu_quaternion.transpose());
     measured_imu_angular_velocity_log_.push_back(measured_imu_angular_velocity.transpose());
     measured_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());

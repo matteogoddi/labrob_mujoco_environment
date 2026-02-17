@@ -48,6 +48,7 @@ bool oneTimepress = true;
 bool xPressed = false;
 bool loopClosed = true;
 bool switchWalkingState = false;
+bool imuCalibration = false;
 
 double startTimeWBCCL = 1000.0;
 double startTimeMPCCL = 1000.0;
@@ -520,6 +521,12 @@ int main(const int argc, const char* argv[]) {
     std::string a = argv[i];
     if (a == "--sim") {
         useSim = true;
+    } else if ( a == "--imuCalibration" && i + 1 < argc) {
+        std::string imu_calibration_file = argv[++i];
+        useRobot = true;
+        useSim = true;
+        netInterface = argv[++i];
+        imuCalibration = true;
     } else if (a == "--robot" && i + 1 < argc) {
         useRobot = true;
         useSim = true;
@@ -685,11 +692,13 @@ int main(const int argc, const char* argv[]) {
         }
 
         if (gamepad_.A.pressed) {
-          if(oneTimepress){
+          if(oneTimepress && !imuCalibration){
             std::cout << "[GAMEPAD] A pressed -> EKF started." << std::endl;
             isEKFactive = true;
             oneTimepress = false;
             startTimeEKF = 1000 * mj_data_ptr->time;
+          } else if(imuCalibration){
+            std::cout << "[GAMEPAD] A pressed -> EKF not started. IMU not calibrated" << std::endl;
           }
         }
 
