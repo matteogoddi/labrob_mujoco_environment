@@ -113,6 +113,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     odometry_imu_orientation_log_.reserve(max_steps);
     odometry_imu_orientation_rpy_log_.reserve(max_steps);
     measured_imu_orientation_log_.reserve(max_steps);
+    measured_imu_orientation_rpy_log_.reserve(max_steps);
     measured_imu_angular_velocity_log_.reserve(max_steps);
     measured_imu_accelerometer_log_.reserve(max_steps);
     measured_joint_position_log_.reserve(max_steps);
@@ -889,6 +890,20 @@ WalkingManager::update(
 
     auto start_update = std::chrono::high_resolution_clock::now();
 
+    // we dont know how to rotate quaternion
+    
+    odometry_imu_rpy = (imu_calibration_matrix.transpose() * (Rz(odometry_imu_rpy.z()) * Ry(odometry_imu_rpy.y()) * Rx(odometry_imu_rpy.x()))).eulerAngles(0, 1, 2);
+    // measured_imu_rpy = (imu_calibration_matrix * (Rz(measured_imu_rpy.z()) * Ry(measured_imu_rpy.y()) * Rx(measured_imu_rpy.x()))).eulerAngles(0, 1, 2);
+    odometry_imu_quaternion = Eigen::Vector4d(
+        Eigen::Quaterniond((Rz(odometry_imu_rpy.z()) * Ry(odometry_imu_rpy.y()) * Rx(odometry_imu_rpy.x())).transpose()).w(),
+        Eigen::Quaterniond((Rz(odometry_imu_rpy.z()) * Ry(odometry_imu_rpy.y()) * Rx(odometry_imu_rpy.x())).transpose()).x(),
+        Eigen::Quaterniond((Rz(odometry_imu_rpy.z()) * Ry(odometry_imu_rpy.y()) * Rx(odometry_imu_rpy.x())).transpose()).y(),
+        Eigen::Quaterniond((Rz(odometry_imu_rpy.z()) * Ry(odometry_imu_rpy.y()) * Rx(odometry_imu_rpy.x())).transpose()).z()
+    );
+
+    measured_imu_angular_velocity = imu_calibration_matrix * measured_imu_angular_velocity;
+    measured_imu_accelerometer = imu_calibration_matrix * measured_imu_accelerometer;
+
     // SET FORCE ESTIMATION 
 
     Eigen::Vector3d left_foot_force = estimated_force.head(3);
@@ -993,12 +1008,19 @@ WalkingManager::update(
 
     // SAVE IMU CALIBRATION SAMPLES AND COMPUTE CALIBRATION MATRIX AFTER 10 SECONDS (FOR 2 SECONDS)
 
-    if(imuCalibration && t_msec_ >= 10000 && t_msec_ <= 12000){
+    if(imuCalibration && t_msec_ >= 15000 && t_msec_ <= 17000){
         acc_samples.push_back(measured_imu_accelerometer.transpose());
-    } else if (imuCalibration && t_msec_ > 12000){
+        imu_samples.push_back(odometry_imu_rpy.transpose());
+    } else if (imuCalibration && t_msec_ > 17000){
         imuCalibration = false;
-        imu_calibration_matrix = labrob::calibrateImuRotation(acc_samples, sim_robot_data.oMf[imu_idx_].rotation());
-        std::ofstream imu_calib_file("imu_calibration_matrix.txt");
+        // imu_calibration_matrix = labrob::calibrateImuRotation(acc_samples, sim_robot_data.oMf[imu_idx_].rotation());
+        //compute mean orientation and use that as rotation matrix for calibration
+        for (const auto& rpy : imu_samples) {
+            imu_calibration_matrix += Rz(rpy(2)) * Ry(rpy(1)) * Rx(rpy(0));
+        }
+        imu_calibration_matrix /= imu_samples.size();
+        imu_calibration_matrix = sim_robot_data.oMf[imu_idx_].rotation().transpose() * imu_calibration_matrix;
+        std::ofstream imu_calib_file("../imu_calibration_matrix.txt");
         if (imu_calib_file.is_open()) {
             imu_calib_file << imu_calibration_matrix << std::endl;
             imu_calib_file.close();
@@ -1037,6 +1059,8 @@ WalkingManager::update(
     actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
         odometry_imu_quaternion[0], odometry_imu_quaternion[1], odometry_imu_quaternion[2], odometry_imu_quaternion[3]
     ));
+    // actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
+    //     sim_robot_data.oMf[imu_idx_].rotation()));
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
         std::string joint_name = robot_model.names[joint_id + 2];
         actual_output(JOINTS_IDX + joint_id) = measured_joint_position(joint_id);
@@ -1609,8 +1633,9 @@ WalkingManager::update(
     odometry_base_position_log_.push_back(odometry_base_position.transpose());
     odometry_base_velocity_log_.push_back(odometry_base_velocity.transpose());
     odometry_imu_orientation_log_.push_back(odometry_imu_quaternion.transpose());
-    odometry_imu_orientation_rpy_log_.push_back((imu_calibration_matrix * odometry_imu_rpy).transpose());
+    odometry_imu_orientation_rpy_log_.push_back(odometry_imu_rpy.transpose());
     measured_imu_orientation_log_.push_back(measured_imu_quaternion.transpose());
+    measured_imu_orientation_rpy_log_.push_back(measured_imu_rpy.transpose());
     measured_imu_angular_velocity_log_.push_back(measured_imu_angular_velocity.transpose());
     measured_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
     measured_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
@@ -1883,6 +1908,11 @@ void WalkingManager::saveLogs() {
     std::ofstream measured_imu_orientation_log_file("/tmp/measured_imu_orientation.txt");
     for (auto& v : measured_imu_orientation_log_) {
         measured_imu_orientation_log_file << v.transpose() << "\n";
+    }
+
+    std::ofstream measured_imu_orientation_rpy_log_file("/tmp/measured_imu_orientation_rpy.txt");
+    for (auto& v : measured_imu_orientation_rpy_log_) {
+        measured_imu_orientation_rpy_log_file << v.transpose() << "\n";
     }
 
     std::ofstream ekf_base_position_file("/tmp/ekf_base_position.txt");

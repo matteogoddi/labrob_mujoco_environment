@@ -56,14 +56,17 @@ public:
 
   void setImuExtrinsics(const Eigen::Matrix3d& R_base_imu);
 
-  void predict(const Eigen::Vector3d& omega_m,
-               const Eigen::Vector3d& acc_m);
-
-  void updateFootContact(const pinocchio::Model& model,
-                         pinocchio::Data& data,
-                         int foot_frame_id,
-                         const Eigen::VectorXd& q,
-                         const Eigen::VectorXd& v);
+  void baseEstimation(
+    const Eigen::Vector3d& omega_m,
+    const Eigen::Vector3d& acc_m,
+    const pinocchio::Model& model,
+    pinocchio::Data& data,
+    const Eigen::VectorXd& q,
+    const Eigen::VectorXd& v,
+    bool left_contact,
+    bool right_contact,
+    int left_foot_frame,
+    int right_foot_frame);
 
   const EKFState& getState() const { return state_; }
 

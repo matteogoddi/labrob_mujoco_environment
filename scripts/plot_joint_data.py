@@ -8,7 +8,7 @@ from scipy.spatial.transform import Rotation as R
 import os
 import io
 import imageio.v2 as imageio
-import cv2
+# import cv2
 
 
 if __name__ == '__main__':
@@ -32,7 +32,7 @@ if __name__ == '__main__':
     parameters_log = np.loadtxt(folder + '/parameters_log.txt')
 
     startTimeWBCCL = parameters_log
-    startPlot = int(0.001 * startTimeWBCCL * 500 + 1000)  # Assuming a control frequency of 500 Hz
+    startPlot = int(0.001 * startTimeWBCCL * 500 + 10)  # Assuming a control frequency of 500 Hz
 
     fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')
     num_samples = fb_com_position.shape[0] - endPlot
@@ -102,6 +102,7 @@ if __name__ == '__main__':
     measured_joint_position: np.ndarray = np.loadtxt(folder +'/measured_joint_position.txt')[startPlot:num_samples, :]
     measured_joint_velocity: np.ndarray = np.loadtxt(folder +'/measured_joint_velocity.txt')[startPlot:num_samples, :]
     measured_imu_orientation: np.ndarray = np.loadtxt(folder + '/measured_imu_orientation.txt')[startPlot:num_samples, :]
+    measured_imu_orientation_rpy: np.ndarray = np.loadtxt(folder + '/measured_imu_orientation_rpy.txt')[startPlot:num_samples, :]
     measured_imu_angular_velocity: np.ndarray = np.loadtxt(folder + '/measured_imu_angular_velocity.txt')[startPlot:num_samples, :]
     measured_imu_accelerometer: np.ndarray = np.loadtxt(folder + '/measured_imu_accelerometer.txt')[startPlot:num_samples, :]
         
@@ -2511,39 +2512,39 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    # fig, ax = plt.subplots(figsize=(7, 4))
-    # ax.plot(
-    #     t, measured_imu_orientation_rpy[:, 0],
-    #     label=r'Measured IMU Orientation $R$',
-    #     linewidth=2.0
-    # )
-    # ax.plot(
-    #     t, measured_imu_orientation_rpy[:, 1],
-    #     label=r'Measured IMU Orientation $P$',
-    #     linewidth=2.0
-    # )
-    # ax.plot(
-    #     t, measured_imu_orientation_rpy[:, 2],
-    #     label=r'Measured IMU Orientation $Y$',
-    #     linewidth=2.0
-    # )
-    # ax.set_xlabel('Time [s]', fontsize=11)
-    # ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    # ax.set_title('Measured IMU Orientation RPY', fontsize=12)
-    # ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    # ax.legend(
-    #     loc='best',
-    #     frameon=True,
-    #     fontsize=9
-    # )
-    # ax.tick_params(axis='both', labelsize=10)
-    # fig.tight_layout()
-    # fig.savefig(
-    #     "images/feedback/base/measured_imu_orientation_rpy_plot.png",
-    #     dpi=300,
-    #     bbox_inches='tight'
-    # )
-    # plt.close(fig)
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, measured_imu_orientation_rpy[:, 0],
+        label=r'Measured IMU Orientation $R$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_orientation_rpy[:, 1],
+        label=r'Measured IMU Orientation $P$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, measured_imu_orientation_rpy[:, 2],
+        label=r'Measured IMU Orientation $Y$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
+    ax.set_title('Measured IMU Orientation RPY', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/feedback/base/measured_imu_orientation_rpy_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
 
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(

@@ -71,6 +71,7 @@ class WalkingManager {
 
   Eigen::Matrix3d imu_calibration_matrix;
   std::vector<Eigen::Vector3d> acc_samples;
+  std::vector<Eigen::Vector3d> imu_samples;
   
   Eigen::MatrixXd P_;
   Eigen::MatrixXd Q;
@@ -212,6 +213,7 @@ private:
   std::vector<Eigen::VectorXd> odometry_imu_orientation_log_;
   std::vector<Eigen::VectorXd> odometry_imu_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> measured_imu_orientation_log_;
+  std::vector<Eigen::VectorXd> measured_imu_orientation_rpy_log_;
   std::vector<Eigen::VectorXd> measured_imu_angular_velocity_log_;
   std::vector<Eigen::VectorXd> measured_imu_accelerometer_log_;
   std::vector<Eigen::VectorXd> measured_joint_position_log_;

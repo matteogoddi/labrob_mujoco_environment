@@ -521,8 +521,7 @@ int main(const int argc, const char* argv[]) {
     std::string a = argv[i];
     if (a == "--sim") {
         useSim = true;
-    } else if ( a == "--imuCalibration" && i + 1 < argc) {
-        std::string imu_calibration_file = argv[++i];
+    } else if (a == "--imuCalibration" && i + 1 < argc) {
         useRobot = true;
         useSim = true;
         netInterface = argv[++i];
@@ -671,7 +670,7 @@ int main(const int argc, const char* argv[]) {
           if (isEKFactive && !xPressed){
             xPressed = true;
             loopClosed = true;
-            isMPCLoopClosed = !isMPCLoopClosed;
+            // isMPCLoopClosed = !isMPCLoopClosed;
             isWBCLoopClosed = !isWBCLoopClosed;
             startTimeMPCCL = 1000 * mj_data_ptr->time + 5000;
             startTimeWBCCL = 1000 * mj_data_ptr->time;
@@ -725,7 +724,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (true){
+      if (!useRobot){
         auto start_integration = std::chrono::steady_clock::now();
 
         mj_step1(mj_model_ptr, mj_data_ptr);
@@ -770,7 +769,7 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        // mj_forward(mj_model_ptr, mj_data_ptr);
+        mj_forward(mj_model_ptr, mj_data_ptr);
 
         mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);

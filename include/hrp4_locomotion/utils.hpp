@@ -32,6 +32,30 @@ Rz(T theta) {
 }
 
 template <class T>
+Eigen::Matrix<T, 3, 3>
+Ry(T theta) {
+  T c = std::cos(theta);
+  T s = std::sin(theta);
+  Eigen::Matrix<T, 3, 3> R;
+  R <<   c, 0.0, s,
+      0.0, 1.0, 0.0,
+       -s, 0.0, c;
+  return R;
+}
+
+template <class T>
+Eigen::Matrix<T, 3, 3>
+Rx(T theta) {
+  T c = std::cos(theta);
+  T s = std::sin(theta);
+  Eigen::Matrix<T, 3, 3> R;
+  R <<   1.0, 0.0, 0.0,
+      0.0, c, s,
+        0.0, -s, c;
+  return R;
+}
+
+template <class T>
 Eigen::Matrix<T, 2, 2>
 Rz_planar(T theta) {
   T c = std::cos(theta);
