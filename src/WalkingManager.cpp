@@ -140,7 +140,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     con_zmp_velocity_log_.reserve(max_steps);
 
     // Read URDF from file:
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_rev_hand.urdf";
+    std::string robot_description_filename = "../robot/g1/g1_description/g1_norm_hand.urdf";
 
     // Build Pinocchio model and data from URDF:
     pinocchio::Model full_robot_model;

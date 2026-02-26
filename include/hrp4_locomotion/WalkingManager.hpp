@@ -59,7 +59,6 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
 
- protected:
   pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
   pinocchio::Data fb_robot_data;
@@ -135,7 +134,6 @@ class WalkingManager {
 
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 
-private:
 
   Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;
 

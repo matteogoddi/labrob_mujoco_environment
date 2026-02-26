@@ -36,6 +36,10 @@
 #include <unitree/idl/go2/SportModeState_.hpp>
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
+#include <hrp4_locomotion/HumanoidContactForcesEstimator.hpp>
+#include <hrp4_locomotion/UdpSender.hpp>
+
+
 #include <hrp4_locomotion/globals.h>
 #include "MujocoUI.hpp"
 
@@ -122,6 +126,7 @@ struct MotorCommand {
 struct MotorState {
   std::array<float, G1_NUM_MOTOR> q = {};
   std::array<float, G1_NUM_MOTOR> dq = {};
+  std::array<float, G1_NUM_MOTOR> tau_est = {};
 };
 struct SportModeState {
   std::array<float, 3> position = {};
@@ -271,10 +276,12 @@ void LowStateHandler(const void* msg){
     else if (i < 13) {
       motor_state_data.q[i] = low_state.motor_state()[i].q();
       motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+      motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
     }
     else if (i > 14) {
       motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
+      motor_state_data.tau_est[i - 2] = low_state.motor_state()[i].tau_est();
     }
   }
 
@@ -639,6 +646,41 @@ int main(const int argc, const char* argv[]) {
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   walking_manager.init(robot_state, armatures);
 
+  std::vector<std::string> larm_names = {
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "left_hand_palm_joint"
+  };
+
+  std::vector<std::string> rarm_names = {
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+    "right_hand_palm_joint"
+  };
+
+  auto lsole_idx = walking_manager.robot_model.getFrameId("left_foot_link");
+  auto rsole_idx = walking_manager.robot_model.getFrameId("right_foot_link");
+  auto lhand_idx = walking_manager.robot_model.getFrameId("left_rubber_hand");
+  auto rhand_idx = walking_manager.robot_model.getFrameId("right_rubber_hand");
+  Eigen::VectorXd Ko_gains(walking_manager.robot_model.nv);
+  Ko_gains.setConstant(50);
+
+  HumanoidContactForcesEstimator real_contact_forces_estimator(walking_manager.robot_model, 
+    walking_manager.fb_robot_data, 
+    Ko_gains, 0.001, 1/0.001, 1.0e-4, lsole_idx, rsole_idx, lhand_idx, rhand_idx, larm_names, rarm_names, 1);
+  
+  UdpSender sender("127.0.0.1", 9870);
+
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
   static int framerate = 60.0;
@@ -766,7 +808,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (true){
+      if (!useRobot){
         auto start_integration = std::chrono::steady_clock::now();
 
 
@@ -812,7 +854,7 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        // mj_forward(mj_model_ptr, mj_data_ptr);
+        mj_forward(mj_model_ptr, mj_data_ptr);
 
         mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
@@ -820,6 +862,47 @@ int main(const int argc, const char* argv[]) {
         mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         mj_data_ptr->time += 0.002;
+
+        Eigen::VectorXd real_q = Eigen::VectorXd::Zero(mj_model_ptr->nq);
+        Eigen::VectorXd real_qdot = Eigen::VectorXd::Zero(mj_model_ptr->nv);
+        for (int i = 0; i < mj_model_ptr->nu; ++i){
+            real_q[7+i] = motor_state_data.q[i];
+            real_qdot[6+i] = motor_state_data.dq[i];
+
+        }
+        real_q.head(7) << walking_manager.fb_robot_state.position.head(3), 0, 0, 0, 1; // walking_manager.fb_robot_state.position.tail(4);
+        real_qdot.head(6) << walking_manager.fb_robot_state.linear_velocity, walking_manager.fb_robot_state.angular_velocity;
+
+        Eigen::VectorXd tau_tot = Eigen::VectorXd::Zero(6 + mj_model_ptr->nu);
+        Eigen::VectorXd tau = Eigen::VectorXd::Zero(mj_model_ptr->nu);
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          tau[i] = motor_state_data.tau_est[i];
+        }
+        tau_tot.tail(mj_model_ptr->nu) = tau;
+        auto r_real = real_contact_forces_estimator.update(real_q, real_qdot, tau_tot, mj_data_ptr->time);
+
+        Eigen::VectorXd real_wlf = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd real_wrf = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd real_wlh = Eigen::VectorXd::Zero(6);
+        Eigen::VectorXd real_wrh = Eigen::VectorXd::Zero(6);
+        real_wlf = real_contact_forces_estimator.getLeftFootWrench();
+        real_wrf = real_contact_forces_estimator.getRightFootWrench();
+        real_wlh = real_contact_forces_estimator.getLeftHandWrench();
+        real_wrh = real_contact_forces_estimator.getRightHandWrench();
+
+        std::ostringstream json_stream, left_hand_stream, right_hand_stream, left_foot_stream, right_foot_stream;
+        left_hand_stream << "\"f1\":" << real_wlh(0) << ", \"f2\":" << real_wlh(1) << ", \"f3\":" << real_wlh(2) << ", \"m1\":" << real_wlh(3) << ", \"m2\":" << real_wlh(4) << ", \"m3\":" << real_wlh(5);
+        right_hand_stream << "\"f1\":" << real_wrh(0) << ", \"f2\":" << real_wrh(1) << ", \"f3\":" << real_wrh(2) << ", \"m1\":" << real_wrh(3) << ", \"m2\":" << real_wrh(4) << ", \"m3\":" << real_wrh(5);
+        left_foot_stream << "\"f1\":" << real_wlf(0) << ", \"f2\":" << real_wlf(1) << ", \"f3\":" << real_wlf(2) << ", \"m1\":" << real_wlf(3) << ", \"m2\":" << real_wlf(4) << ", \"m3\":" << real_wlf(5);
+        right_foot_stream << "\"f1\":" << real_wrf(0) << ", \"f2\":" << real_wrf(1) << ", \"f3\":" << real_wrf(2) << ", \"m1\":" << real_wrf(3) << ", \"m2\":"  << real_wrf(4)  << ", \"m3\": "   <<real_wrf(5);
+        json_stream   << "{\"timestamp\": "   << mj_data_ptr->time  <<", "  << "\"left_hand_wrench\": { "   << left_hand_stream.str()   << "}, "  << "\"right_hand_wrench\": { "  << right_hand_stream.str()  << "}, "  << "\"left_foot_wrench\": { "   << left_foot_stream.str()   << "}, "  << "\"right_foot_wrench\": { "  << right_foot_stream.str()  << "}}";
+        try {
+          sender.send(json_stream.str());
+        } catch (const std::exception& e) {
+          std::cerr << "Error: " << e.what() << std::endl;
+        }
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
