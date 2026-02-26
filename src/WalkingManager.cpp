@@ -149,6 +149,20 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         full_robot_model
     );
     const std::vector<std::string> joint_to_lock_names{
+        "left_hand_thumb_0_joint",
+        "left_hand_thumb_1_joint",
+        "left_hand_thumb_2_joint",
+        "left_hand_middle_0_joint",
+        "left_hand_middle_1_joint",
+        "left_hand_index_0_joint",
+        "left_hand_index_1_joint",
+        "right_hand_thumb_0_joint",
+        "right_hand_thumb_1_joint",
+        "right_hand_thumb_2_joint",
+        "right_hand_middle_0_joint",
+        "right_hand_middle_1_joint",
+        "right_hand_index_0_joint",
+        "right_hand_index_1_joint"
     };
     std::vector<pinocchio::JointIndex> joint_ids_to_lock;
     for (const auto& joint_name : joint_to_lock_names) {
@@ -293,25 +307,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     y_actual = Eigen::VectorXd::Zero(n_ekf_output);
     y_estimate = Eigen::VectorXd::Zero(n_ekf_output);
 
-    // IMU CALIBRATION (IF CALIBRATION MATRIX ALREADY EXISTS)
-
-    imu_calibration_matrix = Eigen::Matrix3d::Identity();
-
-    if (!imuCalibration) {
-        std::ifstream imu_calibration_file("../imu_calibration_matrix.txt");
-        if (imu_calibration_file.is_open()) {
-            for (int i = 0; i < 3; i++) {
-                for (int j = 0; j < 3; j++) {
-                    imu_calibration_matrix(i, j) = 0.0;
-                    imu_calibration_file >> imu_calibration_matrix(i, j);
-                }
-            }
-            imu_calibration_file.close();
-            std::cout << "IMU calibration matrix loaded successfully." << std::endl;
-        } else {
-            std::cout << "[WARNING]: unable to open file imu_calibration_matrix.txt. IMU will not be calibrated." << std::endl;
-        }
-    }
 
     // GET INDICES OF INTEREST AND ARMATURES
 
@@ -401,6 +396,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
         0.001 * mpc_timestep_msec
+    );
+
+    joint_kf_ptr_ = std::make_unique<labrob::JointKF>(
+        0.001 * controller_timestep_msec_,
+        njnt
+    );
+
+    base_ekf_ptr_ = std::make_unique<labrob::BaseEKF>(
+        robot_model,
+        0.001 * controller_timestep_msec_
     );
 
     // INIT KALMAN GAIN FOR EKF
@@ -1044,7 +1049,7 @@ WalkingManager::update(
                                     Eigen::Quaterniond(sim_robot_data.oMf[imu_idx_].rotation()).z()
         );
         measured_imu_rpy = labrob::rpyFromQuaternion(Eigen::Quaterniond(measured_imu_quaternion(0), measured_imu_quaternion(1), measured_imu_quaternion(2), measured_imu_quaternion(3)));
-        measured_imu_angular_velocity = J_imu_sim * qdot;
+        measured_imu_angular_velocity = J_imu_sim.bottomRows(3) * qdot;
         measured_imu_accelerometer = Eigen::Vector3d(0, 0, 9.81);
         odometry_base_position = Eigen::Vector3d(sim_robot_state.position.x(), sim_robot_state.position.y(), sim_robot_state.position.z());
         odometry_base_velocity = Eigen::Vector3d(sim_robot_state.linear_velocity.x(), sim_robot_state.linear_velocity.y(), sim_robot_state.linear_velocity.z());
@@ -1078,6 +1083,15 @@ WalkingManager::update(
     ////////////////////////
     
     auto start_ekf = std::chrono::high_resolution_clock::now();
+    Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
+    q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(27));
+    base_ekf_ptr_->filter(measured_imu_accelerometer, 
+        measured_imu_angular_velocity, 
+        q_filtered.head(27),
+        q_filtered.tail(27),
+        true,
+        true
+    );
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -1093,6 +1107,12 @@ WalkingManager::update(
         #pragma omp section
         {
         }
+    }
+ 
+    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+        std::string joint_name = robot_model.names[joint_id + 2];
+        fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
+        fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
     }
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
@@ -1115,6 +1135,7 @@ WalkingManager::update(
     const auto& p_CoM_fb = fb_robot_data.com[0];
     const auto& a_CoM_drift_fb = fb_robot_data.acom[0];
     const auto& J_CoM_fb = fb_robot_data.Jcom;
+    std::cout << J_CoM_fb << std::endl;
     Eigen::Vector3d v_CoM_fb = J_CoM_fb * qdot_fb_filt;
     const auto& T_torso_fb = fb_robot_data.oMf[torso_idx_];
     auto torso_orientation_fb = T_torso_fb.rotation();

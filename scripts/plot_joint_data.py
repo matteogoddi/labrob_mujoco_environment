@@ -1524,7 +1524,7 @@ if __name__ == '__main__':
     for i in range(num_joints):
         color = colormap(i % 10)
         linestyle = line_styles[(i // 10) % len(line_styles)]  # cambia stile ogni 10 joint
-        error = ekf_joint_position[:, i] - measured_joint_position[:, i]
+        error = ekf_joint_velocity[:, i] - measured_joint_velocity[:, i]
         ax.plot(t, error,
                 label=joint_names[i].strip(),
                 color=color,

@@ -108,6 +108,8 @@ class WalkingManager {
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
   std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
+  std::unique_ptr<labrob::JointKF> joint_kf_ptr_;
+  std::unique_ptr<labrob::BaseEKF> base_ekf_ptr_;
 
   Eigen::VectorXd M_armature_;
 

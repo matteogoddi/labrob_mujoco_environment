@@ -6,22 +6,27 @@
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/algorithm/frames.hpp>
 
+#include <hrp4_locomotion/utils.hpp>
+
 namespace labrob
 {
 
 // =======================
-// Joint velocity LPF
+// Joint velocity KF
 // =======================
-class JointVelocityFilter
+class JointKF
 {
 public:
-  JointVelocityFilter(double cutoff_freq, double dt, int nq);
+  JointKF(double dt, int nq);
 
-  Eigen::VectorXd filter(const Eigen::VectorXd& qd_meas);
+  Eigen::VectorXd filter(const Eigen::VectorXd& q_meas, const Eigen::VectorXd& qdd);
 
 private:
-  double alpha_;
-  Eigen::VectorXd qd_filtered_;
+  Eigen::VectorXd q_filtered_;
+  Eigen::MatrixXd K;
+  Eigen::MatrixXd F;
+  Eigen::MatrixXd G;
+  Eigen::MatrixXd H;
 };
 
 // =======================
@@ -47,33 +52,88 @@ Eigen::Matrix3d calibrateImuRotation(
     const Eigen::Matrix3d& R_world_base);
 
 // =======================
-// EKF class
+// BaseEKF class
 // =======================
+
 class BaseEKF
 {
 public:
-  BaseEKF(double dt);
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  void setImuExtrinsics(const Eigen::Matrix3d& R_base_imu);
+    // Constructor
+    BaseEKF(const pinocchio::Model& model, double dt):
+      model_(model), dt_(dt)
+    {
+      P_.setIdentity();
+      Q_.setIdentity();
+      R_.setIdentity();
+      g_ << 0, 0, -9.81;
+      pinocchio::Data data_(model_);
+    }
 
-  void baseEstimation(
-    const Eigen::Vector3d& omega_m,
-    const Eigen::Vector3d& acc_m,
-    const pinocchio::Model& model,
-    pinocchio::Data& data,
-    const Eigen::VectorXd& q,
-    const Eigen::VectorXd& v,
-    bool left_contact,
-    bool right_contact,
-    int left_foot_frame,
-    int right_foot_frame);
+    // Complete filter step (prediction + update)
+    void filter(const Eigen::Vector3d& acc_meas,
+              const Eigen::Vector3d& gyro_meas,
+              const Eigen::VectorXd& joint_pos_meas,
+              const Eigen::VectorXd& joint_vel_meas,
+              bool isLeftFootinContact,
+              bool isRightFootinContact);
 
-  const EKFState& getState() const { return state_; }
+    // Getters
+    Eigen::Vector3d position() const;
+    Eigen::Vector3d velocity() const;
+    Eigen::Quaterniond orientation() const;
 
 private:
-  double dt_;
-  EKFState state_;
-  Eigen::Matrix3d R_base_imu_ = Eigen::Matrix3d::Identity();
+
+    pinocchio::Model model_;
+    pinocchio::Data data_;
+
+    // Helper
+    Eigen::Quaterniond expMap(const Eigen::Vector3d& w)
+    {
+      double th = w.norm();
+      if (th > M_PI) th -= 2*M_PI;
+      else if (th < -M_PI) th += 2*M_PI;
+
+      if(th < 1e-8)
+        return Eigen::Quaterniond::Identity();
+      
+      Eigen::Vector3d axis = w/th;
+      return Eigen::Quaterniond(Eigen::AngleAxisd(th, axis));
+    }
+
+    Eigen::Vector3d logMap(const Eigen::Quaterniond& q)
+    {
+      Eigen::AngleAxisd aa(q);
+      if (aa.angle() > M_PI) aa.angle() -= 2*M_PI;
+      else if (aa.angle() < -M_PI) aa.angle() += 2*M_PI;
+
+      return aa.axis() * aa.angle();
+    }
+
+    double dt_;
+    int NX = 24;
+
+    // Nominal state
+    Eigen::Vector3d r_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d v_ = Eigen::Vector3d::Zero();
+    Eigen::Quaterniond q_ = Eigen::Quaterniond::Identity();
+
+    Eigen::Vector3d pL_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d pR_ = Eigen::Vector3d::Zero();
+    Eigen::Quaterniond zL_ = Eigen::Quaterniond::Identity();
+    Eigen::Quaterniond zR_ = Eigen::Quaterniond::Identity();
+
+    Eigen::Vector3d bf_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();
+
+    // Covariance               
+    Eigen::Matrix<double,24,24> P_;
+    Eigen::Matrix<double,24,24> Q_;
+    Eigen::Matrix<double,12,12> R_;
+
+    Eigen::Vector3d g_;
 };
 
 } // namespace state_filtering

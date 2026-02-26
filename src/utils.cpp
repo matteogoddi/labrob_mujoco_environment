@@ -97,6 +97,14 @@ Eigen::Vector4d quaternionFromRPY(const Eigen::Vector3d& rpy) {
 
 } 
 
+Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
+  Eigen::Matrix3d S;
+  S << 0 , -v.z(), v.y(),
+        v.z(), 0, -v.x(),
+        -v.y(), v.x(), 0;
+  return S;
+}
+
 Eigen::VectorXd
 robot_state_to_pinocchio_joint_configuration(
     const pinocchio::Model& robot_model,
