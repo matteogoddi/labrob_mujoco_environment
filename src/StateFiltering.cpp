@@ -21,8 +21,6 @@ JointKF::JointKF(double dt, int nq)
     H.block(0, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
 
     q_filtered_ = Eigen::VectorXd::Zero(2 * nq);
-    
-    std::cout << "dimensioni di q " << q_filtered_.size() << std::endl;
 
     // COVARIANCE MATRICES
 
@@ -114,6 +112,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
   q_ = (expMap(dt_ * omega) * q_).normalized();
+  std::cout << "Predicted position: " << r_.transpose() << std::endl;
+  std::cout << "Predicted velocity: " << v_.transpose() << std::endl;
+  std::cout << "Predicted orientation: " << q_.coeffs().transpose() << std::endl;
+
 
   // =====================
   // 2) COVARIANCE PREDICTION
@@ -137,8 +139,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
 
   Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
-  pos.head(3) = r_;
-  pos.segment(3,4) << q_.w(), q_.x(), q_.y(), q_.z();
+  pos[6] = 1.0;
   pos.segment(7, qj.size()) = qj;
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
   vel.head(3) = v_;
@@ -169,6 +170,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     pinocchio::SE3 T_bf = T_wb.inverse() * oMf;
 
     Eigen::Vector3d s_p = T_bf.translation();
+    std::cout << "Measured foot position: " << s_p.transpose() << std::endl;
     Eigen::Quaterniond s_z(T_bf.rotation());
 
     Eigen::Vector3d s_p_hat = C * (p - r_);
@@ -192,8 +194,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows+3, iphi) = Eigen::Matrix3d::Identity();
     H_accum.block<3,3>(old_rows+3, itheta) =
         - (q_ * z.inverse()).toRotationMatrix();
-
-    std::cout << "ciao" << std::endl;
   };
 
   Eigen::MatrixXd H(0, NX);
@@ -202,27 +202,21 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
-  std::cout << "ciao1" << std::endl;
-
   if (e.size() == 0)
     return;
 
   // =====================
   // 4) EKF UPDATE
   // =====================
-//   int m = e.size();
-//   Eigen::MatrixXd R = Eigen::MatrixXd::Zero(m, m);
+  int m = e.size();
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-3;
 //   for (int i = 0; i < m/6; ++i)
 //     R.block<6,6>(6*i,6*i) = Rc_6_;
 
-  std::cout << "ciao" << std::endl;
-
   Eigen::MatrixXd K =
-      P_ * H.transpose() * (H * P_ * H.transpose() + R_).inverse();
+      P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
 
   Eigen::VectorXd dx = K * e;
-
-  std::cout << "ciao" << std::endl;
 
   r_  += dx.segment<3>(ir);
   v_  += dx.segment<3>(iv);
@@ -234,8 +228,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
   zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();
-
-  std::cout << "ciao" << std::endl;
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   P_ = (I - K * H) * P_;

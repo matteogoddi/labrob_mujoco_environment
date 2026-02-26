@@ -1114,6 +1114,14 @@ WalkingManager::update(
         fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
         fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
     }
+    // fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
+    // fb_robot_state.position = base_ekf_ptr_->getBasePosition();
+    // fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
+    std::cout << fb_robot_state.orientation << " " << base_ekf_ptr_->getBaseOrientation() << std::endl;
+
+    std::cout << fb_robot_state.position << " " << base_ekf_ptr_->getBasePosition() << std::endl;
+
+    std::cout << fb_robot_state.linear_velocity << " " << base_ekf_ptr_->getBaseVelocity() << std::endl;
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
     ////////////////////
@@ -1135,7 +1143,6 @@ WalkingManager::update(
     const auto& p_CoM_fb = fb_robot_data.com[0];
     const auto& a_CoM_drift_fb = fb_robot_data.acom[0];
     const auto& J_CoM_fb = fb_robot_data.Jcom;
-    std::cout << J_CoM_fb << std::endl;
     Eigen::Vector3d v_CoM_fb = J_CoM_fb * qdot_fb_filt;
     const auto& T_torso_fb = fb_robot_data.oMf[torso_idx_];
     auto torso_orientation_fb = T_torso_fb.rotation();

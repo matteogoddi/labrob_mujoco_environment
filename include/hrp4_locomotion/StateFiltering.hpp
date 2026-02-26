@@ -64,9 +64,9 @@ public:
     BaseEKF(const pinocchio::Model& model, double dt):
       model_(model), dt_(dt)
     {
-      P_.setIdentity();
-      Q_.setIdentity();
-      R_.setIdentity();
+      P_.setIdentity() * 1e-3;
+      Q_.setIdentity() * 1e-4;
+      R_.setIdentity() * 1e-2;
       g_ << 0, 0, -9.81;
       pinocchio::Data data_(model_);
     }
@@ -78,11 +78,10 @@ public:
               const Eigen::VectorXd& joint_vel_meas,
               bool isLeftFootinContact,
               bool isRightFootinContact);
-
-    // Getters
-    Eigen::Vector3d position() const;
-    Eigen::Vector3d velocity() const;
-    Eigen::Quaterniond orientation() const;
+    
+    Eigen::Vector3d getBasePosition() const { return r_; }
+    Eigen::Vector3d getBaseVelocity() const { return v_; }
+    Eigen::Quaterniond getBaseOrientation() const { return q_; }
 
 private:
 
@@ -113,10 +112,10 @@ private:
     }
 
     double dt_;
-    int NX = 24;
+    int NX = 27;
 
     // Nominal state
-    Eigen::Vector3d r_ = Eigen::Vector3d::Zero();
+    Eigen::Vector3d r_ = Eigen::Vector3d(0, 0, 0.72);
     Eigen::Vector3d v_ = Eigen::Vector3d::Zero();
     Eigen::Quaterniond q_ = Eigen::Quaterniond::Identity();
 
@@ -129,8 +128,8 @@ private:
     Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();
 
     // Covariance               
-    Eigen::Matrix<double,24,24> P_;
-    Eigen::Matrix<double,24,24> Q_;
+    Eigen::Matrix<double,27,27> P_;
+    Eigen::Matrix<double,27,27> Q_;
     Eigen::Matrix<double,12,12> R_;
 
     Eigen::Vector3d g_;
