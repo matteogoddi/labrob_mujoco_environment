@@ -106,7 +106,7 @@
       <site name="box_r2_left_pad_upper_site"  size="0.014" pos="0.22 0.12 0.030"  rgba="1 0.4 0.8 1"/>
       <site name="box_r2_left_pad_lower_site"  size="0.014" pos="0.22 0.12 -0.030"  rgba="1 0.4 0.8 1"/>
       <site name="box_r2_right_pad_upper_site" size="0.014" pos="0.22 -0.12 0.030"   rgba="1 1 0.2 1"/>
-      <site name="box_r2_right_pad_lower_site" size="0.014" pos="0.22 -0.12 -0.030"   rgba="1 1 0.2 1"/>
+      <site name="box_r2_right_pad_lower_site" size="0.014" pos="0.22 -0.12 -0.03"   rgba="1 1 0.2 1"/>
     </body>
 
   </worldbody>
