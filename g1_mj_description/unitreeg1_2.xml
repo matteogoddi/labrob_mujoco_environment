@@ -200,7 +200,11 @@
                           <joint name="left_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link"/>
-                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="1" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_rubber_hand" friction="1.5 1.0 0.01"/>
+                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom name="left_hand_pad_upper" type="cylinder" pos="0.080 -0.050 0.030" size="0.012 0.020" rgba="0.8 0.1 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <geom name="left_hand_pad_lower" type="cylinder" pos="0.080 -0.050 -0.030" size="0.012 0.020" rgba="0.1 0.8 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <site name="r1_left_hand_pad_upper_site" size="0.008" pos="0.080 -0.050 0.030" rgba="1 0.3 0.3 1"/>
+                          <site name="r1_left_hand_pad_lower_site" size="0.008" pos="0.080 -0.050 -0.030" rgba="0.3 1 0.3 1"/>
                           <site name="r1_left_hand_grasp" size="0.014" pos="0.080 0.003 0" rgba="1 0 0 1"/>
                         </body>
                       </body>
@@ -244,7 +248,11 @@
                           <joint name="right_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
-                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="1" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_rubber_hand" friction="1.5 1.0 0.01"/>
+                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom name="right_hand_pad_upper" type="cylinder" pos="0.080 0.050 0.030" size="0.012 0.020" rgba="0.1 0.1 0.8 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <geom name="right_hand_pad_lower" type="cylinder" pos="0.080 0.050 -0.030" size="0.012 0.020" rgba="0.8 0.8 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <site name="r1_right_hand_pad_upper_site" size="0.008" pos="0.080 0.050 0.030" rgba="0.3 0.3 1 1"/>
+                          <site name="r1_right_hand_pad_lower_site" size="0.008" pos="0.080 0.050 -0.030" rgba="1 1 0.3 1"/>
                           <site name="r1_right_hand_grasp" size="0.014" pos="0.080 -0.003 0" rgba="0 1 0 1"/>
                         </body>
                       </body>

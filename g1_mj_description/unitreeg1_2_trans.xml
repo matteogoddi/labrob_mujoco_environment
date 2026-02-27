@@ -70,7 +70,7 @@
       <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="r2_pelvis_contour_link"/>
       <site name="r2_imu_in_pelvis" size="0.01" pos="0.04525 0 -0.08339"/>
       <body name="r2_left_hip_pitch_link" pos="0 0.064452 -0.1027">
-        <inertial pos="0.002741 0.047791 -0.02606" quat="0.954862 0.293964 0.0302556 0.030122" mass="1.35" diaginertia="0.00181517 0.00153422 0.00116212"/>
+        <inertial pos="0.002741 0.047791 -0.02606" quat="0.954862 0.293964 0.0302556 -0.030122" mass="1.35" diaginertia="0.00181517 0.00153422 0.00116212"/>
         <joint name="r2_left_hip_pitch_joint" pos="0 0 0" axis="0 1 0" range="-2.5307 2.8798" actuatorfrcrange="-88 88"/>
         <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="r2_left_hip_pitch_link"/>
         <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="r2_left_hip_pitch_link"/>
@@ -200,7 +200,11 @@
                           <joint name="r2_left_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_left_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="r2_left_wrist_yaw_link"/>
-                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="1" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_left_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_left_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom name="r2_left_hand_pad_upper" type="cylinder" pos="0.080 -0.050 0.030" size="0.012 0.020" rgba="0.8 0.1 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <geom name="r2_left_hand_pad_lower" type="cylinder" pos="0.080 -0.050 -0.030" size="0.012 0.020" rgba="0.1 0.8 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <site name="r2_left_hand_pad_upper_site" size="0.008" pos="0.080 -0.050 0.030" rgba="1 0.3 0.3 1"/>
+                          <site name="r2_left_hand_pad_lower_site" size="0.008" pos="0.080 -0.050 -0.030" rgba="0.3 1 0.3 1"/>
                           <site name="r2_left_hand_grasp" size="0.014" pos="0.080 0.003 0" rgba="0 0.35 1 1"/>
                         </body>
                       </body>
@@ -244,7 +248,11 @@
                           <joint name="r2_right_wrist_yaw_joint" pos="0 0 0" axis="0 0 1" range="-1.61443 1.61443" actuatorfrcrange="-5 5"/>
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_right_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="r2_right_wrist_yaw_link"/>
-                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="1" conaffinity="1" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_right_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="r2_right_rubber_hand" friction="1.2 1.0 0.01"/>
+                          <geom name="r2_right_hand_pad_upper" type="cylinder" pos="0.080 0.050 0.030" size="0.012 0.020" rgba="0.1 0.1 0.8 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <geom name="r2_right_hand_pad_lower" type="cylinder" pos="0.080 0.050 -0.030" size="0.012 0.020" rgba="0.8 0.8 0.1 1" contype="2" conaffinity="2" condim="4" friction="2.0 0.35 0.01" margin="0.004" solref="0.004 1" solimp="0.9 0.95 0.001"/>
+                          <site name="r2_right_hand_pad_upper_site" size="0.008" pos="0.080 0.050 0.030" rgba="0.3 0.3 1 1"/>
+                          <site name="r2_right_hand_pad_lower_site" size="0.008" pos="0.080 0.050 -0.030" rgba="1 1 0.3 1"/>
                           <site name="r2_right_hand_grasp" size="0.014" pos="0.080 -0.003 0" rgba="1 1 0 1"/>
                         </body>
                       </body>

@@ -712,51 +712,128 @@ int main(const int argc, const char* argv[]) {
     }
   }
 
-  // Place the carry box at the midpoint between the two robots' grasp sites and align its x-axis between them
+  // Place the carry box by rigidly aligning its 8 local pad anchors to the 8 hand pad centers
   {
     int box_jid = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "carry_box_free");
     if (box_jid >= 0) {
-      auto get_site_pos = [&](const char* name, Eigen::Vector3d& out) {
-        int sid = mj_name2id(mj_model_ptr, mjOBJ_SITE, name);
-        if (sid < 0) return false;
-        out = Eigen::Map<const Eigen::Vector3d>(mj_data_ptr->site_xpos + 3 * sid);
+      auto get_geom_pos = [&](const char* name, Eigen::Vector3d& out) {
+        int gid = mj_name2id(mj_model_ptr, mjOBJ_GEOM, name);
+        if (gid < 0) return false;
+        out = Eigen::Map<const Eigen::Vector3d>(mj_data_ptr->geom_xpos + 3 * gid);
         return true;
       };
 
       // Need forward kinematics for current joint initializations
       mj_forward(mj_model_ptr, mj_data_ptr);
 
-      Eigen::Vector3d r1_left = Eigen::Vector3d::Zero();
-      Eigen::Vector3d r1_right = Eigen::Vector3d::Zero();
-      Eigen::Vector3d r2_left = Eigen::Vector3d::Zero();
-      Eigen::Vector3d r2_right = Eigen::Vector3d::Zero();
-      bool ok = get_site_pos("r1_left_hand_grasp", r1_left)
-              & get_site_pos("r1_right_hand_grasp", r1_right)
-              & get_site_pos("r2_left_hand_grasp", r2_left)
-              & get_site_pos("r2_right_hand_grasp", r2_right);
-      if (ok) {
-        Eigen::Vector3d r1_mid = 0.5 * (r1_left + r1_right);
-        Eigen::Vector3d r2_mid = 0.5 * (r2_left + r2_right);
-        Eigen::Vector3d center = 0.5 * (r1_mid + r2_mid);
+            Eigen::Vector3d r1_lu = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r1_ll = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r1_ru = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r1_rl = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r2_lu = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r2_ll = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r2_ru = Eigen::Vector3d::Zero();
+            Eigen::Vector3d r2_rl = Eigen::Vector3d::Zero();
 
-        // Align box x-axis from Robot1 toward Robot2 in the horizontal plane
-        Eigen::Vector3d dir = r2_mid - r1_mid;
-        dir.z() = 0.0;
-        if (dir.norm() < 1e-6) {
-          dir = Eigen::Vector3d::UnitX();
+            bool ok = get_geom_pos("left_hand_pad_upper", r1_lu)
+              & get_geom_pos("left_hand_pad_lower", r1_ll)
+              & get_geom_pos("right_hand_pad_upper", r1_ru)
+              & get_geom_pos("right_hand_pad_lower", r1_rl)
+              & get_geom_pos("r2_left_hand_pad_upper", r2_lu)
+              & get_geom_pos("r2_left_hand_pad_lower", r2_ll)
+              & get_geom_pos("r2_right_hand_pad_upper", r2_ru)
+              & get_geom_pos("r2_right_hand_pad_lower", r2_rl);
+      if (ok) {
+        Eigen::Matrix<double, 3, 8> Q_world;
+        Q_world.col(0) = r1_lu;
+        Q_world.col(1) = r1_ll;
+        Q_world.col(2) = r1_ru;
+        Q_world.col(3) = r1_rl;
+        Q_world.col(4) = r2_lu;
+        Q_world.col(5) = r2_ll;
+        Q_world.col(6) = r2_ru;
+        Q_world.col(7) = r2_rl;
+
+        auto solve_rigid = [&](const Eigen::Matrix<double, 3, 8>& P,
+                               Eigen::Matrix3d& R_out,
+                               Eigen::Vector3d& t_out,
+                               double& err_out) {
+          Eigen::Vector3d p_mean = P.rowwise().mean();
+          Eigen::Vector3d q_mean = Q_world.rowwise().mean();
+          Eigen::Matrix<double, 3, 8> P_centered = P.colwise() - p_mean;
+          Eigen::Matrix<double, 3, 8> Q_centered = Q_world.colwise() - q_mean;
+          Eigen::Matrix3d H = P_centered * Q_centered.transpose();
+          Eigen::JacobiSVD<Eigen::Matrix3d> svd(H, Eigen::ComputeFullU | Eigen::ComputeFullV);
+          Eigen::Matrix3d U = svd.matrixU();
+          Eigen::Matrix3d V = svd.matrixV();
+          Eigen::Matrix3d R = V * U.transpose();
+          if (R.determinant() < 0.0) {
+            V.col(2) *= -1.0;
+            R = V * U.transpose();
+          }
+          Eigen::Vector3d t = q_mean - R * p_mean;
+
+          double err = 0.0;
+          for (int i = 0; i < 8; ++i) {
+            Eigen::Vector3d d = (R * P.col(i) + t) - Q_world.col(i);
+            err += d.squaredNorm();
+          }
+          R_out = R;
+          t_out = t;
+          err_out = err;
+        };
+
+        Eigen::Matrix3d best_R = Eigen::Matrix3d::Identity();
+        Eigen::Vector3d best_t = Eigen::Vector3d::Zero();
+        double best_err = std::numeric_limits<double>::infinity();
+
+        for (int r1_swap = 0; r1_swap < 2; ++r1_swap) {
+          for (int r2_swap = 0; r2_swap < 2; ++r2_swap) {
+            double r1_left_y = r1_swap ? 0.050 : -0.050;
+            double r1_right_y = r1_swap ? -0.050 : 0.050;
+            double r2_left_y = r2_swap ? 0.050 : -0.050;
+            double r2_right_y = r2_swap ? -0.050 : 0.050;
+
+            Eigen::Matrix<double, 3, 8> P_local;
+            P_local.col(0) = Eigen::Vector3d(-0.22, r1_left_y,  0.030);
+            P_local.col(1) = Eigen::Vector3d(-0.22, r1_left_y, -0.030);
+            P_local.col(2) = Eigen::Vector3d(-0.22, r1_right_y,  0.030);
+            P_local.col(3) = Eigen::Vector3d(-0.22, r1_right_y, -0.030);
+            P_local.col(4) = Eigen::Vector3d( 0.22, r2_left_y,  0.030);
+            P_local.col(5) = Eigen::Vector3d( 0.22, r2_left_y, -0.030);
+            P_local.col(6) = Eigen::Vector3d( 0.22, r2_right_y,  0.030);
+            P_local.col(7) = Eigen::Vector3d( 0.22, r2_right_y, -0.030);
+
+            Eigen::Matrix3d R_try;
+            Eigen::Vector3d t_try;
+            double err_try = 0.0;
+            solve_rigid(P_local, R_try, t_try, err_try);
+            if (err_try < best_err) {
+              best_err = err_try;
+              best_R = R_try;
+              best_t = t_try;
+            }
+          }
         }
-        double yaw = std::atan2(dir.y(), dir.x());
-        Eigen::AngleAxisd yaw_rot(yaw, Eigen::Vector3d::UnitZ());
-        Eigen::Quaterniond q(yaw_rot);
+
+        Eigen::Quaterniond q(best_R);
+        q.normalize();
 
         int adr = mj_model_ptr->jnt_qposadr[box_jid];
-        mj_data_ptr->qpos[adr + 0] = center.x();
-        mj_data_ptr->qpos[adr + 1] = center.y();
-        mj_data_ptr->qpos[adr + 2] = center.z();
+        mj_data_ptr->qpos[adr + 0] = best_t.x();
+        mj_data_ptr->qpos[adr + 1] = best_t.y();
+        mj_data_ptr->qpos[adr + 2] = best_t.z();
         mj_data_ptr->qpos[adr + 3] = q.w();
         mj_data_ptr->qpos[adr + 4] = q.x();
         mj_data_ptr->qpos[adr + 5] = q.y();
         mj_data_ptr->qpos[adr + 6] = q.z();
+
+        int box_dof = mj_model_ptr->jnt_dofadr[box_jid];
+        for (int i = 0; i < 6; ++i) {
+          mj_data_ptr->qvel[box_dof + i] = 0.0;
+        }
+
+        mj_forward(mj_model_ptr, mj_data_ptr);
       }
     }
   }
@@ -788,12 +865,12 @@ int main(const int argc, const char* argv[]) {
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
   // Make Robot1 walk forward (+x in world) by setting step before init/plan
-  walking_manager.set_step_length_x(0.1);
+  walking_manager.set_step_length_x(0.0);
   walking_manager.init(robot_state, armatures);
 
   if (r2Walking) {
     // Robot2 faces Robot1 (yaw=pi), so use positive step to move toward Robot1 along its forward axis
-    r2_walking_manager.set_step_length_x(-0.1);
+    r2_walking_manager.set_step_length_x(-0.0);
   }
 
   // Keep Robot2 state in世界坐标，单独拷贝一份旋转后传给r2_walking_manager，避免循环时再次旋转引起“飞来”
