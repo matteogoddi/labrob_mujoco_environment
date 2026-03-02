@@ -116,6 +116,8 @@ struct MotorCommand {
 struct MotorState {
   std::array<float, G1_NUM_MOTOR> q = {};
   std::array<float, G1_NUM_MOTOR> dq = {};
+  std::array<float, G1_NUM_MOTOR> ddq = {};
+  std::array<float, G1_NUM_MOTOR> tau_est = {};
 };
 
 
@@ -220,6 +222,13 @@ inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
 };
 
 MotorState motor_state_data;
+std::vector<std::array<float, 4>> left_wrist_roll_state_log;
+std::vector<std::array<float, 4>> left_wrist_pitch_state_log;
+std::vector<std::array<float, 4>> left_wrist_yaw_state_log;
+std::vector<std::array<float, 4>> right_wrist_roll_state_log;
+std::vector<std::array<float, 4>> right_wrist_pitch_state_log;
+std::vector<std::array<float, 4>> right_wrist_yaw_state_log;
+
 void LowStateHandler(const void* msg){
   LowState_ low_state = *(const LowState_*)msg;
   uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
@@ -235,10 +244,14 @@ void LowStateHandler(const void* msg){
     else if (i < 13) {
       motor_state_data.q[i] = low_state.motor_state()[i].q();
       motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+      motor_state_data.ddq[i] = low_state.motor_state()[i].ddq();
+      motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
     }
     else if (i > 14) {
       motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
+      motor_state_data.ddq[i - 2] = low_state.motor_state()[i].ddq();
+      motor_state_data.tau_est[i - 2] = low_state.motor_state()[i].tau_est();
     }
   }
 
@@ -327,6 +340,28 @@ void signalHandler(int signum) {
   if(user_input == "y" || user_input == "Y" || user_input == "yes" || user_input == "Yes" || user_input == "YES"){
     std::cout << "Saving logs..." << std::endl;
     walking_manager.saveLogs();
+
+    {
+      std::lock_guard<std::mutex> lock(stateMutex);
+      auto dump_wrist_log = [](const char* path, const std::vector<std::array<float, 4>>& log) {
+        std::ofstream file(path);
+        for (const auto& sample : log) {
+          file << sample[0] << " " << sample[1] << " " << sample[2] << " " << sample[3] << "\n";
+        }
+      };
+
+      dump_wrist_log("/tmp/left_wrist_roll_state.txt", left_wrist_roll_state_log);
+      dump_wrist_log("/tmp/left_wrist_pitch_state.txt", left_wrist_pitch_state_log);
+      dump_wrist_log("/tmp/left_wrist_yaw_state.txt", left_wrist_yaw_state_log);
+      dump_wrist_log("/tmp/right_wrist_roll_state.txt", right_wrist_roll_state_log);
+      dump_wrist_log("/tmp/right_wrist_pitch_state.txt", right_wrist_pitch_state_log);
+      dump_wrist_log("/tmp/right_wrist_yaw_state.txt", right_wrist_yaw_state_log);
+
+      // Backward compatibility with old plotting script names (roll only)
+      dump_wrist_log("/tmp/left_wrist_state.txt", left_wrist_roll_state_log);
+      dump_wrist_log("/tmp/right_wrist_state.txt", right_wrist_roll_state_log);
+    }
+
     std::cout << "Logs saved." << std::endl;
 
     if(useRobot){
@@ -554,6 +589,43 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
+
+  const int left_wrist_roll_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_wrist_roll_joint");
+  const int left_wrist_pitch_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_wrist_pitch_joint");
+  const int left_wrist_yaw_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_wrist_yaw_joint");
+  const int right_wrist_roll_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_wrist_roll_joint");
+  const int right_wrist_pitch_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_wrist_pitch_joint");
+  const int right_wrist_yaw_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_wrist_yaw_joint");
+
+  const int left_wrist_roll_qpos_adr = (left_wrist_roll_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[left_wrist_roll_joint_id] : -1;
+  const int left_wrist_pitch_qpos_adr = (left_wrist_pitch_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[left_wrist_pitch_joint_id] : -1;
+  const int left_wrist_yaw_qpos_adr = (left_wrist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[left_wrist_yaw_joint_id] : -1;
+  const int right_wrist_roll_qpos_adr = (right_wrist_roll_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[right_wrist_roll_joint_id] : -1;
+  const int right_wrist_pitch_qpos_adr = (right_wrist_pitch_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[right_wrist_pitch_joint_id] : -1;
+  const int right_wrist_yaw_qpos_adr = (right_wrist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[right_wrist_yaw_joint_id] : -1;
+
+  const int left_wrist_roll_dof_adr = (left_wrist_roll_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[left_wrist_roll_joint_id] : -1;
+  const int left_wrist_pitch_dof_adr = (left_wrist_pitch_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[left_wrist_pitch_joint_id] : -1;
+  const int left_wrist_yaw_dof_adr = (left_wrist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[left_wrist_yaw_joint_id] : -1;
+  const int right_wrist_roll_dof_adr = (right_wrist_roll_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[right_wrist_roll_joint_id] : -1;
+  const int right_wrist_pitch_dof_adr = (right_wrist_pitch_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[right_wrist_pitch_joint_id] : -1;
+  const int right_wrist_yaw_dof_adr = (right_wrist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[right_wrist_yaw_joint_id] : -1;
+
+  auto find_actuator_id_for_joint = [&](int joint_id) {
+    if (joint_id < 0) return -1;
+    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+      if (mj_model_ptr->actuator_trnid[i * 2] == joint_id) {
+        return i;
+      }
+    }
+    return -1;
+  };
+  const int left_wrist_roll_actuator_id = find_actuator_id_for_joint(left_wrist_roll_joint_id);
+  const int left_wrist_pitch_actuator_id = find_actuator_id_for_joint(left_wrist_pitch_joint_id);
+  const int left_wrist_yaw_actuator_id = find_actuator_id_for_joint(left_wrist_yaw_joint_id);
+  const int right_wrist_roll_actuator_id = find_actuator_id_for_joint(right_wrist_roll_joint_id);
+  const int right_wrist_pitch_actuator_id = find_actuator_id_for_joint(right_wrist_pitch_joint_id);
+  const int right_wrist_yaw_actuator_id = find_actuator_id_for_joint(right_wrist_yaw_joint_id);
 
   struct EqInfo { int id; };
 
@@ -1016,6 +1088,55 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.accelerometer[2]
         );
 
+        auto append_wrist_from_motor = [&](const char* joint_name, std::vector<std::array<float, 4>>& log) {
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            return;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            return;
+          }
+          log.push_back({
+            motor_state_data.q[idx],
+            motor_state_data.dq[idx],
+            motor_state_data.ddq[idx],
+            motor_state_data.tau_est[idx]
+          });
+        };
+
+        append_wrist_from_motor("left_wrist_roll_joint", left_wrist_roll_state_log);
+        append_wrist_from_motor("left_wrist_pitch_joint", left_wrist_pitch_state_log);
+        append_wrist_from_motor("left_wrist_yaw_joint", left_wrist_yaw_state_log);
+        append_wrist_from_motor("right_wrist_roll_joint", right_wrist_roll_state_log);
+        append_wrist_from_motor("right_wrist_pitch_joint", right_wrist_pitch_state_log);
+        append_wrist_from_motor("right_wrist_yaw_joint", right_wrist_yaw_state_log);
+
+        static int wrist_print_counter = 0;
+        if ((++wrist_print_counter % 100) == 0) {
+          auto print_wrist = [&](const std::string& joint_name) {
+            auto it = joint_name_to_index.find(joint_name);
+            if (it == joint_name_to_index.end()) {
+              return;
+            }
+            const int idx = it->second;
+            if (idx < 0 || idx >= G1_NUM_MOTOR) {
+              return;
+            }
+
+            std::cout << std::fixed << std::setprecision(6)
+                      << "[WRIST] " << joint_name
+                      << " q=" << motor_state_data.q[idx]
+                      << " dq=" << motor_state_data.dq[idx]
+                      << " ddq=" << motor_state_data.ddq[idx]
+                      << " tau_est=" << motor_state_data.tau_est[idx]
+                      << std::endl;
+          };
+
+          print_wrist("left_wrist_roll_joint");
+          print_wrist("right_wrist_roll_joint");
+        }
+
         // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
       }
       // Update walking manager:
@@ -1144,6 +1265,29 @@ int main(const int argc, const char* argv[]) {
 
         // Run a full dynamics step so contacts (hands-box-ground) generate forces and move the box.
         mj_step(mj_model_ptr, mj_data_ptr);
+
+        if (!useRobot) {
+          auto append_wrist_from_mujoco = [&](int qpos_adr, int dof_adr, int actuator_id, std::vector<std::array<float, 4>>& log) {
+            if (qpos_adr < 0 || dof_adr < 0) {
+              return;
+            }
+            (void)actuator_id;
+            const float tau_feedback = static_cast<float>(mj_data_ptr->qfrc_constraint[dof_adr]);
+            log.push_back({
+              static_cast<float>(mj_data_ptr->qpos[qpos_adr]),
+              static_cast<float>(mj_data_ptr->qvel[dof_adr]),
+              static_cast<float>(mj_data_ptr->qacc[dof_adr]),
+              tau_feedback
+            });
+          };
+
+          append_wrist_from_mujoco(left_wrist_roll_qpos_adr, left_wrist_roll_dof_adr, left_wrist_roll_actuator_id, left_wrist_roll_state_log);
+          append_wrist_from_mujoco(left_wrist_pitch_qpos_adr, left_wrist_pitch_dof_adr, left_wrist_pitch_actuator_id, left_wrist_pitch_state_log);
+          append_wrist_from_mujoco(left_wrist_yaw_qpos_adr, left_wrist_yaw_dof_adr, left_wrist_yaw_actuator_id, left_wrist_yaw_state_log);
+          append_wrist_from_mujoco(right_wrist_roll_qpos_adr, right_wrist_roll_dof_adr, right_wrist_roll_actuator_id, right_wrist_roll_state_log);
+          append_wrist_from_mujoco(right_wrist_pitch_qpos_adr, right_wrist_pitch_dof_adr, right_wrist_pitch_actuator_id, right_wrist_pitch_state_log);
+          append_wrist_from_mujoco(right_wrist_yaw_qpos_adr, right_wrist_yaw_dof_adr, right_wrist_yaw_actuator_id, right_wrist_yaw_state_log);
+        }
 
         if(eq_force_file.is_open()){
           std::ostringstream oss;

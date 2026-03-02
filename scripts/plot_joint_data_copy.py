@@ -8,6 +8,20 @@ from scipy.spatial.transform import Rotation as R
 import os
 
 if __name__ == '__main__':
+    def load_optional_matrix(path):
+        if not os.path.exists(path):
+            return None
+        if os.path.getsize(path) == 0:
+            return None
+        try:
+            data = np.loadtxt(path)
+        except (ValueError, OSError):
+            return None
+        if np.size(data) == 0:
+            return None
+        data = np.atleast_2d(data)
+        return data
+
     #request input from terminal
     number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
     if number == '0':
@@ -17,6 +31,18 @@ if __name__ == '__main__':
     
     joint_names = open(folder + '/joint_names.txt').readlines()
     input_torque: np.ndarray = np.loadtxt(folder +'/input_torque.txt')
+    wrist_states = {
+        'left_wrist_roll': load_optional_matrix(folder + '/left_wrist_roll_state.txt'),
+        'left_wrist_pitch': load_optional_matrix(folder + '/left_wrist_pitch_state.txt'),
+        'left_wrist_yaw': load_optional_matrix(folder + '/left_wrist_yaw_state.txt'),
+        'right_wrist_roll': load_optional_matrix(folder + '/right_wrist_roll_state.txt'),
+        'right_wrist_pitch': load_optional_matrix(folder + '/right_wrist_pitch_state.txt'),
+        'right_wrist_yaw': load_optional_matrix(folder + '/right_wrist_yaw_state.txt')
+    }
+    if wrist_states['left_wrist_roll'] is None:
+        wrist_states['left_wrist_roll'] = load_optional_matrix(folder + '/left_wrist_state.txt')
+    if wrist_states['right_wrist_roll'] is None:
+        wrist_states['right_wrist_roll'] = load_optional_matrix(folder + '/right_wrist_state.txt')
 
     sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')
     sim_com_velocity =  np.loadtxt(folder + '/sim_com_velocity.txt')
@@ -86,7 +112,7 @@ if __name__ == '__main__':
 
 
     num_samples = sim_joint_position.shape[0] - 10
-    input_torque = sim_joint_position[:num_samples, :]
+    input_torque = input_torque[:num_samples, :]
 
     sim_com_position = sim_com_position[:num_samples, :]
     sim_com_velocity = sim_com_velocity[:num_samples, :]
@@ -143,6 +169,9 @@ if __name__ == '__main__':
     measured_imu_orientation = measured_imu_orientation[:num_samples, :]
     measured_imu_angular_velocity = measured_imu_angular_velocity[:num_samples, :]
     measured_imu_accelerometer = measured_imu_accelerometer[:num_samples, :]
+    for key, value in wrist_states.items():
+        if value is not None:
+            wrist_states[key] = value[:num_samples, :]
 
     execution_time_ekf = execution_time_ekf[:num_samples]
     execution_time_kf = execution_time_kf[:num_samples]
@@ -180,6 +209,8 @@ if __name__ == '__main__':
         os.makedirs('images/forces_torques')
     if not os.path.exists('images/forces_torques/joints'):
         os.makedirs('images/forces_torques/joints')
+    if not os.path.exists('images/forces_torques/wrists'):
+        os.makedirs('images/forces_torques/wrists')
     if not os.path.exists('images/soles'):
         os.makedirs('images/soles')
 
@@ -234,6 +265,26 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/forces_torques/estimated_force_right_sole.png")
     plt.close(fig)
+
+    for wrist_name, wrist_state in wrist_states.items():
+        if wrist_state is None or wrist_state.shape[1] < 4:
+            continue
+
+        wrist_samples = min(num_samples, wrist_state.shape[0])
+        t_wrist = t[:wrist_samples]
+        fig, axs = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+        labels = ['q [rad]', 'dq [rad/s]', 'ddq [rad/s^2]', 'tau [Nm]']
+        wrist_title = wrist_name.replace('_', ' ').title()
+        color = 'tab:blue' if wrist_name.startswith('left_') else 'tab:orange'
+        for i in range(4):
+            axs[i].plot(t_wrist, wrist_state[:wrist_samples, i], color=color)
+            axs[i].set_ylabel(labels[i])
+            axs[i].set_title(f'{wrist_title} {labels[i].split()[0]}')
+            axs[i].grid(True)
+        axs[-1].set_xlabel('Time [s]')
+        fig.tight_layout()
+        fig.savefig(f'images/forces_torques/wrists/{wrist_name}_state.png')
+        plt.close(fig)
 
 
 
