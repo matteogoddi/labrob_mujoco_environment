@@ -677,7 +677,7 @@ int main(const int argc, const char* argv[]) {
 
   HumanoidContactForcesEstimator real_contact_forces_estimator(walking_manager.robot_model, 
     walking_manager.fb_robot_data, 
-    Ko_gains, 0.002, 1/0.002, 1.0e-4, lsole_idx, rsole_idx, lhand_idx, rhand_idx, larm_names, rarm_names, 1);
+    Ko_gains, 0.002, 1/0.002, 0.5, lsole_idx, rsole_idx, lhand_idx, rhand_idx, larm_names, rarm_names, 1);
   
   UdpSender sender("127.0.0.1", 9870);
 
@@ -870,7 +870,7 @@ int main(const int argc, const char* argv[]) {
             real_qdot[6+i] = motor_state_data.dq[i];
 
         }
-        real_q.head(7) << walking_manager.fb_robot_state.position.head(3), 0, 0, 0, 1; // walking_manager.fb_robot_state.position.tail(4);
+        real_q.head(7) << walking_manager.fb_robot_state.position.head(3), walking_manager.fb_robot_state.orientation.coeffs();
         real_qdot.head(6) << walking_manager.fb_robot_state.linear_velocity, walking_manager.fb_robot_state.angular_velocity;
 
         Eigen::VectorXd tau_tot = Eigen::VectorXd::Zero(6 + mj_model_ptr->nu);
@@ -921,8 +921,8 @@ int main(const int argc, const char* argv[]) {
         data["right_foot_wrench"]["m2"] = real_wrf(4);
         data["right_foot_wrench"]["m3"] = real_wrf(5);
 
-        auto r_left_arm = sim_contact_forces_estimator.getLeftArmResidual();
-        auto r_right_arm = sim_contact_forces_estimator.getRightArmResidual();
+        auto r_left_arm = real_contact_forces_estimator.getLeftArmResidual();
+        auto r_right_arm = real_contact_forces_estimator.getRightArmResidual();
         data["left_arm_residual"]["r1"] = r_left_arm(0);
         data["left_arm_residual"]["r2"] = r_left_arm(1);
         data["left_arm_residual"]["r3"] = r_left_arm(2);

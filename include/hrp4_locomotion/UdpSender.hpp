@@ -7,7 +7,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <vector>
-#include <nlohmann/json.hpp>
+#include "json.hpp"
 
 // Header per Socket POSIX (Linux/macOS)
 #include <sys/types.h>
