@@ -95,7 +95,6 @@ Eigen::Matrix3d calibrateImuRotation(
 void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
                           const Eigen::Vector3d& gyro_meas,
                           const Eigen::VectorXd& qj,
-                          const Eigen::VectorXd& vj,
                           bool left_contact,
                           bool right_contact)
 {
@@ -105,9 +104,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   Eigen::Vector3d acc = acc_meas - bf_;
   Eigen::Vector3d omega = gyro_meas - bw_;
 
-  Eigen::Matrix3d C = q_.toRotationMatrix();
+  Eigen::Matrix3d C = q_.toRotationMatrix().transpose();
 
-  Eigen::Vector3d a_world = C.transpose() * acc + g_;
+  Eigen::Vector3d a_world = C.transpose() * acc;
+  std::cout << "acc " << a_world.transpose() << std::endl;
 
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
@@ -130,8 +130,13 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega) * dt_;
   F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
+  Eigen::MatrixXd Lc = Eigen::MatrixXd::Identity(NX, NX);
+  Lc.block<3,3>(ir, ir) = -C.transpose();
+  Lc.block<3,3>(iphi, iphi) = C.transpose();
 
-  //   Eigen::Matrix<double, NX, NX> Q = Qc_ * dt_;
+  Eigen::MatrixXd Q_ = F * Lc * Qc_ * Lc.transpose() * F.transpose() * dt_;
+  // Q_ = Qc_;
+  
   P_ = F * P_ * F.transpose() + Q_;
 
   // =====================
@@ -139,15 +144,12 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
 
   Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
-  pos[6] = 1.0;
-  pos.segment(7, qj.size()) = qj;
-  Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
-  vel.head(3) = v_;
-  vel.segment(3,3) = Eigen::Vector3d::Zero();
-  vel.segment(6, vj.size()) = vj;
+  pos[6] = 1;
+  pos.tail(qj.size()) = qj;
 
   data_ = pinocchio::Data(model_);
   pinocchio::forwardKinematics(model_, data_, pos);
+  pinocchio::framesForwardKinematics(model_, data_, pos);
   pinocchio::updateFramePlacements(model_, data_);
 
   pinocchio::SE3 T_wb = pinocchio::SE3::Identity();
@@ -167,13 +169,15 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
       return;
 
     const auto& oMf = data_.oMf[frameId];
-    pinocchio::SE3 T_bf = T_wb.inverse() * oMf;
+    pinocchio::SE3 T_bf = oMf;
 
     Eigen::Vector3d s_p = T_bf.translation();
     std::cout << "Measured foot position: " << s_p.transpose() << std::endl;
     Eigen::Quaterniond s_z(T_bf.rotation());
+    std::cout << "Measured foot orientation: " << s_z.coeffs().transpose() << std::endl;
 
     Eigen::Vector3d s_p_hat = C * (p - r_);
+    std::cout << "ciao" << p << " " << r_ << std::endl;
     Eigen::Quaterniond s_z_hat = q_ * z.inverse();
 
     Eigen::Vector3d e_p = s_p - s_p_hat;
@@ -202,6 +206,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
+  std::cout << "Measurement error: " << e.transpose() << std::endl; 
+
   if (e.size() == 0)
     return;
 
@@ -209,7 +215,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-3;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-5;
 //   for (int i = 0; i < m/6; ++i)
 //     R.block<6,6>(6*i,6*i) = Rc_6_;
 
@@ -224,6 +230,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pR_ += dx.segment<3>(ipR);
   bf_ += dx.segment<3>(ibf);
   bw_ += dx.segment<3>(ibw);
+  std::cout << "bias f" << bf_ << " bias w" << bw_ << std::endl;
 
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
@@ -231,6 +238,87 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   P_ = (I - K * H) * P_;
+}
+
+//////////////////////////
+// COM KALMAN FILTER
+//////////////////////////
+LIPState CoMKF::filter(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
+
+  // DYNAMIC AND INPUT MATRICES
+
+  double ch = cosh(eta_ * dt_);
+  double sh = sinh(eta_ * dt_);
+  Eigen::MatrixXd A_lip = Eigen::MatrixXd::Zero(3,3);
+  Eigen::VectorXd B_lip = Eigen::VectorXd::Zero(3);
+  A_lip << ch,sh/eta_,1-ch,eta_*sh,ch,-eta_*sh,0,0,1;
+  B_lip << dt_-sh/eta_,1-ch,dt_;
+
+  Eigen::Vector3d x_measure, y_measure, z_measure;
+  if (std::isnan(current.zmp_pos_(0))) {
+    std::cout << "NaN ZMP measurement detected, using filtered value instead." << std::endl;
+    x_measure = Eigen::Vector3d(current.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
+    y_measure = Eigen::Vector3d(current.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+    z_measure = Eigen::Vector3d(current.com_pos_(2), filtered.com_vel_(2), filtered.zmp_pos_(2));
+  } else {
+    x_measure = Eigen::Vector3d(current.com_pos_(0), current.com_vel_(0), current.zmp_pos_(0));
+    y_measure = Eigen::Vector3d(current.com_pos_(1), current.com_vel_(1), current.zmp_pos_(1));
+    z_measure = Eigen::Vector3d(current.com_pos_(2), current.com_vel_(2), current.zmp_pos_(2));
+  }
+  Eigen::Vector3d x_est = Eigen::Vector3d(filtered.com_pos_(0), filtered.com_vel_(0), filtered.zmp_pos_(0));
+  Eigen::Vector3d y_est = Eigen::Vector3d(filtered.com_pos_(1), filtered.com_vel_(1), filtered.zmp_pos_(1));
+  Eigen::Vector3d z_est = Eigen::Vector3d(filtered.com_pos_(2), filtered.com_vel_(2), filtered.zmp_pos_(2));
+
+  Eigen::MatrixXd F_kf = A_lip;
+  Eigen::MatrixXd G_kf = B_lip;
+  Eigen::MatrixXd H_kf = Eigen::Matrix3d::Identity();
+
+  Eigen::MatrixXd R_kf = Eigen::MatrixXd::Identity(3,3);
+  R_kf.diagonal() << cov_meas_pos, cov_meas_vel, cov_meas_zmp;
+  Eigen::MatrixXd Q_kf = Eigen::MatrixXd::Identity(3,3);
+  Q_kf.diagonal() << cov_mod_pos, cov_mod_vel, cov_mod_zmp;
+
+  double input_x = input.x();
+  double input_y = input.y();
+  double input_z = input.z();
+
+  // X_PRED BY DYNAMICS AND UPDATE COVARIANCE
+
+  Eigen::VectorXd x_pred = F_kf * x_est + G_kf * input_x;
+  Eigen::MatrixXd cov_x_pred = F_kf * cov_x * F_kf.transpose() + Q_kf;
+
+  // KALMAN GAIN
+
+  Eigen::MatrixXd K_kf = cov_x_pred * H_kf.transpose() * (H_kf * cov_x_pred * H_kf.transpose() + R_kf).inverse();
+
+  // STATE ESTIMATE (SPLIT INTO X,Y AND Z)
+
+  x_est = x_pred + K_kf * (x_measure - H_kf * x_pred);
+  cov_x = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_x_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  Eigen::VectorXd y_pred = F_kf * y_est + G_kf * input_y;
+  Eigen::MatrixXd cov_y_pred = F_kf * cov_y * F_kf.transpose() + Q_kf;
+
+  K_kf = cov_y_pred * H_kf.transpose() * (H_kf * cov_y_pred * H_kf.transpose() + R_kf).inverse();
+
+  y_est = y_pred + K_kf * (y_measure - H_kf * y_pred);
+  cov_y = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_y_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  Eigen::VectorXd z_pred = F_kf * z_est + G_kf * input_z + Eigen::Vector3d(0.0, -9.81 * dt_, 0.0);
+  Eigen::MatrixXd cov_z_pred = F_kf * cov_z * F_kf.transpose() + Q_kf;
+
+  K_kf = cov_z_pred * H_kf.transpose() * (H_kf * cov_z_pred * H_kf.transpose() + R_kf).inverse();
+
+  z_est = z_pred + K_kf * (z_measure - H_kf * z_pred);
+  cov_z = (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf) * cov_z_pred * (Eigen::MatrixXd::Identity(3,3) - K_kf * H_kf).transpose() + K_kf * R_kf * K_kf.transpose();
+
+  // FILL CURRENT STATE FOR RETURN
+
+  current.com_pos_ = Eigen::Vector3d(x_est(0), y_est(0), z_est(0));
+  current.com_vel_ = Eigen::Vector3d(x_est(1), y_est(1), z_est(1));
+  current.zmp_pos_ = Eigen::Vector3d(x_est(2), y_est(2), z_est(2));
+
+  return current;
 }
 
 // TO DO: DILIGENT EKF (LIE GROUP PAPER)

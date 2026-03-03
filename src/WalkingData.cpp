@@ -90,7 +90,7 @@ WalkingData::initializeWalkingData(
             labrob::Foot::RIGHT
         ),
         0.0,
-        2000,
+        15000,
         labrob::WalkingState::Standing
     ));
 }
@@ -102,7 +102,7 @@ WalkingData::addSteps(
   const double yaw_angle
 ){
     double swing_foot_trajectory_height = 0.06;
-    double step_length_x = 0.2;
+    double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     Eigen::Matrix3d R_yaw = labrob::Rz(yaw_angle);

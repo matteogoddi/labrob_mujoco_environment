@@ -40,8 +40,8 @@ DiscreteLIPDynamics::updateState(const LIPState& lip_state, double zmpDot, int d
 }
 
 void
-DiscreteLIPDynamics::setOmega(double omega) {
-  eta_ = omega;
+DiscreteLIPDynamics::setEta(double eta) {
+  eta_ = eta;
   double ch = cosh(eta_ * timestep_);
   double sh = sinh(eta_ * timestep_);
   A_ = Eigen::Matrix3d::Zero();

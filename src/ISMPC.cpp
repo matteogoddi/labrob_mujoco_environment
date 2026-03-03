@@ -7,11 +7,11 @@ namespace labrob {
 ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
-    double omega,
+    double eta,
     double foot_constraint_square_length,
     double foot_constraint_square_width
 ) : mpc_timestep_msec_(mpc_timestep_msec),
-    omega_(omega),
+    eta_(eta),
     foot_constraint_square_length_(foot_constraint_square_length),
     foot_constraint_square_width_(foot_constraint_square_width),
     input_(Eigen::Vector3d::Zero()) {
@@ -64,8 +64,15 @@ void
 ISMPC::solve(
     int64_t time,
     const labrob::WalkingData& walking_data,
-    const labrob::LIPState& state
+    labrob::LIPState& state,
+    const Eigen::Vector3d& foot_pose
 ) {
+
+  // express footstep planner inside walking data with support foot as reference frame
+
+  state.zmp_pos_ -= foot_pose;
+  state.com_pos_ -= foot_pose;
+
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
@@ -127,8 +134,10 @@ ISMPC::solve(
         mapping(i, 1) = 0.5 * s;
       }
     }
-    const auto& p_support = footstep_plan_elem.getFeetPlacement().getSupportFootConfiguration().p;
-    const auto& p_swing = footstep_plan_elem.getFeetPlacement().getSwingFootConfiguration().p;
+    Eigen::Vector3d p_support = footstep_plan_elem.getFeetPlacement().getSupportFootConfiguration().p;
+    p_support -= foot_pose;
+    Eigen::Vector3d p_swing = footstep_plan_elem.getFeetPlacement().getSwingFootConfiguration().p;
+    p_swing -= foot_pose;
     Eigen::VectorXd varying_x = mapping * Eigen::Vector2d(p_support.x(), p_swing.x());
     Eigen::VectorXd varying_y = mapping * Eigen::Vector2d(p_support.y(), p_swing.y());
     Eigen::VectorXd varying_z = mapping * Eigen::Vector2d(p_support.z(), p_swing.z());
@@ -151,16 +160,16 @@ ISMPC::solve(
   A_eq_.setZero();
 
   for(int i = 0; i < N_; ++i){
-    b(i) = std::pow(std::exp(-omega_ * mpc_timestep),i);
+    b(i) = std::pow(std::exp(-eta_ * mpc_timestep),i);
   }
 
-  A_eq_.block(0,      0, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
-  A_eq_.block(1,     N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
-  A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
+  A_eq_.block(0,      0, 1, N_) = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep))*b.transpose();
+  A_eq_.block(1,     N_, 1, N_) = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep))*b.transpose();
+  A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep))*b.transpose();
 
-  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / omega_ - state.zmp_pos_(0),
-      state.com_pos_(1) + state.com_vel_(1) / omega_ - state.zmp_pos_(1),
-      state.com_pos_(2) + state.com_vel_(2) / omega_ - (state.zmp_pos_(2) + 9.81 / std::pow(omega_, 2.0));
+  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / eta_ - state.zmp_pos_(0),
+      state.com_pos_(1) + state.com_vel_(1) / eta_ - state.zmp_pos_(1),
+      state.com_pos_(2) + state.com_vel_(2) / eta_ - (state.zmp_pos_(2) + 9.81 / std::pow(eta_, 2.0));
 
   cost_function_H_.setZero();
   cost_function_H_.block(     0,      0, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
@@ -220,13 +229,13 @@ ISMPC::getStabConstraintOffset() const {
 }
 
 double
-ISMPC::getOmega() const {
-  return omega_;
+ISMPC::getEta() const {
+  return eta_;
 }
 
 void
-ISMPC::setOmega(double omega) {
-  omega_ = omega;
+ISMPC::setEta(double eta) {
+  eta_ = eta;
 }
 
 double

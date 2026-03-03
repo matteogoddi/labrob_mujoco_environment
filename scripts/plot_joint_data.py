@@ -33,6 +33,7 @@ if __name__ == '__main__':
 
     startTimeWBCCL = parameters_log
     startPlot = int(0.001 * startTimeWBCCL * 500 + 10)  # Assuming a control frequency of 500 Hz
+    startPlot = 0
 
     fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')
     num_samples = fb_com_position.shape[0] - endPlot

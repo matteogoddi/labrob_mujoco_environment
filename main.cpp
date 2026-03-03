@@ -50,9 +50,9 @@ bool loopClosed = true;
 bool switchWalkingState = false;
 bool imuCalibration = false;
 
-double startTimeWBCCL = 1000.0;
-double startTimeMPCCL = 1000.0;
-double startTimeEKF = 0.0;
+double startTimeWBCCL = 1000000.0;
+double startTimeMPCCL = 0.0;
+double startTimeEKF = 100000000.0;
 
 Eigen::Vector3d odometry_base_position = Eigen::Vector3d::Zero();
 Eigen::Vector3d odometry_base_velocity = Eigen::Vector3d::Zero();
@@ -616,13 +616,13 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  mj_data_ptr->qpos[2] = 0.727451;
+  mj_data_ptr->qpos[2] = 0.720451;
 
-  mj_data_ptr->qpos[4] = 0.0;
-  mj_data_ptr->qpos[5] = 0.0;
-  mj_data_ptr->qpos[6] = 0.247404;
-  mj_data_ptr->qpos[3] = 0.9689124;
-  // mj_data_ptr->qpos[3] = 1;
+  // mj_data_ptr->qpos[4] = 0.0;
+  // mj_data_ptr->qpos[5] = 0.0;
+  // mj_data_ptr->qpos[6] = 0.247404;
+  // mj_data_ptr->qpos[3] = 0.9689124;
+  mj_data_ptr->qpos[3] = 1;
 
   for (int i = 0; i < mj_model_ptr->njnt; ++i) {
     const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
@@ -724,7 +724,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (!useRobot){
+      if (!useRobot && false){
         auto start_integration = std::chrono::steady_clock::now();
 
         mj_step1(mj_model_ptr, mj_data_ptr);
@@ -742,6 +742,14 @@ int main(const int argc, const char* argv[]) {
         if(integration_duration > std::chrono::milliseconds(1))
           std::cout << "Warning: mujoco render took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+
+        // read sensors from mujoco and save them
+        
+        int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
+        int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
+
+        measured_imu_accelerometer = Eigen::Vector3d(mj_data_ptr->sensordata[acc_id], mj_data_ptr->sensordata[acc_id + 1], mj_data_ptr->sensordata[acc_id + 2]);
+        measured_imu_angular_velocity = Eigen::Vector3d(mj_data_ptr->sensordata[gyro_id], mj_data_ptr->sensordata[gyro_id + 1], mj_data_ptr->sensordata[gyro_id + 2]);
 
       } else {
         auto start_integration = std::chrono::steady_clock::now();

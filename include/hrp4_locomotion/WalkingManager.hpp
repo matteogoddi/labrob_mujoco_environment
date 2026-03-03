@@ -30,10 +30,6 @@ class WalkingManager {
 
   bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
 
-  LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
-
-  LIPState updateKF2(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
-
   Eigen::VectorXd propagateState(
       const Eigen::VectorXd& x,
       const Eigen::VectorXd& q_ddot,
@@ -110,6 +106,7 @@ class WalkingManager {
   std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
   std::unique_ptr<labrob::JointKF> joint_kf_ptr_;
   std::unique_ptr<labrob::BaseEKF> base_ekf_ptr_;
+  std::unique_ptr<labrob::CoMKF> com_kf_ptr_;
 
   Eigen::VectorXd M_armature_;
 
@@ -132,10 +129,6 @@ class WalkingManager {
   double eta2;
 
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
-  
-  Eigen::Matrix3d cov_x, cov_y, cov_z;
-  double cov_meas_pos, cov_meas_vel, cov_meas_zmp;
-  double cov_mod_pos, cov_mod_vel, cov_mod_zmp;
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
 

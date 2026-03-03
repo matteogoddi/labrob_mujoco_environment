@@ -22,7 +22,7 @@ class ISMPC{
   ISMPC(
       int64_t prediction_horizon_msec,
       int64_t mpc_timestep_msec,
-      double omega,
+      double eta,
       double foot_constraint_square_length,
       double foot_constraint_square_width
   );
@@ -30,7 +30,8 @@ class ISMPC{
   void solve(
       int64_t time,
       const labrob::WalkingData& walking_data,
-      const labrob::LIPState& state
+      labrob::LIPState& state,
+      const Eigen::Vector3d& foot_pose
   );
 
   const Eigen::Vector3d& getInput() const;
@@ -41,9 +42,9 @@ class ISMPC{
 
   Eigen::Vector3d getStabConstraintOffset() const;
   
-  double getOmega() const;
+  double getEta() const;
 
-  void setOmega(double omega);
+  void setEta(double eta);
 
   void resetInput(){
       input_ = Eigen::Vector3d::Zero();
@@ -61,7 +62,7 @@ class ISMPC{
 
   int64_t mpc_timestep_msec_;
   int64_t control_timestep_msec_;
-  double omega_;
+  double eta_;
   double foot_constraint_square_length_;
   double foot_constraint_square_width_;
 
