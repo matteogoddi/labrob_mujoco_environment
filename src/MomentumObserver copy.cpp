@@ -24,9 +24,6 @@ MomentumObserver::MomentumObserver(
                 is_zero_initialized = false;
                 buffer = Eigen::MatrixXd::Zero(robot_model.nv, dim_buffer_r);
                 max_r = Eigen::VectorXd::Zero(robot_model.nv);
-                min_r = Eigen::VectorXd::Zero(robot_model.nv);
-                collisionState = false;
-                collisionLink = 0;
             }
 
 Eigen::VectorXd MomentumObserver::update(const Eigen::VectorXd& q, const Eigen::VectorXd& qdot, const Eigen::VectorXd& tau){
@@ -52,27 +49,6 @@ Eigen::VectorXd MomentumObserver::update(const Eigen::VectorXd& q, const Eigen::
     updateBuffer(last_r);
     last_r = r;
 
-    if(collisionState == false){
-        for(int i = robot_model.nv; i>0; i--){
-            if(abs(last_r[i-1]) > max_r(i-1) + epsilon){
-                collisionLink = i;
-                collisionState = true;
-                break;
-            }
-        }
-
-    }
-    
-        
-    if(collisionState == true){ //Check if collision ended
-        //DOING
-        if(abs(last_r[collisionLink-1]) < min_r(collisionLink-1) - epsilon){
-            collisionState = false;
-            collisionLink = 0;
-        }
-    }    
-            
-
     return r;
 }
 
@@ -93,11 +69,17 @@ Eigen::VectorXd MomentumObserver::estimateContactPointInLinkReferenceFrame(const
     return S.transpose().completeOrthogonalDecomposition().solve(F.tail(3));
 }
 
+int MomentumObserver::collisionDetect(){
+    for(int i = robot_model.nv; i>0; i--)
+        if(abs(last_r[i-1]) > max_r(i-1) + epsilon)
+            return i;
+    return 0;
+}
+
 void MomentumObserver::updateBuffer(const Eigen::VectorXd& new_r){
 
     for(int i = 0; i<robot_model.nv; i++){
-        max_r(i) = abs(buffer(i, buffer.cols()-2)); //suppose that the oldest in the buffer is the max and the min (the -1 must be trashed)
-        min_r(i) = abs(buffer(i, buffer.cols()-2));
+        max_r(i) = abs(buffer(i, buffer.cols()-2)); //suppose that the oldest in the buffer is the max (the -1 must be trashed)
         for(int j = buffer.cols()-1; j>=0 ; j--){ //update the buffer
             if(j>0){
                 buffer(i,j) = buffer(i,j-1);
@@ -105,7 +87,6 @@ void MomentumObserver::updateBuffer(const Eigen::VectorXd& new_r){
                 buffer(i,j) = new_r(i);
             }
             max_r(i) = max_r(i) >= abs(buffer(i,j)) ? max_r(i) : abs(buffer(i,j)); //recheck for maximum
-            min_r(i) = min_r(i) <= abs(buffer(i,j)) ? min_r(i) : abs(buffer(i,j)); //recheck for minimum
 
         }
 

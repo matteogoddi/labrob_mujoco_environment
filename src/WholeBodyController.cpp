@@ -21,7 +21,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.Kp_motion = 30.0;
   params.Kd_motion = 10.0;
-  params.Kp_regulation = 30.0;
+  params.Kp_regulation = 60.0;
   params.Kd_regulation = 10.0;
 
   params.weight_q_ddot = 1e-4;

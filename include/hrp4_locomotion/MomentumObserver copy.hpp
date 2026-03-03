@@ -23,8 +23,7 @@ class MomentumObserver{
         Eigen::VectorXd update(const Eigen::VectorXd& q,const Eigen::VectorXd& qdot, const Eigen::VectorXd& tau);
         Eigen::VectorXd reconstructForceWrench(const Eigen::MatrixXd& J);
         Eigen::VectorXd estimateContactPointInLinkReferenceFrame(const Eigen::VectorXd& F);
-        inline bool isInCollision() { return collisionState; }
-        inline int getCollisionLink() { return collisionLink; }
+        int collisionDetect();
         
     protected:
 
@@ -40,9 +39,6 @@ class MomentumObserver{
         double epsilon;
         Eigen::MatrixXd buffer;
         Eigen::VectorXd max_r;
-        Eigen::VectorXd min_r;
-        bool collisionState;
-        int collisionLink;
         void updateBuffer(const Eigen::VectorXd& new_r);
 };
 

@@ -3,54 +3,23 @@
 
 #include "MomentumObserver.hpp"
 
-
-// 1. Definisci i nomi dei giunti delle braccia (nomi esatti dall'URDF del G1)
-//std::vector<std::string> larm_names = {
-//    "left_shoulder_pitch_joint", 
-//    "left_shoulder_roll_joint",
-//    "left_shoulder_yaw_joint",
-//    "left_elbow_joint", 
-//    "left_wrist_roll_joint",
-//    "left_wrist_pitch_joint",
-//    "left_wrist_yaw_joint",
-//    "left_hand_palm_joint"
-//};
-//
-//std::vector<std::string> rarm_names = {
-//    "right_shoulder_pitch_joint",
-//    "right_shoulder_roll_joint",
-//    "right_shoulder_yaw_joint",
-//    "right_elbow_joint",
-//    "right_wrist_roll_joint",
-//    "right_wrist_pitch_joint",
-//    "right_wrist_yaw_joint",
-//    "right_hand_palm_joint"
-//};
-
 class HumanoidContactForcesEstimator{
     public:
         HumanoidContactForcesEstimator(
+            const MomentumObserver& momentum_observer,
             const pinocchio::Model& robot_model, 
             const pinocchio::Data& robot_data,
-            const Eigen::VectorXd& diagKo,
-            double dt,
-            int dim_buffer_r,
-            double epsilon,
             const int left_foot_frame_id,
             const int right_foot_frame_id,
             const int left_hand_frame_id,
-            const int right_hand_frame_id,
-            std::vector<std::string>& larm_names,
-            std::vector<std::string>& rarm_names,
-            double start_time = 0.0
-            );
+            const int right_hand_frame_id);
 
         Eigen::VectorXd update(const Eigen::VectorXd& q,const Eigen::VectorXd& qdot, const Eigen::VectorXd& tau, const double time);
         Eigen::VectorXd getLeftFootWrench();
         Eigen::VectorXd getRightFootWrench();
         Eigen::VectorXd getLeftHandWrench();
         Eigen::VectorXd getRightHandWrench();
-        //double getJacobianConditionNumber();
+        double getJacobianConditionNumber();
         inline bool isLeftArmInCollision() { return left_arm_collision_state; }
         inline bool isRightArmInCollision() { return right_arm_collision_state; }
         
@@ -60,8 +29,7 @@ class HumanoidContactForcesEstimator{
     protected:
 
     private:
-
-        
+        float epsilon = 1.0e-4;
         MomentumObserver momentum_observer;
         pinocchio::Model robot_model;
         pinocchio::Data robot_data;
@@ -76,10 +44,6 @@ class HumanoidContactForcesEstimator{
         double jacobian_condition_number;
         bool left_arm_collision_state;
         bool right_arm_collision_state;
-        double epsilon;
-        int dim_buffer_r;
-        double start_time;
-
         Eigen::VectorXd last_r_larm;
         Eigen::VectorXd last_r_rarm;
         Eigen::MatrixXd left_arm_buffer;
@@ -88,10 +52,8 @@ class HumanoidContactForcesEstimator{
         Eigen::VectorXd right_arm_max_r;
         Eigen::VectorXd left_arm_min_r;
         Eigen::VectorXd right_arm_min_r;
-
         int left_arm_collision_link;
         int right_arm_collision_link;
-
         std::vector<int> left_arm_v_indices;
         std::vector<int> right_arm_v_indices;
 

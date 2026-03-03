@@ -1,39 +1,52 @@
 #include <hrp4_locomotion/HumanoidContactForcesEstimator.hpp>
 
 HumanoidContactForcesEstimator::HumanoidContactForcesEstimator(
+            const MomentumObserver& momentum_observer,
             const pinocchio::Model& robot_model, 
             const pinocchio::Data& robot_data,
-            const Eigen::VectorXd& diagKo,
-            double dt,
-            int dim_buffer_r,
-            double epsilon,
             const int left_foot_frame_id,
             const int right_foot_frame_id,
             const int left_hand_frame_id,
-            const int right_hand_frame_id,
-            std::vector<std::string>& larm_names,
-            std::vector<std::string>& rarm_names,
-            double start_time
-            ):
+            const int right_hand_frame_id)
+            :
+            momentum_observer(momentum_observer),
             robot_model(robot_model),
             robot_data(robot_data),
-            epsilon(epsilon),
-            dim_buffer_r(dim_buffer_r),
-            momentum_observer(diagKo, robot_model, robot_data, dt, dim_buffer_r, epsilon),
             left_foot_frame_id(left_foot_frame_id),
             right_foot_frame_id(right_foot_frame_id),
             left_hand_frame_id(left_hand_frame_id),
-            right_hand_frame_id(right_hand_frame_id),
-            start_time(start_time)
+            right_hand_frame_id(right_hand_frame_id)
             {
-
                 left_foot_wrench = Eigen::VectorXd::Zero(6);
                 right_foot_wrench = Eigen::VectorXd::Zero(6);
                 left_hand_wrench = Eigen::VectorXd::Zero(6);
                 right_hand_wrench = Eigen::VectorXd::Zero(6);
-                
 
-                //let's find the arms index in the pinocchio model
+
+                // 1. Definisci i nomi dei giunti delle braccia (nomi esatti dall'URDF del G1)
+                std::vector<std::string> larm_names = {
+                    "left_shoulder_pitch_joint", 
+                    "left_shoulder_roll_joint",
+                    "left_shoulder_yaw_joint",
+                    "left_elbow_joint", 
+                    "left_wrist_roll_joint",
+                    "left_wrist_pitch_joint",
+                    "left_wrist_yaw_joint",
+                    "left_hand_palm_joint"
+                };
+
+                std::vector<std::string> rarm_names = {
+                    "right_shoulder_pitch_joint",
+                    "right_shoulder_roll_joint",
+                    "right_shoulder_yaw_joint",
+                    "right_elbow_joint",
+                    "right_wrist_roll_joint",
+                    "right_wrist_pitch_joint",
+                    "right_wrist_yaw_joint",
+                    "right_hand_palm_joint"
+                };
+
+                // 2. Trova i loro indici di velocità (idx_v) nel modello Pinocchio
                 for(const auto& name : larm_names) {
                     if(robot_model.existJointName(name)) {
                         auto joint_id = robot_model.getJointId(name);
@@ -48,9 +61,10 @@ HumanoidContactForcesEstimator::HumanoidContactForcesEstimator(
                         right_arm_v_indices.push_back(robot_model.joints[joint_id].idx_v());
                     }
                 }
-
-                left_arm_buffer = Eigen::MatrixXd::Zero(left_arm_v_indices.size(), dim_buffer_r);
-                right_arm_buffer = Eigen::MatrixXd::Zero(right_arm_v_indices.size(), dim_buffer_r);
+                
+                int buffer_size = 1/0.001;
+                left_arm_buffer = Eigen::MatrixXd::Zero(left_arm_v_indices.size(), buffer_size);
+                right_arm_buffer = Eigen::MatrixXd::Zero(right_arm_v_indices.size(), buffer_size);
                 last_r_larm = Eigen::VectorXd::Zero(left_arm_v_indices.size());
                 last_r_rarm = Eigen::VectorXd::Zero(right_arm_v_indices.size());
                 left_arm_max_r = Eigen::VectorXd::Zero(left_arm_v_indices.size());
@@ -62,6 +76,9 @@ HumanoidContactForcesEstimator::HumanoidContactForcesEstimator(
                 left_arm_collision_link = 0;
                 right_arm_collision_link = 0;
 
+                // Print di debug per sicurezza
+                //std::cout << "Trovati " << left_arm_v_indices.size() << " giunti per il braccio SX." << std::endl;
+                //std::cout << "Trovati " << right_arm_v_indices.size() << " giunti per il braccio DX." << std::endl;
             }
 
 Eigen::VectorXd HumanoidContactForcesEstimator::update(const Eigen::VectorXd& q,const Eigen::VectorXd& qdot, const Eigen::VectorXd& tau, const double time){
@@ -105,62 +122,67 @@ Eigen::VectorXd HumanoidContactForcesEstimator::update(const Eigen::VectorXd& q,
     //std::cout << "r left arm: " << r_larm.transpose() << std::endl;
     //std::cout << "r right arm: " << r_rarm.transpose() << std::endl;
 
-    Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jlhand_local);
-    double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
-
-    std::cout << "Condition number of left hand Jacobian: " << cond << std::endl;
-
-    if(time > start_time){ //Give some time to the observer to converge before starting to check for collisions
+    if(time >0.5){
         if(left_arm_collision_state == false){
-            for(int i = n_larm; i>0; i--){
-                if(abs(last_r_larm[i-1]) > left_arm_max_r(i-1) + epsilon){
-                    left_arm_collision_link = i;
-                    left_arm_collision_state = true;
-                    break;
-                }
-            }
-
-        }
-
-        if(right_arm_collision_state == false){
-            for(int i = n_rarm; i>0; i--){
-                if(abs(last_r_rarm[i-1]) > right_arm_max_r(i-1) + epsilon){
-                    right_arm_collision_link = i;
-                    right_arm_collision_state = true;
-                    break;
-                }
-            }
-
-        }
-
-        if(left_arm_collision_state == true){ //Check if collision ended
-            if(abs(last_r_larm[left_arm_collision_link-1]) < left_arm_min_r(left_arm_collision_link-1) - epsilon){
-                left_arm_collision_state = false;
-                left_arm_collision_link = 0;
+        for(int i = n_larm; i>0; i--){
+            if(abs(last_r_larm[i-1]) > left_arm_max_r(i-1) + epsilon){
+                left_arm_collision_link = i;
+                left_arm_collision_state = true;
+                break;
             }
         }
 
-        if(right_arm_collision_state == true){ //Check if collision ended
-            if(abs(last_r_rarm[right_arm_collision_link-1]) < right_arm_min_r(right_arm_collision_link-1) - epsilon){
-                right_arm_collision_state = false;
-                right_arm_collision_link = 0;
+    }
+
+    if(right_arm_collision_state == false){
+        for(int i = n_rarm; i>0; i--){
+            if(abs(last_r_rarm[i-1]) > right_arm_max_r(i-1) + epsilon){
+                right_arm_collision_link = i;
+                right_arm_collision_state = true;
+                break;
             }
-        }    
+        }
+
+    }
+
+    if(left_arm_collision_state == true){ //Check if collision ended
+        if(abs(last_r_larm[left_arm_collision_link-1]) < left_arm_min_r(left_arm_collision_link-1) - epsilon){
+            left_arm_collision_state = false;
+            left_arm_collision_link = 0;
+        }
+    }
+
+    if(right_arm_collision_state == true){ //Check if collision ended
+        if(abs(last_r_rarm[right_arm_collision_link-1]) < right_arm_min_r(right_arm_collision_link-1) - epsilon){
+            right_arm_collision_state = false;
+            right_arm_collision_link = 0;
+        }
+    }    
 
 
 
-        if(left_arm_collision_state){
-            left_hand_wrench = Jlhand_local.transpose().completeOrthogonalDecomposition().solve(last_r_larm);
-        }else
-            left_hand_wrench = Eigen::VectorXd::Zero(6);
+    if(left_arm_collision_state){
+        left_hand_wrench = Jlhand_local.transpose().completeOrthogonalDecomposition().solve(last_r_larm);
+    }else left_hand_wrench = Eigen::VectorXd::Zero(6);
 
-        if(right_arm_collision_state){
-            right_hand_wrench = Jrhand_local.transpose().completeOrthogonalDecomposition().solve(last_r_rarm);
-        }else
-            right_hand_wrench = Eigen::VectorXd::Zero(6);
+    if(right_arm_collision_state){
+        right_hand_wrench = Jrhand_local.transpose().completeOrthogonalDecomposition().solve(last_r_rarm);
+    }else right_hand_wrench = Eigen::VectorXd::Zero(6);
 
     }
     
+    
+    
+    //#2
+    //Eigen::VectorXd r_arms = Eigen::VectorXd::Zero(n_larm + n_rarm);
+    //r_arms.head(n_larm) = r_larm;
+    //r_arms.tail(n_rarm) = r_rarm;
+    //Eigen::MatrixXd J_hands_stack(Jlhand_local.rows() + Jrhand_local.rows(), n_larm + n_rarm);
+    //J_hands_stack.topRows(Jlhand_local.rows()) = Jlhand_local;
+    //J_hands_stack.bottomRows(Jrhand_local.rows()) = Jrhand_local;
+    //Eigen::VectorXd hands_wrenches = J_hands_stack.transpose().completeOrthogonalDecomposition().solve(r_arms);
+    //left_hand_wrench = hands_wrenches.head(6);
+    //right_hand_wrench = hands_wrenches.tail(6);
 
     Eigen::VectorXd r_hands_effect = Jlhand.transpose() * left_hand_wrench + Jrhand.transpose() * right_hand_wrench;
     Eigen::VectorXd r_remaining = r - r_hands_effect;
@@ -172,6 +194,45 @@ Eigen::VectorXd HumanoidContactForcesEstimator::update(const Eigen::VectorXd& q,
     Eigen::VectorXd feet_wrenches = J_feet_stack.transpose().completeOrthogonalDecomposition().solve(r_remaining);
     left_foot_wrench = feet_wrenches.head(6);
     right_foot_wrench = feet_wrenches.tail(6);
+
+    ////FULL
+    //Eigen::MatrixXd J_stack(Jlsole.rows() + Jrsole.rows() + Jlhand.rows() + Jrhand.rows(), Jlsole.cols());
+    //J_stack.topRows(Jlsole.rows()) = Jlsole;
+    //J_stack.middleRows(Jlsole.rows(), Jrsole.rows()) = Jrsole;
+    //J_stack.middleRows(Jlsole.rows() + Jrsole.rows(), Jlhand.rows()) = Jlhand;
+    //J_stack.bottomRows(Jrhand.rows()) = Jrhand;
+
+    //ONLY FEET
+    //Eigen::MatrixXd J_stack(Jlsole.rows() + Jrsole.rows(), Jlsole.cols());
+    //J_stack.topRows(Jlsole.rows()) = Jlsole;
+    //J_stack.bottomRows(Jrsole.rows()) = Jrsole;
+
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd_lsole(Jlsole);
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd_rsole(Jrsole);
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd_lhand(Jlhand);
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd_rhand(Jrhand);
+    //double lsole_condition_number = svd_lsole.singularValues()(0) / svd_lsole.singularValues()(svd_lsole.singularValues().size() - 1);
+    //double rsole_condition_number = svd_rsole.singularValues()(0) / svd_rsole.singularValues()(svd_rsole.singularValues().size() - 1);
+    //double lhand_condition_number = svd_lhand.singularValues()(0) / svd_lhand.singularValues()(svd_lhand.singularValues().size() - 1);
+    //double rhand_condition_number = svd_rhand.singularValues()(0) / svd_rhand.singularValues()(svd_rhand.singularValues().size() - 1);
+    //std::cout << "Condition Number of LEFT FOOT Jacobian: " << lsole_condition_number << std::endl;
+    //std::cout << "Condition Number of RIGHT FOOT Jacobian: " << rsole_condition_number << std::endl;
+    //std::cout << "Condition Number of LEFT HAND Jacobian: " << lhand_condition_number << std::endl;
+    //std::cout << "Condition Number of RIGHT HAND Jacobian: " << rhand_condition_number << std::endl;
+
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd(J_stack);
+    //jacobian_condition_number = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
+
+    //Eigen::VectorXd reconstructed_wrench = momentum_observer.reconstructForceWrench(J_stack);
+    //FULL
+    //left_foot_wrench = reconstructed_wrench.head(6);
+    //right_foot_wrench = reconstructed_wrench.segment(6,6);
+    //left_hand_wrench = reconstructed_wrench.segment(12,6);
+    //right_hand_wrench = reconstructed_wrench.tail(6);
+
+    //ONLY FEET
+    //left_foot_wrench = reconstructed_wrench.head(6);
+    //right_foot_wrench = reconstructed_wrench.tail(6);
 
     return r;
 }
@@ -192,9 +253,9 @@ Eigen::VectorXd HumanoidContactForcesEstimator::getRightHandWrench(){
     return right_hand_wrench;
 }
 
-//double HumanoidContactForcesEstimator::getJacobianConditionNumber(){
-//    return jacobian_condition_number;
-//}
+double HumanoidContactForcesEstimator::getJacobianConditionNumber(){
+    return jacobian_condition_number;
+}
 
 
 void HumanoidContactForcesEstimator::updateBuffers(const Eigen::VectorXd& new_left_arm_r, const Eigen::VectorXd& new_right_arm_r){
