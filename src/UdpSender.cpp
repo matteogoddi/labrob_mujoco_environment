@@ -47,11 +47,15 @@ UdpSender::~UdpSender() {
     }
 }
 
-
 void UdpSender::send(const std::string& json_string) {
     sendto(sock_, json_string.c_str(), json_string.length(), 0, (struct sockaddr*)&dest_addr_, dest_addr_len_);
 }
 
 void UdpSender::send(const std::ostringstream& json_stream){
     send(json_stream.str());
+}
+
+void UdpSender::sendJson(const nlohmann::json& j) {
+    std::string json_string = j.dump();
+    send(json_string);
 }

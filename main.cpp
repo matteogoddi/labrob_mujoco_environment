@@ -677,7 +677,7 @@ int main(const int argc, const char* argv[]) {
 
   HumanoidContactForcesEstimator real_contact_forces_estimator(walking_manager.robot_model, 
     walking_manager.fb_robot_data, 
-    Ko_gains, 0.001, 1/0.001, 1.0e-4, lsole_idx, rsole_idx, lhand_idx, rhand_idx, larm_names, rarm_names, 1);
+    Ko_gains, 0.002, 1/0.002, 1.0e-4, lsole_idx, rsole_idx, lhand_idx, rhand_idx, larm_names, rarm_names, 1);
   
   UdpSender sender("127.0.0.1", 9870);
 
@@ -892,17 +892,53 @@ int main(const int argc, const char* argv[]) {
         real_wlh = real_contact_forces_estimator.getLeftHandWrench();
         real_wrh = real_contact_forces_estimator.getRightHandWrench();
 
-        std::ostringstream json_stream, left_hand_stream, right_hand_stream, left_foot_stream, right_foot_stream;
-        left_hand_stream << "\"f1\":" << real_wlh(0) << ", \"f2\":" << real_wlh(1) << ", \"f3\":" << real_wlh(2) << ", \"m1\":" << real_wlh(3) << ", \"m2\":" << real_wlh(4) << ", \"m3\":" << real_wlh(5);
-        right_hand_stream << "\"f1\":" << real_wrh(0) << ", \"f2\":" << real_wrh(1) << ", \"f3\":" << real_wrh(2) << ", \"m1\":" << real_wrh(3) << ", \"m2\":" << real_wrh(4) << ", \"m3\":" << real_wrh(5);
-        left_foot_stream << "\"f1\":" << real_wlf(0) << ", \"f2\":" << real_wlf(1) << ", \"f3\":" << real_wlf(2) << ", \"m1\":" << real_wlf(3) << ", \"m2\":" << real_wlf(4) << ", \"m3\":" << real_wlf(5);
-        right_foot_stream << "\"f1\":" << real_wrf(0) << ", \"f2\":" << real_wrf(1) << ", \"f3\":" << real_wrf(2) << ", \"m1\":" << real_wrf(3) << ", \"m2\":"  << real_wrf(4)  << ", \"m3\": "   <<real_wrf(5);
-        json_stream   << "{\"timestamp\": "   << mj_data_ptr->time  <<", "  << "\"left_hand_wrench\": { "   << left_hand_stream.str()   << "}, "  << "\"right_hand_wrench\": { "  << right_hand_stream.str()  << "}, "  << "\"left_foot_wrench\": { "   << left_foot_stream.str()   << "}, "  << "\"right_foot_wrench\": { "  << right_foot_stream.str()  << "}}";
-        try {
-          sender.send(json_stream.str());
-        } catch (const std::exception& e) {
-          std::cerr << "Error: " << e.what() << std::endl;
-        }
+
+        //UPD SENDING VERSION 3
+        nlohmann::json data;
+        data["timestamp"] = mj_data_ptr->time;
+        data["left_hand_wrench"]["f1"] = real_wlh(0);
+        data["left_hand_wrench"]["f2"] = real_wlh(1);
+        data["left_hand_wrench"]["f3"] = real_wlh(2);
+        data["left_hand_wrench"]["m1"] = real_wlh(3);
+        data["left_hand_wrench"]["m2"] = real_wlh(4);
+        data["left_hand_wrench"]["m3"] = real_wlh(5);
+        data["right_hand_wrench"]["f1"] = real_wrh(0);
+        data["right_hand_wrench"]["f2"] = real_wrh(1);
+        data["right_hand_wrench"]["f3"] = real_wrh(2);
+        data["right_hand_wrench"]["m1"] = real_wrh(3);
+        data["right_hand_wrench"]["m2"] = real_wrh(4);
+        data["right_hand_wrench"]["m3"] = real_wrh(5);
+        data["left_foot_wrench"]["f1"] = real_wlf(0);
+        data["left_foot_wrench"]["f2"] = real_wlf(1);
+        data["left_foot_wrench"]["f3"] = real_wlf(2);
+        data["left_foot_wrench"]["m1"] = real_wlf(3);
+        data["left_foot_wrench"]["m2"] = real_wlf(4);
+        data["left_foot_wrench"]["m3"] = real_wlf(5);
+        data["right_foot_wrench"]["f1"] = real_wrf(0);
+        data["right_foot_wrench"]["f2"] = real_wrf(1);
+        data["right_foot_wrench"]["f3"] = real_wrf(2);
+        data["right_foot_wrench"]["m1"] = real_wrf(3);
+        data["right_foot_wrench"]["m2"] = real_wrf(4);
+        data["right_foot_wrench"]["m3"] = real_wrf(5);
+
+        auto r_left_arm = sim_contact_forces_estimator.getLeftArmResidual();
+        auto r_right_arm = sim_contact_forces_estimator.getRightArmResidual();
+        data["left_arm_residual"]["r1"] = r_left_arm(0);
+        data["left_arm_residual"]["r2"] = r_left_arm(1);
+        data["left_arm_residual"]["r3"] = r_left_arm(2);
+        data["left_arm_residual"]["r4"] = r_left_arm(3);
+        data["left_arm_residual"]["r5"] = r_left_arm(4);
+        data["left_arm_residual"]["r6"] = r_left_arm(5);
+        data["left_arm_residual"]["r7"] = r_left_arm(6);
+        data["right_arm_residual"]["r1"] = r_right_arm(0);
+        data["right_arm_residual"]["r2"] = r_right_arm(1);
+        data["right_arm_residual"]["r3"] = r_right_arm(2);
+        data["right_arm_residual"]["r4"] = r_right_arm(3);
+        data["right_arm_residual"]["r5"] = r_right_arm(4);
+        data["right_arm_residual"]["r6"] = r_right_arm(5);
+        data["right_arm_residual"]["r7"] = r_right_arm(6);
+        sender.sendJson(data);
+
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;

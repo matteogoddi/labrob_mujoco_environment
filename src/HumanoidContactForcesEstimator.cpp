@@ -105,6 +105,10 @@ Eigen::VectorXd HumanoidContactForcesEstimator::update(const Eigen::VectorXd& q,
     //std::cout << "r left arm: " << r_larm.transpose() << std::endl;
     //std::cout << "r right arm: " << r_rarm.transpose() << std::endl;
 
+    //Eigen::JacobiSVD<Eigen::MatrixXd> svd(Jlhand_local);
+    //double cond = svd.singularValues()(0) / svd.singularValues()(svd.singularValues().size() - 1);
+    //std::cout << "Condition number of left hand Jacobian: " << cond << std::endl;
+
     if(time > start_time){ //Give some time to the observer to converge before starting to check for collisions
         if(left_arm_collision_state == false){
             for(int i = n_larm; i>0; i--){
