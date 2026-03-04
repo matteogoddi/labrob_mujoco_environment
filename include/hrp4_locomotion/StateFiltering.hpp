@@ -76,12 +76,12 @@ public:
       P_.block<3,3>(18,18) *= 1e-4;
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(3,3) = 0.01 * I;     // accel noise
-      Qc_.block<3,3>(6,6) = 0.005 * I;     // gyro noise
+      Qc_.block<3,3>(3,3) = 0.1 * I;     // accel noise
+      Qc_.block<3,3>(6,6) = 0.05 * I;     // gyro noise
       Qc_.block<3,3>(15,15) = 1e-6 * I;   // accel bias RW
       Qc_.block<3,3>(18,18) = 1e-6 * I;   // gyro bias RW
-      Qc_.block<3,3>(9,9)  = 1e-3 * I;    // foot noise
-      Qc_.block<3,3>(12,12)= 1e-3 * I;
+      Qc_.block<3,3>(9,9)  = 1e-5 * I;    // foot noise
+      Qc_.block<3,3>(12,12)= 1e-5 * I;
       R_.setIdentity() * 5e-4;
       g_ << 0, 0, -9.81;
       r_ << q_init[0], q_init[1], q_init[2];

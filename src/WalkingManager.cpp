@@ -962,6 +962,11 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
+                if (t_msec_ >= 0){
+                    fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
+                    fb_robot_state.position = base_ekf_ptr_->getBasePosition();
+                    fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
+                }
             }
             else{
                 fb_robot_state = sim_robot_state;
@@ -977,11 +982,6 @@ WalkingManager::update(
         std::string joint_name = robot_model.names[joint_id + 2];
         fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
         fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
-    }
-    if (t_msec_ >= 100000){
-        fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
-        fb_robot_state.position = base_ekf_ptr_->getBasePosition();
-        fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
     }
     std::cout << "prev orientation " << fb_robot_state.orientation.coeffs().transpose() << "new orientation " << base_ekf_ptr_->getBaseOrientation().coeffs().transpose() << std::endl;
 
@@ -1273,35 +1273,35 @@ WalkingManager::update(
 
     LIPState mpc_LipState_prec = des_LipState;
 
+    Eigen::Vector3d foot_pose = Eigen::Vector3d::Zero();
     auto start_mpc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
         {
-            Eigen::Vector3d foot_pose;
             if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
-                foot_pose = Eigen::Vector3d(current_gait_configuration.lsole.pos.p.x(), current_gait_configuration.lsole.pos.p.y(), 0);
+                foot_pose = Eigen::Vector3d(current_gait_configuration.lsole.pos.p.x(), current_gait_configuration.lsole.pos.p.y(), current_gait_configuration.lsole.pos.p.z());
                 std::cout << "Left foot support" << std::endl;
             }
             else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-                foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), 0);
+                foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), current_gait_configuration.rsole.pos.p.z());
                 std::cout << "Right foot support" << std::endl;
             }
-            std::cout << "Foot pose: " << foot_pose.transpose() << std::endl;
-            // foot_pose.setZero();
             if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, foot_pose);
-                // kf_LipState.com_pos_ -= foot_pose;
-                // kf_LipState.zmp_pos_ -= foot_pose;
+                kf_LipState.com_pos_ -= foot_pose;
+                kf_LipState.zmp_pos_ -= foot_pose;
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState, 
                     ismpc_ptr_->getInput()
                 );
-                // kf_LipState.com_pos_ += foot_pose;
-                // kf_LipState.zmp_pos_ += foot_pose;
+                kf_LipState.com_pos_ += foot_pose;
+                kf_LipState.zmp_pos_ += foot_pose;
             }
             else{
                 ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState, foot_pose);
+                des_LipState.com_pos_ -= foot_pose;
+                des_LipState.zmp_pos_ -= foot_pose;
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     des_LipState, 
                     ismpc_ptr_->getInput()
@@ -1449,7 +1449,8 @@ WalkingManager::update(
                     fb_robot_state,
                     fb_robot_data,
                     current_gait_configuration,
-                    desired_gait_configuration
+                    desired_gait_configuration,
+                    foot_pose
                 );
             } else {
                 // Use the MPC to compute the joint command:
@@ -1458,7 +1459,8 @@ WalkingManager::update(
                     sim_robot_state,
                     sim_robot_data,
                     current_gait_configuration,
-                    desired_gait_configuration
+                    desired_gait_configuration,
+                    foot_pose
                 );
             }
         }

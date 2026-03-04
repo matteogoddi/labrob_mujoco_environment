@@ -64,14 +64,14 @@ void
 ISMPC::solve(
     int64_t time,
     const labrob::WalkingData& walking_data,
-    labrob::LIPState& state,
+    const labrob::LIPState& state,
     const Eigen::Vector3d& foot_pose
 ) {
 
   // express footstep planner inside walking data with support foot as reference frame
 
-  state.zmp_pos_ -= foot_pose;
-  state.com_pos_ -= foot_pose;
+  Eigen::Vector3d com_pos = state.com_pos_;
+  Eigen::Vector3d zmp_pos = state.zmp_pos_;
 
 
   double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
@@ -135,9 +135,9 @@ ISMPC::solve(
       }
     }
     Eigen::Vector3d p_support = footstep_plan_elem.getFeetPlacement().getSupportFootConfiguration().p;
-    p_support -= foot_pose;
+    // p_support -= foot_pose;
     Eigen::Vector3d p_swing = footstep_plan_elem.getFeetPlacement().getSwingFootConfiguration().p;
-    p_swing -= foot_pose;
+    // p_swing -= foot_pose;
     Eigen::VectorXd varying_x = mapping * Eigen::Vector2d(p_support.x(), p_swing.x());
     Eigen::VectorXd varying_y = mapping * Eigen::Vector2d(p_support.y(), p_swing.y());
     Eigen::VectorXd varying_z = mapping * Eigen::Vector2d(p_support.z(), p_swing.z());
@@ -149,12 +149,12 @@ ISMPC::solve(
     ++k;
   }
 
-  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(0)),
-                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(1)),
-                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(2));
-  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(0)),
-                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(1)),
-                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(2));
+  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + zmp_pos(0)),
+                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + zmp_pos(1)),
+                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + zmp_pos(2));
+  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - zmp_pos(0)),
+                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - zmp_pos(1)),
+                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - zmp_pos(2));
 
   Eigen::VectorXd b(N_);
   A_eq_.setZero();
@@ -167,18 +167,18 @@ ISMPC::solve(
   A_eq_.block(1,     N_, 1, N_) = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep))*b.transpose();
   A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep))*b.transpose();
 
-  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / eta_ - state.zmp_pos_(0),
-      state.com_pos_(1) + state.com_vel_(1) / eta_ - state.zmp_pos_(1),
-      state.com_pos_(2) + state.com_vel_(2) / eta_ - (state.zmp_pos_(2) + 9.81 / std::pow(eta_, 2.0));
+  b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0),
+      com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1),
+      com_pos(2) + state.com_vel_(2) / eta_ - (zmp_pos(2) + 9.81 / std::pow(eta_, 2.0));
 
   cost_function_H_.setZero();
   cost_function_H_.block(     0,      0, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.block(    N_,     N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
 
-  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.x() - mc_x);
-  cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.y() - mc_y);
-  cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.z() - mc_z);
+  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * zmp_pos.x() - mc_x);
+  cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y);
+  cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z);
 
   // A_zmp_.setZero();
   // b_zmp_min_.setZero();

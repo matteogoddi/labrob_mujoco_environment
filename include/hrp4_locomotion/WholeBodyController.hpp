@@ -71,7 +71,8 @@ class WholeBodyController {
       const labrob::RobotState& robot_state,
       pinocchio::Data& robot_data,
       const labrob::GaitConfiguration& current,
-      const labrob::GaitConfiguration& desired
+      const labrob::GaitConfiguration& desired,
+      Eigen::Vector3d foot_pose
   );
 
   Eigen::VectorXd get_q_ddot() const;

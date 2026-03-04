@@ -50,9 +50,9 @@ bool loopClosed = true;
 bool switchWalkingState = false;
 bool imuCalibration = false;
 
-double startTimeWBCCL = 1000000.0;
-double startTimeMPCCL = 0.0;
-double startTimeEKF = 100000000.0;
+double startTimeWBCCL = 1000.0;
+double startTimeMPCCL = 1000.0;
+double startTimeEKF = 0.0;
 
 Eigen::Vector3d odometry_base_position = Eigen::Vector3d::Zero();
 Eigen::Vector3d odometry_base_velocity = Eigen::Vector3d::Zero();
@@ -616,7 +616,8 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  mj_data_ptr->qpos[2] = 0.720451;
+  // mj_data_ptr->qpos[2] = 0.727451;
+  mj_data_ptr->qpos[2] = 0.716143;
 
   // mj_data_ptr->qpos[4] = 0.0;
   // mj_data_ptr->qpos[5] = 0.0;
@@ -822,7 +823,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 105.0)  {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 1.3 || std::abs(robot_state.joint_state[joint_name].vel) > 3 || std::abs(joint_command[joint_name]) > 105.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "

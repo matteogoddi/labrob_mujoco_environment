@@ -30,7 +30,7 @@ class ISMPC{
   void solve(
       int64_t time,
       const labrob::WalkingData& walking_data,
-      labrob::LIPState& state,
+      const labrob::LIPState& state,
       const Eigen::Vector3d& foot_pose
   );
 

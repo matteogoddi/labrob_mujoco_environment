@@ -107,8 +107,13 @@ WholeBodyController::compute_inverse_dynamics(
     const labrob::RobotState& robot_state,
     pinocchio::Data& robot_data,
     const labrob::GaitConfiguration& current,
-    const labrob::GaitConfiguration& desired
+    const labrob::GaitConfiguration& desired,
+    Eigen::Vector3d foot_pose
 ) {
+
+  Eigen::Matrix<double,6,6> Ad_inv;
+  Ad_inv.setIdentity();
+  Ad_inv.topRightCorner<3,3>() = -pinocchio::skew(foot_pose);
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
@@ -122,10 +127,18 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_);
 
+  J_torso_ = Ad_inv * J_torso_;
+  J_lsole_ = Ad_inv * J_lsole_;
+  J_rsole_ = Ad_inv * J_rsole_;
+
   pinocchio::centerOfMass(robot_model, robot_data, q, qdot, 0.0 * qdot); // This is to compute the drift term
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
+
+  J_torso_dot_ = Ad_inv * J_torso_dot_;
+  J_lsole_dot_ = Ad_inv * J_lsole_dot_;
+  J_rsole_dot_ = Ad_inv * J_rsole_dot_;
 
   const auto& J_com = robot_data.Jcom;
   const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
