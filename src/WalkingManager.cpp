@@ -925,13 +925,14 @@ WalkingManager::update(
     auto start_ekf = std::chrono::high_resolution_clock::now();
     Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
     q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
-    if (t_msec_ == 1000){
+    if (t_msec_ == 2000){
         base_ekf_ptr_->initialize(q);
     }
-    if (t_msec_ >= 1000){
+    if (t_msec_ >= 2000 && false){
         base_ekf_ptr_->filter(measured_imu_accelerometer, 
             measured_imu_angular_velocity, 
             q_filtered.head(njnt),
+            q_filtered.tail(njnt),
             left_support_check,
             right_support_check
         );
@@ -942,7 +943,7 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
-                if (t_msec_ >= 10000 && true){
+                if (t_msec_ >= 10000 && false){
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
@@ -963,11 +964,6 @@ WalkingManager::update(
         fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
         fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
     }
-    std::cout << "prev orientation " << fb_robot_state.orientation.coeffs().transpose() << "new orientation " << base_ekf_ptr_->getBaseOrientation().coeffs().transpose() << std::endl;
-
-    std::cout << "prev position " << fb_robot_state.position.transpose() << "new position " << base_ekf_ptr_->getBasePosition().transpose() << std::endl;
-
-    std::cout << "prev velocity " << fb_robot_state.linear_velocity.transpose() << "new velocity " << base_ekf_ptr_->getBaseVelocity().transpose() << std::endl;
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
     ////////////////////
@@ -1149,7 +1145,7 @@ WalkingManager::update(
 
     // ADD STEPS FOR SIMULATION
 
-    if(!useRobot && t_msec_ == 15000 && true){
+    if(!useRobot && t_msec_ == 3000){
         double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).z();
         walking_data_.addSteps(
             labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
@@ -1261,13 +1257,13 @@ WalkingManager::update(
         {
             if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
                 foot_pose = Eigen::Vector3d(current_gait_configuration.lsole.pos.p.x(), current_gait_configuration.lsole.pos.p.y(), current_gait_configuration.lsole.pos.p.z());
-                std::cout << "Left foot support" << std::endl;
+                // std::cout << "Left foot support" << std::endl;
             }
             else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
                 foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), current_gait_configuration.rsole.pos.p.z());
-                std::cout << "Right foot support" << std::endl;
+                // std::cout << "Right foot support" << std::endl;
             }
-            // foot_pose.setZero();
+            foot_pose.setZero();
             if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, foot_pose);
                 kf_LipState.com_pos_ -= foot_pose;

@@ -109,6 +109,7 @@ public:
     void filter(const Eigen::Vector3d& acc_meas,
               const Eigen::Vector3d& gyro_meas,
               const Eigen::VectorXd& joint_pos_meas,
+              const Eigen::VectorXd& joint_vel_meas,
               bool isLeftFootinContact,
               bool isRightFootinContact);
     
@@ -129,6 +130,12 @@ public:
       const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
       pR_ = q_.toRotationMatrix().transpose() * bMf_r.translation();
       zR_ = q_ * Eigen::Quaterniond(bMf_r.rotation());
+
+      // define R_base_imu to rotate measurements from IMU frame to base frame
+      R_base_imu = Eigen::Matrix3d::Identity();
+      R_base_imu.block<3,3>(0,0) = (q_ * Eigen::Quaterniond(data_.oMf[model_.getFrameId("imu_in_torso")].rotation())).toRotationMatrix().transpose();
+
+
     }
 
 private:
@@ -163,7 +170,7 @@ private:
     }
 
     double dt_;
-    int NX = 27;
+    int NX = 21;
 
     // Nominal state
     Eigen::Vector3d r_;
@@ -178,9 +185,11 @@ private:
     Eigen::Vector3d bf_ = Eigen::Vector3d::Zero();
     Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();
 
+    Eigen::MatrixXd R_base_imu;
+
     // Covariance               
-    Eigen::Matrix<double,27,27> P_;
-    Eigen::Matrix<double,27,27> Qc_;
+    Eigen::Matrix<double,21,21> P_;
+    Eigen::Matrix<double,21,21> Qc_;
     Eigen::Matrix<double,12,12> R_;
 
     Eigen::Vector3d g_;
