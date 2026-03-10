@@ -115,6 +115,21 @@ public:
     Eigen::Vector3d getBasePosition() const { return r_; }
     Eigen::Vector3d getBaseVelocity() const { return v_; }
     Eigen::Quaterniond getBaseOrientation() const { return q_; }
+    void initialize(const Eigen::VectorXd& q_init) {
+      r_ << q_init[0], q_init[1], q_init[2];
+      q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]);
+      pinocchio::Data data_(model_);
+      pinocchio::forwardKinematics(model_, data_, q_init_);
+      pinocchio::framesForwardKinematics(model_, data_, q_init_);
+
+      const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
+      pL_ = q_.toRotationMatrix().transpose() * bMf_l.translation();
+      zL_ = q_ * Eigen::Quaterniond(bMf_l.rotation());
+      
+      const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
+      pR_ = q_.toRotationMatrix().transpose() * bMf_r.translation();
+      zR_ = q_ * Eigen::Quaterniond(bMf_r.rotation());
+    }
 
 private:
 

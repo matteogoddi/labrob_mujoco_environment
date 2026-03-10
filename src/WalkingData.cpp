@@ -110,8 +110,8 @@ WalkingData::addSteps(
     step_length_x = step_vector.x();
     step_length_y = step_vector.y();
     int n_steps = 6;
-    double double_support_duration = 600;
-    double single_support_duration = 600;
+    double double_support_duration = 700;
+    double single_support_duration = 700;
 
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(

@@ -24,9 +24,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 60;
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
   params.Kp_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Zero(12, 12);
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 60;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
   params.Kd_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Zero(12, 12);
 
   params.weight_q_ddot = 1e-4;
@@ -36,14 +36,14 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-1;
   params.weight_regulation = 1e-4;
-  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
+  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1e-4;
 
   params.cmm_selection_matrix_x = 1e-6;
   params.cmm_selection_matrix_y = 1e-6;
   params.cmm_selection_matrix_z = 1e-4;
 
-  params.beta = 150;
-  params.gamma = 30;
+  params.beta = 0;
+  params.gamma = 50;
   params.mu = 0.5;
 
   params.foot_length = 0.20;
@@ -184,9 +184,9 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
   Eigen::VectorXd a_jnt_total = desired_qddot + params_.Kp_joint_matrix * err_posture + params_.Kd_joint_matrix * err_posture_vel;
-  Eigen::VectorXd a_com_total = desired.com.acc + 50 * err_com + 20 * err_com_vel;
-  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 70 * err_lsole + 25 * err_lsole_vel;
-  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 70 * err_rsole + 25 * err_rsole_vel;
+  Eigen::VectorXd a_com_total = desired.com.acc + 90 * err_com + 40 * err_com_vel;
+  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 70 * err_lsole + 35 * err_lsole_vel;
+  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 70 * err_rsole + 35 * err_rsole_vel;
   Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 30 * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;
 
   // Build cost function

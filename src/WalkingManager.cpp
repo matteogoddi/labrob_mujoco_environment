@@ -127,7 +127,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_rev_hand.urdf";
+    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
 
     pinocchio::Model full_robot_model;
 
@@ -138,20 +138,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         full_robot_model
     );
     const std::vector<std::string> joint_to_lock_names{
-        "left_hand_thumb_0_joint",
-        "left_hand_thumb_1_joint",
-        "left_hand_thumb_2_joint",
-        "left_hand_middle_0_joint",
-        "left_hand_middle_1_joint",
-        "left_hand_index_0_joint",
-        "left_hand_index_1_joint",
-        "right_hand_thumb_0_joint",
-        "right_hand_thumb_1_joint",
-        "right_hand_thumb_2_joint",
-        "right_hand_middle_0_joint",
-        "right_hand_middle_1_joint",
-        "right_hand_index_0_joint",
-        "right_hand_index_1_joint"
     };
     std::vector<pinocchio::JointIndex> joint_ids_to_lock;
     for (const auto& joint_name : joint_to_lock_names) {
@@ -175,8 +161,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         robot_model,
         initial_robot_state
     );
-
-    std::cout << "q_init " << q_init.transpose() << std::endl;
 
     // INIT ROBOT STATE, DATA AND PINOCCHIO QUANTITIES
 
@@ -577,7 +561,7 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd y_actual) {
     // double left_support_check = 1.0;
     // double right_support_check = 1.0;
     // if (walking_data_.getWalkingState() == WalkingState::SingleSupport){
-    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+    //     if (walking_data_.footstep_plan.frontrobot_model().getFeetPlacement().getSupportFoot() == Foot::LEFT){
     //         R.block(RIGHT_FOOT_VEL_IDX, RIGHT_FOOT_VEL_IDX, 6, 6) = 10000 * Eigen::MatrixXd::Identity(6,6);
     //         R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 6, 6) = 1e-5 * Eigen::MatrixXd::Identity(6,6);
     //     }
@@ -670,21 +654,14 @@ RobotState WalkingManager::updateEKF(Eigen::VectorXd y_actual) {
 
     // A MATRIX:
 
-    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6));
-    A.block(0, njnt + 6, njnt + 6, njnt + 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(njnt + 6, njnt + 6);
+    // Eigen::MatrixXd A = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6));
+    // A.block(0, njnt + 6, njnt + 6, njnt + 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(njnt + 6, njnt + 6);
 
     // UNCOMMENT ABOVE TO USE APPROXIMATED A. UNCOMMENT BELOW TO USE NUMERICAL A
 
-    // Eigen::MatrixXd A = computeNumericalA(x_estimate,
-    //                   whole_body_controller_ptr_->get_q_ddot(),
-    //                   controller_timestep_msec_ * 0.001);
-
-
-    // Eigen::MatrixXd A = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) + controller_timestep_msec_ * 0.001 * computeNumericalA(
-    //     x_estimate,
-    //     whole_body_controller_ptr_->get_q_ddot(),
-    //     1.0
-    // );  
+    Eigen::MatrixXd A = computeNumericalA(x_estimate,
+                      whole_body_controller_ptr_->get_q_ddot(),
+                      controller_timestep_msec_ * 0.001);
 
     //PREDICTION COVARIANCE (lambda) AND KALMAN GAIN
     
@@ -944,14 +921,17 @@ WalkingManager::update(
             left_support_check = false;
         }
     }
-    
+
     auto start_ekf = std::chrono::high_resolution_clock::now();
     Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
-    q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(27));
-    if (t_msec_ >= 0){
+    q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
+    if (t_msec_ == 1000){
+        base_ekf_ptr_->initialize(q);
+    }
+    if (t_msec_ >= 1000){
         base_ekf_ptr_->filter(measured_imu_accelerometer, 
             measured_imu_angular_velocity, 
-            q_filtered.head(27),
+            q_filtered.head(njnt),
             left_support_check,
             right_support_check
         );
@@ -962,7 +942,7 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
-                if (t_msec_ >= 0){
+                if (t_msec_ >= 10000 && true){
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
@@ -1169,7 +1149,7 @@ WalkingManager::update(
 
     // ADD STEPS FOR SIMULATION
 
-    if(!useRobot && t_msec_ == 12000 && true){
+    if(!useRobot && t_msec_ == 15000 && true){
         double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).z();
         walking_data_.addSteps(
             labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
@@ -1287,6 +1267,7 @@ WalkingManager::update(
                 foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), current_gait_configuration.rsole.pos.p.z());
                 std::cout << "Right foot support" << std::endl;
             }
+            // foot_pose.setZero();
             if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, foot_pose);
                 kf_LipState.com_pos_ -= foot_pose;

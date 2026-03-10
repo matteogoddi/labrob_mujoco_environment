@@ -59,8 +59,8 @@ Eigen::Vector3d odometry_base_velocity = Eigen::Vector3d::Zero();
 Eigen::Vector4d odometry_imu_quaternion = Eigen::Vector4d(1,0,0,0);
 Eigen::Vector3d odometry_imu_rpy = Eigen::Vector3d::Zero();
 
-Eigen::VectorXd measured_joint_position = Eigen::VectorXd::Zero(27);
-Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(27);
+Eigen::VectorXd measured_joint_position = Eigen::VectorXd::Zero(29);
+Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 Eigen::Vector4d measured_imu_quaternion = Eigen::Vector4d(1,0,0,0);
 Eigen::Vector3d measured_imu_rpy = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_angular_velocity = Eigen::Vector3d::Zero();
@@ -104,7 +104,7 @@ class DataBuffer {
   std::shared_mutex mutex;
 };
 
-const int G1_NUM_MOTOR = 27;
+const int G1_NUM_MOTOR = 29;
 struct ImuState {
   std::array<float, 4> quaternion = {};
   std::array<float, 3> rpy = {};
@@ -133,7 +133,7 @@ struct SportModeState {
 std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 600,      // legs sx
   700, 700, 700, 1000, 900, 600,      // legs dx
-  400,                   // waist
+  400, 400, 400,                  // waist
   400, 400, 400, 400,  200, 200, 200,  // arms sx
   400, 400, 400, 400,  200, 200, 200   // arms dx
 };
@@ -142,7 +142,7 @@ std::array<float, G1_NUM_MOTOR> Kp{
 std::array<float, G1_NUM_MOTOR> Kd{
   15, 15, 15, 15, 15, 15,     // legs sx
   15, 15, 15, 15, 15, 15,     // legs dx
-  15,             // waist
+  15, 15, 15,         // waist
   15, 15, 15, 15, 15, 15, 15,  // arms sx
   15, 15, 15, 15, 15, 15, 15   // arms dx
 };
@@ -182,8 +182,8 @@ std::map<std::string, int> joint_name_to_index = {
   {"right_ankle_pitch_joint", 10},
   {"right_ankle_roll_joint", 11},
   {"waist_yaw_joint", 12},
-  // {"waist_roll_joint", 13},        // NOTE INVALID for g1 23dof/29dof with waist locked
-  // {"waist_pitch_joint", 14},      // NOTE INVALID for g1 23dof/29dof with waist locked
+  {"waist_roll_joint", 13},        // NOTE INVALID for g1 23dof/29dof with waist locked
+  {"waist_pitch_joint", 14},      // NOTE INVALID for g1 23dof/29dof with waist locked
   {"left_shoulder_pitch_joint", 15},
   {"left_shoulder_roll_joint", 16},
   {"left_shoulder_yaw_joint", 17},
@@ -216,6 +216,8 @@ std::map<std::string, mjtNum> joint_initial_positions = {
   {"right_ankle_pitch_joint", -0.50},
   {"right_ankle_roll_joint", 0.0},
   {"waist_yaw_joint", 0.0},
+  {"waist_roll_joint", 0.0},
+  {"waist_pitch_joint", 0.0},
   {"left_shoulder_pitch_joint", 0.07},
   {"left_shoulder_roll_joint", 0.25},
   {"left_shoulder_yaw_joint", 0.0},
@@ -265,16 +267,9 @@ void LowStateHandler(const void* msg){
   }
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  for (int i = 0; i < G1_NUM_MOTOR + 2; ++i) {
-    if (i == 13 || i == 14) continue; // skip waist roll and pitch
-    else if (i < 13) {
-      motor_state_data.q[i] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i] = low_state.motor_state()[i].dq();
-    }
-    else if (i > 14) {
-      motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
-    }
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    motor_state_data.q[i] = low_state.motor_state()[i].q();
+    motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
 
   // update gamepad
@@ -616,8 +611,8 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  // mj_data_ptr->qpos[2] = 0.727451;
-  mj_data_ptr->qpos[2] = 0.716143;
+  mj_data_ptr->qpos[2] = 0.727451;
+  // mj_data_ptr->qpos[2] = 0.716143;
 
   // mj_data_ptr->qpos[4] = 0.0;
   // mj_data_ptr->qpos[5] = 0.0;
@@ -725,7 +720,7 @@ int main(const int argc, const char* argv[]) {
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (!useRobot && false){
+      if (!useRobot && true){
         auto start_integration = std::chrono::steady_clock::now();
 
         mj_step1(mj_model_ptr, mj_data_ptr);

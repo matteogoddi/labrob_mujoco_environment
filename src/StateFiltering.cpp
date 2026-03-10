@@ -106,7 +106,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::Matrix3d C = q_.toRotationMatrix().transpose();
 
-  Eigen::Vector3d a_world = C.transpose() * acc;
+  Eigen::Vector3d a_world = C.transpose() * acc + g_;
   // a_world.setZero();
   std::cout << "acc " << a_world.transpose() << std::endl;
 
@@ -217,7 +217,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::MatrixXd H(0, NX);
   Eigen::VectorXd e(0);
-
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
