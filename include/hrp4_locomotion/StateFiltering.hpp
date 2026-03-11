@@ -74,14 +74,18 @@ public:
       P_.block<3,3>(12,12) *= 1e-1;
       P_.block<3,3>(15,15) *= 1e-4;  // biases
       P_.block<3,3>(18,18) *= 1e-4;
+      P_.block<3,3>(21,21) *= 1e-2;
+      
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(3,3) = 0.1 * I;     // accel noise
-      Qc_.block<3,3>(6,6) = 0.05 * I;     // gyro noise
+      Qc_.block<3,3>(3,3) = 0.01 * I;     // accel noise
+      Qc_.block<3,3>(6,6) = 0.005 * I;     // gyro noise
       Qc_.block<3,3>(15,15) = 1e-6 * I;   // accel bias RW
       Qc_.block<3,3>(18,18) = 1e-6 * I;   // gyro bias RW
       Qc_.block<3,3>(9,9)  = 1e-5 * I;    // foot noise
-      Qc_.block<3,3>(12,12)= 1e-5 * I;
+      Qc_.block<3,3>(12,12) = 1e-5 * I;
+      Qc_.block<3,3>(21,21) = 1e-2 * I;
+
       R_.setIdentity() * 5e-4;
       g_ << 0, 0, -9.81;
       r_ << q_init[0], q_init[1], q_init[2];
@@ -170,12 +174,13 @@ private:
     }
 
     double dt_;
-    int NX = 21;
+    int NX = 24;
 
     // Nominal state
     Eigen::Vector3d r_;
     Eigen::Vector3d v_ = Eigen::Vector3d::Zero();
     Eigen::Quaterniond q_;
+    Eigen::Vector3d omega_ = Eigen::Vector3d::Zero();
 
     Eigen::Vector3d pL_;
     Eigen::Vector3d pR_;
@@ -188,8 +193,8 @@ private:
     Eigen::MatrixXd R_base_imu;
 
     // Covariance               
-    Eigen::Matrix<double,21,21> P_;
-    Eigen::Matrix<double,21,21> Qc_;
+    Eigen::Matrix<double,24,24> P_;
+    Eigen::Matrix<double,24,24> Qc_;
     Eigen::Matrix<double,12,12> R_;
 
     Eigen::Vector3d g_;

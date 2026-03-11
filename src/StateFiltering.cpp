@@ -103,17 +103,19 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 1) NOMINAL PREDICTION
   // =====================
   Eigen::Vector3d acc = R_base_imu * (acc_meas - bf_);
-  Eigen::Vector3d omega = R_base_imu * (gyro_meas - bw_);
+  Eigen::Vector3d omega_meas = R_base_imu * (gyro_meas - bw_);
 
   Eigen::Matrix3d C = q_.toRotationMatrix().transpose();
 
   Eigen::Vector3d a_world = C.transpose() * acc + g_;
   // a_world.setZero();
   std::cout << "acc " << a_world.transpose() << std::endl;
+  std::cout << "omega " << omega_meas.transpose() << std::endl;
+
 
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
-  q_ = (expMap(dt_ * omega) * q_).normalized();
+  q_ = (expMap(dt_ * omega_) * q_).normalized();
   std::cout << "Predicted position: " << r_.transpose() << std::endl;
   std::cout << "Predicted velocity: " << v_.transpose() << std::endl;
   std::cout << "Predicted orientation: " << q_.coeffs().transpose() << std::endl;
@@ -124,12 +126,13 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
   Eigen::MatrixXd F = Eigen::MatrixXd::Identity(NX, NX);
 
-  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ibf=15, ibw=18, ithetaL=15, ithetaR=18;
+  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ibf=15, ibw=18, ithetaL=15, ithetaR=18, iomega=21;
 
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
   F.block<3,3>(iv, iphi) = -C.transpose() * skew(acc) * dt_;
   // F.block<3,3>(iv, ibf)  = -C.transpose() * dt_;
-  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega) * dt_;
+  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
+  F.block<3,3>(iphi, iomega) = Eigen::Matrix3d::Identity() * dt_;
   // F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
   Eigen::MatrixXd Lc = Eigen::MatrixXd::Identity(NX, NX);
@@ -146,7 +149,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   }
 
   Eigen::MatrixXd Q_ = F * Lc * Qc_ * Lc.transpose() * F.transpose() * dt_;
-  Q_ = Qc_;
+  // Q_ = Qc_;
   
   P_ = F * P_ * F.transpose() + Q_;
 
@@ -162,8 +165,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
   vel.head(3) << v_;
-  vel.segment(3, 3) << 0, 0, 0;
-  // vel[6] = 1;
+  vel.segment(3, 3) << C.transpose() * omega_;
   vel.tail(qj_dot.size()) = qj_dot;
 
   data_ = pinocchio::Data(model_);
@@ -218,6 +220,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::VectorXd e_foot = Eigen::VectorXd::Zero(3);
     e_foot = - J_foot.topRows(3) * vel;
 
+
     int old_rows = e_accum.rows();
     e_accum.conservativeResize(old_rows + e_p.size() + e_z.size() + e_foot.size());
     e_accum.segment(old_rows, e_p.size()) = e_p;
@@ -238,12 +241,23 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     // H_accum.block<2,2>(old_rows + 7, itheta) = Eigen::Matrix2d::Identity();
 
     H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iv) = J_foot.block<3,3>(0,0);
+    H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iomega) = J_foot.block<3,3>(0,3);
   };
 
   Eigen::MatrixXd H(0, NX);
   Eigen::VectorXd e(0);
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
+
+
+  Eigen::Vector3d e_omega = Eigen::Vector3d::Zero();
+  e_omega = omega_meas - omega_;
+  e.conservativeResize(e.size() + e_omega.size());
+  e.segment<3>(e.size() - e_omega.size()) = e_omega;
+  H.conservativeResize(e.size(), NX);
+  H.block(e.size() - e_omega.size(), 0, e_omega.size(), NX).setZero();
+
+  H.block<3,3>(e.size() - e_omega.size(), iomega) = Eigen::Matrix3d::Identity();
 
   std::cout << "Measurement error: " << e.transpose() << std::endl; 
 
@@ -254,7 +268,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-4;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-6;
 //   for (int i = 0; i < m/6; ++i)
 //     R.block<6,6>(6*i,6*i) = Rc_6_;
 
@@ -269,7 +283,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pR_ += dx.segment<3>(ipR);
   // bf_ += dx.segment<3>(ibf);
   // bw_ += dx.segment<3>(ibw);
-  // std::cout << "bias f" << bf_ << " bias w" << bw_ << std::endl;
+  omega_ += dx.segment<3>(iomega);
 
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();

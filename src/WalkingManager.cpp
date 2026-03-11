@@ -943,7 +943,7 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
-                if (t_msec_ >= 10000 && false){
+                if (t_msec_ >= 10000 && true){
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
