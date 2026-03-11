@@ -928,7 +928,7 @@ WalkingManager::update(
     if (t_msec_ == 2000){
         base_ekf_ptr_->initialize(q);
     }
-    if (t_msec_ >= 2000 && false){
+    if (t_msec_ >= 2000 && true){
         base_ekf_ptr_->filter(measured_imu_accelerometer, 
             measured_imu_angular_velocity, 
             q_filtered.head(njnt),

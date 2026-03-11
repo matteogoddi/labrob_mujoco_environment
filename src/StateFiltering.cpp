@@ -102,13 +102,13 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
   // 1) NOMINAL PREDICTION
   // =====================
-  Eigen::Vector3d acc = acc_meas - bf_;
-  Eigen::Vector3d omega = gyro_meas - bw_;
+  Eigen::Vector3d acc = R_base_imu * (acc_meas - bf_);
+  Eigen::Vector3d omega = R_base_imu * (gyro_meas - bw_);
 
-  Eigen::Matrix3d C = q_.toRotationMatrix();
+  Eigen::Matrix3d C = q_.toRotationMatrix().transpose();
 
   Eigen::Vector3d a_world = C.transpose() * acc + g_;
-  a_world.setZero();
+  // a_world.setZero();
   std::cout << "acc " << a_world.transpose() << std::endl;
 
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
@@ -174,7 +174,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pinocchio::computeJointJacobians(model_, data_, pos);
 
   pinocchio::SE3 T_wb = pinocchio::SE3::Identity();
-  T_wb.rotation() = q_.toRotationMatrix().transpose();
+  T_wb.rotation() = q_.toRotationMatrix();
   T_wb.translation() = r_;
 
   auto processFoot = [&](int frameId,
@@ -254,7 +254,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-2;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-4;
 //   for (int i = 0; i < m/6; ++i)
 //     R.block<6,6>(6*i,6*i) = Rc_6_;
 
