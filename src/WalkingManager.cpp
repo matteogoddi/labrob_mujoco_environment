@@ -933,6 +933,7 @@ WalkingManager::update(
             measured_imu_angular_velocity, 
             q_filtered.head(njnt),
             q_filtered.tail(njnt),
+            whole_body_controller_ptr_->get_q_ddot().head(6),
             left_support_check,
             right_support_check
         );
@@ -944,9 +945,11 @@ WalkingManager::update(
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
                 if (t_msec_ >= 10000 && true){
+                    std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " << std::endl;
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
+                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
                 }
             }
             else{
@@ -965,6 +968,14 @@ WalkingManager::update(
         fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
     }
     auto end_ekf = std::chrono::high_resolution_clock::now();
+
+    // std::cout << "Filter position " << fb_robot_state.position.transpose() << std::endl;
+    std::cout << "Filter orientation " << fb_robot_state.orientation.coeffs().transpose() << std::endl;
+    // std::cout << "Filter velocity " << fb_robot_state.linear_velocity.transpose() << std::endl;
+    // std::cout << "EKF position " << base_ekf_ptr_->getBasePosition().transpose() << std::endl;
+    std::cout << "EKF orientation " << base_ekf_ptr_->getBaseOrientation().coeffs().transpose() << std::endl;
+    // std::cout << "EKF velocity " << base_ekf_ptr_->getBaseVelocity().transpose() << std::endl;
+    // std::cout << "EKF omega " << base_ekf_ptr_->getBaseOmega().transpose() << std::endl;
 
     ////////////////////
     // END EKF CALL
@@ -998,6 +1009,7 @@ WalkingManager::update(
     );
 
     const auto& T_lsole_fb = fb_robot_data.oMf[lsole_idx_];
+    std::cout << "Left foot position: " << T_lsole_fb.translation().transpose() << std::endl;
     Eigen::MatrixXd J_lsole_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
     pinocchio::getFrameJacobian(
         robot_model,
@@ -1145,7 +1157,7 @@ WalkingManager::update(
 
     // ADD STEPS FOR SIMULATION
 
-    if(!useRobot && t_msec_ == 3000){
+    if(!useRobot && t_msec_ == 3000 && false){
         double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).z();
         walking_data_.addSteps(
             labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),

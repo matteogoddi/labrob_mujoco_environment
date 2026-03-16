@@ -187,7 +187,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_com_total = desired.com.acc + 90 * err_com + 40 * err_com_vel;
   Eigen::VectorXd a_lsole_total = desired.lsole.acc + 70 * err_lsole + 35 * err_lsole_vel;
   Eigen::VectorXd a_rsole_total = desired.rsole.acc + 70 * err_rsole + 35 * err_rsole_vel;
-  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 30 * err_torso_orientation + params_.Kd_motion * err_torso_orientation_vel;
+  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 200 * err_torso_orientation + 500 * err_torso_orientation_vel;
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
