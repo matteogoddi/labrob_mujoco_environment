@@ -136,7 +136,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
   F.block<3,3>(iv, iphi) = -C.transpose() * skew(acc) * dt_;
   F.block<3,3>(iv, ibf)  = -C.transpose() * dt_;
-  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
+  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(C * omega_) * dt_;
   F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
   Eigen::MatrixXd Lc = Eigen::MatrixXd::Identity(NX, NX);
@@ -152,7 +152,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Qc_.block<3,3>(ipR,ipR) = 1 * Eigen::Matrix3d::Identity();
   }
 
-  Eigen::MatrixXd Q_ = Lc * Qc_ * Lc.transpose() * dt_;
+  Eigen::MatrixXd Q_ = F * Lc * Qc_ * Lc.transpose() * F.transpose() * dt_;
   // Q_ = Qc_;
   
   P_ = F * P_ * F.transpose() + Q_;
@@ -240,8 +240,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum(old_rows + 3, ip + 2) = 1;
 
     H_accum.block<3,3>(old_rows+e_p.size(), iphi) = Eigen::Matrix3d::Identity();
-    H_accum.block<3,3>(old_rows+e_p.size(), itheta) =
-        - (q_ * z.inverse()).toRotationMatrix();
+    H_accum.block<3,3>(old_rows+e_p.size(), itheta) = - C * (q_ * z.inverse()).toRotationMatrix();
     // H_accum.block<2,2>(old_rows + 7, itheta) = Eigen::Matrix2d::Identity();
 
     H_accum.block<6,3>(old_rows + e_p.size() + e_z.size(), iv) = J_foot.block<6,3>(0,0);
@@ -263,7 +262,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-8;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-3;
+  R(3,3) = 1e5; // high noise for foot
+  R(3 + e.size()/2, 3 + e.size()/2) = 1e5; //high noise for foot
 
   Eigen::MatrixXd K =
       P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
