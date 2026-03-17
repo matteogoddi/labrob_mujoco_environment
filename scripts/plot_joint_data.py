@@ -157,7 +157,7 @@ if __name__ == '__main__':
 
     delta = 1 / 500  # Assuming a control frequency of 500 Hz
     t = np.linspace(0.0, delta * (num_samples - startPlot), num_samples - startPlot)
-    num_joints = 27
+    num_joints = 29
 
     if not os.path.exists('images/feedback/joints/positions'):
         os.makedirs('images/feedback/joints/positions')

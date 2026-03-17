@@ -927,6 +927,7 @@ WalkingManager::update(
     q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
     if (t_msec_ == 2000){
         base_ekf_ptr_->initialize(q);
+        std::cout << "INITIALIZATION" << std::endl;
     }
     if (t_msec_ >= 2000 && true){
         base_ekf_ptr_->filter(measured_imu_accelerometer, 

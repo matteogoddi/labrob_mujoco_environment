@@ -67,27 +67,26 @@ public:
       model_(model), q_init_(q_init), dt_(dt)
     {
       P_.setIdentity();
-      P_.block<3,3>(0,0) *= 1e-2;    // position
-      P_.block<3,3>(3,3) *= 1e-2;    // velocity
+      P_.block<3,3>(0,0) *= 1e-5;    // position
+      P_.block<3,3>(3,3) *= 1e-4;    // velocity
       P_.block<3,3>(6,6) *= 1e-3;    // orientation
-      P_.block<3,3>(9,9) *= 1e-2;    // feet
-      P_.block<3,3>(12,12) *= 1e-2;
-      P_.block<3,3>(15,15) *= 1e1;  // biases
-      P_.block<3,3>(18,18) *= 1e1;
-      P_.block<3,3>(21,21) *= 1e-3;  // feet orientation
-      P_.block<3,3>(24,24) *= 1e-3;
+      P_.block<3,3>(9,9) *= 1e-6;    // feet
+      P_.block<3,3>(12,12) *= 1e-6;
+      P_.block<3,3>(15,15) *= 1e-6;  // biases
+      P_.block<3,3>(18,18) *= 1e-6;
+      // P_.block<3,3>(21,21) *= 1e-6;  // feet orientation
+      // P_.block<3,3>(24,24) *= 1e-6;
       
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      // Qc_.block<3,3>(0,0) = 0.5 * I;     // accel noise
-      Qc_.block<3,3>(0,0) = 0.5 * I;     // accel noise
-      Qc_.block<3,3>(3,3) = 0.1 * I;     // gyro noise
-      Qc_.block<3,3>(6,6)  = 1e-4 * I;    // foot noise
-      Qc_.block<3,3>(9,9) = 1e-4 * I;     // foot noise
-      Qc_.block<3,3>(12,12) = 1e-5 * I;   // accel bias
-      Qc_.block<3,3>(15,15) = 1e-5 * I;   // gyro bias
-      Qc_.block<3,3>(18,18) = 1e-5 * I;   // foot orientation noise
-      Qc_.block<3,3>(21,21) = 1e-5 * I;   // foot orientation noise
+      Qc_.block<3,3>(0,0) = 0.05 * I;     // accel noise
+      Qc_.block<3,3>(3,3) = 0.01 * I;     // gyro noise
+      Qc_.block<3,3>(6,6)  = 1e-5 * I;    // foot noise
+      Qc_.block<3,3>(9,9) = 1e-5 * I;     // foot noise
+      Qc_.block<3,3>(12,12) = 1e-6 * I;   // accel bias
+      Qc_.block<3,3>(15,15) = 1e-6 * I;   // gyro bias
+      // Qc_.block<3,3>(18,18) = 1e-5 * I;   // foot orientation noise
+      // Qc_.block<3,3>(21,21) = 1e-5 * I;   // foot orientation noise
 
       R_.setIdentity() * 5e-4;
       g_ << 0, 0, -9.81;
@@ -115,15 +114,15 @@ public:
 
       const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
       pL_ = bMf_l.translation();
-      zL_ = Eigen::Quaterniond(bMf_l.rotation());
+      // zL_ = Eigen::Quaterniond(bMf_l.rotation());
       
       const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
       pR_ = bMf_r.translation();
-      zR_ = Eigen::Quaterniond(bMf_r.rotation());
+      // zR_ = Eigen::Quaterniond(bMf_r.rotation());
 
       // define R_base_imu to rotate measurements from IMU frame to base frame
       R_base_imu = Eigen::Matrix3d::Identity();
-      R_base_imu.block<3,3>(0,0) = (q_ * Eigen::Quaterniond(data_.oMf[model_.getFrameId("imu_in_torso")].rotation()).inverse()).toRotationMatrix().transpose();
+      R_base_imu.block<3,3>(0,0) = (q_ * Eigen::Quaterniond(data_.oMf[model_.getFrameId("imu_in_torso")].rotation().inverse())).toRotationMatrix().transpose();
 
 
     }
@@ -160,7 +159,7 @@ private:
     }
 
     double dt_;
-    int NX = 27;
+    int NX = 21;
 
     // Nominal state
     Eigen::Vector3d r_;
@@ -171,8 +170,8 @@ private:
 
     Eigen::Vector3d pL_;
     Eigen::Vector3d pR_;
-    Eigen::Quaterniond zL_;
-    Eigen::Quaterniond zR_;
+    // Eigen::Quaterniond zL_;
+    // Eigen::Quaterniond zR_;
 
     Eigen::Vector3d bf_ = Eigen::Vector3d::Zero();
     Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();
@@ -180,8 +179,8 @@ private:
     Eigen::MatrixXd R_base_imu;
 
     // Covariance               
-    Eigen::Matrix<double,27,27> P_;
-    Eigen::Matrix<double,24,24> Qc_;
+    Eigen::Matrix<double,21,21> P_;
+    Eigen::Matrix<double,18,18> Qc_;
     Eigen::Matrix<double,12,12> R_;
 
     Eigen::Vector3d g_;
