@@ -9,9 +9,12 @@
 #include <mutex>
 #include <shared_mutex>
 #include <filesystem>
+#include <algorithm>
+#include <array>
 
 #include <thread>
 #include <iomanip>
+#include <cstdlib>
 #include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
@@ -37,6 +40,8 @@
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
 #include <hrp4_locomotion/globals.h>
+
+#include <hrp4_locomotion/EstimateForce.hpp>
 
 bool isTotalBodyLoopClosed = false;
 bool isCoMLoopClosed = false;
@@ -71,6 +76,201 @@ static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
 labrob::WalkingManager walking_manager;
+labrob::EstimateForce estimate_force;
+
+std::vector<Eigen::VectorXd> left_wrist_wrench_log;
+std::vector<Eigen::VectorXd> right_wrist_wrench_log;
+std::vector<Eigen::VectorXd> left_wrist_wrench_filtered_log;
+std::vector<Eigen::VectorXd> right_wrist_wrench_filtered_log;
+std::vector<double> wrist_force_time_log;
+std::vector<Eigen::Vector3d> left_wrist_force_gt_log;
+std::vector<Eigen::Vector3d> right_wrist_force_gt_log;
+std::vector<Eigen::Vector3d> left_wrist_force_point_log;
+std::vector<Eigen::Vector3d> right_wrist_force_point_log;
+std::vector<int> left_wrist_force_enabled_log;
+std::vector<int> right_wrist_force_enabled_log;
+std::vector<double> all_joint_motor_time_log;
+std::map<std::string, std::vector<std::array<float, 4>>> all_joint_motor_log;
+
+std::vector<std::pair<std::string, int>> getValidJointNameIndexPairs();
+
+void saveEstimateForceLogs() {
+  std::ofstream left_wrist_file("/tmp/estimated_force_left_wrist.txt");
+  for (const auto& v : left_wrist_wrench_log) {
+    left_wrist_file << v.transpose() << "\n";
+  }
+
+  std::ofstream right_wrist_file("/tmp/estimated_force_right_wrist.txt");
+  for (const auto& v : right_wrist_wrench_log) {
+    right_wrist_file << v.transpose() << "\n";
+  }
+
+  std::ofstream left_wrist_filtered_file("/tmp/estimated_force_left_wrist_filtered.txt");
+  for (const auto& v : left_wrist_wrench_filtered_log) {
+    left_wrist_filtered_file << v.transpose() << "\n";
+  }
+
+  std::ofstream right_wrist_filtered_file("/tmp/estimated_force_right_wrist_filtered.txt");
+  for (const auto& v : right_wrist_wrench_filtered_log) {
+    right_wrist_filtered_file << v.transpose() << "\n";
+  }
+
+  std::ofstream validation_file("/tmp/wrist_force_validation.txt");
+  validation_file << "time "
+                  << "l_gt_fx l_gt_fy l_gt_fz "
+                  << "l_est_fx l_est_fy l_est_fz "
+                  << "l_estf_fx l_estf_fy l_estf_fz "
+                  << "r_gt_fx r_gt_fy r_gt_fz "
+                  << "r_est_fx r_est_fy r_est_fz "
+                  << "r_estf_fx r_estf_fy r_estf_fz\n";
+
+  const std::size_t n = std::min(
+      wrist_force_time_log.size(),
+      std::min(
+          left_wrist_force_gt_log.size(),
+          std::min(
+              right_wrist_force_gt_log.size(),
+              std::min(
+                  left_wrist_wrench_log.size(),
+                  std::min(
+                      right_wrist_wrench_log.size(),
+                      std::min(left_wrist_wrench_filtered_log.size(), right_wrist_wrench_filtered_log.size())
+                  )
+              )
+          )
+      )
+  );
+
+  for (std::size_t i = 0; i < n; ++i) {
+    validation_file << wrist_force_time_log[i] << " "
+                    << left_wrist_force_gt_log[i].x() << " "
+                    << left_wrist_force_gt_log[i].y() << " "
+                    << left_wrist_force_gt_log[i].z() << " "
+                    << left_wrist_wrench_log[i](0) << " "
+                    << left_wrist_wrench_log[i](1) << " "
+                    << left_wrist_wrench_log[i](2) << " "
+                    << left_wrist_wrench_filtered_log[i](0) << " "
+                    << left_wrist_wrench_filtered_log[i](1) << " "
+                    << left_wrist_wrench_filtered_log[i](2) << " "
+                    << right_wrist_force_gt_log[i].x() << " "
+                    << right_wrist_force_gt_log[i].y() << " "
+                    << right_wrist_force_gt_log[i].z() << " "
+                    << right_wrist_wrench_log[i](0) << " "
+                    << right_wrist_wrench_log[i](1) << " "
+                    << right_wrist_wrench_log[i](2) << " "
+                    << right_wrist_wrench_filtered_log[i](0) << " "
+                    << right_wrist_wrench_filtered_log[i](1) << " "
+                    << right_wrist_wrench_filtered_log[i](2) << "\n";
+  }
+
+            std::ofstream applied_force_file("/tmp/applied_external_wrist_force.txt");
+            applied_force_file << "time "
+                     << "l_enabled l_px l_py l_pz l_fx l_fy l_fz "
+                     << "r_enabled r_px r_py r_pz r_fx r_fy r_fz\n";
+
+            const std::size_t n_applied = std::min(
+              wrist_force_time_log.size(),
+              std::min(
+                left_wrist_force_point_log.size(),
+                std::min(
+                  right_wrist_force_point_log.size(),
+                  std::min(
+                    left_wrist_force_gt_log.size(),
+                    std::min(
+                      right_wrist_force_gt_log.size(),
+                      std::min(left_wrist_force_enabled_log.size(), right_wrist_force_enabled_log.size())
+                    )
+                  )
+                )
+              )
+            );
+
+            for (std::size_t i = 0; i < n_applied; ++i) {
+            applied_force_file << wrist_force_time_log[i] << " "
+                       << left_wrist_force_enabled_log[i] << " "
+                       << left_wrist_force_point_log[i].x() << " "
+                       << left_wrist_force_point_log[i].y() << " "
+                       << left_wrist_force_point_log[i].z() << " "
+                       << left_wrist_force_gt_log[i].x() << " "
+                       << left_wrist_force_gt_log[i].y() << " "
+                       << left_wrist_force_gt_log[i].z() << " "
+                       << right_wrist_force_enabled_log[i] << " "
+                       << right_wrist_force_point_log[i].x() << " "
+                       << right_wrist_force_point_log[i].y() << " "
+                       << right_wrist_force_point_log[i].z() << " "
+                       << right_wrist_force_gt_log[i].x() << " "
+                       << right_wrist_force_gt_log[i].y() << " "
+                       << right_wrist_force_gt_log[i].z() << "\n";
+            }
+
+  const auto valid_joint_pairs = getValidJointNameIndexPairs();
+  std::vector<std::pair<std::string, int>> available_joint_pairs;
+  available_joint_pairs.reserve(valid_joint_pairs.size());
+  for (const auto& [joint_name, idx] : valid_joint_pairs) {
+    auto it = all_joint_motor_log.find(joint_name);
+    if (it != all_joint_motor_log.end() && !it->second.empty()) {
+      available_joint_pairs.emplace_back(joint_name, idx);
+    }
+  }
+
+  std::ofstream motor_source_file("/tmp/all_joint_motor_source.txt");
+  std::ofstream motor_joint_names_file("/tmp/all_joint_motor_names.txt");
+  std::ofstream motor_time_file("/tmp/all_joint_motor_time.txt");
+  std::ofstream motor_q_file("/tmp/all_joint_motor_q.txt");
+  std::ofstream motor_dq_file("/tmp/all_joint_motor_dq.txt");
+  std::ofstream motor_ddq_file("/tmp/all_joint_motor_ddq.txt");
+  std::ofstream motor_tau_est_file("/tmp/all_joint_motor_tau_est.txt");
+
+  if (!available_joint_pairs.empty()) {
+    std::size_t n_motor = all_joint_motor_time_log.size();
+    for (const auto& [joint_name, idx] : available_joint_pairs) {
+      auto it = all_joint_motor_log.find(joint_name);
+      if (it == all_joint_motor_log.end()) {
+        n_motor = 0;
+        break;
+      }
+      n_motor = std::min(n_motor, it->second.size());
+    }
+
+    motor_source_file << "source=sdk_low_state\n";
+    motor_source_file << "samples=" << n_motor << "\n";
+    motor_source_file << "joints=" << available_joint_pairs.size() << "\n";
+
+    for (const auto& [joint_name, idx] : available_joint_pairs) {
+      motor_joint_names_file << joint_name << "\n";
+    }
+
+    for (std::size_t i = 0; i < n_motor; ++i) {
+      motor_time_file << all_joint_motor_time_log[i] << "\n";
+
+      for (std::size_t j = 0; j < available_joint_pairs.size(); ++j) {
+        const auto& [joint_name, idx] = available_joint_pairs[j];
+        const auto& sample = all_joint_motor_log[joint_name][i];
+        motor_q_file << sample[0];
+        motor_dq_file << sample[1];
+        motor_ddq_file << sample[2];
+        motor_tau_est_file << sample[3];
+        if (j + 1 < available_joint_pairs.size()) {
+          motor_q_file << " ";
+          motor_dq_file << " ";
+          motor_ddq_file << " ";
+          motor_tau_est_file << " ";
+        }
+      }
+
+      motor_q_file << "\n";
+      motor_dq_file << "\n";
+      motor_ddq_file << "\n";
+      motor_tau_est_file << "\n";
+    }
+  } else {
+    motor_source_file << "source=sdk_low_state\n";
+    motor_source_file << "samples=0\n";
+    motor_source_file << "joints=0\n";
+    motor_source_file << "note=no lowstate motor samples captured in this run\n";
+  }
+
+}
 
 template <typename T>
 class DataBuffer {
@@ -95,7 +295,7 @@ class DataBuffer {
   std::shared_mutex mutex;
 };
 
-const int G1_NUM_MOTOR = 27;
+const int G1_NUM_MOTOR = 29;
 struct ImuState {
   std::array<float, 4> quaternion = {};
   std::array<float, 3> rpy = {};
@@ -112,6 +312,8 @@ struct MotorCommand {
 struct MotorState {
   std::array<float, G1_NUM_MOTOR> q = {};
   std::array<float, G1_NUM_MOTOR> dq = {};
+  std::array<float, G1_NUM_MOTOR> ddq = {};
+  std::array<float, G1_NUM_MOTOR> tau_est = {};
 };
 
 
@@ -121,7 +323,8 @@ std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 500,      // legs dx
   400,                   // waist
   300, 300, 300, 300,  200, 200, 200,  // arms sx
-  300, 300, 300, 300,  200, 200, 200   // arms dx
+  300, 300, 300, 300,  200, 200, 200,  // arms dx
+  200, 200                              // right wrist pitch/yaw (29-dof)
 };
 
 // std::array<float, G1_NUM_MOTOR> Kp = {
@@ -138,7 +341,8 @@ std::array<float, G1_NUM_MOTOR> Kd{
   10, 10, 10, 10, 10, 10,     // legs dx
   10,             // waist
   10, 10, 10, 10, 10, 10, 10,  // arms sx
-  10, 10, 10, 10, 10, 10, 10   // arms dx
+  10, 10, 10, 10, 10, 10, 10,  // arms dx
+  10, 10                        // right wrist pitch/yaw (29-dof)
 };
 
 //assign at each value of kd twice the square root of the corresponding kp value
@@ -193,6 +397,24 @@ std::map<std::string, int> joint_name_to_index = {
   {"right_wrist_yaw_joint", 28}      // NOTE INVALID for g1 23dof
 };
 
+std::vector<std::pair<std::string, int>> getValidJointNameIndexPairs() {
+  std::vector<std::pair<std::string, int>> valid_joint_pairs;
+  valid_joint_pairs.reserve(joint_name_to_index.size());
+
+  for (const auto& [joint_name, idx] : joint_name_to_index) {
+    if (idx >= 0 && idx < G1_NUM_MOTOR) {
+      valid_joint_pairs.emplace_back(joint_name, idx);
+    }
+  }
+
+  std::sort(valid_joint_pairs.begin(), valid_joint_pairs.end(),
+            [](const auto& a, const auto& b) {
+              return a.second < b.second;
+            });
+
+  return valid_joint_pairs;
+}
+
 inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
   uint32_t xbit = 0;
   uint32_t data = 0;
@@ -216,6 +438,7 @@ inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
 };
 
 MotorState motor_state_data;
+bool has_lowstate_data = false;
 void LowStateHandler(const void* msg){
   LowState_ low_state = *(const LowState_*)msg;
   uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
@@ -231,12 +454,17 @@ void LowStateHandler(const void* msg){
     else if (i < 13) {
       motor_state_data.q[i] = low_state.motor_state()[i].q();
       motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+      motor_state_data.ddq[i] = low_state.motor_state()[i].ddq();
+      motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
     }
     else if (i > 14) {
       motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
       motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
+      motor_state_data.ddq[i - 2] = low_state.motor_state()[i].ddq();
+      motor_state_data.tau_est[i - 2] = low_state.motor_state()[i].tau_est();
     }
   }
+  has_lowstate_data = true;
 
   // update gamepad
   memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
@@ -323,6 +551,7 @@ void signalHandler(int signum) {
   if(user_input == "y" || user_input == "Y" || user_input == "yes" || user_input == "Yes" || user_input == "YES"){
     std::cout << "Saving logs..." << std::endl;
     walking_manager.saveLogs();
+    saveEstimateForceLogs();
     std::cout << "Logs saved." << std::endl;
 
     if(useRobot){
@@ -414,6 +643,8 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
     const char* name = mj_id2name(m, mjOBJ_JOINT, i);
     robot_state.joint_state[name].pos = d->qpos[m->jnt_qposadr[i]];
     robot_state.joint_state[name].vel = d->qvel[m->jnt_dofadr[i]];
+    robot_state.joint_state[name].acc = d->qacc[m->jnt_dofadr[i]];
+    robot_state.joint_state[name].eff = d->qfrc_actuator[m->jnt_dofadr[i]];
   }
 
   static double force[6];
@@ -446,6 +677,19 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 int main(const int argc, const char* argv[]) {
 
   std::string netInterface;
+  std::string sdkInterface;
+  bool enable_external_left_force_test = false;
+  double external_left_fx_newton = 0.0;
+  double external_left_fy_newton = 0.0;
+  double external_left_fz_newton = 0.0;
+  bool enable_external_right_force_test = false;
+  double external_right_fx_newton = 0.0;
+  double external_right_fy_newton = 0.0;
+  double external_right_fz_newton = 0.0;
+  double external_force_start_sec = 5.0;
+  double external_force_duration_sec = 2.0;
+  double external_force_ramp_sec = 0.2;
+  bool use_mujoco_step = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -455,8 +699,59 @@ int main(const int argc, const char* argv[]) {
         useRobot = true;
         useSim = true;
         netInterface = argv[++i];
+    } else if (a == "--sdk-interface" && i + 1 < argc) {
+      sdkInterface = argv[++i];
+    } else if (a == "--external-left-fz" && i + 1 < argc) {
+      enable_external_left_force_test = true;
+      external_left_fz_newton = std::atof(argv[++i]);
+    } else if (a == "--external-left-fx" && i + 1 < argc) {
+      enable_external_left_force_test = true;
+      external_left_fx_newton = std::atof(argv[++i]);
+    } else if (a == "--external-left-fy" && i + 1 < argc) {
+      enable_external_left_force_test = true;
+      external_left_fy_newton = std::atof(argv[++i]);
+    } else if (a == "--external-right-fz" && i + 1 < argc) {
+      enable_external_right_force_test = true;
+      external_right_fz_newton = std::atof(argv[++i]);
+    } else if (a == "--external-right-fx" && i + 1 < argc) {
+      enable_external_right_force_test = true;
+      external_right_fx_newton = std::atof(argv[++i]);
+    } else if (a == "--external-right-fy" && i + 1 < argc) {
+      enable_external_right_force_test = true;
+      external_right_fy_newton = std::atof(argv[++i]);
+    } else if (a == "--external-force-start" && i + 1 < argc) {
+      external_force_start_sec = std::atof(argv[++i]);
+    } else if (a == "--external-force-duration" && i + 1 < argc) {
+      external_force_duration_sec = std::atof(argv[++i]);
+    } else if (a == "--external-force-ramp" && i + 1 < argc) {
+      external_force_ramp_sec = std::atof(argv[++i]);
+    } else if (a == "--use-mujoco-step") {
+      use_mujoco_step = true;
+    } else if (a == "--help" || a == "-h") {
+      std::cout << "Usage:\n"
+            << "  --sim\n"
+            << "  --robot <network_interface>\n"
+        << "  --sdk-interface <network_interface>\n"
+            << "Optional external-force test params:\n"
+            << "  --external-left-fz <newton>\n"
+            << "  --external-left-fx <newton>\n"
+            << "  --external-left-fy <newton>\n"
+            << "  --external-right-fz <newton>\n"
+            << "  --external-right-fx <newton>\n"
+            << "  --external-right-fy <newton>\n"
+            << "  --external-force-start <sec>\n"
+            << "  --external-force-duration <sec>\n"
+            << "  --external-force-ramp <sec>\n"
+            << "Other:\n"
+            << "  --use-mujoco-step\n";
+      return 0;
     }
   }
+
+    if ((enable_external_left_force_test || enable_external_right_force_test) && !useSim) {
+    std::cerr << "External-force test requires simulation mode (--sim)." << std::endl;
+    return -1;
+    }
 
   if(!useRobot && !useSim) {
     std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
@@ -573,6 +868,32 @@ int main(const int argc, const char* argv[]) {
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
   
   walking_manager.init(robot_state, armatures);
+  estimate_force.initialize(walking_manager.getRobotModel());
+  const int left_wrist_body_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
+  const int right_wrist_body_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_wrist_yaw_link");
+  if (enable_external_left_force_test) {
+    std::cout << "External MuJoCo force test enabled on left wrist: F = ["
+              << external_left_fx_newton << ", "
+              << external_left_fy_newton << ", "
+              << external_left_fz_newton << "] N" << std::endl;
+    if (left_wrist_body_id < 0) {
+      std::cout << "Warning: left_wrist_yaw_link body not found, external force will be ignored." << std::endl;
+    }
+  }
+  if (enable_external_right_force_test) {
+    std::cout << "External MuJoCo force test enabled on right wrist: F = ["
+              << external_right_fx_newton << ", "
+              << external_right_fy_newton << ", "
+              << external_right_fz_newton << "] N" << std::endl;
+    if (right_wrist_body_id < 0) {
+      std::cout << "Warning: right_wrist_yaw_link body not found, external force will be ignored." << std::endl;
+    }
+  }
+  if (enable_external_left_force_test || enable_external_right_force_test) {
+    std::cout << "External force window: start=" << external_force_start_sec
+              << " s, duration=" << external_force_duration_sec << " s" << std::endl;
+    std::cout << "External force ramp: " << external_force_ramp_sec << " s" << std::endl;
+  }
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -582,6 +903,7 @@ int main(const int argc, const char* argv[]) {
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
   ChannelSubscriberPtr<IMUState_> imutorso_subscriber;
   std::shared_ptr<MotionSwitcherClient> msc;
+  bool sdk_lowstate_stream_enabled = false;
 
   if(useRobot) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
@@ -609,10 +931,25 @@ int main(const int argc, const char* argv[]) {
     lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
-    
+    sdk_lowstate_stream_enabled = true;
+  } else {
+    if (!sdkInterface.empty()) {
+      std::cout << "[INFO] Running in simulation mode with SDK interface: " << sdkInterface << std::endl;
+      ChannelFactory::Instance()->Init(0, sdkInterface);
+      lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
+      lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
+      imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
+      imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
+      sdk_lowstate_stream_enabled = true;
+    } else {
+      std::cout << "[INFO] Running in simulation-only mode without SDK interface: "
+                << "pass --sdk-interface <iface> to capture LowState tau_est logs." << std::endl;
+    }
   }
 
   auto next_tick = std::chrono::steady_clock::now();
+
+
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
@@ -623,16 +960,18 @@ int main(const int argc, const char* argv[]) {
       auto start_sleep = std::chrono::steady_clock::now();
 
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      MotorState measured_motor_state;
+      bool has_measured_motor_state = false;
 
-      // if userobot is true, update the robot state from the real robot
-      if (useRobot) {
+      // If SDK lowstate is available, use it for measured joint states/torques.
+      if (sdk_lowstate_stream_enabled) {
 
-        if (gamepad_.Y.pressed) {
+        if (useRobot && gamepad_.Y.pressed) {
           std::cout << "[GAMEPAD] Y pressed -> Deactivating motors..." << std::endl;
           signalHandler(SIGINT);
         }
 
-        if (gamepad_.X.on_press && isEKFactive) {
+        if (useRobot && gamepad_.X.on_press && isEKFactive) {
           isCoMLoopClosed = !isCoMLoopClosed;
           // isTotalBodyLoopClosed = !isTotalBodyLoopClosed;
           startTimeCoMCL = 1000 * mj_data_ptr->time;
@@ -643,12 +982,12 @@ int main(const int argc, const char* argv[]) {
             std::cout << "[GAMEPAD] X pressed -> Closed loop deactivated." << std::endl;
         }
 
-        if (gamepad_.B.on_press) {
+        if (useRobot && gamepad_.B.on_press) {
           switchWalkingState = true;
           std::cout << "[GAMEPAD] B pressed -> Walking state switched." << std::endl;
         }
 
-        if (gamepad_.A.on_press) {
+        if (useRobot && gamepad_.A.on_press) {
           if(oneTimepress){
             std::cout << "[GAMEPAD] A pressed -> Starting IMU calibration routine..." << std::endl;
             isIMUcalibrating = true;
@@ -681,6 +1020,8 @@ int main(const int argc, const char* argv[]) {
           actual_output[3 + i] = motor_state_data.q[i];
           actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
         }
+        measured_motor_state = motor_state_data;
+        has_measured_motor_state = has_lowstate_data;
         actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
         actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
         actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
@@ -694,8 +1035,71 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.accelerometer[2]
         );
 
-        // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
+      } else {
+        actual_output.head<3>() = labrob::rotVecFromQuaternion(robot_state.orientation);
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          const int qpos_adr = mj_model_ptr->jnt_qposadr[joint_id];
+          const int dof_adr = mj_model_ptr->jnt_dofadr[joint_id];
+          actual_output[3 + i] = mj_data_ptr->qpos[qpos_adr];
+          actual_output[3 + mj_model_ptr->nu + i + 3] = mj_data_ptr->qvel[dof_adr];
+
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            continue;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            continue;
+          }
+
+          measured_motor_state.q[idx] = static_cast<float>(mj_data_ptr->qpos[qpos_adr]);
+          measured_motor_state.dq[idx] = static_cast<float>(mj_data_ptr->qvel[dof_adr]);
+          measured_motor_state.ddq[idx] = static_cast<float>(mj_data_ptr->qacc[dof_adr]);
+          measured_motor_state.tau_est[idx] = static_cast<float>(
+              mj_data_ptr->qfrc_actuator[dof_adr]
+              + mj_data_ptr->qfrc_constraint[dof_adr]
+              +
+              mj_data_ptr->qfrc_passive[dof_adr]
+          );
+        }
+
+        has_measured_motor_state = true;
+        motor_state_data = measured_motor_state;
+        actual_output[3 + mj_model_ptr->nu] = robot_state.angular_velocity.x();
+        actual_output[3 + mj_model_ptr->nu + 1] = robot_state.angular_velocity.y();
+        actual_output[3 + mj_model_ptr->nu + 2] = robot_state.angular_velocity.z();
+        imu_accelerometer = Eigen::Vector3d::Zero();
       }
+
+      if (has_measured_motor_state) {
+        all_joint_motor_time_log.push_back(mj_data_ptr->time);
+        auto append_joint_from_motor = [&](const char* joint_name, std::vector<std::array<float, 4>>& log) {
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            return;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            return;
+          }
+
+          log.push_back({
+            measured_motor_state.q[idx],
+            measured_motor_state.dq[idx],
+            measured_motor_state.ddq[idx],
+            measured_motor_state.tau_est[idx]
+          });
+        };
+
+        for (const auto& [joint_name, idx] : joint_name_to_index) {
+          auto& log = all_joint_motor_log[joint_name];
+          append_joint_from_motor(joint_name.c_str(), log);
+        }
+      }
+
+      // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
       // Update walking manager:
       labrob::JointCommand joint_command;
       // #pragma omp parallel sections num_threads(2)
@@ -709,6 +1113,149 @@ int main(const int argc, const char* argv[]) {
       //   }
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
+
+      if (has_measured_motor_state) {
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            continue;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            continue;
+          }
+          robot_state.joint_state[joint_name].eff = measured_motor_state.tau_est[idx];
+        }
+      }
+
+        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+
+        const double force_window_start = external_force_start_sec;
+        const double force_window_end = external_force_start_sec + external_force_duration_sec;
+        const bool external_force_active =
+          (mj_data_ptr->time >= force_window_start) &&
+          (mj_data_ptr->time <= force_window_end);
+
+        double external_force_scale = 0.0;
+        if (external_force_active) {
+          if (external_force_ramp_sec > 0.0) {
+            const double elapsed = mj_data_ptr->time - force_window_start;
+            const double remaining = force_window_end - mj_data_ptr->time;
+            const double ramp_up = std::min(1.0, elapsed / external_force_ramp_sec);
+            const double ramp_down = std::min(1.0, remaining / external_force_ramp_sec);
+            external_force_scale = std::min(ramp_up, ramp_down);
+          } else {
+            external_force_scale = 1.0;
+          }
+        }
+
+        if (external_force_active &&
+          ((enable_external_left_force_test && left_wrist_body_id >= 0) ||
+           (enable_external_right_force_test && right_wrist_body_id >= 0))) {
+        mjtNum torque_world[3] = {0.0, 0.0, 0.0};
+
+        if (enable_external_left_force_test && left_wrist_body_id >= 0) {
+          mjtNum force_world_left[3] = {
+            static_cast<mjtNum>(external_left_fx_newton * external_force_scale),
+            static_cast<mjtNum>(external_left_fy_newton * external_force_scale),
+            static_cast<mjtNum>(external_left_fz_newton * external_force_scale)
+          };
+          mjtNum point_world_left[3] = {
+            mj_data_ptr->xpos[3 * left_wrist_body_id + 0],
+            mj_data_ptr->xpos[3 * left_wrist_body_id + 1],
+            mj_data_ptr->xpos[3 * left_wrist_body_id + 2]
+          };
+          mj_applyFT(mj_model_ptr, mj_data_ptr, force_world_left, torque_world, point_world_left, left_wrist_body_id, mj_data_ptr->qfrc_applied);
+        }
+
+        if (enable_external_right_force_test && right_wrist_body_id >= 0) {
+          mjtNum force_world_right[3] = {
+            static_cast<mjtNum>(external_right_fx_newton * external_force_scale),
+            static_cast<mjtNum>(external_right_fy_newton * external_force_scale),
+            static_cast<mjtNum>(external_right_fz_newton * external_force_scale)
+          };
+          mjtNum point_world_right[3] = {
+            mj_data_ptr->xpos[3 * right_wrist_body_id + 0],
+            mj_data_ptr->xpos[3 * right_wrist_body_id + 1],
+            mj_data_ptr->xpos[3 * right_wrist_body_id + 2]
+          };
+          mj_applyFT(mj_model_ptr, mj_data_ptr, force_world_right, torque_world, point_world_right, right_wrist_body_id, mj_data_ptr->qfrc_applied);
+        }
+      }
+
+      mjtNum left_force_point_world[3] = {0.0, 0.0, 0.0};
+      mjtNum left_force_world[3] = {0.0, 0.0, 0.0};
+      bool left_force_enabled = false;
+      if (enable_external_left_force_test && left_wrist_body_id >= 0 && external_force_active) {
+        left_force_point_world[0] = mj_data_ptr->xpos[3 * left_wrist_body_id + 0];
+        left_force_point_world[1] = mj_data_ptr->xpos[3 * left_wrist_body_id + 1];
+        left_force_point_world[2] = mj_data_ptr->xpos[3 * left_wrist_body_id + 2];
+        left_force_world[0] = static_cast<mjtNum>(external_left_fx_newton * external_force_scale);
+        left_force_world[1] = static_cast<mjtNum>(external_left_fy_newton * external_force_scale);
+        left_force_world[2] = static_cast<mjtNum>(external_left_fz_newton * external_force_scale);
+        left_force_enabled = true;
+      }
+
+      mjtNum right_force_point_world[3] = {0.0, 0.0, 0.0};
+      mjtNum right_force_world[3] = {0.0, 0.0, 0.0};
+      bool right_force_enabled = false;
+      if (enable_external_right_force_test && right_wrist_body_id >= 0 && external_force_active) {
+        right_force_point_world[0] = mj_data_ptr->xpos[3 * right_wrist_body_id + 0];
+        right_force_point_world[1] = mj_data_ptr->xpos[3 * right_wrist_body_id + 1];
+        right_force_point_world[2] = mj_data_ptr->xpos[3 * right_wrist_body_id + 2];
+        right_force_world[0] = static_cast<mjtNum>(external_right_fx_newton * external_force_scale);
+        right_force_world[1] = static_cast<mjtNum>(external_right_fy_newton * external_force_scale);
+        right_force_world[2] = static_cast<mjtNum>(external_right_fz_newton * external_force_scale);
+        right_force_enabled = true;
+      }
+
+      mujoco_ui.setExternalWristForces(
+          left_force_point_world,
+          left_force_world,
+          left_force_enabled,
+          right_force_point_world,
+          right_force_world,
+          right_force_enabled
+      );
+
+      estimate_force.update(robot_state);
+      left_wrist_wrench_log.push_back(estimate_force.getLeftWristWrench());
+      right_wrist_wrench_log.push_back(estimate_force.getRightWristWrench());
+      left_wrist_wrench_filtered_log.push_back(estimate_force.getLeftWristWrenchFiltered());
+      right_wrist_wrench_filtered_log.push_back(estimate_force.getRightWristWrenchFiltered());
+
+      Eigen::Vector3d left_force_gt = Eigen::Vector3d::Zero();
+      Eigen::Vector3d right_force_gt = Eigen::Vector3d::Zero();
+      if (external_force_active) {
+        if (enable_external_left_force_test && left_wrist_body_id >= 0) {
+          left_force_gt.x() = external_left_fx_newton * external_force_scale;
+          left_force_gt.y() = external_left_fy_newton * external_force_scale;
+          left_force_gt.z() = external_left_fz_newton * external_force_scale;
+        }
+        if (enable_external_right_force_test && right_wrist_body_id >= 0) {
+          right_force_gt.x() = external_right_fx_newton * external_force_scale;
+          right_force_gt.y() = external_right_fy_newton * external_force_scale;
+          right_force_gt.z() = external_right_fz_newton * external_force_scale;
+        }
+      }
+      wrist_force_time_log.push_back(mj_data_ptr->time);
+      left_wrist_force_gt_log.push_back(left_force_gt);
+      right_wrist_force_gt_log.push_back(right_force_gt);
+        left_wrist_force_point_log.emplace_back(
+          left_force_point_world[0],
+          left_force_point_world[1],
+          left_force_point_world[2]
+        );
+        right_wrist_force_point_log.emplace_back(
+          right_force_point_world[0],
+          right_force_point_world[1],
+          right_force_point_world[2]
+        );
+        left_wrist_force_enabled_log.push_back(left_force_enabled ? 1 : 0);
+        right_wrist_force_enabled_log.push_back(right_force_enabled ? 1 : 0);
+
 
       if (false){
         auto start_integration = std::chrono::steady_clock::now();
@@ -730,6 +1277,7 @@ int main(const int argc, const char* argv[]) {
 
       }else{
         auto start_integration = std::chrono::steady_clock::now();
+
         robot_state = walking_manager.getNewRobotState(robot_state);
         // update mujoco state with robot_state
         mj_data_ptr->qpos[0] = robot_state.position.x();
@@ -753,25 +1301,26 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
+      }
 
-        // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+      for (int i = 0; i < mj_model_ptr->nu; ++i) {
+        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        mj_data_ptr->ctrl[i] = joint_command[joint_name];
+        //Run Dynamics Mujoco:
+        mj_step(mj_model_ptr, mj_data_ptr);
 
-        mj_data_ptr->time += 0.002;
-
-        auto end_integration = std::chrono::steady_clock::now();
-        auto integration_duration = end_integration - start_integration;
-        if(integration_duration > std::chrono::milliseconds(1))
-          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
+        // auto end_integration = std::chrono::steady_clock::now();
+        // auto integration_duration = end_integration - start_integration;
+        // if(integration_duration > std::chrono::milliseconds(1))
+        //   std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
 
       }
 
       if (useRobot) {
 
         MotorCommand motor_command;
+        const int num_controlled_joints = std::min(G1_NUM_MOTOR, mj_model_ptr->nu);
       
         // Impostazioni di base
         motor_command.tau_ff.fill(0.0f);
@@ -780,7 +1329,7 @@ int main(const int argc, const char* argv[]) {
 
         // impose kp and kd to increase linearly with time
         if (mj_data_ptr->time < 5.0f) {
-          for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          for (int i = 0; i < num_controlled_joints; ++i) {
             int joint_id = mj_model_ptr->actuator_trnid[i * 2];
             std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
             motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
@@ -818,7 +1367,7 @@ int main(const int argc, const char* argv[]) {
         dds_low_command.mode_pr() = static_cast<uint8_t>(Mode::PR);
         dds_low_command.mode_machine() = mode_machine_;
       
-        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+        for (int i = 0; i < num_controlled_joints; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id)); 
           int robot_idx = joint_name_to_index[joint_name];

@@ -1844,6 +1844,11 @@ WalkingManager::get_controller_frequency() const {
   return controller_frequency_;
 }
 
+const pinocchio::Model&
+WalkingManager::getRobotModel() const {
+    return robot_model;
+}
+
 Eigen::MatrixXd
 WalkingManager::pseudoinverse(const Eigen::MatrixXd& J, double damp) const {
   auto J_T = J.transpose();

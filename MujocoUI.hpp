@@ -31,6 +31,24 @@ class MujocoUI {
     }
   }
 
+  void setExternalWristForces(
+      const mjtNum left_point_world[3],
+      const mjtNum left_force_world[3],
+      bool left_enabled,
+      const mjtNum right_point_world[3],
+      const mjtNum right_force_world[3],
+      bool right_enabled
+  ) {
+    for (int i = 0; i < 3; ++i) {
+      left_force_point_world_[i] = left_point_world[i];
+      left_force_world_[i] = left_force_world[i];
+      right_force_point_world_[i] = right_point_world[i];
+      right_force_world_[i] = right_force_world[i];
+    }
+    left_force_enabled_ = left_enabled;
+    right_force_enabled_ = right_enabled;
+  }
+
   void render() {
     // get framebuffer viewport
     mjrRect viewport = {0, 0, 0, 0};
@@ -38,6 +56,46 @@ class MujocoUI {
 
     // update scene and render
     mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
+
+    const auto add_force_arrow = [this](
+        const mjtNum force_point_world[3],
+        const mjtNum force_world[3],
+        const float rgba[4]
+    ) {
+      const mjtNum force_norm = mju_norm3(force_world);
+      if (force_norm <= 1e-9 || scn_.ngeom >= scn_.maxgeom) {
+        return;
+      }
+
+      mjvGeom* geom = scn_.geoms + scn_.ngeom;
+      mjv_initGeom(
+          geom,
+          mjGEOM_ARROW,
+          nullptr,
+          nullptr,
+          nullptr,
+          rgba
+      );
+
+        const mjtNum force_visual_scale = 0.05;
+      mjtNum arrow_end[3] = {
+          force_point_world[0] + force_visual_scale * force_world[0],
+          force_point_world[1] + force_visual_scale * force_world[1],
+          force_point_world[2] + force_visual_scale * force_world[2]
+      };
+        mjv_connector(geom, mjGEOM_ARROW, 0.03, force_point_world, arrow_end);
+      scn_.ngeom += 1;
+    };
+
+    static const float left_rgba[4] = {0.1f, 0.6f, 1.0f, 1.0f};
+    static const float right_rgba[4] = {1.0f, 0.4f, 0.1f, 1.0f};
+    if (left_force_enabled_) {
+      add_force_arrow(left_force_point_world_, left_force_world_, left_rgba);
+    }
+    if (right_force_enabled_) {
+      add_force_arrow(right_force_point_world_, right_force_world_, right_rgba);
+    }
+
     mjr_render(viewport, &scn_, &con_);
 
     // swap OpenGL buffers (blocking call due to v-sync)
@@ -142,6 +200,12 @@ class MujocoUI {
     mujoco_ui.button_right_ = false;
     mujoco_ui.lastx_ = 0.0;
     mujoco_ui.lasty_ = 0.0;
+    mju_zero3(mujoco_ui.left_force_point_world_);
+    mju_zero3(mujoco_ui.left_force_world_);
+    mju_zero3(mujoco_ui.right_force_point_world_);
+    mju_zero3(mujoco_ui.right_force_world_);
+    mujoco_ui.left_force_enabled_ = false;
+    mujoco_ui.right_force_enabled_ = false;
 
     // init GLFW, create window, make OpenGL context current, request v-sync
     glfwInit();
@@ -163,7 +227,7 @@ class MujocoUI {
     cam_.distance = 4.0;
 
     // create scene and context
-    mjv_makeScene(model_ptr_, &scn_, 1000);
+    mjv_makeScene(model_ptr_, &scn_, 5000);
     mjr_makeContext(model_ptr_, &con_, mjFONTSCALE_100);
 
     // install GLFW mouse callbacks
@@ -212,6 +276,13 @@ class MujocoUI {
   bool button_right_;
   double lastx_;
   double lasty_;
+
+  mjtNum left_force_point_world_[3];
+  mjtNum left_force_world_[3];
+  mjtNum right_force_point_world_[3];
+  mjtNum right_force_world_[3];
+  bool left_force_enabled_;
+  bool right_force_enabled_;
 
 };
 

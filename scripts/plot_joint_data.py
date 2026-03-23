@@ -7,6 +7,35 @@ import matplotlib.cm as cm
 from scipy.spatial.transform import Rotation as R
 import os
 
+
+def ensure_2d(data: np.ndarray, expected_cols: int) -> np.ndarray:
+    arr = np.asarray(data)
+    if arr.ndim == 0:
+        return arr.reshape(1, 1)
+    if arr.ndim == 1:
+        if expected_cols == 1:
+            return arr.reshape(-1, 1)
+        return arr.reshape(1, -1)
+    return arr
+
+
+def is_nonempty_file(path: str) -> bool:
+    return os.path.exists(path) and os.path.getsize(path) > 0
+
+
+def load_optional_matrix(path: str):
+    if not os.path.exists(path):
+        return None
+    if os.path.getsize(path) == 0:
+        return None
+    try:
+        data = np.loadtxt(path)
+    except (ValueError, OSError):
+        return None
+    if np.size(data) == 0:
+        return None
+    return np.atleast_2d(data)
+
 if __name__ == '__main__':
     #request input from terminal
     number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
@@ -17,7 +46,6 @@ if __name__ == '__main__':
     
     joint_names = open(folder + '/joint_names.txt').readlines()
     input_torque: np.ndarray = np.loadtxt(folder +'/input_torque.txt')
-
     sim_com_position =  np.loadtxt(folder + '/sim_com_position.txt')
     sim_com_velocity =  np.loadtxt(folder + '/sim_com_velocity.txt')
     sim_zmp_position =  np.loadtxt(folder + '/sim_zmp_position.txt')
@@ -55,6 +83,89 @@ if __name__ == '__main__':
 
     estimated_force_lsole = np.loadtxt(folder + '/estimated_force_lsole.txt')
     estimated_force_rsole = np.loadtxt(folder + '/estimated_force_rsole.txt')
+    has_wrist_force_logs = (
+        os.path.exists(folder + '/estimated_force_left_wrist.txt') and
+        os.path.exists(folder + '/estimated_force_right_wrist.txt') and
+        os.path.exists(folder + '/estimated_force_left_wrist_filtered.txt') and
+        os.path.exists(folder + '/estimated_force_right_wrist_filtered.txt')
+    )
+    if has_wrist_force_logs:
+        estimated_force_left_wrist = np.loadtxt(folder + '/estimated_force_left_wrist.txt')
+        estimated_force_right_wrist = np.loadtxt(folder + '/estimated_force_right_wrist.txt')
+        estimated_force_left_wrist_filtered = np.loadtxt(folder + '/estimated_force_left_wrist_filtered.txt')
+        estimated_force_right_wrist_filtered = np.loadtxt(folder + '/estimated_force_right_wrist_filtered.txt')
+
+    applied_external_force_file = folder + '/applied_external_wrist_force.txt'
+    has_applied_wrist_force_logs = os.path.exists(applied_external_force_file)
+    if has_applied_wrist_force_logs:
+        applied_wrist_force = np.loadtxt(applied_external_force_file, skiprows=1)
+        applied_wrist_force = np.atleast_2d(applied_wrist_force)
+
+    all_joint_motor_names_file = folder + '/all_joint_motor_names.txt'
+    all_joint_motor_time_file = folder + '/all_joint_motor_time.txt'
+    all_joint_motor_q_file = folder + '/all_joint_motor_q.txt'
+    all_joint_motor_dq_file = folder + '/all_joint_motor_dq.txt'
+    all_joint_motor_ddq_file = folder + '/all_joint_motor_ddq.txt'
+    all_joint_motor_tau_est_file = folder + '/all_joint_motor_tau_est.txt'
+    has_all_joint_motor_logs = (
+        os.path.exists(all_joint_motor_names_file) and
+        os.path.exists(all_joint_motor_time_file) and
+        os.path.exists(all_joint_motor_q_file) and
+        os.path.exists(all_joint_motor_dq_file) and
+        os.path.exists(all_joint_motor_ddq_file) and
+        os.path.exists(all_joint_motor_tau_est_file)
+    )
+    motor_plot_joint_count = 0
+    motor_plot_sample_count = 0
+    if has_all_joint_motor_logs:
+        all_joint_motor_names = [line.strip() for line in open(all_joint_motor_names_file).readlines() if line.strip()]
+        n_motor_joints = len(all_joint_motor_names)
+        motor_files_have_data = (
+            n_motor_joints > 0 and
+            is_nonempty_file(all_joint_motor_time_file) and
+            is_nonempty_file(all_joint_motor_q_file) and
+            is_nonempty_file(all_joint_motor_dq_file) and
+            is_nonempty_file(all_joint_motor_ddq_file) and
+            is_nonempty_file(all_joint_motor_tau_est_file)
+        )
+
+        if not motor_files_have_data:
+            has_all_joint_motor_logs = False
+            print('[INFO] all_joint_motor_* logs are present but empty/incomplete, skip motor-state plots.')
+        else:
+            all_joint_motor_time = np.atleast_1d(np.loadtxt(all_joint_motor_time_file))
+
+            all_joint_motor_q = ensure_2d(np.loadtxt(all_joint_motor_q_file), n_motor_joints)
+            all_joint_motor_dq = ensure_2d(np.loadtxt(all_joint_motor_dq_file), n_motor_joints)
+            all_joint_motor_ddq = ensure_2d(np.loadtxt(all_joint_motor_ddq_file), n_motor_joints)
+            all_joint_motor_tau_est = ensure_2d(np.loadtxt(all_joint_motor_tau_est_file), n_motor_joints)
+
+            num_motor_samples = min(
+                all_joint_motor_time.shape[0],
+                all_joint_motor_q.shape[0],
+                all_joint_motor_dq.shape[0],
+                all_joint_motor_ddq.shape[0],
+                all_joint_motor_tau_est.shape[0],
+            )
+            motor_plot_joint_count = min(
+                n_motor_joints,
+                all_joint_motor_q.shape[1],
+                all_joint_motor_dq.shape[1],
+                all_joint_motor_ddq.shape[1],
+                all_joint_motor_tau_est.shape[1],
+            )
+            motor_plot_sample_count = num_motor_samples
+
+            if num_motor_samples <= 0 or motor_plot_joint_count <= 0:
+                has_all_joint_motor_logs = False
+                print('[INFO] all_joint_motor_* logs have zero valid samples/columns, skip motor-state plots.')
+            else:
+                all_joint_motor_time = all_joint_motor_time[:num_motor_samples]
+                all_joint_motor_q = all_joint_motor_q[:num_motor_samples, :motor_plot_joint_count]
+                all_joint_motor_dq = all_joint_motor_dq[:num_motor_samples, :motor_plot_joint_count]
+                all_joint_motor_ddq = all_joint_motor_ddq[:num_motor_samples, :motor_plot_joint_count]
+                all_joint_motor_tau_est = all_joint_motor_tau_est[:num_motor_samples, :motor_plot_joint_count]
+                all_joint_motor_names = all_joint_motor_names[:motor_plot_joint_count]
 
     ekf_base_position = np.loadtxt(folder + '/ekf_base_position.txt')
     ekf_base_velocity = np.loadtxt(folder + '/ekf_base_velocity.txt')
@@ -125,6 +236,13 @@ if __name__ == '__main__':
 
     estimated_force_lsole = estimated_force_lsole[:num_samples, :]
     estimated_force_rsole = estimated_force_rsole[:num_samples, :]
+    if has_wrist_force_logs:
+        estimated_force_left_wrist = estimated_force_left_wrist[:num_samples, :]
+        estimated_force_right_wrist = estimated_force_right_wrist[:num_samples, :]
+        estimated_force_left_wrist_filtered = estimated_force_left_wrist_filtered[:num_samples, :]
+        estimated_force_right_wrist_filtered = estimated_force_right_wrist_filtered[:num_samples, :]
+    if has_applied_wrist_force_logs:
+        applied_wrist_force = applied_wrist_force[:num_samples, :]
     
     ekf_base_position = ekf_base_position[:num_samples, :]
     ekf_base_velocity = ekf_base_velocity[:num_samples, :]
@@ -143,7 +261,6 @@ if __name__ == '__main__':
     measured_imu_orientation = measured_imu_orientation[:num_samples, :]
     measured_imu_angular_velocity = measured_imu_angular_velocity[:num_samples, :]
     measured_imu_accelerometer = measured_imu_accelerometer[:num_samples, :]
-
     execution_time_ekf = execution_time_ekf[:num_samples]
     execution_time_kf = execution_time_kf[:num_samples]
     execution_time_mpc = execution_time_mpc[:num_samples]
@@ -180,6 +297,8 @@ if __name__ == '__main__':
         os.makedirs('images/forces_torques')
     if not os.path.exists('images/forces_torques/joints'):
         os.makedirs('images/forces_torques/joints')
+    if not os.path.exists('images/motor_states'):
+        os.makedirs('images/motor_states')
     if not os.path.exists('images/soles'):
         os.makedirs('images/soles')
 
@@ -235,7 +354,95 @@ if __name__ == '__main__':
     fig.savefig("images/forces_torques/estimated_force_right_sole.png")
     plt.close(fig)
 
+    if has_wrist_force_logs:
+        fig, ax = plt.subplots()
+        ax.plot(t, estimated_force_left_wrist[:, 0], label='Left Wrist Fx', color='blue')
+        ax.plot(t, estimated_force_left_wrist[:, 1], label='Left Wrist Fy', color='orange')
+        ax.plot(t, estimated_force_left_wrist[:, 2], label='Left Wrist Fz', color='green')
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 0], '--', label='Left Wrist Fx Filtered', color='blue')
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 1], '--', label='Left Wrist Fy Filtered', color='orange')
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 2], '--', label='Left Wrist Fz Filtered', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Estimated Force [N]')
+        ax.set_title('Estimated Forces on Left Wrist')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/forces_torques/estimated_force_left_wrist.png")
+        plt.close(fig)
 
+        fig, ax = plt.subplots()
+        ax.plot(t, estimated_force_right_wrist[:, 0], label='Right Wrist Fx', color='blue')
+        ax.plot(t, estimated_force_right_wrist[:, 1], label='Right Wrist Fy', color='orange')
+        ax.plot(t, estimated_force_right_wrist[:, 2], label='Right Wrist Fz', color='green')
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 0], '--', label='Right Wrist Fx Filtered', color='blue')
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 1], '--', label='Right Wrist Fy Filtered', color='orange')
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 2], '--', label='Right Wrist Fz Filtered', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Estimated Force [N]')
+        ax.set_title('Estimated Forces on Right Wrist')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/forces_torques/estimated_force_right_wrist.png")
+        plt.close(fig)
+
+    if has_applied_wrist_force_logs:
+        applied_t = applied_wrist_force[:, 0]
+
+        fig, ax = plt.subplots()
+        ax.plot(applied_t, applied_wrist_force[:, 5], label='Applied Left Wrist Fx', color='tab:blue')
+        ax.plot(applied_t, applied_wrist_force[:, 6], label='Applied Left Wrist Fy', color='tab:orange')
+        ax.plot(applied_t, applied_wrist_force[:, 7], label='Applied Left Wrist Fz', color='tab:green')
+        ax.plot(applied_t, applied_wrist_force[:, 12], '--', label='Applied Right Wrist Fx', color='tab:blue')
+        ax.plot(applied_t, applied_wrist_force[:, 13], '--', label='Applied Right Wrist Fy', color='tab:orange')
+        ax.plot(applied_t, applied_wrist_force[:, 14], '--', label='Applied Right Wrist Fz', color='tab:green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Applied Force [N]')
+        ax.set_title('Applied External Wrist Forces')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/applied_external_wrist_force.png')
+        plt.close(fig)
+
+        fig, ax = plt.subplots()
+        ax.plot(applied_t, applied_wrist_force[:, 1], label='Left Enabled', color='tab:purple')
+        ax.plot(applied_t, applied_wrist_force[:, 8], label='Right Enabled', color='tab:brown')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Enabled Flag')
+        ax.set_title('External Wrist Force Enable Flags')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/applied_external_wrist_force_enable.png')
+        plt.close(fig)
+
+    if has_all_joint_motor_logs and motor_plot_joint_count > 0 and motor_plot_sample_count > 0:
+        for i, joint_name in enumerate(all_joint_motor_names):
+            fig, axs = plt.subplots(4, 1, figsize=(10, 8), sharex=True)
+
+            axs[0].plot(all_joint_motor_time, all_joint_motor_q[:, i], color='tab:blue')
+            axs[0].set_ylabel('q [rad]')
+            axs[0].grid(True)
+            axs[0].set_title(f'Motor State - {joint_name}')
+
+            axs[1].plot(all_joint_motor_time, all_joint_motor_dq[:, i], color='tab:orange')
+            axs[1].set_ylabel('dq [rad/s]')
+            axs[1].grid(True)
+
+            axs[2].plot(all_joint_motor_time, all_joint_motor_ddq[:, i], color='tab:green')
+            axs[2].set_ylabel('ddq [rad/s²]')
+            axs[2].grid(True)
+
+            axs[3].plot(all_joint_motor_time, all_joint_motor_tau_est[:, i], color='tab:red')
+            axs[3].set_ylabel('tau_est [Nm]')
+            axs[3].set_xlabel('Time [s]')
+            axs[3].grid(True)
+
+            fig.tight_layout()
+            fig.savefig(f'images/motor_states/{joint_name}_motor_state.png')
+            plt.close(fig)
 
     #################################
     #  COM AND ZMP PLOTS

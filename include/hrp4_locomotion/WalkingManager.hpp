@@ -47,6 +47,7 @@ class WalkingManager {
   );
 
   int64_t get_controller_frequency() const;
+  const pinocchio::Model& getRobotModel() const;
 
  protected:
   pinocchio::Model robot_model;
