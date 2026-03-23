@@ -1073,32 +1073,6 @@ int main(const int argc, const char* argv[]) {
         imu_accelerometer = Eigen::Vector3d::Zero();
       }
 
-      if (has_measured_motor_state) {
-        all_joint_motor_time_log.push_back(mj_data_ptr->time);
-        auto append_joint_from_motor = [&](const char* joint_name, std::vector<std::array<float, 4>>& log) {
-          auto it = joint_name_to_index.find(joint_name);
-          if (it == joint_name_to_index.end()) {
-            return;
-          }
-          const int idx = it->second;
-          if (idx < 0 || idx >= G1_NUM_MOTOR) {
-            return;
-          }
-
-          log.push_back({
-            measured_motor_state.q[idx],
-            measured_motor_state.dq[idx],
-            measured_motor_state.ddq[idx],
-            measured_motor_state.tau_est[idx]
-          });
-        };
-
-        for (const auto& [joint_name, idx] : joint_name_to_index) {
-          auto& log = all_joint_motor_log[joint_name];
-          append_joint_from_motor(joint_name.c_str(), log);
-        }
-      }
-
       // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
       // Update walking manager:
       labrob::JointCommand joint_command;
@@ -1315,6 +1289,61 @@ int main(const int argc, const char* argv[]) {
         // if(integration_duration > std::chrono::milliseconds(1))
         //   std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
 
+      }
+
+      if (!sdk_lowstate_stream_enabled) {
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            continue;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            continue;
+          }
+
+          const int qpos_adr = mj_model_ptr->jnt_qposadr[joint_id];
+          const int dof_adr = mj_model_ptr->jnt_dofadr[joint_id];
+          measured_motor_state.q[idx] = static_cast<float>(mj_data_ptr->qpos[qpos_adr]);
+          measured_motor_state.dq[idx] = static_cast<float>(mj_data_ptr->qvel[dof_adr]);
+          measured_motor_state.ddq[idx] = static_cast<float>(mj_data_ptr->qacc[dof_adr]);
+          measured_motor_state.tau_est[idx] = static_cast<float>(
+              //mj_data_ptr->qfrc_actuator[dof_adr] //关节力矩，随控制输入变化
+              mj_data_ptr->qfrc_applied[dof_adr] //外力力矩投影变化
+              //mj_data_ptr->qfrc_constraint[dof_adr] //约束力矩，通常在有接触时非零
+              //mj_data_ptr->qfrc_passive[dof_adr] //被动力矩，通常与速度相关，如摩擦力矩
+          );
+        }
+        has_measured_motor_state = true;
+        motor_state_data = measured_motor_state;
+      }
+
+      if (has_measured_motor_state) {
+        all_joint_motor_time_log.push_back(mj_data_ptr->time);
+        auto append_joint_from_motor = [&](const char* joint_name, std::vector<std::array<float, 4>>& log) {
+          auto it = joint_name_to_index.find(joint_name);
+          if (it == joint_name_to_index.end()) {
+            return;
+          }
+          const int idx = it->second;
+          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+            return;
+          }
+
+          log.push_back({
+            measured_motor_state.q[idx],
+            measured_motor_state.dq[idx],
+            measured_motor_state.ddq[idx],
+            measured_motor_state.tau_est[idx]
+          });
+        };
+
+        for (const auto& [joint_name, idx] : joint_name_to_index) {
+          auto& log = all_joint_motor_log[joint_name];
+          append_joint_from_motor(joint_name.c_str(), log);
+        }
       }
 
       if (useRobot) {
