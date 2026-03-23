@@ -104,17 +104,18 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 1) NOMINAL PREDICTION
   // =====================
 
-  Eigen::Matrix3d C = q_.toRotationMatrix().transpose();
+  Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix().transpose();
 
   Eigen::Vector3d acc = R_base_imu * acc_meas - bf_;
 
   omega_ = R_base_imu * gyro_meas - bw_;
-  omega_world = C.transpose() * omega_;
+  omega_world = C_world_to_base * omega_;
 
-  Eigen::Vector3d a_world = C.transpose() * acc;
-  
+  Eigen::Vector3d a_world = C_world_to_base * acc;
+
   // a_world.setZero();
   // omega_.setZero();
+  // omega_world.setZero();
 
   std::cout << "acc meas " << acc_meas.transpose() << std::endl;
   std::cout << "acc " << acc.transpose() << std::endl;
@@ -124,7 +125,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
-  q_ = (expMap(dt_ * omega_) * q_).normalized();
+  q_ = (q_ * expMap(dt_ * omega_)).normalized();
 
   std::cout << "Predicted position: " << r_.transpose() << std::endl;
   std::cout << "Predicted velocity: " << v_.transpose() << std::endl;
@@ -139,31 +140,23 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ibf=15, ibw=18;
 
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
-  F.block<3,3>(iv, iphi) = -C.transpose() * skew(acc) * dt_;
-  F.block<3,3>(iv, ibf)  = -C.transpose() * dt_;
+  F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc) * dt_;
+  F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
   F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
   F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
   Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, NX - 3); // no noise for base position dynamics
-  Lc.block<3,3>(iv, 0) = -C.transpose();
+  Lc.block<3,3>(iv, 0) = -C_world_to_base.transpose();
   Lc.block<3,3>(iphi, 3) = -Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ipL, 6) = C.transpose();
-  Lc.block<3,3>(ipR, 9) = C.transpose();
+  Lc.block<3,3>(ipL, 6) = C_world_to_base.transpose();
+  Lc.block<3,3>(ipR, 9) = C_world_to_base.transpose();
   Lc.block<3,3>(ibf, 12) = Eigen::Matrix3d::Identity();
   Lc.block<3,3>(ibw, 15) = Eigen::Matrix3d::Identity();
-  // Lc.block<3,3>(ithetaL, 18) = Eigen::Matrix3d::Identity();
-  // Lc.block<3,3>(ithetaR, 21) = Eigen::Matrix3d::Identity();
 
-  Qc_.block<3,3>(6, 6) = 1e-5 * Eigen::Matrix3d::Identity();
-  Qc_.block<3,3>(9, 9) = 1e-5 * Eigen::Matrix3d::Identity();
-  if (!left_contact){
-    Qc_.block<3,3>(6, 6) = 1 * Eigen::Matrix3d::Identity();
-  } else if (!right_contact){
-    Qc_.block<3,3>(9,9) = 1 * Eigen::Matrix3d::Identity();
-  }
-
-  Eigen::MatrixXd Q_ = F * Lc * Qc_ * Lc.transpose() * F.transpose() * dt_;
-  // Q_ = Qc_;
+  Eigen::Matrix<double,18,18> Qc_step = Qc_;
+  if (!left_contact)  Qc_step.block<3,3>(6,6)  = 1.0 * Eigen::Matrix3d::Identity();
+  if (!right_contact) Qc_step.block<3,3>(9,9)  = 1.0 * Eigen::Matrix3d::Identity();
+  Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
   
   P_ = F * P_ * F.transpose() + Q_;
 
@@ -174,11 +167,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
   pos.head(3) << r_;
   pos.segment(3, 4) << q_.coeffs();
-  // pos[6] = 1;
   pos.tail(qj.size()) = qj;
 
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
-  vel.head(3) << v_;
+  vel.head(3) << C_world_to_base * v_;
   vel.segment(3, 3) << omega_;
   vel.tail(qj_dot.size()) = qj_dot;
 
@@ -186,7 +178,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pinocchio::forwardKinematics(model_, data_, pos, vel);
   pinocchio::framesForwardKinematics(model_, data_, pos);
   pinocchio::updateFramePlacements(model_, data_);
-  // pinocchio::jacobianCenterOfMass(model_, data_, pos);
   pinocchio::computeJointJacobians(model_, data_, pos);
 
   pinocchio::SE3 T_wb = pinocchio::SE3::Identity();
@@ -210,22 +201,22 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
     Eigen::Vector3d s_p = T_bf.translation();
 
-    Eigen::Vector3d s_p_hat = C * (p - r_);
+    Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_);
 
     Eigen::MatrixXd J_foot = Eigen::MatrixXd::Zero(6, model_.nv);
     pinocchio::getFrameJacobian(
-      model_, 
-      data_, 
-      frameId, 
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, 
+      model_,
+      data_,
+      frameId,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
       J_foot
     );
 
     Eigen::VectorXd e_p = Eigen::VectorXd::Zero(4);
     e_p.head<3>() = s_p - s_p_hat;
-    e_p(3) = -p.z();
+    e_p(3) = 0.00586684 - p.z();
     Eigen::VectorXd e_foot = Eigen::VectorXd::Zero(3);
-    e_foot = - J_foot.topRows(3) * vel;
+    e_foot = - (v_ + C_world_to_base.transpose() * skew(omega_) * (p - r_) + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
 
 
     int old_rows = e_accum.rows();
@@ -236,16 +227,16 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.conservativeResize(old_rows + e_p.size() + e_foot.size(), NX);
     H_accum.block(old_rows, 0, e_p.size() + e_foot.size(), NX).setZero();
 
-    H_accum.block<3,3>(old_rows, ir)   = -C;
-    H_accum.block<3,3>(old_rows, iphi) = skew(C * (p - r_));
-    H_accum.block<3,3>(old_rows, ip)   = C;
+    H_accum.block<3,3>(old_rows, ir)   = -C_world_to_base;
+    H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_));
+    H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
     H_accum(old_rows + 3, ip + 2) = 1;
 
-    // H_accum.block<3,3>(old_rows+e_p.size(), iphi) = Eigen::Matrix3d::Identity();
-    // H_accum.block<3,3>(old_rows+e_p.size(), itheta) = - (q_ * z.inverse()).toRotationMatrix();
-    // H_accum.block<2,2>(old_rows + 7, itheta) = Eigen::Matrix2d::Identity();
-
-    H_accum.block<3,3>(old_rows + e_p.size(), iv) = J_foot.block<3,3>(0,0);
+    H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows + e_p.size(), ip) = C_world_to_base.transpose() * skew(omega_);
+    H_accum.block<3,3>(old_rows + e_p.size(), ir) = - C_world_to_base.transpose() * skew(omega_);
+    H_accum.block<3,3>(old_rows + e_p.size(), iphi) = - C_world_to_base.transpose() * skew(skew(omega_) * (p - r_)) - C_world_to_base.transpose() * skew(J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    // H_accum.block<3,3>(old_rows + e_p.size(), ibw) = - skew(p - r_) * C_world_to_base.transpose();
   };
 
   Eigen::MatrixXd H(0, NX);
@@ -262,14 +253,13 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-5;
-  // R(3,3) = 1e-5; // high noise for foot
-  // R.block<3,3>(4,4) = Eigen::MatrixXd::Identity(3, 3) * 1e-7;
-  // R.block<3,3>(4+e.size()/2,4+e.size()/2) = Eigen::MatrixXd::Identity(3, 3) * 1e-7;
-  // R(3 + e.size()/2, 3 + e.size()/2) = 1e-5; //high noise for foot
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-8;
+  // R(3,3) = 1e8; // high noise for foot
+  // R.block<3,3>(0,0) = Eigen::MatrixXd::Identity(3, 3) * 1;
+  // R.block<3,3>(0+e.size()/2,0+e.size()/2) = Eigen::MatrixXd::Identity(3, 3) * 1;
+  // R(3 + e.size()/2, 3 + e.size()/2) = 1e8; //high noise for foot
 
-  Eigen::MatrixXd K =
-      P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
+  Eigen::MatrixXd K = P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
 
   Eigen::VectorXd dx = K * e;
 
@@ -280,329 +270,12 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   bf_ += dx.segment<3>(ibf);
   bw_ += dx.segment<3>(ibw);
 
-  q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
-  // zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
-  // zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();
+  q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   auto IKH = I - K * H;
   P_ = IKH * P_ * IKH.transpose() + K * R * K.transpose();
 }
-
-// void BaseEKF::filter(
-//     const Eigen::Vector3d& acc_meas,
-//     const Eigen::Vector3d& gyro_meas,
-//     const Eigen::VectorXd& qj,
-//     const Eigen::VectorXd& qj_dot,
-//     bool left_contact,
-//     bool right_contact)
-// {
-
-// //================================================
-// // 1) IMU PREPROCESS
-// //================================================
-
-
-// int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, iomega=21;
-
-// Eigen::Vector3d acc =
-//     R_base_imu * acc_meas;
-
-// Eigen::Vector3d omega_meas =
-//     R_base_imu * gyro_meas;
-
-// // base -> world
-// Eigen::Matrix3d R = q_.toRotationMatrix();
-
-// //================================================
-// // 2) NOMINAL PREDICTION
-// //================================================
-
-// Eigen::Vector3d a_world =
-//     R * acc + g_;
-
-// r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
-
-// v_ += dt_ * a_world;
-
-// q_ =
-// (expMap(dt_ * omega_) * q_).normalized();
-
-// //================================================
-// // 3) COVARIANCE PREDICTION
-// //================================================
-
-// Eigen::MatrixXd F =
-// Eigen::MatrixXd::Identity(NX,NX);
-
-// F.block<3,3>(ir,iv) =
-// Eigen::Matrix3d::Identity()*dt_;
-
-// F.block<3,3>(iv,iphi) =
-// - R * skew(acc) * dt_;
-
-// F.block<3,3>(iphi,iphi) =
-// Eigen::Matrix3d::Identity()
-// - skew(omega_)*dt_;
-
-// F.block<3,3>(iphi,iomega) =
-// Eigen::Matrix3d::Identity()*dt_;
-
-// // noise injection
-
-// Eigen::MatrixXd L =
-// Eigen::MatrixXd::Identity(NX,NX);
-
-// // continuous noise
-
-// Eigen::MatrixXd Qc =
-// Eigen::MatrixXd::Zero(NX,NX);
-
-// double sigma_acc = 0.5;
-// double sigma_gyro = 0.1;
-
-// Qc.block<3,3>(iv,iv) =
-// sigma_acc*Eigen::Matrix3d::Identity();
-
-// Qc.block<3,3>(iomega,iomega) =
-// sigma_gyro*Eigen::Matrix3d::Identity();
-
-// // swing feet
-
-// double stance = 1e-6;
-// double swing = 1e-1;
-
-// Qc.block<3,3>(ipL,ipL) =
-// (left_contact?stance:swing) *
-// Eigen::Matrix3d::Identity();
-
-// Qc.block<3,3>(ipR,ipR) =
-// (right_contact?stance:swing) *
-// Eigen::Matrix3d::Identity();
-
-// // discretization
-
-// Eigen::MatrixXd Q =
-// L*Qc*L.transpose()*dt_;
-
-// P_ =
-// F*P_*F.transpose() + Q;
-
-// //================================================
-// // 4) PINOCCHIO KINEMATICS
-// //================================================
-
-// Eigen::VectorXd q =
-// Eigen::VectorXd::Zero(model_.nq);
-
-// q.head<3>() = r_;
-
-// q.segment<4>(3) <<
-// q_.w(), q_.x(), q_.y(), q_.z();
-
-// q.tail(qj.size()) = qj;
-
-// Eigen::VectorXd v =
-// Eigen::VectorXd::Zero(model_.nv);
-
-// v.head<3>() = v_;
-
-// v.segment<3>(3) = omega_;
-
-// v.tail(qj_dot.size()) = qj_dot;
-
-// pinocchio::forwardKinematics(
-// model_,data_,q,v);
-
-// pinocchio::updateFramePlacements(
-// model_,data_);
-
-// //================================================
-// // 5) FOOT UPDATE
-// //================================================
-
-// Eigen::MatrixXd H(0,NX);
-// Eigen::VectorXd e(0);
-
-// auto processFoot =
-// [&](int frameId,
-// Eigen::Vector3d& p,
-// Eigen::Quaterniond& z,
-// int ip,
-// int itheta,
-// bool contact)
-// {
-
-// if(!contact)
-// return;
-
-// const auto& T_wf =
-// data_.oMf[frameId];
-
-// // predicted foot in base
-
-// Eigen::Vector3d s_hat =
-// R.transpose()*(p-r_);
-
-// Eigen::Quaterniond q_hat =
-// q_*z.inverse();
-
-// // measured
-
-// Eigen::Vector3d s =
-// R.transpose()*
-// (T_wf.translation()-r_);
-
-// Eigen::Quaterniond q_meas(
-// R.transpose()*T_wf.rotation());
-
-// // residual
-
-// Eigen::Vector3d ep =
-// s - s_hat;
-
-// Eigen::Vector3d ez =
-// logMap(q_meas*q_hat.inverse());
-
-// // foot velocity
-
-// Eigen::MatrixXd J(6,model_.nv);
-
-// pinocchio::getFrameJacobian(
-// model_,
-// data_,
-// frameId,
-// pinocchio::LOCAL_WORLD_ALIGNED,
-// J);
-
-// Eigen::Vector3d vfoot =
-// J.topRows(3)*v;
-
-// Eigen::Vector3d ev =
-// - vfoot;
-
-// // stack residual
-
-// int old = e.rows();
-
-// e.conservativeResize(
-// old+9);
-
-// e.segment<3>(old) = ep;
-
-// e.segment<3>(old+3) = ez;
-
-// e.segment<3>(old+6) = ev;
-
-// // Jacobian
-
-// H.conservativeResize(
-// old+9,NX);
-
-// H.block(old,0,9,NX).setZero();
-
-// H.block<3,3>(old,ir) =
-// - R.transpose();
-
-// H.block<3,3>(old,iphi) =
-// skew(s_hat);
-
-// H.block<3,3>(old,ip) =
-// R.transpose();
-
-// H.block<3,3>(old+3,iphi) =
-// Eigen::Matrix3d::Identity();
-
-// H.block<3,3>(old+3,itheta) =
-// -(q_*z.inverse()).toRotationMatrix();
-
-// H.block<3,3>(old+6,iv) =
-// J.block<3,3>(0,0);
-
-// H.block<3,3>(old+6,iomega) =
-// J.block<3,3>(0,3);
-
-// };
-
-// processFoot(
-// model_.getFrameId("left_foot_link"),
-// pL_,zL_,ipL,ithetaL,left_contact);
-
-// processFoot(
-// model_.getFrameId("right_foot_link"),
-// pR_,zR_,ipR,ithetaR,right_contact);
-
-// //================================================
-// // 6) GYRO UPDATE
-// //================================================
-
-// Eigen::Vector3d eomega =
-// omega_meas - omega_;
-
-// int old = e.rows();
-
-// e.conservativeResize(old+3);
-
-// e.segment<3>(old) = eomega;
-
-// H.conservativeResize(old+3,NX);
-
-// H.block(old,0,3,NX).setZero();
-
-// H.block<3,3>(old,iomega) =
-// Eigen::Matrix3d::Identity();
-
-// //================================================
-// // 7) EKF UPDATE
-// //================================================
-
-// if(e.size()==0)
-// return;
-
-// Eigen::MatrixXd Rm =
-// Eigen::MatrixXd::Identity(
-// e.size(),e.size())*1e-4;
-
-// Eigen::MatrixXd K =
-// P_*H.transpose()*
-// (H*P_*H.transpose()+Rm).inverse();
-
-// Eigen::VectorXd dx =
-// K*e;
-
-// // state update
-
-// r_ += dx.segment<3>(ir);
-
-// v_ += dx.segment<3>(iv);
-
-// pL_ += dx.segment<3>(ipL);
-
-// pR_ += dx.segment<3>(ipR);
-
-// omega_ += dx.segment<3>(iomega);
-
-// q_ =
-// (expMap(dx.segment<3>(iphi))*q_)
-// .normalized();
-
-// zL_ =
-// (expMap(dx.segment<3>(ithetaL))*zL_)
-// .normalized();
-
-// zR_ =
-// (expMap(dx.segment<3>(ithetaR))*zR_)
-// .normalized();
-
-// // covariance
-
-// Eigen::MatrixXd I =
-// Eigen::MatrixXd::Identity(NX,NX);
-
-// P_ =
-// (I-K*H)*P_;
-
-// }
 
 //////////////////////////
 // COM KALMAN FILTER

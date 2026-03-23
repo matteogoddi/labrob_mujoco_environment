@@ -950,7 +950,7 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+                //     fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
                 }
             }
             else{
