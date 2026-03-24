@@ -152,6 +152,9 @@ private:
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 
+  Eigen::Vector3d input_gyro = Eigen::Vector3d::Zero();
+  Eigen::Vector3d input_acc = Eigen::Vector3d::Zero();
+
   Eigen::MatrixXd Kalman_Gain; 
 
   // Logs

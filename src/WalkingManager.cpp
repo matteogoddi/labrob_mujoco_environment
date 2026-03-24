@@ -926,12 +926,16 @@ WalkingManager::update(
     Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
     q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
     if (t_msec_ == 2000){
-        base_ekf_ptr_->initialize(q);
+        //concatenate q.head(7) with q_filtered
+        Eigen::VectorXd input(njnt + 7);
+        input.head(7) = q.head(7);
+        input.tail(njnt) = q_filtered.head(njnt);
+        base_ekf_ptr_->initialize(input);
         std::cout << "INITIALIZATION" << std::endl;
     }
     if (t_msec_ >= 2000 && true){
-        base_ekf_ptr_->filter(measured_imu_accelerometer, 
-            measured_imu_angular_velocity, 
+        base_ekf_ptr_->filter(input_acc, 
+            input_gyro, 
             q_filtered.head(njnt),
             q_filtered.tail(njnt),
             whole_body_controller_ptr_->get_q_ddot().head(6),
@@ -939,6 +943,8 @@ WalkingManager::update(
             right_support_check
         );
     }
+    input_acc = measured_imu_accelerometer;
+    input_gyro = measured_imu_angular_velocity;
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -950,7 +956,7 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
-                //     fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
                 }
             }
             else{
