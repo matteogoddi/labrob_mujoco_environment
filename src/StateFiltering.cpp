@@ -105,11 +105,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
 
   Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix().transpose();
-
-  Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
-  pos.head(3) << r_;
-  pos.segment(3, 4) << q_.w(), q_.x(), q_.y(), q_.z();
-  pos.tail(qj.size()) = qj;
+  C_world_to_base = (Eigen::Matrix3d::Identity() + 2*q_.w()*skew(q_.vec()) + 2 * skew(q_.vec()) * skew(q_.vec())).transpose();
 
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
   vel.head(3) << v_;
@@ -174,12 +170,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 3) KINEMATICS
   // =====================
 
-  // data_ = pinocchio::Data(model_);
-  pinocchio::forwardKinematics(model_, data_, pos);
-  pinocchio::framesForwardKinematics(model_, data_, pos);
-  pinocchio::updateFramePlacements(model_, data_);
-  pinocchio::computeJointJacobians(model_, data_, pos);
-
   pinocchio::SE3 T_wb = data_.oMi[1];
 
   auto processFoot = [&](int frameId,
@@ -195,16 +185,17 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     const auto& T_wf = data_.oMf[frameId];
     pinocchio::SE3 T_bf = T_wb.inverse() * T_wf;
 
-    Eigen::Vector3d s_p = T_bf.translation();
+    Eigen::Vector3d s_p = T_wf.translation() - T_wb.translation();
 
-    Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
+    Eigen::Vector3d s_p_hat = (p - r_prec);
 
 
     std::cout << "Foot position error: " << (s_p - s_p_hat).transpose() << std::endl;
     std::cout << "Measured foot position: " << s_p.transpose() << std::endl;
     std::cout << "Estimated foot position: " << s_p_hat.transpose() << std::endl;
     std::cout << "Base position: " << r_prec.transpose() << std::endl;
-    std::cout << "Foot position: " << p.transpose() << std::endl;
+    std::cout << "Foot position: " << (p - T_wf.translation()).transpose() << std::endl;
+    std::cout << "Foot position: " << (r_ - T_wb.translation()).transpose() << std::endl;
 
     Eigen::MatrixXd J_foot = Eigen::MatrixXd::Zero(6, model_.nv);
     pinocchio::getFrameJacobian(
@@ -274,6 +265,16 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // bw_ += dx.segment<3>(ibw);
 
   q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
+
+  Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
+  pos.head(3) << r_;
+  pos.segment(3, 4) << q_.x(), q_.y(), q_.z(), q_.w();
+  pos.tail(qj.size()) = qj;
+
+  pinocchio::forwardKinematics(model_, data_, pos);
+  pinocchio::framesForwardKinematics(model_, data_, pos);
+  pinocchio::updateFramePlacements(model_, data_);
+  pinocchio::computeJointJacobians(model_, data_, pos);
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   auto IKH = I - K * H;

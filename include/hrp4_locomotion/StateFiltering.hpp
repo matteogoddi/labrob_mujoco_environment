@@ -108,11 +108,11 @@ public:
       pinocchio::forwardKinematics(model_, data_, q_init_);
       pinocchio::framesForwardKinematics(model_, data_, q_init_);
       pinocchio::updateFramePlacements(model_, data_);
+      pinocchio::computeJointJacobians(model_, data_, q_init_);
 
       const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
       pL_ = bMf_l.translation();
       std::cout << "Left foot position init: " << pL_.transpose() << std::endl;
-      std::cout << "Base position init: " << r_.transpose() << std::endl;
       // zL_ = Eigen::Quaterniond(bMf_l.rotation());
       
       const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
