@@ -105,7 +105,18 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
 
   Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix().transpose();
-  C_world_to_base = (Eigen::Matrix3d::Identity() + 2*q_.w()*skew(q_.vec()) + 2 * skew(q_.vec()) * skew(q_.vec())).transpose();
+  // C_world_to_base = (Eigen::Matrix3d::Identity() + 2*q_.w()*skew(q_.vec()) + 2 * skew(q_.vec()) * skew(q_.vec())).transpose();
+
+
+  Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
+  pos.head(3) << r_;
+  pos.segment(3, 4) << q_.x(), q_.y(), q_.z(), q_.w();
+  pos.tail(qj.size()) = qj;
+
+  pinocchio::forwardKinematics(model_, data_, pos);
+  pinocchio::framesForwardKinematics(model_, data_, pos);
+  pinocchio::updateFramePlacements(model_, data_);
+  pinocchio::computeJointJacobians(model_, data_, pos);
 
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
   vel.head(3) << v_;
@@ -129,6 +140,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   std::cout << "omega " << omega_.transpose() << std::endl;
 
   Eigen::Vector3d r_prec = r_;
+  Eigen::Vector3d v_prec = v_;
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
   q_ = (q_ * expMap(dt_ * omega_)).normalized();
@@ -185,14 +197,11 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     const auto& T_wf = data_.oMf[frameId];
     pinocchio::SE3 T_bf = T_wb.inverse() * T_wf;
 
-    Eigen::Vector3d s_p = T_wf.translation() - T_wb.translation();
+    Eigen::Vector3d s_p = T_bf.translation();
 
-    Eigen::Vector3d s_p_hat = (p - r_prec);
-
+    Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
     std::cout << "Foot position error: " << (s_p - s_p_hat).transpose() << std::endl;
-    std::cout << "Measured foot position: " << s_p.transpose() << std::endl;
-    std::cout << "Estimated foot position: " << s_p_hat.transpose() << std::endl;
     std::cout << "Base position: " << r_prec.transpose() << std::endl;
     std::cout << "Foot position: " << (p - T_wf.translation()).transpose() << std::endl;
     std::cout << "Foot position: " << (r_ - T_wb.translation()).transpose() << std::endl;
@@ -206,11 +215,11 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
       J_foot
     );
 
-    Eigen::VectorXd e_p = Eigen::VectorXd::Zero(4);
+    Eigen::VectorXd e_p = Eigen::VectorXd::Zero(3);
     e_p.head<3>() = s_p - s_p_hat;
-    e_p(3) = 0.00586684 - p.z();
+    // e_p(3) = 0.00586684 - p.z();
     Eigen::VectorXd e_foot = Eigen::VectorXd::Zero(3);
-    e_foot = - (v_ + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    e_foot = -(C_world_to_base * v_prec + skew(omega_) * s_p + J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
 
 
     int old_rows = e_accum.rows();
@@ -224,12 +233,12 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows, ir)   = -C_world_to_base;
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
-    H_accum(old_rows + 3, ip + 2) = 1;
+    // H_accum(old_rows + 3, ip + 2) = 1;
 
-    H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows + e_p.size(), iv) = C_world_to_base;
     // H_accum.block<3,3>(old_rows + e_p.size(), ip) = C_world_to_base.transpose() * skew(omega_);
     // H_accum.block<3,3>(old_rows + e_p.size(), ir) = - C_world_to_base.transpose() * skew(omega_);
-    H_accum.block<3,3>(old_rows + e_p.size(), iphi) = - C_world_to_base.transpose() * skew(skew(omega_) * s_p) - C_world_to_base.transpose() * skew(J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base * v_prec);
     // H_accum.block<3,3>(old_rows + e_p.size(), ibw) = - skew(p - r_) * C_world_to_base.transpose();
   };
 
@@ -247,7 +256,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-5;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-8;
   // R(3,3) = 1e8; // high noise for foot
   // R.block<3,3>(0,0) = Eigen::MatrixXd::Identity(3, 3) * 1;
   // R.block<3,3>(0+e.size()/2,0+e.size()/2) = Eigen::MatrixXd::Identity(3, 3) * 1;
@@ -265,16 +274,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // bw_ += dx.segment<3>(ibw);
 
   q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
-
-  Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
-  pos.head(3) << r_;
-  pos.segment(3, 4) << q_.x(), q_.y(), q_.z(), q_.w();
-  pos.tail(qj.size()) = qj;
-
-  pinocchio::forwardKinematics(model_, data_, pos);
-  pinocchio::framesForwardKinematics(model_, data_, pos);
-  pinocchio::updateFramePlacements(model_, data_);
-  pinocchio::computeJointJacobians(model_, data_, pos);
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   auto IKH = I - K * H;

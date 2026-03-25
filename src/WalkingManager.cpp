@@ -930,7 +930,7 @@ WalkingManager::update(
         Eigen::VectorXd input(njnt + 7);
         input.head(7) = q.head(7);
         input.tail(njnt) = q_filtered.head(njnt);
-        base_ekf_ptr_->initialize(input);
+        base_ekf_ptr_->initialize(input, T_lsole_sim.translation(), T_rsole_sim.translation());
         std::cout << "INITIALIZATION" << std::endl;
     }
     if (t_msec_ >= 2000 && true){
@@ -956,7 +956,7 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+                    fb_robot_state.angular_velocity = input_gyro;
                 }
             }
             else{

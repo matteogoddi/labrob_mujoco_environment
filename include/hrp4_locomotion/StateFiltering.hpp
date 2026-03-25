@@ -66,6 +66,7 @@ public:
     BaseEKF(const pinocchio::Model& model, Eigen::VectorXd& q_init, double dt):
       model_(model), q_init_(q_init), dt_(dt)
     {
+      data_ = pinocchio::Data(model_);
       P_.setIdentity();
       P_.block<3,3>(0,0) *= 1e-6;    // position
       P_.block<3,3>(3,3) *= 1e-3;    // velocity
@@ -77,8 +78,8 @@ public:
       
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(0,0) = 5 * I;     // accel noise
-      Qc_.block<3,3>(3,3) = 1 * I;     // gyro noise
+      Qc_.block<3,3>(0,0) = 0.05 * I;     // accel noise
+      Qc_.block<3,3>(3,3) = 0.01 * I;     // gyro noise
       Qc_.block<3,3>(6,6)  = 1e-5 * I;    // foot noise
       Qc_.block<3,3>(9,9) = 1e-5 * I;     // foot noise
       // Qc_.block<3,3>(12,12) = 1e-6 * I;   // accel bias
@@ -101,22 +102,23 @@ public:
     Eigen::Vector3d getBaseVelocity() const { return v_; }
     Eigen::Quaterniond getBaseOrientation() const { return q_; }
     Eigen::Vector3d getBaseOmega() const { return omega_world; }
-    void initialize(const Eigen::VectorXd& q_init) {
+    void initialize(const Eigen::VectorXd& q_init, 
+                    const Eigen::Vector3d& pL_init, 
+                    const Eigen::Vector3d& pR_init) {
       r_ << q_init[0], q_init[1], q_init[2];
       q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]);
-      data_ = pinocchio::Data(model_);
-      pinocchio::forwardKinematics(model_, data_, q_init_);
-      pinocchio::framesForwardKinematics(model_, data_, q_init_);
-      pinocchio::updateFramePlacements(model_, data_);
-      pinocchio::computeJointJacobians(model_, data_, q_init_);
+      
+      // pinocchio::forwardKinematics(model_, data_, q_init_);
+      // pinocchio::framesForwardKinematics(model_, data_, q_init_);
+      // pinocchio::updateFramePlacements(model_, data_);
+      // pinocchio::computeJointJacobians(model_, data_, q_init_);
 
-      const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
-      pL_ = bMf_l.translation();
-      std::cout << "Left foot position init: " << pL_.transpose() << std::endl;
+      // const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
+      pL_ = pL_init;
       // zL_ = Eigen::Quaterniond(bMf_l.rotation());
       
-      const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
-      pR_ = bMf_r.translation();
+      // const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
+      pR_ = pR_init;
       // zR_ = Eigen::Quaterniond(bMf_r.rotation());
 
       // define R_base_imu to rotate measurements from IMU frame to base frame
