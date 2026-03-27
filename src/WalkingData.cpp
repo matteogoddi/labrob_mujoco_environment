@@ -100,11 +100,17 @@ WalkingData::addSteps(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole
 ){
-    double swing_foot_trajectory_height = 0.00;//0.05
-    double step_length_x = 0.0;//0.1
+    double swing_foot_trajectory_height = 0.05;//0.05
+    double step_length_x = 0.1;//0.1
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     int n_steps = 0;//20
+
+    if (n_steps <= 0) {
+      // Keep the robot in standing mode without entering single-support phases.
+      // This avoids startup sway when the intent is "interactive standing".
+      return;
+    }
 
     double double_support_duration = 2500;//2500
     double single_support_duration = 1000;//1000
