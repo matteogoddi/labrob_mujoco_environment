@@ -106,8 +106,8 @@ WalkingData::addSteps(
     double step_rotation = 0.0;
     int n_steps = 0;//20
 
-    double double_support_duration = 10;//800
-    double single_support_duration = 10;//600
+    double double_support_duration = 2500;//2500
+    double single_support_duration = 1000;//1000
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),

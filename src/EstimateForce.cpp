@@ -52,7 +52,7 @@ EstimateForce::EstimateForce()
             right_wrench_bias_(Eigen::VectorXd::Zero(6)),
             bias_sample_count_(0),
             bias_sample_target_(500),
-            alpha_(0.1),
+            alpha_(0.01),
             damping_(1e-4) {
 }
 
@@ -209,15 +209,15 @@ EstimateForce::update(const labrob::RobotState& robot_state) {
     const Eigen::VectorXd left_wrench_raw = computeEstimatedWrench(J_left_arm, left_tau_res_);
     const Eigen::VectorXd right_wrench_raw = computeEstimatedWrench(J_right_arm, right_tau_res_);
 
-    if (bias_sample_count_ < bias_sample_target_) {
-        ++bias_sample_count_;
-        const double gain = 1.0 / static_cast<double>(bias_sample_count_);
-        left_wrench_bias_ += gain * (left_wrench_raw - left_wrench_bias_);
-        right_wrench_bias_ += gain * (right_wrench_raw - right_wrench_bias_);
-    }
+    // if (bias_sample_count_ < bias_sample_target_) {
+    //     ++bias_sample_count_;
+    //     const double gain = 1.0 / static_cast<double>(bias_sample_count_);
+    //     left_wrench_bias_ += gain * (left_wrench_raw - left_wrench_bias_);
+    //     right_wrench_bias_ += gain * (right_wrench_raw - right_wrench_bias_);
+    // }
 
-    left_wrench_ = left_wrench_raw - left_wrench_bias_;
-    right_wrench_ = right_wrench_raw - right_wrench_bias_;
+    left_wrench_ = left_wrench_bias_-left_wrench_raw;
+    right_wrench_ = right_wrench_bias_ - right_wrench_raw;
 
     left_wrench_filtered_ = alpha_ * left_wrench_ + (1.0 - alpha_) * left_wrench_filtered_;
     right_wrench_filtered_ = alpha_ * right_wrench_ + (1.0 - alpha_) * right_wrench_filtered_;

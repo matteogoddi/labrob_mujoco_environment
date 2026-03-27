@@ -107,6 +107,8 @@ if __name__ == '__main__':
     all_joint_motor_dq_file = folder + '/all_joint_motor_dq.txt'
     all_joint_motor_ddq_file = folder + '/all_joint_motor_ddq.txt'
     all_joint_motor_tau_est_file = folder + '/all_joint_motor_tau_est.txt'
+    all_joint_motor_tau_applied_file = folder + '/all_joint_motor_tau_applied.txt'
+    has_all_joint_motor_tau_applied = os.path.exists(all_joint_motor_tau_applied_file)
     has_all_joint_motor_logs = (
         os.path.exists(all_joint_motor_names_file) and
         os.path.exists(all_joint_motor_time_file) and
@@ -139,6 +141,10 @@ if __name__ == '__main__':
             all_joint_motor_dq = ensure_2d(np.loadtxt(all_joint_motor_dq_file), n_motor_joints)
             all_joint_motor_ddq = ensure_2d(np.loadtxt(all_joint_motor_ddq_file), n_motor_joints)
             all_joint_motor_tau_est = ensure_2d(np.loadtxt(all_joint_motor_tau_est_file), n_motor_joints)
+            if has_all_joint_motor_tau_applied and is_nonempty_file(all_joint_motor_tau_applied_file):
+                all_joint_motor_tau_applied = ensure_2d(np.loadtxt(all_joint_motor_tau_applied_file), n_motor_joints)
+            else:
+                has_all_joint_motor_tau_applied = False
 
             num_motor_samples = min(
                 all_joint_motor_time.shape[0],
@@ -147,6 +153,8 @@ if __name__ == '__main__':
                 all_joint_motor_ddq.shape[0],
                 all_joint_motor_tau_est.shape[0],
             )
+            if has_all_joint_motor_tau_applied:
+                num_motor_samples = min(num_motor_samples, all_joint_motor_tau_applied.shape[0])
             motor_plot_joint_count = min(
                 n_motor_joints,
                 all_joint_motor_q.shape[1],
@@ -154,6 +162,8 @@ if __name__ == '__main__':
                 all_joint_motor_ddq.shape[1],
                 all_joint_motor_tau_est.shape[1],
             )
+            if has_all_joint_motor_tau_applied:
+                motor_plot_joint_count = min(motor_plot_joint_count, all_joint_motor_tau_applied.shape[1])
             motor_plot_sample_count = num_motor_samples
 
             if num_motor_samples <= 0 or motor_plot_joint_count <= 0:
@@ -165,6 +175,8 @@ if __name__ == '__main__':
                 all_joint_motor_dq = all_joint_motor_dq[:num_motor_samples, :motor_plot_joint_count]
                 all_joint_motor_ddq = all_joint_motor_ddq[:num_motor_samples, :motor_plot_joint_count]
                 all_joint_motor_tau_est = all_joint_motor_tau_est[:num_motor_samples, :motor_plot_joint_count]
+                if has_all_joint_motor_tau_applied:
+                    all_joint_motor_tau_applied = all_joint_motor_tau_applied[:num_motor_samples, :motor_plot_joint_count]
                 all_joint_motor_names = all_joint_motor_names[:motor_plot_joint_count]
 
     ekf_base_position = np.loadtxt(folder + '/ekf_base_position.txt')
@@ -355,16 +367,20 @@ if __name__ == '__main__':
     plt.close(fig)
 
     if has_wrist_force_logs:
+        has_wrist_torque_logs = (
+            estimated_force_left_wrist.shape[1] >= 6 and
+            estimated_force_right_wrist.shape[1] >= 6 and
+            estimated_force_left_wrist_filtered.shape[1] >= 6 and
+            estimated_force_right_wrist_filtered.shape[1] >= 6
+        )
+
         fig, ax = plt.subplots()
         ax.plot(t, estimated_force_left_wrist[:, 0], label='Left Wrist Fx', color='blue')
         ax.plot(t, estimated_force_left_wrist[:, 1], label='Left Wrist Fy', color='orange')
         ax.plot(t, estimated_force_left_wrist[:, 2], label='Left Wrist Fz', color='green')
-        ax.plot(t, estimated_force_left_wrist_filtered[:, 0], '--', label='Left Wrist Fx Filtered', color='blue')
-        ax.plot(t, estimated_force_left_wrist_filtered[:, 1], '--', label='Left Wrist Fy Filtered', color='orange')
-        ax.plot(t, estimated_force_left_wrist_filtered[:, 2], '--', label='Left Wrist Fz Filtered', color='green')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Estimated Force [N]')
-        ax.set_title('Estimated Forces on Left Wrist')
+        ax.set_title('Estimated Forces on Left Wrist (Raw)')
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
@@ -372,31 +388,107 @@ if __name__ == '__main__':
         plt.close(fig)
 
         fig, ax = plt.subplots()
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 0], label='Left Wrist Fx Filtered', color='blue')
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 1], label='Left Wrist Fy Filtered', color='orange')
+        ax.plot(t, estimated_force_left_wrist_filtered[:, 2], label='Left Wrist Fz Filtered', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Estimated Force [N]')
+        ax.set_title('Estimated Forces on Left Wrist (Filtered)')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/forces_torques/estimated_force_left_wrist_filtered.png")
+        plt.close(fig)
+
+        fig, ax = plt.subplots()
         ax.plot(t, estimated_force_right_wrist[:, 0], label='Right Wrist Fx', color='blue')
         ax.plot(t, estimated_force_right_wrist[:, 1], label='Right Wrist Fy', color='orange')
         ax.plot(t, estimated_force_right_wrist[:, 2], label='Right Wrist Fz', color='green')
-        ax.plot(t, estimated_force_right_wrist_filtered[:, 0], '--', label='Right Wrist Fx Filtered', color='blue')
-        ax.plot(t, estimated_force_right_wrist_filtered[:, 1], '--', label='Right Wrist Fy Filtered', color='orange')
-        ax.plot(t, estimated_force_right_wrist_filtered[:, 2], '--', label='Right Wrist Fz Filtered', color='green')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Estimated Force [N]')
-        ax.set_title('Estimated Forces on Right Wrist')
+        ax.set_title('Estimated Forces on Right Wrist (Raw)')
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
         fig.savefig("images/forces_torques/estimated_force_right_wrist.png")
         plt.close(fig)
 
+        fig, ax = plt.subplots()
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 0], label='Right Wrist Fx Filtered', color='blue')
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 1], label='Right Wrist Fy Filtered', color='orange')
+        ax.plot(t, estimated_force_right_wrist_filtered[:, 2], label='Right Wrist Fz Filtered', color='green')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Estimated Force [N]')
+        ax.set_title('Estimated Forces on Right Wrist (Filtered)')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig("images/forces_torques/estimated_force_right_wrist_filtered.png")
+        plt.close(fig)
+
+        if has_wrist_torque_logs:
+            fig, ax = plt.subplots()
+            ax.plot(t, estimated_force_left_wrist[:, 3], label='Left Wrist Tx', color='blue')
+            ax.plot(t, estimated_force_left_wrist[:, 4], label='Left Wrist Ty', color='orange')
+            ax.plot(t, estimated_force_left_wrist[:, 5], label='Left Wrist Tz', color='green')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Estimated Torque [N*m]')
+            ax.set_title('Estimated Torques on Left Wrist (Raw)')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig("images/forces_torques/estimated_torque_left_wrist.png")
+            plt.close(fig)
+
+            fig, ax = plt.subplots()
+            ax.plot(t, estimated_force_left_wrist_filtered[:, 3], label='Left Wrist Tx Filtered', color='blue')
+            ax.plot(t, estimated_force_left_wrist_filtered[:, 4], label='Left Wrist Ty Filtered', color='orange')
+            ax.plot(t, estimated_force_left_wrist_filtered[:, 5], label='Left Wrist Tz Filtered', color='green')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Estimated Torque [N*m]')
+            ax.set_title('Estimated Torques on Left Wrist (Filtered)')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig("images/forces_torques/estimated_torque_left_wrist_filtered.png")
+            plt.close(fig)
+
+            fig, ax = plt.subplots()
+            ax.plot(t, estimated_force_right_wrist[:, 3], label='Right Wrist Tx', color='blue')
+            ax.plot(t, estimated_force_right_wrist[:, 4], label='Right Wrist Ty', color='orange')
+            ax.plot(t, estimated_force_right_wrist[:, 5], label='Right Wrist Tz', color='green')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Estimated Torque [N*m]')
+            ax.set_title('Estimated Torques on Right Wrist (Raw)')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig("images/forces_torques/estimated_torque_right_wrist.png")
+            plt.close(fig)
+
+            fig, ax = plt.subplots()
+            ax.plot(t, estimated_force_right_wrist_filtered[:, 3], label='Right Wrist Tx Filtered', color='blue')
+            ax.plot(t, estimated_force_right_wrist_filtered[:, 4], label='Right Wrist Ty Filtered', color='orange')
+            ax.plot(t, estimated_force_right_wrist_filtered[:, 5], label='Right Wrist Tz Filtered', color='green')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Estimated Torque [N*m]')
+            ax.set_title('Estimated Torques on Right Wrist (Filtered)')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig("images/forces_torques/estimated_torque_right_wrist_filtered.png")
+            plt.close(fig)
+
     if has_applied_wrist_force_logs:
-        applied_t = applied_wrist_force[:, 0]
+        applied_t = t[:applied_wrist_force.shape[0]]
 
         fig, ax = plt.subplots()
         ax.plot(applied_t, applied_wrist_force[:, 5], label='Applied Left Wrist Fx', color='tab:blue')
         ax.plot(applied_t, applied_wrist_force[:, 6], label='Applied Left Wrist Fy', color='tab:orange')
         ax.plot(applied_t, applied_wrist_force[:, 7], label='Applied Left Wrist Fz', color='tab:green')
-        ax.plot(applied_t, applied_wrist_force[:, 12], '--', label='Applied Right Wrist Fx', color='tab:blue')
-        ax.plot(applied_t, applied_wrist_force[:, 13], '--', label='Applied Right Wrist Fy', color='tab:orange')
-        ax.plot(applied_t, applied_wrist_force[:, 14], '--', label='Applied Right Wrist Fz', color='tab:green')
+        ax.plot(applied_t, applied_wrist_force[:, 15], '--', label='Applied Right Wrist Fx', color='tab:blue')
+        ax.plot(applied_t, applied_wrist_force[:, 16], '--', label='Applied Right Wrist Fy', color='tab:orange')
+        ax.plot(applied_t, applied_wrist_force[:, 17], '--', label='Applied Right Wrist Fz', color='tab:green')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Applied Force [N]')
         ax.set_title('Applied External Wrist Forces')
@@ -406,9 +498,26 @@ if __name__ == '__main__':
         fig.savefig('images/forces_torques/applied_external_wrist_force.png')
         plt.close(fig)
 
+        if applied_wrist_force.shape[1] >= 21:
+            fig, ax = plt.subplots()
+            ax.plot(applied_t, applied_wrist_force[:, 8], label='Applied Left Wrist Tx', color='tab:blue')
+            ax.plot(applied_t, applied_wrist_force[:, 9], label='Applied Left Wrist Ty', color='tab:orange')
+            ax.plot(applied_t, applied_wrist_force[:, 10], label='Applied Left Wrist Tz', color='tab:green')
+            ax.plot(applied_t, applied_wrist_force[:, 18], '--', label='Applied Right Wrist Tx', color='tab:blue')
+            ax.plot(applied_t, applied_wrist_force[:, 19], '--', label='Applied Right Wrist Ty', color='tab:orange')
+            ax.plot(applied_t, applied_wrist_force[:, 20], '--', label='Applied Right Wrist Tz', color='tab:green')
+            ax.set_xlabel('Time [s]')
+            ax.set_ylabel('Applied Torque [N*m]')
+            ax.set_title('Applied External Wrist Torques')
+            ax.grid(True)
+            ax.legend()
+            fig.tight_layout()
+            fig.savefig('images/forces_torques/applied_external_wrist_torque.png')
+            plt.close(fig)
+
         fig, ax = plt.subplots()
         ax.plot(applied_t, applied_wrist_force[:, 1], label='Left Enabled', color='tab:purple')
-        ax.plot(applied_t, applied_wrist_force[:, 8], label='Right Enabled', color='tab:brown')
+        ax.plot(applied_t, applied_wrist_force[:, 11], label='Right Enabled', color='tab:brown')
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Enabled Flag')
         ax.set_title('External Wrist Force Enable Flags')
@@ -419,26 +528,45 @@ if __name__ == '__main__':
         plt.close(fig)
 
     if has_all_joint_motor_logs and motor_plot_joint_count > 0 and motor_plot_sample_count > 0:
-        for i, joint_name in enumerate(all_joint_motor_names):
-            fig, axs = plt.subplots(4, 1, figsize=(10, 8), sharex=True)
+        motor_plot_len = min(
+            t.shape[0],
+            all_joint_motor_q.shape[0],
+            all_joint_motor_dq.shape[0],
+            all_joint_motor_ddq.shape[0],
+            all_joint_motor_tau_est.shape[0],
+        )
+        if has_all_joint_motor_tau_applied:
+            motor_plot_len = min(motor_plot_len, all_joint_motor_tau_applied.shape[0])
+        motor_t = t[:motor_plot_len]
 
-            axs[0].plot(all_joint_motor_time, all_joint_motor_q[:, i], color='tab:blue')
+        for i, joint_name in enumerate(all_joint_motor_names):
+            n_motor_subplots = 5 if has_all_joint_motor_tau_applied else 4
+            fig, axs = plt.subplots(n_motor_subplots, 1, figsize=(10, 10 if has_all_joint_motor_tau_applied else 8), sharex=True)
+
+            axs[0].plot(motor_t, all_joint_motor_q[:motor_plot_len, i], color='tab:blue')
             axs[0].set_ylabel('q [rad]')
             axs[0].grid(True)
             axs[0].set_title(f'Motor State - {joint_name}')
 
-            axs[1].plot(all_joint_motor_time, all_joint_motor_dq[:, i], color='tab:orange')
+            axs[1].plot(motor_t, all_joint_motor_dq[:motor_plot_len, i], color='tab:orange')
             axs[1].set_ylabel('dq [rad/s]')
             axs[1].grid(True)
 
-            axs[2].plot(all_joint_motor_time, all_joint_motor_ddq[:, i], color='tab:green')
+            axs[2].plot(motor_t, all_joint_motor_ddq[:motor_plot_len, i], color='tab:green')
             axs[2].set_ylabel('ddq [rad/s²]')
             axs[2].grid(True)
 
-            axs[3].plot(all_joint_motor_time, all_joint_motor_tau_est[:, i], color='tab:red')
+            axs[3].plot(motor_t, all_joint_motor_tau_est[:motor_plot_len, i], color='tab:red')
             axs[3].set_ylabel('tau_est [Nm]')
-            axs[3].set_xlabel('Time [s]')
             axs[3].grid(True)
+
+            if has_all_joint_motor_tau_applied:
+                axs[4].plot(motor_t, all_joint_motor_tau_applied[:motor_plot_len, i], color='tab:purple')
+                axs[4].set_ylabel('tau_appl [Nm]')
+                axs[4].grid(True)
+                axs[4].set_xlabel('Time [s]')
+            else:
+                axs[3].set_xlabel('Time [s]')
 
             fig.tight_layout()
             fig.savefig(f'images/motor_states/{joint_name}_motor_state.png')
@@ -1255,12 +1383,13 @@ if __name__ == '__main__':
     }
     for name, times in exec_times.items():
         fig, ax = plt.subplots()
-        ax.plot(times, label=f'{name} Execution Time', color='blue')
+        exec_t = t[:times.shape[0]]
+        ax.plot(exec_t, times, label=f'{name} Execution Time', color='blue')
         if name == 'Update':
             ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
-        ax.set_xlabel('Iteration')
+        ax.set_xlabel('Time [s]')
         ax.set_ylabel('Execution Time [microseconds]')
-        ax.set_title(f'{name} Execution Time per Iteration')
+        ax.set_title(f'{name} Execution Time')
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
@@ -1272,11 +1401,12 @@ if __name__ == '__main__':
     #plot the sum of each execution time
     total_execution_time = (execution_time_ekf + execution_time_kf + execution_time_mpc + execution_time_wbc)
     fig, ax = plt.subplots(figsize=(12, 8))
-    ax.plot(total_execution_time, label='Total Execution Time', color='blue')
+    total_exec_t = t[:total_execution_time.shape[0]]
+    ax.plot(total_exec_t, total_execution_time, label='Total Execution Time', color='blue')
     ax.axhline(y=2000, color='r', linestyle='--', label='2000 microseconds')
-    ax.set_xlabel('Iteration')
+    ax.set_xlabel('Time [s]')
     ax.set_ylabel('Total Execution Time [microseconds]')
-    ax.set_title('Total Execution Time per Iteration')
+    ax.set_title('Total Execution Time')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()

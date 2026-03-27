@@ -31,19 +31,23 @@ class MujocoUI {
     }
   }
 
-  void setExternalWristForces(
+  void setExternalWristWrenches(
       const mjtNum left_point_world[3],
       const mjtNum left_force_world[3],
+      const mjtNum left_torque_world[3],
       bool left_enabled,
       const mjtNum right_point_world[3],
       const mjtNum right_force_world[3],
+      const mjtNum right_torque_world[3],
       bool right_enabled
   ) {
     for (int i = 0; i < 3; ++i) {
       left_force_point_world_[i] = left_point_world[i];
       left_force_world_[i] = left_force_world[i];
+      left_torque_world_[i] = left_torque_world[i];
       right_force_point_world_[i] = right_point_world[i];
       right_force_world_[i] = right_force_world[i];
+      right_torque_world_[i] = right_torque_world[i];
     }
     left_force_enabled_ = left_enabled;
     right_force_enabled_ = right_enabled;
@@ -57,13 +61,15 @@ class MujocoUI {
     // update scene and render
     mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
 
-    const auto add_force_arrow = [this](
-        const mjtNum force_point_world[3],
-        const mjtNum force_world[3],
+    const auto add_vector_arrow = [this](
+        const mjtNum point_world[3],
+        const mjtNum vector_world[3],
+        const mjtNum vector_visual_scale,
+        const mjtNum arrow_radius,
         const float rgba[4]
     ) {
-      const mjtNum force_norm = mju_norm3(force_world);
-      if (force_norm <= 1e-9 || scn_.ngeom >= scn_.maxgeom) {
+      const mjtNum vector_norm = mju_norm3(vector_world);
+      if (vector_norm <= 1e-9 || scn_.ngeom >= scn_.maxgeom) {
         return;
       }
 
@@ -77,23 +83,26 @@ class MujocoUI {
           rgba
       );
 
-        const mjtNum force_visual_scale = 0.05;
       mjtNum arrow_end[3] = {
-          force_point_world[0] + force_visual_scale * force_world[0],
-          force_point_world[1] + force_visual_scale * force_world[1],
-          force_point_world[2] + force_visual_scale * force_world[2]
+          point_world[0] + vector_visual_scale * vector_world[0],
+          point_world[1] + vector_visual_scale * vector_world[1],
+          point_world[2] + vector_visual_scale * vector_world[2]
       };
-        mjv_connector(geom, mjGEOM_ARROW, 0.03, force_point_world, arrow_end);
+        mjv_connector(geom, mjGEOM_ARROW, arrow_radius, point_world, arrow_end);
       scn_.ngeom += 1;
     };
 
-    static const float left_rgba[4] = {0.1f, 0.6f, 1.0f, 1.0f};
-    static const float right_rgba[4] = {1.0f, 0.4f, 0.1f, 1.0f};
+    static const float left_force_rgba[4] = {0.1f, 0.6f, 1.0f, 1.0f};
+    static const float right_force_rgba[4] = {1.0f, 0.4f, 0.1f, 1.0f};
+    static const float left_torque_rgba[4] = {0.6f, 0.2f, 1.0f, 1.0f};
+    static const float right_torque_rgba[4] = {1.0f, 0.2f, 0.8f, 1.0f};
     if (left_force_enabled_) {
-      add_force_arrow(left_force_point_world_, left_force_world_, left_rgba);
+      add_vector_arrow(left_force_point_world_, left_force_world_, 0.05, 0.03, left_force_rgba);
+      add_vector_arrow(left_force_point_world_, left_torque_world_, 0.15, 0.02, left_torque_rgba);
     }
     if (right_force_enabled_) {
-      add_force_arrow(right_force_point_world_, right_force_world_, right_rgba);
+      add_vector_arrow(right_force_point_world_, right_force_world_, 0.05, 0.03, right_force_rgba);
+      add_vector_arrow(right_force_point_world_, right_torque_world_, 0.15, 0.02, right_torque_rgba);
     }
 
     mjr_render(viewport, &scn_, &con_);
@@ -202,8 +211,10 @@ class MujocoUI {
     mujoco_ui.lasty_ = 0.0;
     mju_zero3(mujoco_ui.left_force_point_world_);
     mju_zero3(mujoco_ui.left_force_world_);
+    mju_zero3(mujoco_ui.left_torque_world_);
     mju_zero3(mujoco_ui.right_force_point_world_);
     mju_zero3(mujoco_ui.right_force_world_);
+    mju_zero3(mujoco_ui.right_torque_world_);
     mujoco_ui.left_force_enabled_ = false;
     mujoco_ui.right_force_enabled_ = false;
 
@@ -279,8 +290,10 @@ class MujocoUI {
 
   mjtNum left_force_point_world_[3];
   mjtNum left_force_world_[3];
+  mjtNum left_torque_world_[3];
   mjtNum right_force_point_world_[3];
   mjtNum right_force_world_[3];
+  mjtNum right_torque_world_[3];
   bool left_force_enabled_;
   bool right_force_enabled_;
 
