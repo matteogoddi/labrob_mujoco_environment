@@ -131,6 +131,7 @@ class WalkingManager {
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
+  std::unique_ptr<labrob::RightInvariantEKF> ri_ekf_ptr_;
 
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 

@@ -392,17 +392,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // INIT KALMAN GAIN FOR EKF
 
     Kalman_Gain = Eigen::MatrixXd::Zero(2 * (njnt + 6), n_ekf_output);
-    // std::ifstream kalman_gain_file("../mean_kalman_gain.txt");
-    // if (kalman_gain_file.is_open()) {
-    //     for (int i = 0; i < Kalman_Gain.rows(); i++) {
-    //         for (int j = 0; j < Kalman_Gain.cols(); j++) {
-    //             kalman_gain_file >> Kalman_Gain(i, j);
-    //         }
-    //     }
-    //     kalman_gain_file.close();
-    // } else {
-    //     std::cerr << "Unable to open file mean_kalman_gain.txt";
-    // }
 
     // GET JACOBIANS FOR EKF OUTPUTS
 
@@ -440,6 +429,24 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     );
 
     residual_estimator_ptr_ = std::make_unique<ResidualEstimator>(robot_model, 1.0, armatures);
+
+    // std::unique_ptr<RightInvariantEKF> ri_ekf_ptr_;
+
+    // Inizializzazione (in init o costruttore del WalkingManager)
+    NoiseParams noise;
+    noise.gyro_noise    = 0.005;
+    noise.accel_noise   = 0.05;
+    noise.contact_noise = 0.01;
+    noise.gyro_bias_rw  = 0.0001;
+    noise.accel_bias_rw = 0.001;
+    noise.encoder_noise = 0.005;
+
+    std::array<RightInvariantEKF::FootConfig, 2> feet = {{
+        {"left_foot_link",  0},
+        {"right_foot_link", 1}
+    }};
+    ri_ekf_ptr_ = std::make_unique<RightInvariantEKF>(
+        robot_model, q_init, 0.001 * controller_timestep_msec_, feet, noise);
 
     return true;
 }
@@ -925,15 +932,23 @@ WalkingManager::update(
     auto start_ekf = std::chrono::high_resolution_clock::now();
     Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
     q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
-    if (t_msec_ == 2000){
+    if (t_msec_ == 1000){
         //concatenate q.head(7) with q_filtered
         Eigen::VectorXd input(njnt + 7);
         input.head(7) = q.head(7);
         input.tail(njnt) = q_filtered.head(njnt);
         base_ekf_ptr_->initialize(input, T_lsole_sim.translation(), T_rsole_sim.translation());
         std::cout << "INITIALIZATION" << std::endl;
+
+        Eigen::VectorXd q_joints = q_filtered.head(njnt);
+        ri_ekf_ptr_->addContact(0, q_joints);  // piede sinistro
+        ri_ekf_ptr_->addContact(1, q_joints);  // piede destro
+        std::cout << "INITIALIZATION" << std::endl;
     }
-    if (t_msec_ >= 2000 && true){
+    if (t_msec_ >= 1000 && true){
+
+        input_acc = measured_imu_accelerometer;
+        input_gyro = measured_imu_angular_velocity;
         base_ekf_ptr_->filter(input_acc, 
             input_gyro, 
             q_filtered.head(njnt),
@@ -942,9 +957,20 @@ WalkingManager::update(
             left_support_check,
             right_support_check
         );
+
+        std::array<bool,2> contact = {left_support_check, right_support_check};
+        ri_ekf_ptr_->filter(input_gyro, input_acc,
+                            q_filtered.head(njnt),
+                            q_filtered.tail(njnt),
+                            contact);
+
+        std::cout << "RI EKF orientation " << ri_ekf_ptr_->getQuaternion().coeffs().transpose() << std::endl;
+        std::cout << "RI EKF position " << ri_ekf_ptr_->getPosition().transpose() << std::endl;
+        std::cout << "RI EKF velocity " << ri_ekf_ptr_->getVelocity().transpose() << std::endl;
+
+        // angular velocity dal giroscopio bias-compensato in body frame
+        // fb_robot_state.angular_velocity = ri_ekf_ptr_->getOmegaBody();  
     }
-    input_acc = measured_imu_accelerometer;
-    input_gyro = measured_imu_angular_velocity;
     #pragma omp parallel sections num_threads(2)
     {
         #pragma omp section
@@ -953,10 +979,18 @@ WalkingManager::update(
                 fb_robot_state = updateEKF(actual_output);
                 if (t_msec_ >= 10000 && true){
                     std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " << std::endl;
-                    fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
-                    fb_robot_state.position = base_ekf_ptr_->getBasePosition();
-                    fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
+                    // fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
+                    // fb_robot_state.position = base_ekf_ptr_->getBasePosition();
+                    // fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
                     fb_robot_state.angular_velocity = input_gyro;
+
+                    fb_robot_state.orientation    = Eigen::Quaterniond(
+                        ri_ekf_ptr_->getQuaternion().w(), 
+                        ri_ekf_ptr_->getQuaternion().x(), 
+                        ri_ekf_ptr_->getQuaternion().y(), 
+                        ri_ekf_ptr_->getQuaternion().z());
+                    fb_robot_state.position       = ri_ekf_ptr_->getPosition();
+                    fb_robot_state.linear_velocity= ri_ekf_ptr_->getVelocity();
                 }
             }
             else{
