@@ -1875,7 +1875,7 @@ void
 WalkingManager::setDesiredStepCount(int desired_step_count) {
     const int clamped_step_count = std::max(0, desired_step_count);
 
-    if (last_desired_step_count_ > 1 && clamped_step_count == 1) {
+    if (last_desired_step_count_ > clamped_step_count && clamped_step_count > 0) {
         step_count_replan_phase_ = 1;
     }
 

@@ -202,10 +202,26 @@ WalkingData::addSteps(
 
 void
 WalkingData::removeSteps(){
-  // Remove all steps except the first one (current stance) and the last one (standing).
-  while (footstep_plan.size() > 2) {
-    footstep_plan.erase(footstep_plan.begin() + 1);
+  // Rebuild a smooth stop plan from the current feet placement.
+  if (footstep_plan.empty()) {
+    return;
   }
+
+  const auto current_left = footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+  const auto current_right = footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+
+  // Keep only the current element, then append a standing target at current stance.
+  footstep_plan.erase(footstep_plan.begin() + 1, footstep_plan.end());
+  footstep_plan.push_back(labrob::FootstepPlanElement(
+      labrob::DoubleSupportConfiguration(
+          current_left,
+          current_right,
+          labrob::Foot::RIGHT
+      ),
+      0.0,
+      2000,
+      labrob::WalkingState::Standing
+  ));
 }
 
 void

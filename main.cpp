@@ -1252,14 +1252,15 @@ int main(const int argc, const char* argv[]) {
           std::cout << "[FORCE FLAG] removal triggered at t=" << mj_data_ptr->time
                     << " s, avg_force_x=" << average_hand_force_x
                     << " N, force_drop_from_peak=" << hand_force_total_drop
-                    << " N -> set steps to 1" << std::endl;
+                    << " N -> request stand and set steps to 0" << std::endl;
+          switchWalkingState = true;
         }
         force_removed_after_start = true;
       }
 
       walking_manager.setDesiredStepLengthX(walk_started_by_force ? latched_step_length_x : desired_step_length_x_realtime);
       walking_manager.setDesiredStepCount(
-          !walk_started_by_force ? 0 : (force_removed_after_start ? 1 : 20)
+          !walk_started_by_force ? 0 : (force_removed_after_start ? 0 : 20)
       );
 
       // Update walking manager:
