@@ -47,6 +47,15 @@ class WalkingData {
 
   void removeSteps();
 
+  void setStepLengthX(double step_length_x);
+  double getStepLengthX() const;
+  void setNumberOfSteps(int n_steps);
+  int getNumberOfSteps() const;
+
+ private:
+  double step_length_x_ = 0.1;
+  int n_steps_ = 0;
+
 }; // end class WalkingData
 
 } // end namespace labrob

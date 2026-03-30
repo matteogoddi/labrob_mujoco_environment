@@ -1849,6 +1849,16 @@ WalkingManager::getRobotModel() const {
     return robot_model;
 }
 
+void
+WalkingManager::setDesiredStepLengthX(double desired_step_length_x) {
+    walking_data_.setStepLengthX(std::clamp(desired_step_length_x, 0.0, 0.1));
+}
+
+void
+WalkingManager::setDesiredStepCount(int desired_step_count) {
+    walking_data_.setNumberOfSteps(std::max(0, desired_step_count));
+}
+
 Eigen::MatrixXd
 WalkingManager::pseudoinverse(const Eigen::MatrixXd& J, double damp) const {
   auto J_T = J.transpose();

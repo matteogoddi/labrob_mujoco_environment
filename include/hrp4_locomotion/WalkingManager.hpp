@@ -48,6 +48,8 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
   const pinocchio::Model& getRobotModel() const;
+  void setDesiredStepLengthX(double desired_step_length_x);
+  void setDesiredStepCount(int desired_step_count);
 
  protected:
   pinocchio::Model robot_model;

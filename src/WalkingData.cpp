@@ -2,6 +2,7 @@
 #include <hrp4_locomotion/globals.h>
 #include <hrp4_locomotion/utils.hpp>
 
+#include <algorithm>
 #include <iostream>
 
 namespace labrob {
@@ -101,10 +102,10 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole
 ){
     double swing_foot_trajectory_height = 0.05;//0.05
-    double step_length_x = 0.1;//0.1
+    double step_length_x = step_length_x_;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    int n_steps = 0;//20
+    int n_steps = n_steps_;
 
     if (n_steps <= 0) {
       // Keep the robot in standing mode without entering single-support phases.
@@ -205,5 +206,25 @@ WalkingData::removeSteps(){
   while (footstep_plan.size() > 2) {
     footstep_plan.erase(footstep_plan.begin() + 1);
   }
+}
+
+void
+WalkingData::setStepLengthX(double step_length_x) {
+  step_length_x_ = std::clamp(step_length_x, 0.0, 0.1);
+}
+
+double
+WalkingData::getStepLengthX() const {
+  return step_length_x_;
+}
+
+void
+WalkingData::setNumberOfSteps(int n_steps) {
+  n_steps_ = std::max(0, n_steps);
+}
+
+int
+WalkingData::getNumberOfSteps() const {
+  return n_steps_;
 }
 } // end namespace labrob

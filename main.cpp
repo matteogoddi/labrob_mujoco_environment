@@ -1059,6 +1059,15 @@ int main(const int argc, const char* argv[]) {
 
   auto next_tick = std::chrono::steady_clock::now();
 
+  constexpr double hand_force_min_newton = 0.0;
+  constexpr double hand_force_max_newton = 5.0;
+  constexpr double hand_force_start_threshold_newton = 0.5;
+  constexpr double step_length_x_min_meter = 0.0;
+  constexpr double step_length_x_max_meter = 0.1;
+  constexpr double step_length_x_start_floor_meter = 0.06;
+  bool walk_started_by_force = false;
+  double latched_step_length_x = 0.0;
+
   // robot_state = walking_manager.getNewRobotState(robot_state);
   // StandStillInfinete(robot_state, mj_model_ptr, mj_data_ptr);
 
@@ -1182,6 +1191,32 @@ int main(const int argc, const char* argv[]) {
       }
 
       // std::cout << imu_state_data.rpy[0] << " " << imu_state_data.rpy[1] << " " << imu_state_data.rpy[2] << std::endl;
+      estimate_force.update(robot_state);
+
+      const Eigen::VectorXd& left_wrist_wrench_filtered = estimate_force.getLeftWristWrenchFiltered();
+      const Eigen::VectorXd& right_wrist_wrench_filtered = estimate_force.getRightWristWrenchFiltered();
+      const double left_hand_force_x = std::clamp(std::abs(left_wrist_wrench_filtered(0)), hand_force_min_newton, hand_force_max_newton);
+      const double right_hand_force_x = std::clamp(std::abs(right_wrist_wrench_filtered(0)), hand_force_min_newton, hand_force_max_newton);
+      const double average_hand_force_x = 0.5 * (left_hand_force_x + right_hand_force_x);
+      const double normalized_force = (average_hand_force_x - hand_force_min_newton) /
+                  (hand_force_max_newton - hand_force_min_newton);
+      const bool external_force_detected = (average_hand_force_x >= hand_force_start_threshold_newton);
+      const double desired_step_length_x_realtime = step_length_x_min_meter +
+             std::clamp(normalized_force, 0.0, 1.0) *
+             (step_length_x_max_meter - step_length_x_min_meter);
+      if (!walk_started_by_force) {
+        if (external_force_detected) {
+          latched_step_length_x = std::max(
+              desired_step_length_x_realtime,
+              step_length_x_start_floor_meter
+          );
+          switchWalkingState = true;
+          walk_started_by_force = true;
+        }
+      }
+      walking_manager.setDesiredStepLengthX(walk_started_by_force ? latched_step_length_x : desired_step_length_x_realtime);
+      walking_manager.setDesiredStepCount(walk_started_by_force ? 20 : 0);
+
       // Update walking manager:
       labrob::JointCommand joint_command;
       // #pragma omp parallel sections num_threads(2)
@@ -1463,7 +1498,6 @@ int main(const int argc, const char* argv[]) {
         motor_state_data = measured_motor_state;
       }
 
-      estimate_force.update(robot_state);
       left_wrist_wrench_log.push_back(estimate_force.getLeftWristWrench());
       right_wrist_wrench_log.push_back(estimate_force.getRightWristWrench());
       left_wrist_wrench_filtered_log.push_back(estimate_force.getLeftWristWrenchFiltered());
