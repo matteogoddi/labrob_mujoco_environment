@@ -1061,11 +1061,16 @@ int main(const int argc, const char* argv[]) {
 
   constexpr double hand_force_min_newton = 0.0;
   constexpr double hand_force_max_newton = 5.0;
-  constexpr double hand_force_start_threshold_newton = 0.5;
+  constexpr double hand_force_on_threshold_newton = 0.7;
+  constexpr double hand_force_off_threshold_newton = 0.5;
+  constexpr double hand_force_total_drop_threshold_newton = 0.6;
   constexpr double step_length_x_min_meter = 0.0;
   constexpr double step_length_x_max_meter = 0.1;
   constexpr double step_length_x_start_floor_meter = 0.06;
   bool walk_started_by_force = false;
+  bool estimator_force_active = false;
+  bool force_removed_after_start = false;
+  double peak_average_hand_force_x_after_start = 0.0;
   double latched_step_length_x = 0.0;
 
   // robot_state = walking_manager.getNewRobotState(robot_state);
@@ -1200,7 +1205,18 @@ int main(const int argc, const char* argv[]) {
       const double average_hand_force_x = 0.5 * (left_hand_force_x + right_hand_force_x);
       const double normalized_force = (average_hand_force_x - hand_force_min_newton) /
                   (hand_force_max_newton - hand_force_min_newton);
-      const bool external_force_detected = (average_hand_force_x >= hand_force_start_threshold_newton);
+
+      if (estimator_force_active) {
+        if (average_hand_force_x <= hand_force_off_threshold_newton) {
+          estimator_force_active = false;
+        }
+      } else {
+        if (average_hand_force_x >= hand_force_on_threshold_newton) {
+          estimator_force_active = true;
+        }
+      }
+
+      const bool external_force_detected = estimator_force_active;
       const double desired_step_length_x_realtime = step_length_x_min_meter +
              std::clamp(normalized_force, 0.0, 1.0) *
              (step_length_x_max_meter - step_length_x_min_meter);
@@ -1210,12 +1226,41 @@ int main(const int argc, const char* argv[]) {
               desired_step_length_x_realtime,
               step_length_x_start_floor_meter
           );
+          std::cout << "[FORCE FLAG] start triggered at t=" << mj_data_ptr->time
+                    << " s, avg_force_x=" << average_hand_force_x
+                    << " N, latched_step_length_x=" << latched_step_length_x
+                    << " m" << std::endl;
+          peak_average_hand_force_x_after_start = average_hand_force_x;
           switchWalkingState = true;
           walk_started_by_force = true;
         }
       }
+
+      if (walk_started_by_force) {
+        peak_average_hand_force_x_after_start = std::max(
+            peak_average_hand_force_x_after_start,
+            average_hand_force_x
+        );
+      }
+
+      const double hand_force_total_drop = peak_average_hand_force_x_after_start - average_hand_force_x;
+      const bool large_drop_from_peak_detected =
+          (hand_force_total_drop >= hand_force_total_drop_threshold_newton);
+      const bool low_force_confirmed = (average_hand_force_x <= hand_force_off_threshold_newton);
+      if (walk_started_by_force && large_drop_from_peak_detected && low_force_confirmed) {
+        if (!force_removed_after_start) {
+          std::cout << "[FORCE FLAG] removal triggered at t=" << mj_data_ptr->time
+                    << " s, avg_force_x=" << average_hand_force_x
+                    << " N, force_drop_from_peak=" << hand_force_total_drop
+                    << " N -> set steps to 1" << std::endl;
+        }
+        force_removed_after_start = true;
+      }
+
       walking_manager.setDesiredStepLengthX(walk_started_by_force ? latched_step_length_x : desired_step_length_x_realtime);
-      walking_manager.setDesiredStepCount(walk_started_by_force ? 20 : 0);
+      walking_manager.setDesiredStepCount(
+          !walk_started_by_force ? 0 : (force_removed_after_start ? 1 : 20)
+      );
 
       // Update walking manager:
       labrob::JointCommand joint_command;

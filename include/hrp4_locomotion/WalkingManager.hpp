@@ -114,6 +114,9 @@ class WalkingManager {
 
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 
+  int last_desired_step_count_ = 0;
+  int step_count_replan_phase_ = 0; // 0: none, 1: wait DS remove, 2: wait standing add
+
 private:
 
   Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;

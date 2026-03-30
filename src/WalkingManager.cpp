@@ -1176,6 +1176,23 @@ WalkingManager::update(
     ////////////////////////////////////
 
 
+    if (step_count_replan_phase_ == 1 &&
+        walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
+        std::cout << "[STEP REPLAN] remove current plan at DoubleSupport." << std::endl;
+        walking_data_.removeSteps();
+        step_count_replan_phase_ = 2;
+    }
+
+    if (step_count_replan_phase_ == 2 &&
+        walking_data_.getWalkingState() == WalkingState::Standing) {
+        std::cout << "[STEP REPLAN] add new plan with updated step count." << std::endl;
+        walking_data_.addSteps(
+            labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
+            labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation())
+        );
+        step_count_replan_phase_ = 0;
+    }
+
     if (switchWalkingState){
         if (walking_data_.getWalkingState() == WalkingState::Standing) {
             walking_data_.addSteps(
@@ -1856,7 +1873,14 @@ WalkingManager::setDesiredStepLengthX(double desired_step_length_x) {
 
 void
 WalkingManager::setDesiredStepCount(int desired_step_count) {
-    walking_data_.setNumberOfSteps(std::max(0, desired_step_count));
+    const int clamped_step_count = std::max(0, desired_step_count);
+
+    if (last_desired_step_count_ > 1 && clamped_step_count == 1) {
+        step_count_replan_phase_ = 1;
+    }
+
+    last_desired_step_count_ = clamped_step_count;
+    walking_data_.setNumberOfSteps(clamped_step_count);
 }
 
 Eigen::MatrixXd
