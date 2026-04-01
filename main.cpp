@@ -1066,9 +1066,13 @@ int main(const int argc, const char* argv[]) {
   constexpr double hand_force_total_drop_threshold_newton = 0.6;
   constexpr double step_length_x_min_meter = 0.0;
   constexpr double step_length_x_max_meter = 0.1;
-  constexpr double step_length_x_start_floor_meter = 0.06;
+  constexpr int hand_force_average_window_cycles = 2000;
   bool walk_started_by_force = false;
   bool estimator_force_active = false;
+  bool previous_external_force_detected = false;
+  bool collecting_average_after_rising_edge = false;
+  int average_window_sample_count = 0;
+  double average_window_force_sum = 0.0;
   bool force_removed_after_start = false;
   double peak_average_hand_force_x_after_start = 0.0;
   double latched_step_length_x = 0.0;
@@ -1220,19 +1224,57 @@ int main(const int argc, const char* argv[]) {
       const double desired_step_length_x_realtime = step_length_x_min_meter +
              std::clamp(normalized_force, 0.0, 1.0) *
              (step_length_x_max_meter - step_length_x_min_meter);
+
       if (!walk_started_by_force) {
-        if (external_force_detected) {
-          latched_step_length_x = std::max(
-              desired_step_length_x_realtime,
-              step_length_x_start_floor_meter
-          );
-          std::cout << "[FORCE FLAG] start triggered at t=" << mj_data_ptr->time
-                    << " s, avg_force_x=" << average_hand_force_x
-                    << " N, latched_step_length_x=" << latched_step_length_x
-                    << " m" << std::endl;
-          peak_average_hand_force_x_after_start = average_hand_force_x;
-          switchWalkingState = true;
-          walk_started_by_force = true;
+        if (!previous_external_force_detected && external_force_detected) {
+          collecting_average_after_rising_edge = true;
+          average_window_sample_count = 0;
+          average_window_force_sum = 0.0;
+          std::cout << "[FORCE FLAG] rising edge detected at t=" << mj_data_ptr->time
+                    << " s -> start averaging over " << hand_force_average_window_cycles
+                    << " cycles" << std::endl;
+        }
+
+        if (collecting_average_after_rising_edge) {
+          if (!external_force_detected) {
+            collecting_average_after_rising_edge = false;
+            average_window_sample_count = 0;
+            average_window_force_sum = 0.0;
+            std::cout << "[FORCE FLAG] averaging canceled at t=" << mj_data_ptr->time
+                      << " s because force flag turned off" << std::endl;
+          } else {
+            average_window_force_sum += average_hand_force_x;
+            ++average_window_sample_count;
+
+            if (average_window_sample_count >= hand_force_average_window_cycles) {
+              const double average_hand_force_x_window =
+                  average_window_force_sum / static_cast<double>(average_window_sample_count);
+              const double normalized_force_window =
+                  (average_hand_force_x_window - hand_force_min_newton) /
+                  (hand_force_max_newton - hand_force_min_newton);
+              latched_step_length_x = step_length_x_min_meter +
+                  std::clamp(normalized_force_window, 0.0, 1.0) *
+                  (step_length_x_max_meter - step_length_x_min_meter);
+
+              std::cout << "[FORCE FLAG] start triggered at t=" << mj_data_ptr->time
+                        << " s, avg_force_x_window=" << average_hand_force_x_window
+                        << " N, latched_step_length_x=" << latched_step_length_x
+                        << " m" << std::endl;
+
+              peak_average_hand_force_x_after_start = average_hand_force_x;
+              switchWalkingState = true;
+              walk_started_by_force = true;
+              collecting_average_after_rising_edge = false;
+            }
+          }
+        }
+      }
+
+      previous_external_force_detected = external_force_detected;
+
+      if (!walk_started_by_force) {
+        if (!collecting_average_after_rising_edge) {
+          latched_step_length_x = desired_step_length_x_realtime;
         }
       }
 

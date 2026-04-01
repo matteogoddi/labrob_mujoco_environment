@@ -101,7 +101,7 @@ WalkingData::addSteps(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole
 ){
-    double swing_foot_trajectory_height = 0.05;//0.05
+    double swing_foot_trajectory_height = 0.03;//0.05
     double step_length_x = step_length_x_;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
