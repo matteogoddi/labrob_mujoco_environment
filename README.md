@@ -11,6 +11,10 @@ Main references for this work are:
 1. Scianca, N., De Simone, D., Lanari, L., & Oriolo, G. (2020). MPC for humanoid gait generation: Stability and feasibility. IEEE Transactions on Robotics, 36(4), 1171-1188.
 2. Marussi, D., Cipriano, M., Scianca, N., Lanari, L., & Oriolo, G. (2025). Humanoid Motion Generation in Complex 3D Environments. Robotics, 14(6), 82.
 
+Possible contacts for techincal help:
+1. support@unitree.cc (tel +86 15776583869)
+2. Sara Alimonti from EagleProjects.it 
+
 ### PREREQUISITES 
 You need the following dependencies:
 - glfw3

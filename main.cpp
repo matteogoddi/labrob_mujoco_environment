@@ -611,7 +611,7 @@ int main(const int argc, const char* argv[]) {
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
   }
-  mj_data_ptr->qpos[2] = 0.727451;
+  mj_data_ptr->qpos[2] = 0.728112;
   // mj_data_ptr->qpos[2] = 0.716143;
 
   // mj_data_ptr->qpos[4] = 0.0;
@@ -741,7 +741,7 @@ int main(const int argc, const char* argv[]) {
 
         // read sensors from mujoco and save them
         
-        int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-linear-acceleration");
+        int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
         int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-angular-velocity");
 
         measured_imu_accelerometer = Eigen::Vector3d(mj_data_ptr->sensordata[acc_id], mj_data_ptr->sensordata[acc_id + 1], mj_data_ptr->sensordata[acc_id + 2]);

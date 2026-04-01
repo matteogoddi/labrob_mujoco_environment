@@ -930,28 +930,36 @@ WalkingManager::update(
     }
 
     auto start_ekf = std::chrono::high_resolution_clock::now();
-    Eigen::VectorXd q_filtered = Eigen::VectorXd::Zero(2 * (njnt));
-    q_filtered = joint_kf_ptr_->filter(measured_joint_position, whole_body_controller_ptr_->get_q_ddot().tail(njnt));
+    Eigen::VectorXd input1 = Eigen::VectorXd::Zero(measured_joint_position.size() + measured_imu_angular_velocity.size());
+    input1.head(measured_joint_position.size()) = measured_joint_position;
+    input1.tail(measured_imu_angular_velocity.size()) = measured_imu_angular_velocity;
+    Eigen::VectorXd input2 = Eigen::VectorXd::Zero(njnt + 3);
+    input2.head(njnt) = whole_body_controller_ptr_->get_q_ddot().tail(njnt);
+    input2.tail(3) = whole_body_controller_ptr_->get_q_ddot().segment(3,3);
+    joint_kf_ptr_->filter(input1, input2);
     if (t_msec_ == 1000){
         //concatenate q.head(7) with q_filtered
         Eigen::VectorXd input(njnt + 7);
         input.head(7) = q.head(7);
-        input.tail(njnt) = q_filtered.head(njnt);
+        std::cout << "ciao" << std::endl;
+        input.tail(njnt) = joint_kf_ptr_->getFilteredJointPositions();
+        std::cout << "ciao" << std::endl;
         base_ekf_ptr_->initialize(input, T_lsole_sim.translation(), T_rsole_sim.translation());
         std::cout << "INITIALIZATION" << std::endl;
 
-        Eigen::VectorXd q_joints = q_filtered.head(njnt);
+        Eigen::VectorXd q_joints = joint_kf_ptr_->getFilteredJointPositions();
         ri_ekf_ptr_->addContact(0, q_joints);  // piede sinistro
         ri_ekf_ptr_->addContact(1, q_joints);  // piede destro
     }
     if (t_msec_ >= 1000 && true){
 
         input_acc = measured_imu_accelerometer;
-        input_gyro = measured_imu_angular_velocity;
+        input_gyro = joint_kf_ptr_->getFilteredOmega();
+        std::cout << "Omega filtered: " << input_gyro.transpose() << std::endl;
         base_ekf_ptr_->filter(input_acc,
             input_gyro,
-            q_filtered.head(njnt),
-            q_filtered.tail(njnt),
+            joint_kf_ptr_->getFilteredJointPositions(),
+            joint_kf_ptr_->getFilteredJointVelocities(),
             whole_body_controller_ptr_->get_q_ddot().head(6),
             left_support_check,
             right_support_check
@@ -959,13 +967,14 @@ WalkingManager::update(
 
         std::array<bool,2> contact = {left_support_check, right_support_check};
         ri_ekf_ptr_->filter(input_gyro, input_acc,
-                            q_filtered.head(njnt),
-                            q_filtered.tail(njnt),
+                            joint_kf_ptr_->getFilteredJointPositions(),
+                            joint_kf_ptr_->getFilteredJointPositions(),
                             contact);
 
-        // std::cout << "RI EKF orientation " << ri_ekf_ptr_->getQuaternion().coeffs().transpose() << std::endl;
-        // std::cout << "RI EKF position " << ri_ekf_ptr_->getPosition().transpose() << std::endl;
-        // std::cout << "RI EKF velocity " << ri_ekf_ptr_->getVelocity().transpose() << std::endl;
+        std::cout << "RI EKF orientation " << ri_ekf_ptr_->getQuaternion().coeffs().transpose() << std::endl;
+        std::cout << "RI EKF position " << ri_ekf_ptr_->getPosition().transpose() << std::endl;
+        std::cout << "RI EKF velocity " << ri_ekf_ptr_->getVelocity().transpose() << std::endl;
+        std::cout << "RI Omega Body: " << ri_ekf_ptr_->getOmegaBody().transpose() << std::endl;
 
         // angular velocity dal giroscopio bias-compensato in body frame
         // fb_robot_state.angular_velocity = ri_ekf_ptr_->getOmegaBody();
@@ -981,12 +990,12 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = input_gyro;
+                    // fb_robot_state.angular_velocity = input_gyro;
                     // use q_filtered for the joints
                     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
                         std::string joint_name = robot_model.names[joint_id + 2];
-                        fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
-                        fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
+                        fb_robot_state.joint_state[joint_name].pos = joint_kf_ptr_->getFilteredJointPositions()(joint_id);
+                        fb_robot_state.joint_state[joint_name].vel = joint_kf_ptr_->getFilteredJointVelocities()(joint_id);
                     }
 
                     // fb_robot_state.orientation    = Eigen::Quaterniond(
@@ -996,6 +1005,7 @@ WalkingManager::update(
                     //     ri_ekf_ptr_->getQuaternion().z());
                     // fb_robot_state.position       = ri_ekf_ptr_->getPosition();
                     // fb_robot_state.linear_velocity= ri_ekf_ptr_->getVelocity();
+                    // fb_robot_state.angular_velocity = ri_ekf_ptr_->getOmegaBody();
                 }
             }
             else{
@@ -1006,12 +1016,6 @@ WalkingManager::update(
         #pragma omp section
         {
         }
-    }
-
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        fb_robot_state.joint_state[joint_name].pos = q_filtered(joint_id);
-        fb_robot_state.joint_state[joint_name].vel = q_filtered(njnt + joint_id);
     }
     auto end_ekf = std::chrono::high_resolution_clock::now();
 

@@ -13,45 +13,50 @@ namespace labrob
 JointKF::JointKF(double dt, int nq)
 {
     // STATE, INPUT, OUTPUT MATRICES
-    F = Eigen::MatrixXd::Identity(2 * nq, 2 * nq);
+    const int nx = 2 * nq + 3;
+    const int nu = nq + 3;
+    F = Eigen::MatrixXd::Identity(nx, nx);
     F.block(0, nq, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * dt;
-    G = Eigen::MatrixXd::Zero(2 * nq, nq);
+    G = Eigen::MatrixXd::Zero(nx, nu);
     G.block(nq, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * dt;
-    H = Eigen::MatrixXd::Zero(nq, 2 * nq);
+    H = Eigen::MatrixXd::Zero(nu, nx);
     H.block(0, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
+    H.block(nq, 2 * nq, 3, 3) = Eigen::Matrix3d::Identity();
 
-    q_filtered_ = Eigen::VectorXd::Zero(2 * nq);
+    q_filtered_ = Eigen::VectorXd::Zero(nx);
+    JointPos_ = Eigen::VectorXd::Zero(nq);
+    JointVel_ = Eigen::VectorXd::Zero(nq);
+    Omega_ = Eigen::VectorXd::Zero(3);
 
     // COVARIANCE MATRICES
 
-    Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(2 * nq, 2 * nq) * 1e-2;
-    Q.block(0, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * 1e-4;
-    // Q = Eigen::MatrixXd::Identity(2 * nq, 2 * nq);
-    // Q.block(0, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * 0.25 * dt^4;
-    // Q.block(0, nq, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * 0.5 * dt^3;
-    // Q.block(nq, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * 0.5 * dt^3;
-    // Q.block(nq, nq, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * dt^2;
-    // Q = Q * 1e-6;
-    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(nq, nq) * 1e-5;
-    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(2 * nq, 2 * nq) * 1e-3;
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(nx, nx) * 1e-2;
+    Q.block(0, 0, nx, nx) = Eigen::MatrixXd::Identity(nx, nx) * 1e-4;
+    Q.block(nx-3, nx-3, 3, 3) = Eigen::Matrix3d::Identity() * 1e-4;
+    Eigen::MatrixXd R = Eigen::MatrixXd::Identity(nu, nu) * 1e-5;
+    R.block(nu-3, nu-3, 3, 3) = Eigen::Matrix3d::Identity() * 1e-2;
+    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(nx, nx) * 1e-3;
 
     // KALMAN GAIN 
 
-    K = Eigen::MatrixXd::Zero(2 * nq, nq);
+    K = Eigen::MatrixXd::Zero(nx, nu);
     for (int i = 0; i < 1000; ++i) {
         Eigen::MatrixXd P_pred = F * P * F.transpose() + Q;
         Eigen::MatrixXd S = H * P_pred * H.transpose() + R;
         K = P_pred * H.transpose() * S.inverse();
-        P = (Eigen::MatrixXd::Identity(2 * nq, 2 * nq) - K * H) * P_pred;
+        P = (Eigen::MatrixXd::Identity(nx, nx) - K * H) * P_pred;
     }
 }
 
-Eigen::VectorXd
+void
 JointKF::filter(const Eigen::VectorXd& q_meas, const Eigen::VectorXd& qdd)
 {
-  q_filtered_ = F * q_filtered_ + G * qdd;
-  q_filtered_ = q_filtered_ + K * (q_meas - H * q_filtered_);
-  return q_filtered_;
+    q_filtered_ = F * q_filtered_ + G * qdd;
+    q_filtered_ = q_filtered_ + K * (q_meas - H * q_filtered_);
+    JointPos_ = q_filtered_.head(29);
+    JointVel_ = q_filtered_.segment(29, 29);
+    Omega_ = q_filtered_.tail(3);
+    std::cout << "ciao" << std::endl;
 }
 
 //////////////////////////
@@ -125,9 +130,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   Eigen::Vector3d acc = R_base_imu * acc_meas - bf_;
 
   omega_ = R_base_imu * gyro_meas - bw_;
-  omega_world = C_world_to_base * omega_;
+  omega_world = C_world_to_base.transpose() * omega_;
 
-  Eigen::Vector3d a_world = C_world_to_base * acc;
+  Eigen::Vector3d a_world = C_world_to_base.transpose() * acc + g_;
 
   Eigen::Vector3d r_prec = r_;
   Eigen::Vector3d v_prec = v_;
@@ -141,10 +146,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
   Eigen::MatrixXd F = Eigen::MatrixXd::Identity(NX, NX);
 
-  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ibf=15, ibw=18;
+  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, ibf=21, ibw=24;
 
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
-  F.block<3,3>(iv, iphi) = skew(C_world_to_base.transpose() * acc) * dt_;
+  F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc) * dt_;
   // F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
   F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
   // F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
@@ -157,7 +162,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // Lc.block<3,3>(ibf, 12) = Eigen::Matrix3d::Identity();
   // Lc.block<3,3>(ibw, 15) = Eigen::Matrix3d::Identity();
 
-  Eigen::Matrix<double,12,12> Qc_step = Qc_;
+  Eigen::Matrix<double,18,18> Qc_step = Qc_;
   if (!left_contact)  Qc_step.block<3,3>(6,6)  = 1.0 * Eigen::Matrix3d::Identity();
   if (!right_contact) Qc_step.block<3,3>(9,9)  = 1.0 * Eigen::Matrix3d::Identity();
   Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
@@ -172,7 +177,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   auto processFoot = [&](int frameId,
                          Eigen::Vector3d& p,
+                         Eigen::Quaterniond& z,
                          int ip,
+                         int itheta,
                          bool contact,
                          Eigen::MatrixXd& H_accum,
                          Eigen::VectorXd& e_accum)
@@ -186,7 +193,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::Vector3d s_p = T_bf.translation();
     Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
-    
+    Eigen::Quaterniond s_z(T_bf.rotation());
+    Eigen::Quaterniond s_z_hat = q_.inverse() * z;
+
+
 
     Eigen::MatrixXd J_foot = Eigen::MatrixXd::Zero(6, model_.nv);
     pinocchio::getFrameJacobian(
@@ -197,23 +207,27 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
       J_foot
     );
 
-    Eigen::VectorXd e_p = Eigen::VectorXd::Zero(3);
-    e_p.head<3>() = s_p - s_p_hat;
-    Eigen::VectorXd e_foot = Eigen::VectorXd::Zero(3);
-    e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    Eigen::Vector3d e_p = s_p - s_p_hat;
+    Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
+    Eigen::Vector3d e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
     // e_foot = - J_foot.block(0, 0, 3, model_.nv) * vel;
 
     int old_rows = e_accum.rows();
-    e_accum.conservativeResize(old_rows + e_p.size());
+    e_accum.conservativeResize(old_rows + e_p.size() + e_z.size());
     e_accum.segment(old_rows, e_p.size()) = e_p;
+    e_accum.segment(old_rows + e_p.size(), e_z.size()) = e_z;
     // e_accum.segment(old_rows + e_p.size(), e_foot.size()) = e_foot;
 
-    H_accum.conservativeResize(old_rows + e_p.size(), NX);
-    H_accum.block(old_rows, 0, e_p.size(), NX).setZero();
+    H_accum.conservativeResize(old_rows + e_p.size() + e_z.size(), NX);
+    H_accum.block(old_rows, 0, e_p.size() + e_z.size(), NX).setZero();
 
     H_accum.block<3,3>(old_rows, ir)   = -C_world_to_base;
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
+
+    H_accum.block<3,3>(old_rows+3, iphi) = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows+3, itheta) =
+        - (q_.inverse() * z).toRotationMatrix();
 
     // H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
     // H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
@@ -222,8 +236,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::MatrixXd H(0, NX);
   Eigen::VectorXd e(0);
-  processFoot(model_.getFrameId("left_foot_link"),  pL_, ipL, left_contact,  H, e);
-  processFoot(model_.getFrameId("right_foot_link"), pR_, ipR, right_contact, H, e);
+  processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
+  processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
   std::cout << "Measurement error: " << e.transpose() << std::endl; 
 
@@ -234,7 +248,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-100;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-4;
 //   R(3,3) = 1e-8; // high noise for foot
 //   R(3 + e.size()/2, 3 + e.size()/2) = 1e-8; //high noise for foot
   // R.block<3,3>(0,0) = Eigen::MatrixXd::Identity(3, 3) * 1;
@@ -252,6 +266,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // bw_ += dx.segment<3>(ibw);
 
   q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
+  zL_ = (zL_ * expMap(dx.segment<3>(ithetaL))).normalized();
+  zR_ = (zR_ * expMap(dx.segment<3>(ithetaR))).normalized();
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   auto IKH = I - K * H;
@@ -357,193 +373,156 @@ Eigen::Matrix3d RightInvariantEKF::expSO3(const Eigen::Vector3d& phi)
     const double th = phi.norm();
     if (th < 1e-9)
         return Eigen::Matrix3d::Identity() + skew(phi);
-
     const Eigen::Matrix3d K = skew(phi / th);
-    // Rodrigues formula: I + sin(θ) K + (1-cos(θ)) K²
     return Eigen::Matrix3d::Identity()
-         + std::sin(th) * K
-         + (1.0 - std::cos(th)) * K * K;
+         + std::sin(th)       * K
+         + (1.0-std::cos(th)) * K * K;
 }
 
 Eigen::Vector3d RightInvariantEKF::logSO3(const Eigen::Matrix3d& R)
 {
-    // trace → angle
-    const double cos_th = std::clamp(0.5 * (R.trace() - 1.0), -1.0, 1.0);
+    const double cos_th = std::clamp(0.5*(R.trace()-1.0), -1.0, 1.0);
     const double th     = std::acos(cos_th);
-    if (std::abs(th) < 1e-9)
-        return Eigen::Vector3d::Zero();
-
-    // vee of (R - Rᵀ) / (2 sin θ)
-    const double s = 0.5 / std::sin(th);
-    return th * s * Eigen::Vector3d(R(2,1)-R(1,2),
-                                    R(0,2)-R(2,0),
-                                    R(1,0)-R(0,1));
+    if (th < 1e-9) return Eigen::Vector3d::Zero();
+    const double s = th / (2.0*std::sin(th));
+    return s * Eigen::Vector3d(R(2,1)-R(1,2), R(0,2)-R(2,0), R(1,0)-R(0,1));
 }
 
 Eigen::Matrix3d RightInvariantEKF::leftJacobianSO3(const Eigen::Vector3d& phi)
 {
-    // J_l(φ) = I + ((1-cos θ)/θ²) φ× + ((θ-sin θ)/θ³) φ×²
+    // J_l(φ) = I + ((1−cosθ)/θ²) [φ]× + ((θ−sinθ)/θ³) [φ]×²
     const double th = phi.norm();
     if (th < 1e-7)
-        return Eigen::Matrix3d::Identity() + 0.5 * skew(phi);
-
+        return Eigen::Matrix3d::Identity() + 0.5*skew(phi);
     const Eigen::Matrix3d K = skew(phi);
     return Eigen::Matrix3d::Identity()
-         + ((1.0 - std::cos(th)) / (th * th)) * K
-         + ((th - std::sin(th)) / (th * th * th)) * K * K;
+         + ((1.0-std::cos(th))/(th*th)) * K
+         + ((th-std::sin(th)) /(th*th*th)) * K*K;
+}
+
+Eigen::Matrix3d RightInvariantEKF::projectToSO3(const Eigen::Matrix3d& M)
+{
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(M, Eigen::ComputeFullU|Eigen::ComputeFullV);
+    Eigen::Vector3d sv = svd.singularValues();
+    // Force det = +1
+    Eigen::Matrix3d S = Eigen::Matrix3d::Identity();
+    S(2,2) = (svd.matrixU() * svd.matrixV().transpose()).determinant();
+    return svd.matrixU() * S * svd.matrixV().transpose();
 }
 
 // ============================================================================
 //  SE_{N+2}(3) group operations
 // ============================================================================
 
+// groupExp:  xi (15-dim Lie algebra vector) → state matrix (7×7)
+//
+// xi = [ξᴿ(0:3) | ξᵛ(3:6) | ξᵖ(6:9) | ξᵈ⁰(9:12) | ξᵈ¹(12:15)]
+//
+// The matrix exponential of Lg(xi) acts as:
+//   exp(Lg(xi)).block<3,3>(0,0) = expSO3(ξᴿ)          (rotation block)
+//   exp(Lg(xi)).block<3,1>(0,k) = J_l(ξᴿ) * ξ_col_k  (each vector column)
+//
+// This is the standard SE(3) result generalised to all N+2 extra columns.
 Eigen::Matrix<double, RightInvariantEKF::DIM_X,
                        RightInvariantEKF::DIM_X>
-RightInvariantEKF::groupExp(const Eigen::VectorXd& xi) const
+RightInvariantEKF::groupExp(
+    const Eigen::Matrix<double,3*(N_FEET+3),1>& xi) const
 {
-    // xi layout: [ξᴿ(0:3) | ξᵛ(3:6) | ξᵖ(6:9) | ξᵈ⁰(9:12) | ξᵈ¹(12:15)]
-    // (bias part is NOT part of the group, handled separately)
-
-    const Eigen::Vector3d phi = xi.head<3>();                // rotation error
+    const Eigen::Vector3d phi = xi.template head<3>();
     const Eigen::Matrix3d dR  = expSO3(phi);
     const Eigen::Matrix3d Jl  = leftJacobianSO3(phi);
 
-    // The SE_{N+2}(3) exponential maps each column vector via Jl:
-    //   exp(Lg(ξ)).col(k) = Jl · ξ_col_k   for k = v, p, d0, d1, ...
-    // (This is the standard SE(3) result generalised to multiple columns.)
+    // Initialise to identity (sets up bottom-right scalar identity block)
+    Eigen::Matrix<double,DIM_X,DIM_X> E =
+        Eigen::Matrix<double,DIM_X,DIM_X>::Identity();
 
-    Eigen::Matrix<double, DIM_X, DIM_X> E = Eigen::Matrix<double, DIM_X, DIM_X>::Identity();
-    E.block<3,3>(0,0) = dR;
+    // Rotation block (top-left 3×3)
+    E.template block<3,3>(0,0) = dR;
 
-    // number of additional column vectors = DIM_X - 1 - 3 = N_FEET + 1
-    // columns: v(1), p(2), d0(3), d1(4), ...
-    for (int col = 1; col < DIM_X - 1; ++col) {
-        // corresponding xi segment starts at offset 3*(col-1)+3 ... wait:
-        // xi[0:3]=φ, xi[3:6]=ξv, xi[6:9]=ξp, xi[9:12]=ξd0, xi[12:15]=ξd1
-        // col 1 → ξv = xi[3:6]
-        // col 2 → ξp = xi[6:9]
-        // col 3 → ξd0 = xi[9:12]
-        // col 4 → ξd1 = xi[12:15]
-        const int seg_start = 3 * col;  // xi[3], xi[6], xi[9], xi[12]
-        E.block<3,1>(0, col) = Jl * xi.segment<3>(seg_start);
+    // Vector columns: col k  ←  Jl * xi_segment_for_col_k
+    // Column mapping:
+    //   col COL_V=3 ← xi[3:6]  (ξᵛ)
+    //   col COL_P=4 ← xi[6:9]  (ξᵖ)
+    //   col COL_D+i ← xi[9+3i : 12+3i]  (ξᵈⁱ)
+    //
+    // In general: xi segment for column c (c = 3..DIM_X-1) starts at 3*(c-2).
+    //   c=3: xi[3:6]   c=4: xi[6:9]   c=5: xi[9:12]   c=6: xi[12:15]
+    for (int c = COL_V; c < DIM_X; ++c) {
+        const int xi_off = 3*(c - 2);   // 3*(3-2)=3, 3*(4-2)=6, 3*(5-2)=9, ...
+        E.template block<3,1>(0,c) = Jl * xi.template segment<3>(xi_off);
     }
 
     return E;
 }
 
-Eigen::VectorXd
-RightInvariantEKF::groupLog(
-    const Eigen::Matrix<double,DIM_X,DIM_X>& X) const
-{
-    const Eigen::Matrix3d R   = X.block<3,3>(0,0);
-    const Eigen::Vector3d phi = logSO3(R);
-    const Eigen::Matrix3d Jl_inv =
-        (Eigen::Matrix3d::Identity() - 0.5 * skew(phi)
-         + (1.0/(phi.squaredNorm() + 1e-20))
-           * (1.0 - 0.5*phi.norm()*std::cos(0.5*phi.norm())/std::sin(0.5*phi.norm()+1e-20))
-           * skew(phi) * skew(phi));
-    // Simpler: use the approximate inverse Jl⁻¹ ≈ I - φ×/2 for small angles
-    // For robustness we use the full expression:
-    const double th = phi.norm();
-    Eigen::Matrix3d Jlinv;
-    if (th < 1e-7) {
-        Jlinv = Eigen::Matrix3d::Identity() - 0.5 * skew(phi);
-    } else {
-        Jlinv = Eigen::Matrix3d::Identity()
-              - 0.5 * skew(phi)
-              + (1.0/(th*th)) * (1.0 - th*std::cos(0.5*th)/(2.0*std::sin(0.5*th)))
-                * skew(phi) * skew(phi);
-    }
-
-    // xi layout: [φ | ξv | ξp | ξd0 | ξd1]
-    Eigen::VectorXd xi(3 * DIM_X - 3);  // = 3*(N_FEET+3)  wrong — let's be explicit
-    // Actually xi has 3*(DIM_X-1) = 3*(N_FEET+3) components
-    xi.resize(3 * (DIM_X - 1));
-    xi.head<3>() = phi;
-    for (int col = 1; col < DIM_X; ++col) {
-        xi.segment<3>(3 * col) = Jlinv * X.block<3,1>(0, col);
-    }
-    return xi;
-}
-
+// groupInverse:  X⁻¹ for X ∈ SE_{N+2}(3)
+//
+// For X = [R  cols ; 0  I]:
+//   X⁻¹ = [R^T  -R^T·col₃  -R^T·col₄  … ; 0  I]
 Eigen::Matrix<double, RightInvariantEKF::DIM_X,
                        RightInvariantEKF::DIM_X>
 RightInvariantEKF::groupInverse(
     const Eigen::Matrix<double,DIM_X,DIM_X>& X) const
 {
-    // For X ∈ SE_{N+2}(3):
-    //   X⁻¹ = block matrix where:
-    //     top-left 3×3  = R^T
-    //     col k (k=1..N+1): = -R^T · col_k(X)
-    //     bottom-right identity block unchanged
-    Eigen::Matrix<double, DIM_X, DIM_X> Xinv =
-        Eigen::Matrix<double, DIM_X, DIM_X>::Identity();
+    Eigen::Matrix<double,DIM_X,DIM_X> Xinv =
+        Eigen::Matrix<double,DIM_X,DIM_X>::Identity();
 
-    const Eigen::Matrix3d RT = X.block<3,3>(0,0).transpose();
-    Xinv.block<3,3>(0,0) = RT;
-    for (int col = 1; col < DIM_X; ++col)
-        Xinv.block<3,1>(0, col) = -RT * X.block<3,1>(0, col);
+    const Eigen::Matrix3d RT = X.template block<3,3>(0,0).transpose();
+    Xinv.template block<3,3>(0,0) = RT;
+
+    // Vector columns: -R^T * col_c  for c = COL_V..DIM_X-1
+    for (int c = COL_V; c < DIM_X; ++c)
+        Xinv.template block<3,1>(0,c) = -RT * X.template block<3,1>(0,c);
 
     return Xinv;
 }
 
+// adjoint:  AdX (NR×NR) for X ∈ SE_{N+2}(3) augmented with bias
+//
+// Lie algebra block (paper Sec. III-A), rows/cols: ξᴿ,ξᵛ,ξᵖ,ξᵈ⁰,ξᵈ¹:
+//   AdX[XI_R,  XI_R ] = R
+//   AdX[XI_V,  XI_R ] = (v)×R,   AdX[XI_V,  XI_V ] = R
+//   AdX[XI_P,  XI_R ] = (p)×R,   AdX[XI_P,  XI_P ] = R
+//   AdX[XI_D+3i,XI_R] = (dᵢ)×R, AdX[XI_D+3i,XI_D+3i] = R
+//
+// Bias block (Euclidean):
+//   AdX[XI_BG, XI_BG] = I₃
+//   AdX[XI_BA, XI_BA] = I₃
+//   all other bias blocks = 0
 Eigen::Matrix<double, RightInvariantEKF::NR,
                        RightInvariantEKF::NR>
 RightInvariantEKF::adjoint(
     const Eigen::Matrix<double,DIM_X,DIM_X>& X) const
 {
-    // Paper Sec. III-A:
-    //   AdX = block matrix of size NR×NR (without bias rows/cols)
-    //   but we extend it to include the 6 bias rows as identity.
-    //
-    // For the SE_{N+2}(3) part the adjoint is (paper Sec. III-A):
-    //
-    //   AdX = ┌ R    0    0    0    0  ┐   rows: ξᴿ
-    //         │ v×R  R    0    0    0  │   rows: ξᵛ
-    //         │ p×R  0    R    0    0  │   rows: ξᵖ
-    //         │ d₀×R 0    0    R    0  │   rows: ξᵈ⁰
-    //         │ d₁×R 0    0    0    R  │   rows: ξᵈ¹
-    //         └  0   0    0    0    0  ┘   rows: bias (identity)
-    //
-    // (Only the 3*(N+3) × 3*(N+3) upper-left block is non-trivial.)
+    Eigen::Matrix<double,NR,NR> Ad = Eigen::Matrix<double,NR,NR>::Zero();
 
-    const Eigen::Matrix3d& R = X.block<3,3>(0,0);
-    const Eigen::Vector3d  v = X.block<3,1>(0,1);
-    const Eigen::Vector3d  p = X.block<3,1>(0,2);
+    const Eigen::Matrix3d& R = X.template block<3,3>(0,0);
+    const Eigen::Vector3d  v = X.template block<3,1>(0,COL_V);
+    const Eigen::Vector3d  p = X.template block<3,1>(0,COL_P);
 
-    // number of contact columns = N_FEET
-    // total Lie algebra dimension without bias = 3*(2+N_FEET+1) = 3*(N_FEET+3)
-    const int n_lie = 3 * (N_FEET + 3);
+    // ── Lie algebra part ──────────────────────────────────────────────────
+    // ξᴿ row block
+    Ad.template block<3,3>(XI_R, XI_R) = R;
 
-    Eigen::Matrix<double, NR, NR> Ad = Eigen::Matrix<double, NR, NR>::Zero();
+    // ξᵛ row block
+    Ad.template block<3,3>(XI_V, XI_R) = skew(v) * R;
+    Ad.template block<3,3>(XI_V, XI_V) = R;
 
-    // ξᴿ → ξᴿ  :  R
-    Ad.block<3,3>(XI_R, XI_R) = R;
+    // ξᵖ row block
+    Ad.template block<3,3>(XI_P, XI_R) = skew(p) * R;
+    Ad.template block<3,3>(XI_P, XI_P) = R;
 
-    // ξᴿ → ξᵛ  :  v× R
-    Ad.block<3,3>(XI_V, XI_R) = skew(v) * R;
-    // ξᵛ → ξᵛ  :  R
-    Ad.block<3,3>(XI_V, XI_V) = R;
-
-    // ξᴿ → ξᵖ  :  p× R
-    Ad.block<3,3>(XI_P, XI_R) = skew(p) * R;
-    // ξᵖ → ξᵖ  :  R
-    Ad.block<3,3>(XI_P, XI_P) = R;
-
-    // Contact columns
+    // ξᵈⁱ row blocks
     for (int i = 0; i < N_FEET; ++i) {
-        const Eigen::Vector3d di = X.block<3,1>(0, 3 + i);
+        const Eigen::Vector3d di = X.template block<3,1>(0, COL_D+i);
         const int row = XI_D + 3*i;
-
-        // ξᴿ → ξᵈⁱ  :  dᵢ× R
-        Ad.block<3,3>(row, XI_R) = skew(di) * R;
-        // ξᵈⁱ → ξᵈⁱ : R
-        Ad.block<3,3>(row, row)  = R;
+        Ad.template block<3,3>(row, XI_R) = skew(di) * R;
+        Ad.template block<3,3>(row, row)  = R;
     }
 
-    // Bias rows: identity (biases are Euclidean, not part of the Lie group)
-    Ad.block<3,3>(XI_BG, XI_BG) = Eigen::Matrix3d::Identity();
-    Ad.block<3,3>(XI_BA, XI_BA) = Eigen::Matrix3d::Identity();
+    // ── Bias part (Euclidean, identity) ───────────────────────────────────
+    Ad.template block<3,3>(XI_BG, XI_BG) = Eigen::Matrix3d::Identity();
+    Ad.template block<3,3>(XI_BA, XI_BA) = Eigen::Matrix3d::Identity();
 
     return Ad;
 }
@@ -551,7 +530,6 @@ RightInvariantEKF::adjoint(
 // ============================================================================
 //  Constructor
 // ============================================================================
-
 RightInvariantEKF::RightInvariantEKF(
     const pinocchio::Model&              model,
     const Eigen::VectorXd&               q_init,
@@ -563,94 +541,90 @@ RightInvariantEKF::RightInvariantEKF(
     active_contact_.fill(false);
     bg_.setZero();
     ba_.setZero();
+    omega_b_.setZero();
 
-    // ── Initial state matrix X ─────────────────────────────────────────────
-    // Extract R_WB (world←body) from q_init (quaternion x,y,z,w  body→world)
-    const Eigen::Quaterniond q_init_q(q_init[6], q_init[3],
-                                      q_init[4], q_init[5]);
-    const Eigen::Matrix3d R_WB = q_init_q.normalized().toRotationMatrix();
-    const Eigen::Vector3d p_init = q_init.head<3>();
+    // ── Initial rotation R_WB from q_init ─────────────────────────────────
+    // Pinocchio stores quat as (x,y,z,w) in slots [3:7] of q_init.
+    // The quaternion represents body→world, so R_WB = q.toRotationMatrix().
+    const Eigen::Quaterniond q0(q_init[6], q_init[3], q_init[4], q_init[5]);
+    const Eigen::Matrix3d R_WB = q0.normalized().toRotationMatrix();
 
-    X_ = Eigen::Matrix<double, DIM_X, DIM_X>::Identity();
-    X_.block<3,3>(0,0) = R_WB;
-    X_.block<3,1>(0,3) = p_init;
-    // velocity initialised to zero — already in X_ via Identity
+
+    // ── Initial state matrix X_ ───────────────────────────────────────────
+    // Identity initialises the bottom-right (N+2)×(N+2) scalar block to I,
+    // and zeros all top-row vector slots.  We then fill them in.
+    X_ = Eigen::Matrix<double,DIM_X,DIM_X>::Identity();
+    X_.template block<3,3>(0,0) = R_WB;        // rotation
+    // v column initialised to zero (already via Identity)
+    X_.template block<3,1>(0,COL_P) = q_init.head<3>();  // position
 
     // ── R_imu_to_body ──────────────────────────────────────────────────────
+    // R_WB = R_world_body; data_.oMf[imu].rotation() = R_world_imu.
+    // We want R such that: v_body = R * v_imu.
+    // R_body_imu = R_world_body^T * R_world_imu = R_WB^T * R_world_imu.
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
 
-    const int imu_id = model_.getFrameId("imu_in_torso");
-    // R_world_imu = data_.oMf[imu_id].rotation()
-    // R_body_imu = R_world_body^T * R_world_imu
-    //            = R_WB^T * R_world_imu
-    R_imu_to_body_ = R_WB.transpose() * data_.oMf[imu_id].rotation();
+    const int imu_torso_id = model_.getFrameId("imu_in_torso");
+    R_imu_torso_to_body_ = R_WB.transpose()
+                   * data_.oMf[imu_torso_id].rotation();
 
-    // ── Initial foot positions ─────────────────────────────────────────────
+    const int imu_pelvis_id = model_.getFrameId("imu_in_pelvis");
+    R_imu_pelvis_to_body_ = R_WB.transpose()
+                   * data_.oMf[imu_pelvis_id].rotation();
+
+    // ── Initial contact positions from FK ──────────────────────────────────
     for (int i = 0; i < N_FEET; ++i) {
         const int fid = model_.getFrameId(feet_[i].frame_name);
-        const Eigen::Vector3d p_foot = data_.oMf[fid].translation();
-        X_.block<3,1>(0, 4 + feet_[i].contact_idx) = p_foot;
+        X_.template block<3,1>(0, COL_D + feet_[i].contact_idx)
+            = data_.oMf[fid].translation();
     }
-
 
     // ── Initial covariance P ──────────────────────────────────────────────
     P_.setZero();
-    P_.block<3,3>(XI_R,  XI_R)  = 0.01  * Eigen::Matrix3d::Identity();
-    P_.block<3,3>(XI_V,  XI_V)  = 0.01  * Eigen::Matrix3d::Identity();
-    P_.block<3,3>(XI_P,  XI_P)  = 0.01  * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_R,  XI_R)  = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_V,  XI_V)  = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_P,  XI_P)  = 0.01 * Eigen::Matrix3d::Identity();
     for (int i = 0; i < N_FEET; ++i)
-        P_.block<3,3>(XI_D+3*i, XI_D+3*i) = 0.01 * Eigen::Matrix3d::Identity();
-    P_.block<3,3>(XI_BG, XI_BG) = 0.0001 * Eigen::Matrix3d::Identity();
-    P_.block<3,3>(XI_BA, XI_BA) = 0.0001 * Eigen::Matrix3d::Identity();
+        P_.template block<3,3>(XI_D+3*i, XI_D+3*i)
+            = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_BG, XI_BG) = 1e-4 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_BA, XI_BA) = 1e-4 * Eigen::Matrix3d::Identity();
 
-    // ── Continuous process noise Qc ────────────────────────────────────────
-    // In the basis of ξ (error state).  Before AdX multiplication.
-    // The mapping follows paper eq. 8 and Sec. III-B:
-    //   Q̂ = AdX * Cov(w) * AdXᵀ
-    // where Cov(w) = blkdiag(Σᵍ, Σᵃ, 0, Σᵛ_rot_for_each_contact)
-    // We store Qc = Cov(w) here (in the noise-input basis).
-    // The actual per-step Q̂ is computed in filter().
-    //
-    // Noise vector w = [wᵍ(3) | wᵃ(3) | 0(3) | hR·wᵛ(3)×N_FEET | wᵇᵍ(3) | wᵇᵃ(3)]
-    // In ξ basis this maps as (paper eqs 5,8):
-    //   noise on ξᴿ  ← wᵍ   (gyro)
-    //   noise on ξᵛ  ← wᵃ   (accel)
-    //   noise on ξᵖ  ← 0    (position has no direct noise)
-    //   noise on ξᵈⁱ ← hR·wᵛ (contact slip)
-    //   noise on δbᵍ ← wᵇᵍ  (gyro bias RW)
-    //   noise on δbᵃ ← wᵇᵃ  (accel bias RW)
-    //
-    // The continuous Qc (in ξ basis, before AdX) is therefore:
-    const double sg2 = noise_.gyro_noise    * noise_.gyro_noise;
-    const double sa2 = noise_.accel_noise   * noise_.accel_noise;
-    const double sv2 = noise_.contact_noise * noise_.contact_noise;
-    const double sbg2= noise_.gyro_bias_rw  * noise_.gyro_bias_rw;
-    const double sba2= noise_.accel_bias_rw * noise_.accel_bias_rw;
+    // ── Continuous process noise Qc (in ξ-basis, before AdX) ─────────────
+    // Channels and their ξ-slots (paper eqs 5,8 and Sec. III-B):
+    //   wᵍ  → ξᴿ  (gyro  noise  drives rotation error)
+    //   wᵃ  → ξᵛ  (accel noise  drives velocity error)
+    //   0   → ξᵖ  (no direct process noise on position)
+    //   wᵛᵢ → ξᵈⁱ (slip  noise  drives contact error)
+    //   wᵇᵍ → δbᵍ
+    //   wᵇᵃ → δbᵃ
+    const double sg2  = noise_.gyro_noise    * noise_.gyro_noise;
+    const double sa2  = noise_.accel_noise   * noise_.accel_noise;
+    const double sv2  = noise_.contact_noise * noise_.contact_noise;
+    const double sbg2 = noise_.gyro_bias_rw  * noise_.gyro_bias_rw;
+    const double sba2 = noise_.accel_bias_rw * noise_.accel_bias_rw;
 
     Qc_.setZero();
-    Qc_.block<3,3>(XI_R,  XI_R)  = sg2 * Eigen::Matrix3d::Identity();
-    Qc_.block<3,3>(XI_V,  XI_V)  = sa2 * Eigen::Matrix3d::Identity();
-    // position noise = 0 (no direct process noise on p)
+    Qc_.template block<3,3>(XI_R,  XI_R)  = sg2  * Eigen::Matrix3d::Identity();
+    Qc_.template block<3,3>(XI_V,  XI_V)  = sa2  * Eigen::Matrix3d::Identity();
+    // XI_P block stays zero
     for (int i = 0; i < N_FEET; ++i)
-        Qc_.block<3,3>(XI_D+3*i, XI_D+3*i) = sv2 * Eigen::Matrix3d::Identity();
-    Qc_.block<3,3>(XI_BG, XI_BG) = sbg2 * Eigen::Matrix3d::Identity();
-    Qc_.block<3,3>(XI_BA, XI_BA) = sba2 * Eigen::Matrix3d::Identity();
+        Qc_.template block<3,3>(XI_D+3*i, XI_D+3*i) = sv2  * Eigen::Matrix3d::Identity();
+    Qc_.template block<3,3>(XI_BG, XI_BG) = sbg2 * Eigen::Matrix3d::Identity();
+    Qc_.template block<3,3>(XI_BA, XI_BA) = sba2 * Eigen::Matrix3d::Identity();
 }
 
 // ============================================================================
-//  addContact / removeContact  (paper Sec. V)
+//  addContact  (paper Sec. V: contact switching)
 // ============================================================================
-
 void RightInvariantEKF::addContact(int foot_idx,
                                    const Eigen::VectorXd& joint_pos)
 {
-    // Reset contact position from FK using current base estimate
+    // Build current Pinocchio config to evaluate FK
     Eigen::VectorXd q_pin = Eigen::VectorXd::Zero(model_.nq);
-    q_pin.head<3>()     = X_.block<3,1>(0,2);  // current p
-    // Build quaternion from current R_WB
-    const Eigen::Quaterniond q_cur(X_.block<3,3>(0,0));
-    q_pin.segment<4>(3) = q_cur.coeffs();
+    q_pin.head<3>()     = getPosition();
+    q_pin.segment<4>(3) = getQuaternion().coeffs();   // (x,y,z,w)
     q_pin.tail(joint_pos.size()) = joint_pos;
 
     pinocchio::forwardKinematics(model_, data_, q_pin);
@@ -659,23 +633,26 @@ void RightInvariantEKF::addContact(int foot_idx,
     const int fid = model_.getFrameId(feet_[foot_idx].frame_name);
     const int ci  = feet_[foot_idx].contact_idx;
 
-    // Set contact position in world frame
-    X_.block<3,1>(0, 3 + ci) = data_.oMf[fid].translation();
+    // Reset contact position in world frame
+    X_.template block<3,1>(0, COL_D + ci) = data_.oMf[fid].translation();
 
-    // Reset covariance block for this contact point
-    const int row = XI_D + 3 * foot_idx;
-    P_.block<3, NR>(row, 0).setZero();
-    P_.block<NR, 3>(0, row).setZero();
-    P_.block<3,3>(row, row) = 0.01 * Eigen::Matrix3d::Identity();
+    // Reset covariance block for this contact (cross-terms zeroed)
+    const int row = XI_D + 3*foot_idx;
+    P_.block(row, 0,   3, NR).setZero();
+    P_.block(0,   row, NR, 3).setZero();
+    P_.template block<3,3>(row, row) = 0.01 * Eigen::Matrix3d::Identity();
 
     active_contact_[foot_idx] = true;
 }
 
+// ============================================================================
+//  removeContact
+// ============================================================================
 void RightInvariantEKF::removeContact(int foot_idx)
 {
-    // Inflate the contact point process noise so P grows fast
-    // (the contact position becomes unobservable when not in contact)
     active_contact_[foot_idx] = false;
+    // Process noise inflation for non-active contacts is handled in filter()
+    // via Qc_step.
 }
 
 // ============================================================================
@@ -688,157 +665,149 @@ void RightInvariantEKF::filter(
     const Eigen::VectorXd&         joint_vel,
     const std::array<bool,N_FEET>& contact)
 {
-    // ── Contact management ────────────────────────────────────────────────
+    // ── Contact management ─────────────────────────────────────────────────
     for (int i = 0; i < N_FEET; ++i) {
-        if (contact[i] && !active_contact_[i])
-            addContact(i, joint_pos);
-        else if (!contact[i] && active_contact_[i])
-            removeContact(i);
+        if (contact[i] && !active_contact_[i])       addContact(i, joint_pos);
+        else if (!contact[i] && active_contact_[i])  removeContact(i);
     }
 
     // =========================================================================
-    // 0)  IMU pre-processing
-    //     Rotate raw measurements to body frame and remove biases.
+    // 0)  IMU PRE-PROCESSING
+    //     Rotate to body frame, remove bias.
     // =========================================================================
 
-    // Bias-compensated IMU in body frame
-    const Eigen::Vector3d omega_b = R_imu_to_body_ * gyro_meas  - bg_;
-    const Eigen::Vector3d f_b     = R_imu_to_body_ * acc_meas   - ba_;
+    const Eigen::Vector3d omega_b = R_imu_torso_to_body_ * gyro_meas - bg_;
+    const Eigen::Vector3d f_body  = R_imu_pelvis_to_body_ * acc_meas  - ba_;
+    omega_b_ = omega_b;
 
-    // Current rotation R = R_WB (world←body)
-    const Eigen::Matrix3d& R = X_.block<3,3>(0,0);
-
-    // =========================================================================
-    // 1)  NOMINAL STATE PROPAGATION  (paper eq. 4 and 7)
-    //
-    // Continuous dynamics (paper eq. 4):
-    //   Ṙ = R (ω̃)×
-    //   v̇ = R ã + g
-    //   ṗ = v
-    //   ḋᵢ = 0  (contact position constant)
-    //
-    // Discrete integration with zero-order hold on inputs:
-    //   R_{k+1} = R_k · expSO3(ω_b · Δt)
-    //   v_{k+1} = v_k + (R_k · f_b + g) · Δt
-    //   p_{k+1} = p_k + v_k · Δt + ½ (R_k · f_b + g) · Δt²
-    //   d_{k+1} = d_k
-    // =========================================================================
-
-    const Eigen::Vector3d a_world = R * f_b;
-    const Eigen::Vector3d v_k     = X_.block<3,1>(0,1);
-    const Eigen::Vector3d p_k     = X_.block<3,1>(0,2);
-
-    // Update state matrix
-    X_.block<3,3>(0,0) = R * expSO3(omega_b * dt_);
-    X_.block<3,1>(0,1) = v_k + a_world * dt_;
-    X_.block<3,1>(0,2) = p_k + v_k * dt_ + 0.5 * a_world * dt_ * dt_;
-    // contact columns unchanged
-    X_.block<3,3>(0,0) = X_.block<3,3>(0,0); // already updated
-    // Normalise rotation
-    Eigen::Matrix3d Rnew = X_.block<3,3>(0,0);
-    Eigen::JacobiSVD<Eigen::Matrix3d> svd(Rnew,
-        Eigen::ComputeFullU | Eigen::ComputeFullV);
-    X_.block<3,3>(0,0) = svd.matrixU()
-                        * Eigen::Matrix3d(svd.singularValues().cwiseSign().asDiagonal())
-                        * svd.matrixV().transpose();
+    // Current R_WB (world ← body)
+    const Eigen::Matrix3d R_WB = X_.template block<3,3>(0,0);
 
     // =========================================================================
-    // 2)  COVARIANCE PROPAGATION  (paper eq. 7-8)
+    // 1)  NOMINAL STATE PROPAGATION  (paper eqs. 4, 7)
     //
-    // Continuous Riccati: dP/dt = A P + P Aᵀ + Q̂
-    // where:
-    //   A = ┌ 0      0    0    0  ┐  (paper eq. 8, time-invariant!)
-    //       │ g×     0    0    0  │
-    //       │ 0      I    0    0  │
-    //       │ 0      0    0    0  │
-    //       └ 0      0    0    0  ┘
-    //   (rows/cols: ξᴿ, ξᵛ, ξᵖ, ξᵈ, δb)
-    //   (A has only two non-zero blocks: A(ξᵛ,ξᴿ)=g×  and  A(ξᵖ,ξᵛ)=I)
-    //
-    //   Q̂ = AdX̂ · Cov(w) · AdX̂ᵀ
-    //
-    // Discrete approximation:
-    //   Φ = expm(A·Δt)  — exact for nilpotent A (paper's observability remark)
-    //   P_{k+1} = Φ P Φᵀ + Q̂·Δt
-    //
-    // Because A is nilpotent of degree 3, expm(A·Δt) is a polynomial:
-    //   Φ = I + A·Δt + ½ A²·Δt²
-    // (paper observability section: the state transition matrix is exact polynomial)
+    // Ṙ = R (ω)×            →  R_{k+1} = R_k · expSO3(ω_b · Δt)
+    // v̇ = R f_body + g      →  v_{k+1} = v_k + (R_k f_body + g) · Δt
+    // ṗ = v                 →  p_{k+1} = p_k + v_k·Δt + ½(R_k f_body+g)·Δt²
+    // ḋᵢ = 0                →  d_{k+1} = d_k
     // =========================================================================
 
-    // Build Φ (paper's Φ = expm(At·Δt), exact polynomial)
-    Eigen::Matrix<double, NR, NR> Phi =
-        Eigen::Matrix<double, NR, NR>::Identity();
+    const Eigen::Vector3d v_k     = X_.template block<3,1>(0,COL_V);
+    const Eigen::Vector3d p_k     = X_.template block<3,1>(0,COL_P);
+    const Eigen::Vector3d a_world = R_WB * f_body + g_;
 
-    // A·Δt  blocks:
-    //   (ξᵛ, ξᴿ):  g× · Δt
-    //   (ξᵖ, ξᵛ):  I  · Δt
-    const Eigen::Matrix3d g_cross_dt = skew(g_) * dt_;
-    Phi.block<3,3>(XI_V, XI_R) += g_cross_dt;
-    Phi.block<3,3>(XI_P, XI_V) += Eigen::Matrix3d::Identity() * dt_;
+    X_.template block<3,3>(0,0)    = projectToSO3(R_WB * expSO3(omega_b * dt_));
+    X_.template block<3,1>(0,COL_V)= v_k + a_world * dt_;
+    X_.template block<3,1>(0,COL_P)= p_k + v_k*dt_ + 0.5*a_world*dt_*dt_;
+    // Contact columns: unchanged
 
-    // A²·Δt²/2  blocks:
-    //   A² = A·A.  Only non-zero: (ξᵖ, ξᴿ) = I * g× * Δt² (from ξᵖ←ξᵛ←ξᴿ)
-    Phi.block<3,3>(XI_P, XI_R) += 0.5 * skew(g_) * dt_ * dt_;
+    // Re-read updated R for subsequent calculations
+    const Eigen::Matrix3d& R_new = X_.template block<3,3>(0,0);
 
-    // Q̂ = AdX̂ · Qc · AdX̂ᵀ · Δt
-    // (inflate contact noise for non-active feet)
-    Eigen::Matrix<double, NR, NR> Qc_step = Qc_;
+    // =========================================================================
+    // 2)  COVARIANCE PROPAGATION  (paper eqs. 7-8)
+    //
+    // Continuous Riccati:  Ṗ = A P + P Aᵀ + Q̂
+    //
+    // State-transition matrix (discrete, first-order):  Φ ≈ I + A·Δt
+    //
+    // A (time-invariant Lie part, paper eq. 8):
+    //   A(XI_V, XI_R) = g× = skew(g)
+    //   A(XI_P, XI_V) = I
+    //   A(XI_P, XI_R) = 0  (second-order term only in Φ²)
+    //
+    // A (bias coupling, paper Sec. IV):
+    //   A(XI_R, XI_BG) = -I        (gyro  bias → rotation error)
+    //   A(XI_V, XI_BA) = -R_WB     (accel bias → velocity error)
+    //
+    // Φ = I + A·Δt + ½A²·Δt²  (exact for nilpotent A without bias;
+    //     with bias we use first-order: Φ ≈ I + A·Δt)
+    //
+    // Q̂ = AdX̂ · Qc_step · AdX̂ᵀ · Δt
+    // =========================================================================
+
+    Eigen::Matrix<double,NR,NR> Phi = Eigen::Matrix<double,NR,NR>::Identity();
+
+    // Lie algebra part (A·Δt)
+    Phi.template block<3,3>(XI_V, XI_R)  = skew(g_)                     * dt_;
+    Phi.template block<3,3>(XI_P, XI_V)  = Eigen::Matrix3d::Identity()   * dt_;
+    // Second-order term (from A²·Δt²/2): A²(XI_P,XI_R) = I·g×
+    Phi.template block<3,3>(XI_P, XI_R)  = 0.5 * skew(g_) * dt_ * dt_;
+
+    // Bias coupling terms (paper Sec. IV)
+    // These make At time-varying (through R_WB); we use the *pre-update* R_WB.
+    Phi.template block<3,3>(XI_R, XI_BG) = -Eigen::Matrix3d::Identity() * dt_;
+    Phi.template block<3,3>(XI_V, XI_BA) = -R_WB                        * dt_;
+
+    // Inflate process noise for non-active contacts
+    Eigen::Matrix<double,NR,NR> Qc_step = Qc_;
     for (int i = 0; i < N_FEET; ++i) {
-        if (!active_contact_[i]) {
-            // large noise when foot is not in contact
-            Qc_step.block<3,3>(XI_D+3*i, XI_D+3*i) =
-                100.0 * Eigen::Matrix3d::Identity();
-        }
+        if (!active_contact_[i])
+            Qc_step.template block<3,3>(XI_D+3*i, XI_D+3*i)
+                = 100.0 * Eigen::Matrix3d::Identity();
     }
 
+    // Q̂ = AdX̂ · Qc_step · AdX̂ᵀ · Δt
+    const Eigen::Matrix<double,NR,NR> AdX  = adjoint(X_);
+    const Eigen::Matrix<double,NR,NR> Qhat = AdX * Qc_step * AdX.transpose() * dt_;
 
-    const Eigen::Matrix<double, NR, NR> AdX  = adjoint(X_);
-    const Eigen::Matrix<double, NR, NR> Qhat = AdX * Qc_step * AdX.transpose();
-
-    P_ = Phi * P_ * Phi.transpose() + Qhat * dt_;
+    P_ = Phi * P_ * Phi.transpose() + Qhat;
 
     // =========================================================================
     // 3)  FORWARD KINEMATICS
-    //     Evaluate FK at current state estimate + measured joint angles.
+    //     Evaluated at current state estimate + measured joint angles.
+    //     Pinocchio free-flyer convention:
+    //       q_pin[0:3]  = base position
+    //       q_pin[3:7]  = quaternion (x,y,z,w)  body→world
+    //       q_pin[7:nq] = joint angles
+    //       v_pin[0:3]  = base linear velocity in BODY frame
+    //       v_pin[3:6]  = base angular velocity in body frame
+    //       v_pin[6:nv] = joint velocities
     // =========================================================================
 
-    const Eigen::Matrix3d R_new = X_.block<3,3>(0,0);
-    const Eigen::Quaterniond q_cur(R_new);
+    const int n_joints = static_cast<int>(joint_pos.size());
 
     Eigen::VectorXd q_pin = Eigen::VectorXd::Zero(model_.nq);
-    q_pin.head<3>()      = X_.block<3,1>(0,2);   // position
-    q_pin.segment<4>(3)  = q_cur.coeffs();        // (x,y,z,w)
-    q_pin.tail(joint_pos.size()) = joint_pos;
+    q_pin.head<3>()      = getPosition();
+    q_pin.segment<4>(3)  = getQuaternion().coeffs();   // (x,y,z,w)
+    q_pin.tail(n_joints) = joint_pos;
+
+    // Pinocchio expects base linear velocity in BODY frame
+    Eigen::VectorXd v_pin = Eigen::VectorXd::Zero(model_.nv);
+    v_pin.head<3>()      = R_new.transpose() * getVelocity();  // body frame
+    v_pin.segment<3>(3)  = omega_b;
+    v_pin.tail(n_joints) = joint_vel;
 
     data_ = pinocchio::Data(model_);
-    pinocchio::forwardKinematics(model_, data_, q_pin);
+    pinocchio::forwardKinematics(model_, data_, q_pin, v_pin);
     pinocchio::updateFramePlacements(model_, data_);
     pinocchio::computeJointJacobians(model_, data_, q_pin);
 
     // =========================================================================
-    // 4)  MEASUREMENT UPDATE  (paper Sec. III-C, eqs. 11-14)
+    // 4)  MEASUREMENT MODEL  (paper Sec. III-C, eqs. 11-14)
     //
-    // Right-invariant FK measurement model:
-    //   Yₜ = Xₜ⁻¹ b + Vₜ
+    // Right-invariant FK measurement:  Yₜ = Xₜ⁻¹ b + Vₜ
     //
-    // where for each contact i:
-    //   b = [0; 0; 1; -1]  (4-vector in homogeneous coords)
-    //   Yₜ = [hp(α̃ₜ); 0; 1; -1]
-    //   hp(α̃ₜ) = Rᵀ(dᵢ - p)  ← foot position in body frame from state
+    //   b = [0; 0; 1; -1]   (selects p and -dᵢ columns in homogeneous coords)
+    //   hp(α̃) = R^T(dᵢ - p)  (foot pos in body frame from STATE)
+    //   Yₜ = [hp_meas; 0; 1; -1]  (hp from FK encoders)
     //
-    // The innovation is (paper eq. 13 linearised):
-    //   z = X̂ₜ Yₜ  (first 3 components, after projection Π)
-    //     = R̂ hp(α̃) + p̂ - dᵢ_hat
+    // Innovation (paper after eq. 13):
+    //   z = (X̂ Yₜ)_{top 3}  =  R̂ hp_meas + p̂ - dᵢ  =  p_foot_FK - dᵢ
     //
-    // Measurement Jacobian (paper eq. 13):
-    //   H = [0  0  -I  I]  (3 × NR per contact)
+    // This equals the world-frame error between FK foot position and estimated
+    // contact position.  It is independent of base position/orientation errors
+    // when the state is correct (trajectory-independent — key RI property).
+    //
+    // Measurement Jacobian (paper eq. 13, CONSTANT regardless of state!):
+    //   H = [0  0  -I  I  0  0]   for contact i
+    //        ξᴿ ξᵛ  ξᵖ ξᵈⁱ δbᵍ δbᵃ
     //
     // Measurement noise (paper eq. 14):
-    //   N̂ = R̂ Jv Σα Jvᵀ R̂ᵀ
+    //   N̂ = R̂ Jv_body Σα Jv_bodyᵀ R̂ᵀ  =  J_world Σα J_worldᵀ
+    //   (the two expressions are equivalent; we use the simpler world-frame one)
     // =========================================================================
 
-    // Accumulate H, z, N over all active contacts
     Eigen::MatrixXd H_all(0, NR);
     Eigen::VectorXd z_all(0);
     Eigen::MatrixXd N_all(0, 0);
@@ -849,67 +818,35 @@ void RightInvariantEKF::filter(
         const int ci  = feet_[i].contact_idx;
         const int fid = model_.getFrameId(feet_[i].frame_name);
 
-        // FK: foot position relative to body, in body frame
-        // hp(α̃) = R^T (dᵢ - p)   from state  (paper eq. 11)
-        // measured hp from FK: B_p_BC = R^T * (p_foot_world - p_base_world)
-        const Eigen::Vector3d p_foot_world = data_.oMf[fid].translation();
-        const Eigen::Vector3d p_base_world = X_.block<3,1>(0,2);
-        const Eigen::Vector3d d_i          = X_.block<3,1>(0, 3 + ci);
-        const Eigen::Matrix3d Rhat         = X_.block<3,3>(0,0);
+        // FK foot position in world frame (from Pinocchio)
+        const Eigen::Vector3d p_foot_fk = data_.oMf[fid].translation();
 
-        // Measured hp (from FK encoder reading)
-        const Eigen::Vector3d hp_meas = Rhat.transpose() * (p_foot_world - p_base_world);
+        // Estimated contact position from state
+        const Eigen::Vector3d d_i = X_.template block<3,1>(0, COL_D + ci);
 
-        // Innovation z = X̂ Y - b  (paper eq. 14, first 3 components)
-        // X̂ Y = X̂ (X̂⁻¹ b + V) = b + X̂ V
-        // We compute X̂ Yₜ directly:
-        //   Yₜ = [hp_meas; 0; 1; -1]  (extended homogeneous vector)
-        //   (X̂ Yₜ)_top3 = R̂ hp_meas + v̂·0 + p̂·1 + dᵢ·(-1)
-        //                = R̂ hp_meas + p̂ - dᵢ
-        const Eigen::Vector3d z_i =
-            Rhat * hp_meas + p_base_world - d_i;
-        // (this equals R̂ R̂ᵀ (p_foot - p) + p - dᵢ
-        //            = p_foot - p + p - dᵢ
-        //            = p_foot - dᵢ
-        //  which is exactly the world-frame foot position error vs state estimate)
+        // Innovation:  z = p_foot_FK - d_i  (world frame)
+        //   = R̂ hp_meas + p̂ - d_i  which simplifies exactly to this
+        const Eigen::Vector3d z_i = p_foot_fk - d_i;
 
-        // Measurement Jacobian (paper eq. 13):
-        //   H_i = [0₃  0₃  -I₃  ...  I₃  ...  0₃  0₃]
-        //          ξᴿ  ξᵛ   ξᵖ       ξᵈⁱ      δbᵍ δbᵃ
-        Eigen::MatrixXd Hi = Eigen::MatrixXd::Zero(3, NR);
-        Hi.block<3,3>(0, XI_P)      = -Eigen::Matrix3d::Identity();
-        Hi.block<3,3>(0, XI_D+3*i)  =  Eigen::Matrix3d::Identity();
-        // (paper has H = [0  0  -I  I] for the contact block)
+        // Measurement Jacobian H_i (3 × NR)
+        // H = [0  0  -I  ...  I  ...  0  0]
+        //      XI_R XI_V XI_P   XI_D+3i  XI_BG XI_BA
+        Eigen::Matrix<double,3,NR> Hi;
+        Hi.setZero();
+        Hi.template block<3,3>(0, XI_P)       = -Eigen::Matrix3d::Identity();
+        Hi.template block<3,3>(0, XI_D + 3*i) =  Eigen::Matrix3d::Identity();
 
-        // Measurement noise: N̂ = R̂ Jv Σα Jvᵀ R̂ᵀ  (paper eq. 14)
-        const int n_joints = static_cast<int>(joint_pos.size());
+        // Measurement noise: N̂ = J_world · Σα · J_worldᵀ
+        // J_world = top 3 rows (linear) of LOCAL_WORLD_ALIGNED Jacobian,
+        //           joint columns only (rightCols(n_joints))
         Eigen::MatrixXd J_full = Eigen::MatrixXd::Zero(6, model_.nv);
-
         pinocchio::getFrameJacobian(model_, data_, fid,
                                     pinocchio::LOCAL_WORLD_ALIGNED, J_full);
-        // Take linear (top 3) rows, joint columns only (rightmost n_joints cols)
-        const Eigen::MatrixXd Jv =
-            J_full.topRows<3>().rightCols(n_joints);  // 3 × n_j, world frame
+        const Eigen::MatrixXd Jv_world =
+            J_full.topRows<3>().rightCols(n_joints);   // 3 × n_joints
 
         const double se2 = noise_.encoder_noise * noise_.encoder_noise;
-        // const Eigen::Matrix3d Ni =
-        //     Rhat * (Jv * Rhat.transpose()) * se2 * (Jv * Rhat.transpose()).transpose() * Rhat.transpose();
-        // Simplified: N̂ = R̂ Jv_body Σα Jv_bodyᵀ R̂ᵀ
-        // where Jv_body = R̂ᵀ Jv (world→body rotation of Jacobian rows)
-        // = (R̂ᵀ Jv) Σα (R̂ᵀ Jv)ᵀ rotated back to world frame
-        // which equals: Jv Σα Jvᵀ  (rotation cancels)
-        // Paper actually uses: N̂ = R̂ Jv Σα Jvᵀ R̂ᵀ where Jv is in body frame
-        // Let's be precise:
-        // Jv_body = top 3 rows of LOCAL Jacobian (body frame linear velocity)
-        Eigen::MatrixXd J_local = Eigen::MatrixXd::Zero(6, model_.nv);
-        pinocchio::getFrameJacobian(model_, data_, fid,
-                                    pinocchio::LOCAL, J_local);
-
-        const Eigen::MatrixXd Jv_body =
-            J_local.topRows<3>().rightCols(n_joints);  // 3 × n_j, body frame
-
-        const Eigen::Matrix3d Ni_correct =
-            Rhat * (Jv_body * se2 * Jv_body.transpose()) * Rhat.transpose();
+        const Eigen::Matrix3d Ni = Jv_world * se2 * Jv_world.transpose();
 
         // Accumulate
         const int old = static_cast<int>(z_all.rows());
@@ -920,65 +857,58 @@ void RightInvariantEKF::filter(
         H_all.block(old, 0, 3, NR) = Hi;
 
         N_all.conservativeResize(old + 3, old + 3);
-        N_all.block(old, 0,    3, old).setZero();
-        N_all.block(0,   old, old, 3  ).setZero();
-        N_all.block<3,3>(old, old) = Ni_correct;
+        N_all.block(old,  0,     3, old).setZero();
+        N_all.block(0,    old, old,   3).setZero();
+        N_all.template block<3,3>(old, old) = Ni;
     }
 
     if (z_all.size() == 0)
-        return;  // no active contacts, pure propagation
+        return;   // no active contacts: pure propagation
 
     // =========================================================================
     // 5)  KALMAN UPDATE  (paper eq. 14)
     //
-    //   S  = H P Hᵀ + N̂
-    //   K  = P Hᵀ S⁻¹
-    //   ξ⁺ = K z                    (innovation in the ξ basis)
-    //   X̂⁺ = exp(Kg · ξ⁺) · X̂      (right-invariant update, paper eq. 14)
-    //   P⁺ = (I - K H) P             (Joseph form below for stability)
+    //   S   = H P Hᵀ + N̂
+    //   K   = P Hᵀ S⁻¹                    (NR × m gain)
+    //   ξ⁺  = K z                          (correction in ξ-basis)
+    //
+    // State update (right-invariant, paper eq. 14):
+    //   X̂⁺ = exp(Lg(ξ_lie⁺)) · X̂          (left multiplication)
+    //   b̂⁺ = b̂ + ξ_bias⁺                   (Euclidean bias update)
+    //
+    // Covariance update (Joseph form for numerical stability):
+    //   P⁺ = (I − KH) P (I − KH)ᵀ + K N̂ Kᵀ
     // =========================================================================
-
-    const int m = static_cast<int>(z_all.rows());
 
     const Eigen::MatrixXd S = H_all * P_ * H_all.transpose() + N_all;
     const Eigen::MatrixXd K = P_ * H_all.transpose() * S.inverse();
 
-    // Correction in ξ space
-    const Eigen::VectorXd xi_corr = K * z_all;   // dim NR
+    const Eigen::VectorXd xi_corr = K * z_all;   // dim NR = 21
 
-    // Extract Lie-algebra part of xi_corr (first 3*(N_FEET+3) components)
-    const int n_lie = 3 * (N_FEET + 3);
+    // Extract Lie algebra correction (first 3*(N_FEET+3) = 15 components)
+    Eigen::Matrix<double,3*(N_FEET+3),1> xi_lie;
+    xi_lie.template head<3>() = xi_corr.template segment<3>(XI_R);
+    xi_lie.template segment<3>(3) = xi_corr.template segment<3>(XI_V);
+    xi_lie.template segment<3>(6) = xi_corr.template segment<3>(XI_P);
+    for (int i = 0; i < N_FEET; ++i)
+        xi_lie.template segment<3>(9 + 3*i) = xi_corr.template segment<3>(XI_D + 3*i);
 
-    // Build the correction Lie algebra element and apply group exponential
-    // paper eq. 14:  X̂⁺ = exp(Lg(ξ_lie)) · X̂
-    Eigen::VectorXd xi_lie(n_lie);
-    xi_lie.head<3>()                   = xi_corr.segment<3>(XI_R);
-    xi_lie.segment<3>(3)               = xi_corr.segment<3>(XI_V);
-    xi_lie.segment<3>(6)               = xi_corr.segment<3>(XI_P);
-    for (int i = 0; i < N_FEET; ++i){
-        xi_lie.segment<3>(9 + 3*i)     = xi_corr.segment<3>(XI_D + 3*i);
-    }
+    // State update: X̂⁺ = exp(Lg(ξ_lie)) · X̂
+    X_ = groupExp(xi_lie) * X_;
 
-    const Eigen::Matrix<double,DIM_X,DIM_X> dX = groupExp(xi_lie);
-    X_ = dX * X_;
+    // Re-project R to SO(3) after numerical accumulation
+    X_.template block<3,3>(0,0) = projectToSO3(X_.template block<3,3>(0,0));
 
-    // Re-normalise rotation after update
-    Eigen::JacobiSVD<Eigen::Matrix3d> svd2(X_.block<3,3>(0,0),
-        Eigen::ComputeFullU | Eigen::ComputeFullV);
-    X_.block<3,3>(0,0) = svd2.matrixU()
-                        * Eigen::Matrix3d(svd2.singularValues().cwiseSign().asDiagonal())
-                        * svd2.matrixV().transpose();
+    // Bias update (Euclidean)
+    bg_ += xi_corr.template segment<3>(XI_BG);
+    ba_ += xi_corr.template segment<3>(XI_BA);
 
-    // Bias update (Euclidean part, paper Sec. IV)
-    bg_ += xi_corr.segment<3>(XI_BG);
-    ba_ += xi_corr.segment<3>(XI_BA);
-
-    // Covariance update: Joseph stabilised form
-    const Eigen::Matrix<double, NR, NR> I_mat =
-        Eigen::Matrix<double, NR, NR>::Identity();
+    // Covariance update: Joseph form
+    const Eigen::Matrix<double,NR,NR> I_mat =
+        Eigen::Matrix<double,NR,NR>::Identity();
     const Eigen::MatrixXd IKH = I_mat - K * H_all;
     P_ = IKH * P_ * IKH.transpose() + K * N_all * K.transpose();
-    P_ = 0.5 * (P_ + P_.transpose());
+    P_ = 0.5 * (P_ + P_.transpose());   // enforce symmetry
 }
 
 } // namespace state_filtering
