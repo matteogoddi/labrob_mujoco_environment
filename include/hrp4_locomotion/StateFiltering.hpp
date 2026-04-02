@@ -112,10 +112,11 @@ public:
                     const Eigen::Vector3d& pR_init) {
       r_ << q_init[0], q_init[1], q_init[2];
       q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]);
-      
-      // pinocchio::forwardKinematics(model_, data_, q_init_);
-      // pinocchio::framesForwardKinematics(model_, data_, q_init_);
-      // pinocchio::computeJointJacobians(model_, data_, q_init_);
+
+      pinocchio::Model model = model_;
+      pinocchio::Data data(model);
+      pinocchio::forwardKinematics(model_, data, q_init_);
+      pinocchio::framesForwardKinematics(model_, data, q_init_);
 
       // const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
       pL_ = pL_init;

@@ -19,6 +19,7 @@ JointKF::JointKF(double dt, int nq)
     F.block(0, nq, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * dt;
     G = Eigen::MatrixXd::Zero(nx, nu);
     G.block(nq, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq) * dt;
+    G.block(2*nq, nq, 3, 3) = Eigen::Matrix3d::Identity() * dt;
     H = Eigen::MatrixXd::Zero(nu, nx);
     H.block(0, 0, nq, nq) = Eigen::MatrixXd::Identity(nq, nq);
     H.block(nq, 2 * nq, 3, 3) = Eigen::Matrix3d::Identity();
@@ -30,12 +31,12 @@ JointKF::JointKF(double dt, int nq)
 
     // COVARIANCE MATRICES
 
-    Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(nx, nx) * 1e-2;
+    Eigen::MatrixXd Q = Eigen::MatrixXd::Identity(nx, nx) * 1e-3;
     Q.block(0, 0, nx, nx) = Eigen::MatrixXd::Identity(nx, nx) * 1e-4;
     Q.block(nx-3, nx-3, 3, 3) = Eigen::Matrix3d::Identity() * 1e-4;
     Eigen::MatrixXd R = Eigen::MatrixXd::Identity(nu, nu) * 1e-5;
-    R.block(nu-3, nu-3, 3, 3) = Eigen::Matrix3d::Identity() * 1e-2;
-    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(nx, nx) * 1e-3;
+    R.block(nu-3, nu-3, 3, 3) = Eigen::Matrix3d::Identity() * 1e-1;
+    Eigen::MatrixXd P = Eigen::MatrixXd::Identity(nx, nx) * 1e-5;
 
     // KALMAN GAIN 
 
@@ -194,7 +195,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
     Eigen::Quaterniond s_z(T_bf.rotation());
-    Eigen::Quaterniond s_z_hat = q_.inverse() * z;
+    Eigen::Quaterniond s_z_hat = q_.inverse() * z.inverse();
 
 
 
@@ -225,9 +226,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
 
-    H_accum.block<3,3>(old_rows+3, iphi) = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows+3, iphi) = -Eigen::Matrix3d::Identity();
     H_accum.block<3,3>(old_rows+3, itheta) =
-        - (q_.inverse() * z).toRotationMatrix();
+        - (q_.inverse() * z.inverse()).toRotationMatrix();
 
     // H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
     // H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
