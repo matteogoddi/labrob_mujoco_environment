@@ -257,6 +257,7 @@ inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
 };
 
 MotorState motor_state_data;
+ImuState imu_pelvis_data;
 void LowStateHandler(const void* msg){
   LowState_ low_state = *(const LowState_*)msg;
   uint32_t crc_calc = Crc32Core((uint32_t*)&low_state, ((sizeof(LowState_) >> 2) -1));
@@ -271,6 +272,23 @@ void LowStateHandler(const void* msg){
     motor_state_data.q[i] = low_state.motor_state()[i].q();
     motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
+
+  imu_pelvis_data.quaternion[0] = low_state.imu_state().quaternion()[0];
+  imu_pelvis_data.quaternion[1] = low_state.imu_state().quaternion()[1];
+  imu_pelvis_data.quaternion[2] = low_state.imu_state().quaternion()[2];
+  imu_pelvis_data.quaternion[3] = low_state.imu_state().quaternion()[3];
+
+  imu_pelvis_data.rpy[0] = low_state.imu_state().rpy()[0];
+  imu_pelvis_data.rpy[1] = low_state.imu_state().rpy()[1];
+  imu_pelvis_data.rpy[2] = low_state.imu_state().rpy()[2];
+
+  imu_pelvis_data.omega[0] = low_state.imu_state().gyroscope()[0];
+  imu_pelvis_data.omega[1] = low_state.imu_state().gyroscope()[1];
+  imu_pelvis_data.omega[2] = low_state.imu_state().gyroscope()[2];
+
+  imu_pelvis_data.accelerometer[0] = low_state.imu_state().accelerometer()[0];
+  imu_pelvis_data.accelerometer[1] = low_state.imu_state().accelerometer()[1];
+  imu_pelvis_data.accelerometer[2] = low_state.imu_state().accelerometer()[2];
 
   // update gamepad
   memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
@@ -567,7 +585,7 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isWBCLoopClosed = true;
+    isWBCLoopClosed = false;
     isMPCLoopClosed = true;
     isEKFactive = true;
   }
@@ -698,7 +716,7 @@ int main(const int argc, const char* argv[]) {
         }
 
         std::lock_guard<std::mutex> lock(stateMutex);
-        measured_imu_accelerometer = Eigen::Vector3d(imu_state_data.accelerometer[0], imu_state_data.accelerometer[1], imu_state_data.accelerometer[2]);
+        measured_imu_accelerometer = Eigen::Vector3d(imu_pelvis_data.accelerometer[0], imu_pelvis_data.accelerometer[1], imu_pelvis_data.accelerometer[2]);
         measured_imu_angular_velocity = Eigen::Vector3d(imu_state_data.omega[0], imu_state_data.omega[1], imu_state_data.omega[2]);
         measured_imu_quaternion = Eigen::Vector4d(imu_state_data.quaternion[0], imu_state_data.quaternion[1], imu_state_data.quaternion[2], imu_state_data.quaternion[3]);
         measured_imu_rpy = Eigen::Vector3d(imu_state_data.rpy[0], imu_state_data.rpy[1], imu_state_data.rpy[2]);

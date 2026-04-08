@@ -204,7 +204,7 @@ WalkingData::addSteps(
             labrob::Foot::RIGHT
         ),
         0.0,
-        2000,
+        1000000,
         labrob::WalkingState::Standing
     ));
   }

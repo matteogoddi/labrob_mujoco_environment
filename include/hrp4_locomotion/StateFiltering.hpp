@@ -81,6 +81,8 @@ public:
       P_.block<3,3>(12,12) *= 1e-2;
       P_.block<3,3>(15,15) *= 1e-5;  // feet orientation
       P_.block<3,3>(18,18) *= 1e-5;
+      P_.block<3,3>(21,21) *= 1e-5;  // biases
+      P_.block<3,3>(24,24) *= 1e-5;
       
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
@@ -90,6 +92,8 @@ public:
       Qc_.block<3,3>(9,9) = 1e-6 * I;     
       Qc_.block<3,3>(12,12) = 1e-5 * I;   // feet orientation noise
       Qc_.block<3,3>(15,15) = 1e-5 * I; 
+      Qc_.block<3,3>(18,18) = 1e-5 * I;   // bias noise
+      Qc_.block<3,3>(21,21) = 1e-5 * I; 
 
       g_ << 0, 0, -9.81;
     }
@@ -169,7 +173,7 @@ private:
     }
 
     double dt_;
-    const int NX = 21;
+    const int NX = 27;
 
     // Nominal state
     Eigen::Vector3d r_ = Eigen::Vector3d::Zero();
@@ -189,8 +193,8 @@ private:
     Eigen::MatrixXd R_base_imu;
 
     // Covariance               
-    Eigen::Matrix<double,21,21> P_;
-    Eigen::Matrix<double,18,18> Qc_;
+    Eigen::Matrix<double,27,27> P_;
+    Eigen::Matrix<double,24,24> Qc_;
 
     Eigen::Vector3d g_;
 };

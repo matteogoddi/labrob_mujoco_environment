@@ -151,19 +151,19 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
   F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc) * dt_;
-  // F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
+  F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
   F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
-  // F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
+  F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
   Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, NX - 3); // no noise for base position dynamics
   Lc.block<3,3>(iv, 0) = -C_world_to_base.transpose();
   Lc.block<3,3>(iphi, 3) = -Eigen::Matrix3d::Identity();
   Lc.block<3,3>(ipL, 6) = C_world_to_base.transpose();
   Lc.block<3,3>(ipR, 9) = C_world_to_base.transpose();
-  // Lc.block<3,3>(ibf, 12) = Eigen::Matrix3d::Identity();
-  // Lc.block<3,3>(ibw, 15) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ibf, 12) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ibw, 15) = Eigen::Matrix3d::Identity();
 
-  Eigen::Matrix<double,18,18> Qc_step = Qc_;
+  Eigen::Matrix<double,NX - 3,NX - 3> Qc_step = Qc_;
   if (!left_contact)  Qc_step.block<3,3>(6,6)  = 1.0 * Eigen::Matrix3d::Identity();
   if (!right_contact) Qc_step.block<3,3>(9,9)  = 1.0 * Eigen::Matrix3d::Identity();
   Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
@@ -263,8 +263,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   v_  += dx.segment<3>(iv);
   pL_ += dx.segment<3>(ipL);
   pR_ += dx.segment<3>(ipR);
-  // bf_ += dx.segment<3>(ibf);
-  // bw_ += dx.segment<3>(ibw);
+  bf_ += dx.segment<3>(ibf);
+  bw_ += dx.segment<3>(ibw);
 
   q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
   zL_ = (zL_ * expMap(dx.segment<3>(ithetaL))).normalized();
