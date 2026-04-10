@@ -86,8 +86,8 @@ public:
       
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(0,0) = 0.01 * I;     // accel noise
-      Qc_.block<3,3>(3,3) = 0.001 * I;     // gyro noise
+      Qc_.block<3,3>(0,0) = 0.05 * I;     // accel noise
+      Qc_.block<3,3>(3,3) = 0.01 * I;     // gyro noise
       Qc_.block<3,3>(6,6)  = 1e-6 * I;    // foot noise
       Qc_.block<3,3>(9,9) = 1e-6 * I;     
       Qc_.block<3,3>(12,12) = 1e-5 * I;   // feet orientation noise
@@ -110,15 +110,14 @@ public:
     Eigen::Vector3d getBasePosition() const { return r_; }
     Eigen::Vector3d getBaseVelocity() const { return v_; }
     Eigen::Quaterniond getBaseOrientation() const { return q_; }
-    Eigen::Vector3d getBaseOmega() const { return omega_world; }
+    Eigen::Vector3d getBaseOmega() const { return omega_; }
     void initialize(const Eigen::VectorXd& q_init, 
                     const Eigen::Vector3d& pL_init, 
                     const Eigen::Vector3d& pR_init) {
       r_ << q_init[0], q_init[1], q_init[2];
       q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]);
 
-      pinocchio::Model model = model_;
-      pinocchio::Data data(model);
+      pinocchio::Data data(model_);
       pinocchio::forwardKinematics(model_, data, q_init_);
       pinocchio::framesForwardKinematics(model_, data, q_init_);
 
@@ -226,12 +225,15 @@ private:
   double cov_mod_zmp = 1.0;
 };
 struct NoiseParams {
-  double gyro_noise = 0.0;
-  double accel_noise = 0.0;
-  double contact_noise = 0.0;
-  double gyro_bias_rw = 0.0;
-  double accel_bias_rw = 0.0;
-  double encoder_noise = 0.0;
+  double gyro_noise = 0.01;
+  double accel_noise = 0.1;
+  double contact_noise = 0.01;
+  double gyro_bias_rw = 0.0001;
+  double accel_bias_rw = 0.001;
+  double encoder_noise = 0.01;
+  double foot_lin_noise    = 0.009;   ///< σv_feet [m/s/√Hz] (slip)
+  double foot_ang_noise    = 0.004;   ///< σω_feet [rad/s/√Hz]
+  double encoder_noise_deg = 0.1;     ///< σα [deg]
 };
 /**
  * Contact-Aided Right-Invariant Extended Kalman Filter (RI-EKF)
@@ -478,4 +480,197 @@ private:
  
     std::array<bool,N_FEET> active_contact_;
 };
+
+/**
+ * DILIGENT-KIO: Discrete LIe Group ExteNded Kalman filTer for
+ * contact-aided Kinematic-Inertial Odometry.
+ *
+ * Reference:
+ *   Ramadoss, Romualdi, Dafarra, Andrade Chavez, Traversaro, Pucci —
+ *   "DILIGENT-KIO: A Proprioceptive Base Estimator for Humanoid Robots
+ *   using Extended Kalman Filtering on Matrix Lie Groups", ICRA 2021.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  KEY ADVANCE OVER HARTLEY 2020
+ * ════════════════════════════════════════════════════════════════════════════
+ *  Hartley uses SE_{N+2}(3) but cannot include foot ORIENTATIONS in the state
+ *  (flat-foot rotational constraints violate the semi-direct product rule).
+ *  DILIGENT-KIO uses the composite group M = SE₂(3) × SE(3)² × T(6) which
+ *  naturally accommodates full foot poses.
+ *
+ *  The measurement model uses the full 6-DOF relative pose from FK (position
+ *  AND orientation of each foot in the base frame), giving 6 measurement rows
+ *  per contact foot vs 3 in the point-foot filters.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  STATE SPACE  M = SE₂(3) × SE(3)² × T(6)
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *  The state X ∈ M is stored as separate components for clarity:
+ *    Base (SE₂(3)):  R  ∈ SO(3)  – rotation    world ← body  (R_WB)
+ *                    p  ∈ ℝ³    – position     in world frame
+ *                    v  ∈ ℝ³    – velocity     in world frame
+ *    Left foot (SE(3)):  Zl ∈ SO(3)  – rotation  world ← left-foot
+ *                        dl ∈ ℝ³    – position  in world frame
+ *    Right foot (SE(3)): Zr, dr  (same)
+ *    Biases (T(6)):      ba ∈ ℝ³  – accelerometer bias  in body frame
+ *                        bg ∈ ℝ³  – gyroscope bias       in body frame
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  ERROR STATE  ε ∈ ℝ²⁷   (paper eq. 5)
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ *  Using the LEFT-INVARIANT error  X̂⁻¹X  (Algorithm 1 of paper):
+ *
+ *   ε = [εp(0:3) | εR(3:6) | εv(6:9) | εdl(9:12) | εZl(12:15) |
+ *         εdr(15:18) | εZr(18:21) | εba(21:24) | εbg(24:27)]
+ *
+ *  (NB: This is left-invariant unlike Hartley's right-invariant formulation.)
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  IMU CONVENTION
+ * ════════════════════════════════════════════════════════════════════════════
+ *  IMU frames S and body frame B are assumed to coincide (paper Sec. III-B).
+ *  If not coincident, rotate the measurements before passing to the filter:
+ *    gyro_body  = R_S_to_B * gyro_meas
+ *    accel_body = R_S_to_B * accel_meas
+ *
+ *  Accelerometer model (paper eq. 9):
+ *    ã = R^T (Äo_B − g_world) + ba + na    [specific force in body frame]
+ *  so: R ã − g_world = Äo_B − R R^T g... = (accel_world − g_world)... 
+ *  In practice (MuJoCo): ã_sensor = R_WB^T (a_true_world − g) + ba + na
+ *  → after rotating to body:  f_body = R_imu_body * accel_meas − ba
+ *  → world accel:             a_world = R_WB * f_body + g
+ */
+class DiligentKio
+{
+public:
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+    static constexpr int N_FEET = 2;
+    static constexpr int NR     = 27;   // error-state dimension
+
+    // ── Error-state block offsets (paper eq. 5) ───────────────────────────
+    static constexpr int EI_P  = 0;
+    static constexpr int EI_R  = 3;
+    static constexpr int EI_V  = 6;
+    static constexpr int EI_DL = 9;
+    static constexpr int EI_ZL = 12;
+    static constexpr int EI_DR = 15;
+    static constexpr int EI_ZR = 18;
+    static constexpr int EI_BA = 21;
+    static constexpr int EI_BG = 24;
+
+    struct FootConfig {
+        std::string frame_name;   ///< Pinocchio frame name
+        int         state_idx;    ///< 0 = left, 1 = right
+    };
+
+    // struct NoiseParams {
+    //     // Continuous-time standard deviations per √Hz (paper Table III)
+    //     double accel_noise       = 0.09;    ///< σa  [m/s²/√Hz]
+    //     double gyro_noise        = 0.01;    ///< σω  [rad/s/√Hz]
+    //     double accel_bias_rw     = 0.01;    ///< σba [m/s²/√Hz]   (bias random walk)
+    //     double gyro_bias_rw      = 0.001;   ///< σbg [rad/s/√Hz]
+    //     double foot_lin_noise    = 0.009;   ///< σv_feet [m/s/√Hz] (slip)
+    //     double foot_ang_noise    = 0.004;   ///< σω_feet [rad/s/√Hz]
+    //     double encoder_noise_deg = 0.1;     ///< σα [deg]
+    // };
+
+    /**
+     * @param model   Pinocchio model (free-flyer base)
+     * @param q_init  Full Pinocchio config at t=0.
+     *                q_init[3:7] = quaternion (x,y,z,w) body→world (= R_WB quaternion)
+     * @param dt      Filter timestep [s]
+     * @param feet    {left, right} foot configurations
+     * @param noise   Noise parameters
+     */
+    DiligentKio(const pinocchio::Model&               model,
+                const Eigen::VectorXd&                q_init,
+                double                                dt,
+                const std::array<FootConfig,N_FEET>&  feet,
+                const NoiseParams&                    noise = NoiseParams{});
+
+    /**
+     * One full DILIGENT-KIO step: propagation + update (Algorithm 1).
+     *
+     * @param gyro_meas     Raw gyroscope,     body/sensor frame [rad/s]
+     * @param accel_meas    Raw accelerometer, body/sensor frame [m/s²]
+     * @param joint_pos     Joint positions  (Pinocchio ordering)
+     * @param joint_vel     Joint velocities (Pinocchio ordering)
+     * @param contact       contact[0]=left, contact[1]=right
+     */
+    void filter(const Eigen::Vector3d&         gyro_meas,
+                const Eigen::Vector3d&         accel_meas,
+                const Eigen::VectorXd&         joint_pos,
+                const Eigen::VectorXd&         joint_vel,
+                const std::array<bool,N_FEET>& contact);
+
+    // ── Accessors ─────────────────────────────────────────────────────────
+    Eigen::Matrix3d    getRotation()      const { return R_; }    // R_WB: body→world
+    Eigen::Vector3d    getPosition()      const { return p_; }
+    Eigen::Vector3d    getVelocity()      const { return v_; }
+    Eigen::Quaterniond getQuaternion()    const { return Eigen::Quaterniond(R_).normalized(); }
+    Eigen::Vector3d    getBiasAccel()     const { return ba_; }
+    Eigen::Vector3d    getBiasGyro()      const { return bg_; }
+    Eigen::Vector3d    getOmegaBody()     const { return omega_b_; }
+    Eigen::Vector3d    getFootPos(int i)  const { return (i==0) ? dl_ : dr_; }
+    Eigen::Matrix3d    getFootRot(int i)  const { return (i==0) ? Zl_ : Zr_; }
+
+    /// Reset a foot's pose from FK when contact is made.
+    void addContact   (int foot_idx, const Eigen::VectorXd& joint_pos);
+    void removeContact(int foot_idx);
+
+private:
+    // ── SO(3) helpers ─────────────────────────────────────────────────────
+    static Eigen::Matrix3d skew  (const Eigen::Vector3d& v);
+    static Eigen::Matrix3d expSO3(const Eigen::Vector3d& phi);
+    static Eigen::Vector3d logSO3(const Eigen::Matrix3d& R);
+    static Eigen::Matrix3d leftJacobianSO3    (const Eigen::Vector3d& phi);
+    static Eigen::Matrix3d leftJacobianInvSO3 (const Eigen::Vector3d& phi);
+    static Eigen::Matrix3d QmatrixSE3         (const Eigen::Vector3d& rho,
+                                               const Eigen::Vector3d& phi);
+    static Eigen::Matrix3d projectToSO3(const Eigen::Matrix3d& M);
+
+    // ── SE(3) helpers ─────────────────────────────────────────────────────
+
+    /// SE(3) log^∨: SE(3) → ℝ⁶,  output = [v(0:3); ω(3:6)]
+    static Eigen::Matrix<double,6,1> logSE3(const Eigen::Matrix3d& R_h,
+                                            const Eigen::Vector3d& t_h);
+
+    /// Left Jacobian of SE(3): ℝ⁶ → ℝ⁶×⁶
+    /// ΦSE(3)(ε) = [J(εω)   Q(εv, εω)]
+    ///              [0₃      J(εω)    ]
+    static Eigen::Matrix<double,6,6> leftJacobianSE3(
+        const Eigen::Vector3d& eps_v, const Eigen::Vector3d& eps_omega);
+
+    // ── Model / data ──────────────────────────────────────────────────────
+    pinocchio::Model model_;
+    pinocchio::Data  data_;
+    double           dt_;
+
+    std::array<FootConfig,N_FEET> feet_;
+    NoiseParams noise_;
+
+    /// R_imu_to_body (rotation: IMU sensor frame → body frame, fixed at init)
+    Eigen::Matrix3d R_imu_to_body_;
+
+    const Eigen::Vector3d g_world_ {0.0, 0.0, -9.81};
+
+    // ── Nominal state ─────────────────────────────────────────────────────
+    Eigen::Matrix3d R_;          ///< R_WB: body→world  (paper's R in eq.10)
+    Eigen::Vector3d p_;          ///< base position, world frame
+    Eigen::Vector3d v_;          ///< base velocity, world frame
+    Eigen::Matrix3d Zl_, Zr_;   ///< foot orientations (foot→world)
+    Eigen::Vector3d dl_, dr_;   ///< foot positions, world frame
+    Eigen::Vector3d ba_, bg_;   ///< IMU biases, body frame
+    Eigen::Vector3d omega_b_;   ///< last bias-corrected angular velocity, body frame
+
+    // ── Filter matrices ───────────────────────────────────────────────────
+    Eigen::Matrix<double,NR,NR> P_;   ///< error-state covariance
+    Eigen::Matrix<double,NR,NR> Q_;   ///< discrete process noise (pre-computed)
+
+    std::array<bool,N_FEET> active_contact_;
+};
+
 }

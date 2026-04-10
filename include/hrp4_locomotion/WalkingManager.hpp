@@ -87,6 +87,7 @@ class WalkingManager {
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
+  pinocchio::FrameIndex pelvis_idx_;
   pinocchio::FrameIndex imu_idx_;
 
 
@@ -132,6 +133,7 @@ class WalkingManager {
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
   std::unique_ptr<labrob::RightInvariantEKF> ri_ekf_ptr_;
+  std::unique_ptr<labrob::DiligentKio> diligent_kio_ptr_;
 
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 

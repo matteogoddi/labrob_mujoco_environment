@@ -760,7 +760,7 @@ int main(const int argc, const char* argv[]) {
         // read sensors from mujoco and save them
         
         int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
-        int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-angular-velocity");
+        int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
 
         measured_imu_accelerometer = Eigen::Vector3d(mj_data_ptr->sensordata[acc_id], mj_data_ptr->sensordata[acc_id + 1], mj_data_ptr->sensordata[acc_id + 2]);
         measured_imu_angular_velocity = Eigen::Vector3d(mj_data_ptr->sensordata[gyro_id], mj_data_ptr->sensordata[gyro_id + 1], mj_data_ptr->sensordata[gyro_id + 2]);

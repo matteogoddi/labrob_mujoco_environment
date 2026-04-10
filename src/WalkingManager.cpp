@@ -288,7 +288,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     lsole_idx_ = robot_model.getFrameId("left_foot_link");
     rsole_idx_ = robot_model.getFrameId("right_foot_link");
     torso_idx_ = robot_model.getFrameId("torso_link");
-    imu_idx_ = robot_model.getFrameId("imu_in_torso");
+    pelvis_idx_ = robot_model.getFrameId("pelvis_contour_link");
+    imu_idx_ = robot_model.getFrameId("imu_in_pelvis");
     const auto& T_lsole_init = sim_robot_data.oMf[lsole_idx_];
     const auto& T_rsole_init = sim_robot_data.oMf[rsole_idx_];
 
@@ -447,6 +448,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     }};
     ri_ekf_ptr_ = std::make_unique<RightInvariantEKF>(
         robot_model, q_init, 0.001 * controller_timestep_msec_, feet, noise);
+
+    std::array<DiligentKio::FootConfig, 2> feet_kio = {{
+        {"left_foot_link",  0},
+        {"right_foot_link", 1}
+    }};
+    diligent_kio_ptr_ = std::make_unique<DiligentKio>(
+        robot_model, q_init, 0.001 * controller_timestep_msec_, feet_kio, noise);
 
     return true;
 }
@@ -806,6 +814,17 @@ WalkingManager::update(
         J_torso_sim
     );
 
+    const auto& T_pelvis_sim = sim_robot_data.oMf[pelvis_idx_];
+    auto pelvis_orientation_sim = T_pelvis_sim.rotation();
+    Eigen::MatrixXd J_pelvis_sim = Eigen::MatrixXd::Zero(6, njnt + 6);
+    pinocchio::getFrameJacobian(
+        robot_model,
+        sim_robot_data,
+        pelvis_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_pelvis_sim
+    );
+
     const auto& T_lsole_sim = sim_robot_data.oMf[lsole_idx_];
     Eigen::MatrixXd J_lsole_sim = Eigen::MatrixXd::Zero(6, njnt + 6);
     pinocchio::getFrameJacobian(
@@ -941,15 +960,17 @@ WalkingManager::update(
         //concatenate q.head(7) with q_filtered
         Eigen::VectorXd input(njnt + 7);
         input.head(7) = q.head(7);
-        std::cout << "ciao" << std::endl;
         input.tail(njnt) = joint_kf_ptr_->getFilteredJointPositions();
-        std::cout << "ciao" << std::endl;
         base_ekf_ptr_->initialize(input, T_lsole_sim.translation(), T_rsole_sim.translation());
         std::cout << "INITIALIZATION" << std::endl;
 
         Eigen::VectorXd q_joints = joint_kf_ptr_->getFilteredJointPositions();
         ri_ekf_ptr_->addContact(0, q_joints);  // piede sinistro
         ri_ekf_ptr_->addContact(1, q_joints);  // piede destro
+
+
+        diligent_kio_ptr_->addContact(0, q_joints);  // piede sinistro
+        diligent_kio_ptr_->addContact(1, q_joints);  // piede destro
     }
     if (t_msec_ >= 1000 && true){
 
@@ -966,6 +987,12 @@ WalkingManager::update(
 
         std::array<bool,2> contact = {left_support_check, right_support_check};
         ri_ekf_ptr_->filter(input_gyro, input_acc,
+                            joint_kf_ptr_->getFilteredJointPositions(),
+                            joint_kf_ptr_->getFilteredJointPositions(),
+                            contact);
+        
+        // std::array<bool,2> contact = {left_support_check, right_support_check};
+        diligent_kio_ptr_->filter(input_gyro, input_acc,
                             joint_kf_ptr_->getFilteredJointPositions(),
                             joint_kf_ptr_->getFilteredJointPositions(),
                             contact);
@@ -989,8 +1016,8 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
-                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
-                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseOmega();
+                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
 
 
                     // use q_filtered for the joints
@@ -1010,6 +1037,12 @@ WalkingManager::update(
                     // fb_robot_state.orientation    = ri_ekf_ptr_->getQuaternion();
                     // fb_robot_state.position       = ri_ekf_ptr_->getPosition();
                     // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * ri_ekf_ptr_->getVelocity();
+                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+
+
+                    // fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
+                    // fb_robot_state.position       = diligent_kio_ptr_->getPosition();
+                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
                     // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
                 }
             }
@@ -1052,6 +1085,7 @@ WalkingManager::update(
     const auto& a_CoM_drift_fb = fb_robot_data.acom[0];
     const auto& J_CoM_fb = fb_robot_data.Jcom;
     Eigen::Vector3d v_CoM_fb = J_CoM_fb * qdot_fb_filt;
+
     const auto& T_torso_fb = fb_robot_data.oMf[torso_idx_];
     auto torso_orientation_fb = T_torso_fb.rotation();
     Eigen::MatrixXd J_torso_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
@@ -1061,6 +1095,17 @@ WalkingManager::update(
         torso_idx_,
         pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
         J_torso_fb
+    );
+
+    const auto& T_pelvis_fb = fb_robot_data.oMf[pelvis_idx_];
+    auto pelvis_orientation_fb = T_pelvis_fb.rotation();
+    Eigen::MatrixXd J_pelvis_fb = Eigen::MatrixXd::Zero(6, njnt + 6);
+    pinocchio::getFrameJacobian(
+        robot_model,
+        fb_robot_data,
+        pelvis_idx_,
+        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+        J_pelvis_fb
     );
 
     const auto& T_lsole_fb = fb_robot_data.oMf[lsole_idx_];
@@ -1218,7 +1263,7 @@ WalkingManager::update(
 
     // ADD STEPS FOR SIMULATION
 
-    if(!useRobot && t_msec_ == 5000 && true){
+    if(!useRobot && t_msec_ == 7000 && true){
         double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).z();
         walking_data_.addSteps(
             labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
@@ -1297,6 +1342,15 @@ WalkingManager::update(
     } else {
         current_gait_configuration.torso.pos = sim_robot_data.oMf[torso_idx_].rotation();
         current_gait_configuration.torso.vel = J_torso_sim.bottomRows<3>() * qdot;
+    }
+
+    //pelvis
+    if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
+        current_gait_configuration.pelvis.pos = fb_robot_data.oMf[pelvis_idx_].rotation();
+        current_gait_configuration.pelvis.vel = J_pelvis_fb.bottomRows<3>() * qdot_fb_filt;
+    } else {
+        current_gait_configuration.pelvis.pos = sim_robot_data.oMf[pelvis_idx_].rotation();
+        current_gait_configuration.pelvis.vel = J_pelvis_sim.bottomRows<3>() * qdot;
     }
 
     //feet
@@ -1484,6 +1538,13 @@ WalkingManager::update(
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
+    // pelvis task
+    // double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
+    // double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
+    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+
     /////////////////////////////////////
     // START WHOLE BODY CONTROLLER FUNCTION CALL
     /////////////////////////////////////
@@ -1616,7 +1677,7 @@ WalkingManager::update(
         Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation()).y(),
         Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation()).z()).transpose());
     ekf_imu_orientation_rpy_log_.push_back(rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).transpose());
-    ekf_imu_angular_velocity_log_.push_back(J_imu_fb.bottomRows<3>() * qdot_fb_filt);
+    ekf_imu_angular_velocity_log_.push_back(fb_robot_state.angular_velocity.transpose());
     ekf_joint_position_log_.push_back(Eigen::VectorXd(njnt).transpose());
     ekf_joint_velocity_log_.push_back(Eigen::VectorXd(njnt).transpose());
     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
