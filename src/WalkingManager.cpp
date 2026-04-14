@@ -288,7 +288,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     lsole_idx_ = robot_model.getFrameId("left_foot_link");
     rsole_idx_ = robot_model.getFrameId("right_foot_link");
     torso_idx_ = robot_model.getFrameId("torso_link");
-    pelvis_idx_ = robot_model.getFrameId("pelvis_contour_link");
+    pelvis_idx_ = robot_model.getFrameId("pelvis");
     imu_idx_ = robot_model.getFrameId("imu_in_pelvis");
     const auto& T_lsole_init = sim_robot_data.oMf[lsole_idx_];
     const auto& T_rsole_init = sim_robot_data.oMf[rsole_idx_];
@@ -975,7 +975,7 @@ WalkingManager::update(
     if (t_msec_ >= 1000 && true){
 
         input_acc = measured_imu_accelerometer;
-        input_gyro = measured_imu_angular_velocity;
+        input_gyro = joint_kf_ptr_->getFilteredOmega();
         base_ekf_ptr_->filter(input_acc,
             input_gyro,
             joint_kf_ptr_->getFilteredJointPositions(),
@@ -1013,11 +1013,11 @@ WalkingManager::update(
                 fb_robot_state = updateEKF(actual_output);
                 if (t_msec_ >= 10000 && true){
                     std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " << std::endl;
-                    fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
-                    fb_robot_state.position = base_ekf_ptr_->getBasePosition();
-                    fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
-                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+                    // fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
+                    // fb_robot_state.position = base_ekf_ptr_->getBasePosition();
+                    // fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
+                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    // fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
 
 
                     // use q_filtered for the joints
@@ -1040,10 +1040,10 @@ WalkingManager::update(
                     // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
 
 
-                    // fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
-                    // fb_robot_state.position       = diligent_kio_ptr_->getPosition();
-                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
-                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
+                    fb_robot_state.position       = diligent_kio_ptr_->getPosition();
+                    fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
+                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
                 }
             }
             else{

@@ -36,15 +36,18 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_com = 1;
   params.weight_lsole = 1;
   params.weight_rsole = 1;
-  params.weight_torso = 1e-1;
-  params.weight_pelvis = 0;
-  params.weight_angular_momentum = 1e-1;
+  params.weight_torso = 1e-4;
+  params.weight_pelvis = 1e-1;
+  params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
   params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1e-4;
 
-  params.cmm_selection_matrix_x = 1e-6;
-  params.cmm_selection_matrix_y = 1e-6;
-  params.cmm_selection_matrix_z = 1e-4;
+  //regulate more pelvis joints
+  // params.weight_regulation_matrix.block(6 + 12, 6 + 12, 3, 3) = Eigen::MatrixXd::Identity(3,3) * 1;
+
+  params.cmm_selection_matrix_x = 1e-2;
+  params.cmm_selection_matrix_y = 1e-2;
+  params.cmm_selection_matrix_z = 1e-1;
 
   params.beta = 0;
   params.gamma = 50;
@@ -72,7 +75,7 @@ WholeBodyController::WholeBodyController(
   lsole_idx_ = robot_model_.getFrameId("left_foot_link");
   rsole_idx_ = robot_model_.getFrameId("right_foot_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
-  pelvis_idx_ = robot_model_.getFrameId("pelvis_contour_link");
+  pelvis_idx_ = robot_model_.getFrameId("pelvis");
 
   J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_pelvis_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -120,7 +123,7 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::Matrix<double,6,6> Ad_inv;
   Ad_inv.setIdentity();
-  Ad_inv.topRightCorner<3,3>() = -pinocchio::skew(foot_pose);
+  // Ad_inv.topRightCorner<3,3>() = -pinocchio::skew(foot_pose);
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
   auto qdot = robot_state_to_pinocchio_joint_velocity(robot_model_, robot_state);
@@ -201,7 +204,7 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_lsole_total = desired.lsole.acc + 70 * err_lsole + 35 * err_lsole_vel;
   Eigen::VectorXd a_rsole_total = desired.rsole.acc + 70 * err_rsole + 35 * err_rsole_vel;
   Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 200 * err_torso_orientation + 500 * err_torso_orientation_vel;
-  Eigen::VectorXd a_pelvis_orientation_total = desired.pelvis.acc + 30 * err_pelvis_orientation + 10 * err_pelvis_orientation_vel;
+  Eigen::VectorXd a_pelvis_orientation_total = desired.pelvis.acc + 200 * err_pelvis_orientation + 500 * err_pelvis_orientation_vel;
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);

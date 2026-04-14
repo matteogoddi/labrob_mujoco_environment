@@ -65,6 +65,10 @@ Eigen::Vector4d measured_imu_quaternion = Eigen::Vector4d(1,0,0,0);
 Eigen::Vector3d measured_imu_rpy = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_angular_velocity = Eigen::Vector3d::Zero();
 Eigen::Vector3d measured_imu_accelerometer= Eigen::Vector3d::Zero();
+Eigen::Vector4d measured_imu_pelvis_quaternion = Eigen::Vector4d(1,0,0,0);
+Eigen::Vector3d measured_imu_pelvis_rpy = Eigen::Vector3d::Zero();
+Eigen::Vector3d measured_imu_pelvis_angular_velocity = Eigen::Vector3d::Zero();
+Eigen::Vector3d measured_imu_pelvis_accelerometer= Eigen::Vector3d::Zero();
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
@@ -585,7 +589,7 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isWBCLoopClosed = false;
+    isWBCLoopClosed = true;
     isMPCLoopClosed = true;
     isEKFactive = true;
   }
@@ -717,9 +721,13 @@ int main(const int argc, const char* argv[]) {
 
         std::lock_guard<std::mutex> lock(stateMutex);
         measured_imu_accelerometer = Eigen::Vector3d(imu_pelvis_data.accelerometer[0], imu_pelvis_data.accelerometer[1], imu_pelvis_data.accelerometer[2]);
-        measured_imu_angular_velocity = Eigen::Vector3d(imu_state_data.omega[0], imu_state_data.omega[1], imu_state_data.omega[2]);
+        measured_imu_angular_velocity = Eigen::Vector3d(imu_pelvis_data.omega[0], imu_pelvis_data.omega[1], imu_pelvis_data.omega[2]);
         measured_imu_quaternion = Eigen::Vector4d(imu_state_data.quaternion[0], imu_state_data.quaternion[1], imu_state_data.quaternion[2], imu_state_data.quaternion[3]);
         measured_imu_rpy = Eigen::Vector3d(imu_state_data.rpy[0], imu_state_data.rpy[1], imu_state_data.rpy[2]);
+        measured_imu_pelvis_accelerometer = Eigen::Vector3d(imu_pelvis_data.accelerometer[0], imu_pelvis_data.accelerometer[1], imu_pelvis_data.accelerometer[2]);
+        measured_imu_pelvis_angular_velocity = Eigen::Vector3d(imu_pelvis_data.omega[0], imu_pelvis_data.omega[1], imu_pelvis_data.omega[2]);
+        measured_imu_pelvis_quaternion = Eigen::Vector4d(imu_pelvis_data.quaternion[0], imu_pelvis_data.quaternion[1], imu_pelvis_data.quaternion[2], imu_pelvis_data.quaternion[3]);
+        measured_imu_pelvis_rpy = Eigen::Vector3d(imu_pelvis_data.rpy[0], imu_pelvis_data.rpy[1], imu_pelvis_data.rpy[2]);
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           measured_joint_position[i] = motor_state_data.q[i];
           measured_joint_velocity[i] = motor_state_data.dq[i];
@@ -760,7 +768,7 @@ int main(const int argc, const char* argv[]) {
         // read sensors from mujoco and save them
         
         int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
-        int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
+        int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-angular-velocity");
 
         measured_imu_accelerometer = Eigen::Vector3d(mj_data_ptr->sensordata[acc_id], mj_data_ptr->sensordata[acc_id + 1], mj_data_ptr->sensordata[acc_id + 2]);
         measured_imu_angular_velocity = Eigen::Vector3d(mj_data_ptr->sensordata[gyro_id], mj_data_ptr->sensordata[gyro_id + 1], mj_data_ptr->sensordata[gyro_id + 2]);
