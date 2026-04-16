@@ -42,12 +42,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_regulation = 1e-4;
   params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1e-4;
 
-  //regulate more pelvis joints
-  // params.weight_regulation_matrix.block(6 + 12, 6 + 12, 3, 3) = Eigen::MatrixXd::Identity(3,3) * 1;
-
-  params.cmm_selection_matrix_x = 1e-2;
-  params.cmm_selection_matrix_y = 1e-2;
-  params.cmm_selection_matrix_z = 1e-1;
+  params.cmm_selection_matrix_x = 1e-1;
+  params.cmm_selection_matrix_y = 1e-1;
+  params.cmm_selection_matrix_z = 1;
 
   params.beta = 0;
   params.gamma = 50;

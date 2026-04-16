@@ -124,8 +124,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pinocchio::computeJointJacobians(model_, data_, pos);
 
   Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
-  vel.head(3) << v_;
-  vel.segment(3, 3) << omega_world;
+  vel.head(3) << C_world_to_base * v_;
+  vel.segment(3, 3) << omega_;
   vel.tail(qj_dot.size()) = qj_dot;
 
   Eigen::Vector3d acc = R_base_imu * acc_meas - bf_;
@@ -137,6 +137,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::Vector3d r_prec = r_;
   Eigen::Vector3d v_prec = v_;
+  Eigen::Quaterniond q_prec = q_;
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
   q_ = (q_ * expMap(dt_ * omega_)).normalized();
@@ -160,12 +161,16 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   Lc.block<3,3>(iphi, 3) = -Eigen::Matrix3d::Identity();
   Lc.block<3,3>(ipL, 6) = C_world_to_base.transpose();
   Lc.block<3,3>(ipR, 9) = C_world_to_base.transpose();
-  Lc.block<3,3>(ibf, 12) = Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ibw, 15) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ithetaL, 12) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ithetaR, 15) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ibf, 18) = Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ibw, 21) = Eigen::Matrix3d::Identity();
 
   Eigen::Matrix<double,24,24> Qc_step = Qc_;
-  if (!left_contact)  Qc_step.block<3,3>(6,6)  = 1.0 * Eigen::Matrix3d::Identity();
-  if (!right_contact) Qc_step.block<3,3>(9,9)  = 1.0 * Eigen::Matrix3d::Identity();
+  if (!left_contact)  Qc_step.block<3,3>(6,6)  = 100.0 * Eigen::Matrix3d::Identity();
+  if (!right_contact) Qc_step.block<3,3>(9,9)  = 100.0 * Eigen::Matrix3d::Identity();
+  if (!left_contact)  Qc_step.block<3,3>(12,12)  = 100.0 * Eigen::Matrix3d::Identity();
+  if (!right_contact) Qc_step.block<3,3>(15,15)  = 100.0 * Eigen::Matrix3d::Identity();
   Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
   
   P_ = F * P_ * F.transpose() + Q_;
@@ -195,7 +200,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
     Eigen::Quaterniond s_z(T_bf.rotation());
-    Eigen::Quaterniond s_z_hat = q_.inverse() * z.inverse();
+    Eigen::Quaterniond s_z_hat = q_prec.inverse() * z.inverse();
 
 
 
@@ -228,7 +233,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
     H_accum.block<3,3>(old_rows+3, iphi) = -Eigen::Matrix3d::Identity();
     H_accum.block<3,3>(old_rows+3, itheta) =
-        - (q_.inverse() * z.inverse()).toRotationMatrix();
+        - (q_prec.inverse() * z.inverse()).toRotationMatrix();
 
     // H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
     // H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
@@ -566,7 +571,7 @@ RightInvariantEKF::RightInvariantEKF(
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
 
-    const int imu_torso_id = model_.getFrameId("imu_in_torso");
+    const int imu_torso_id = model_.getFrameId("imu_in_pelvis");
     R_imu_torso_to_body_ = R_WB.transpose()
                    * data_.oMf[imu_torso_id].rotation();
 
@@ -1064,7 +1069,7 @@ DiligentKio::DiligentKio(const pinocchio::Model&              model,
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
 
-    const int imu_id = model_.getFrameId("imu_in_torso");
+    const int imu_id = model_.getFrameId("imu_in_pelvis");
     // data_.oMf[imu_id].rotation() = R_world_imu (maps imu vectors to world)
     // We want: v_body = R_imu_to_body * v_imu
     // R_imu_to_body = R_world_body^T * R_world_imu = R_WB^T * R_world_imu

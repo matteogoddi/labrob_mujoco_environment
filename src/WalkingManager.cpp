@@ -975,7 +975,7 @@ WalkingManager::update(
     if (t_msec_ >= 1000 && true){
 
         input_acc = measured_imu_accelerometer;
-        input_gyro = joint_kf_ptr_->getFilteredOmega();
+        input_gyro = measured_imu_angular_velocity; // sim_robot_state.angular_velocity; //measured_imu_angular_velocity;
         base_ekf_ptr_->filter(input_acc,
             input_gyro,
             joint_kf_ptr_->getFilteredJointPositions(),
@@ -996,6 +996,9 @@ WalkingManager::update(
                             joint_kf_ptr_->getFilteredJointPositions(),
                             joint_kf_ptr_->getFilteredJointPositions(),
                             contact);
+        
+        // input_acc = measured_imu_accelerometer;
+        // input_gyro = sim_robot_state.angular_velocity; //measured_imu_angular_velocity;
 
         std::cout << "RI EKF orientation " << ri_ekf_ptr_->getQuaternion().coeffs().transpose() << std::endl;
         std::cout << "RI EKF position " << ri_ekf_ptr_->getPosition().transpose() << std::endl;
@@ -1013,11 +1016,12 @@ WalkingManager::update(
                 fb_robot_state = updateEKF(actual_output);
                 if (t_msec_ >= 10000 && true){
                     std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " << std::endl;
-                    // fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
-                    // fb_robot_state.position = base_ekf_ptr_->getBasePosition();
-                    // fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
-                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
+                    fb_robot_state.position = base_ekf_ptr_->getBasePosition();
+                    fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    // fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * fb_robot_data.oMf[imu_idx_].rotation() * base_ekf_ptr_->getBaseOmega();
                     // fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+                    // fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
 
 
                     // use q_filtered for the joints
@@ -1037,13 +1041,13 @@ WalkingManager::update(
                     // fb_robot_state.orientation    = ri_ekf_ptr_->getQuaternion();
                     // fb_robot_state.position       = ri_ekf_ptr_->getPosition();
                     // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * ri_ekf_ptr_->getVelocity();
+                    // fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
+
+
+                    // fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
+                    // fb_robot_state.position       = diligent_kio_ptr_->getPosition();
+                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
                     // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
-
-
-                    fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
-                    fb_robot_state.position       = diligent_kio_ptr_->getPosition();
-                    fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
                 }
             }
             else{
@@ -1263,7 +1267,7 @@ WalkingManager::update(
 
     // ADD STEPS FOR SIMULATION
 
-    if(!useRobot && t_msec_ == 7000 && true){
+    if(!useRobot && t_msec_ == 10000 && true){
         double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(fb_robot_data.oMf[imu_idx_].rotation())).z();
         walking_data_.addSteps(
             labrob::SE3(T_lsole_fb.rotation(), T_lsole_fb.translation()),
