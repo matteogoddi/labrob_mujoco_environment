@@ -1933,6 +1933,40 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
+    # === 1. SUBPLOT (x, y, z separati) ===
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+
+    labels = ['x', 'y', 'z']
+
+    for i in range(3):
+        axs[i].plot(
+            t, ekf_base_position[:, i],
+            label=fr'EKF $p_{labels[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, odometry_base_position[:, i],
+            label=fr'Measured $p_{labels[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Base Position {labels[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/errors/subplots_base_position.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
         t, ekf_base_velocity[:, 0],

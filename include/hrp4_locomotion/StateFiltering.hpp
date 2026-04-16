@@ -109,13 +109,13 @@ public:
     
     Eigen::Vector3d getBasePosition() const { return r_; }
     Eigen::Vector3d getBaseVelocity() const { return v_; }
-    Eigen::Quaterniond getBaseOrientation() const { return q_; }
+    Eigen::Quaterniond getBaseOrientation() const { return q_.inverse(); }
     Eigen::Vector3d getBaseOmega() const { return omega_; }
     void initialize(const Eigen::VectorXd& q_init, 
                     const Eigen::Vector3d& pL_init, 
                     const Eigen::Vector3d& pR_init) {
       r_ << q_init[0], q_init[1], q_init[2];
-      q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]);
+      q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]).inverse();
 
       pinocchio::Data data(model_);
       pinocchio::forwardKinematics(model_, data, q_init_);

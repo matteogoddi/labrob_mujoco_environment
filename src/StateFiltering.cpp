@@ -110,7 +110,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 1) NOMINAL PREDICTION
   // =====================
 
-  Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix().transpose();
+  Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix();
   // C_world_to_base = (Eigen::Matrix3d::Identity() + 2*q_.w()*skew(q_.vec()) + 2 * skew(q_.vec()) * skew(q_.vec())).transpose();
 
 
@@ -140,7 +140,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   Eigen::Quaterniond q_prec = q_;
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
-  q_ = (q_ * expMap(dt_ * omega_)).normalized();
+  q_ = (expMap(dt_ * omega_) * q_).normalized();
 
 
   // =====================
@@ -200,7 +200,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
     Eigen::Quaterniond s_z(T_bf.rotation());
-    Eigen::Quaterniond s_z_hat = q_prec.inverse() * z.inverse();
+    Eigen::Quaterniond s_z_hat = q_prec * z.inverse();
 
 
 
@@ -231,9 +231,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
 
-    H_accum.block<3,3>(old_rows+3, iphi) = -Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows+3, iphi) = Eigen::Matrix3d::Identity();
     H_accum.block<3,3>(old_rows+3, itheta) =
-        - (q_prec.inverse() * z.inverse()).toRotationMatrix();
+        - (q_ * z.inverse()).toRotationMatrix();
 
     // H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
     // H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
@@ -271,9 +271,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   bf_ += dx.segment<3>(ibf);
   bw_ += dx.segment<3>(ibw);
 
-  q_  = (q_ * expMap(dx.segment<3>(iphi))).normalized();
-  zL_ = (zL_ * expMap(dx.segment<3>(ithetaL))).normalized();
-  zR_ = (zR_ * expMap(dx.segment<3>(ithetaR))).normalized();
+  q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
+  zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
+  zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();
 
   Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
   auto IKH = I - K * H;
