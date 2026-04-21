@@ -125,6 +125,10 @@ if __name__ == '__main__':
         des_zmp_position[i, :] = rotation_matrix.T @ des_zmp_position[i, :]
 
 
+    labels_pos = ['x', 'y', 'z']
+    labels_quat = ['w', 'x', 'y', 'z']
+    labels_rpy = ['r', 'p', 'y']
+
     reference_positions = np.array([
         -0.44,  # l_hip_p
         0.04,  # l_hip_r
@@ -692,6 +696,36 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+
+    for i in range(3):
+        axs[i].plot(
+            t, kf_zmp_position[:, i] - kf_zmp_position[0, 0],
+            label=fr'Desired ZMP Position ${labels[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, des_zmp_position[:, i] - des_zmp_position[0, i],
+            label=fr'Actual ZMP Position ${labels[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between reference and actual ZMP {labels[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
+    fig.tight_layout()
+    fig.savefig(
+        "images/ekf/base/errors/comparison_base_position_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(
         t, des_zmp_position[:, 0] - des_zmp_position[0, 0],
@@ -710,7 +744,7 @@ if __name__ == '__main__':
         linewidth=2.0
     )
     ax.plot(
-        t, des_zmp_position[:, 1] - kf_zmp_position[0, 1],
+        t, kf_zmp_position[:, 1] - kf_zmp_position[0, 1],
         label=r'Actual ZMP Position $y$',
         linewidth=2.0,
         linestyle='--'
@@ -1933,10 +1967,7 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    # === 1. SUBPLOT (x, y, z separati) ===
     fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
-
-    labels = ['x', 'y', 'z']
 
     for i in range(3):
         axs[i].plot(
@@ -1960,7 +1991,7 @@ if __name__ == '__main__':
 
     fig.tight_layout()
     fig.savefig(
-        "images/ekf/base/errors/subplots_base_position.png",
+        "images/ekf/base/errors/comparison_base_position_plot.png",
         dpi=300,
         bbox_inches='tight'
     )

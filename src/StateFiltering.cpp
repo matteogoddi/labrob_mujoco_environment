@@ -215,14 +215,15 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
     Eigen::Vector3d e_p = s_p - s_p_hat;
     Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
-    Eigen::Vector3d e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
-    // e_foot = - J_foot.block(0, 0, 3, model_.nv) * vel;
+    // Eigen::Vector3d e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    // e_foot = -(v_prec + J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+        // e_foot = - J_foot.block(0, 0, 3, model_.nv) * vel;
 
     int old_rows = e_accum.rows();
     e_accum.conservativeResize(old_rows + e_p.size() + e_z.size());
     e_accum.segment(old_rows, e_p.size()) = e_p;
     e_accum.segment(old_rows + e_p.size(), e_z.size()) = e_z;
-    // e_accum.segment(old_rows + e_p.size(), e_foot.size()) = e_foot;
+    // e_accum.segment(old_rows + e_p.size() + e_z.size(), e_foot.size()) = e_foot;
 
     H_accum.conservativeResize(old_rows + e_p.size() + e_z.size(), NX);
     H_accum.block(old_rows, 0, e_p.size() + e_z.size(), NX).setZero();
@@ -231,12 +232,12 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
 
-    H_accum.block<3,3>(old_rows+3, iphi) = Eigen::Matrix3d::Identity();
-    H_accum.block<3,3>(old_rows+3, itheta) =
+    H_accum.block<3,3>(old_rows + e_p.size(), iphi) = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows + e_p.size(), itheta) =
         - (q_ * z.inverse()).toRotationMatrix();
 
-    // H_accum.block<3,3>(old_rows + e_p.size(), iv) = Eigen::Matrix3d::Identity();
-    // H_accum.block<3,3>(old_rows + e_p.size(), iphi) = skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
+    // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iv) = Eigen::Matrix3d::Identity();
+    // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iphi) = -skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
     //     + skew(C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
   };
 
@@ -254,11 +255,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-4;
-//   R(3,3) = 1e-8; // high noise for foot
-//   R(3 + e.size()/2, 3 + e.size()/2) = 1e-8; //high noise for foot
-  // R.block<3,3>(0,0) = Eigen::MatrixXd::Identity(3, 3) * 1;
-  // R.block<3,3>(0+e.size()/2,0+e.size()/2) = Eigen::MatrixXd::Identity(3, 3) * 1;
+  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-2;
+  
 
   Eigen::MatrixXd K = P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
 

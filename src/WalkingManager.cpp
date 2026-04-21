@@ -1021,7 +1021,7 @@ WalkingManager::update(
                     fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
                     fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * fb_robot_data.oMf[imu_idx_].rotation() * joint_kf_ptr_->getFilteredOmega(); // per ora metto quello del joint KF, poi vediamo se mettere quello del BEKF o del RI EKF
                     // fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
-                    // fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
+                    fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
 
 
                     // use q_filtered for the joints
@@ -1038,16 +1038,16 @@ WalkingManager::update(
                     std::cout << "RI EKF omega: " << (fb_robot_state.orientation.toRotationMatrix() * ri_ekf_ptr_->getOmegaBody()).transpose() << std::endl;
                     std::cout << "Omega actual: " << input_gyro.transpose() << std::endl;
 
-                    fb_robot_state.orientation    = ri_ekf_ptr_->getQuaternion();
-                    fb_robot_state.position       = ri_ekf_ptr_->getPosition();
-                    fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * ri_ekf_ptr_->getVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
+                    // fb_robot_state.orientation    = ri_ekf_ptr_->getQuaternion();
+                    // fb_robot_state.position       = ri_ekf_ptr_->getPosition();
+                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * ri_ekf_ptr_->getVelocity();
+                    // fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
 
 
-                    fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
-                    fb_robot_state.position       = diligent_kio_ptr_->getPosition();
-                    fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    // fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
+                    // fb_robot_state.position       = diligent_kio_ptr_->getPosition();
+                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
+                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
                 }
             }
             else{

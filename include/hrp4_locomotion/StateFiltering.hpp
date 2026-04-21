@@ -74,26 +74,26 @@ public:
     {
       data_ = pinocchio::Data(model_);
       P_.setIdentity();
-      P_.block<3,3>(0,0) *= 1e-1;    // position
-      P_.block<3,3>(3,3) *= 1e-1;    // velocity
-      P_.block<3,3>(6,6) *= 1e-2;    // orientation
-      P_.block<3,3>(9,9) *= 1e-2;    // feet
-      P_.block<3,3>(12,12) *= 1e-2;
+      P_.block<3,3>(0,0) *= 1e-4;    // position
+      P_.block<3,3>(3,3) *= 1e-4;    // velocity
+      P_.block<3,3>(6,6) *= 1e-4;    // orientation
+      P_.block<3,3>(9,9) *= 1e-4;    // feet
+      P_.block<3,3>(12,12) *= 1e-4;
       P_.block<3,3>(15,15) *= 1e-5;  // feet orientation
       P_.block<3,3>(18,18) *= 1e-5;
-      P_.block<3,3>(21,21) *= 1e-5;  // biases
-      P_.block<3,3>(24,24) *= 1e-5;
+      P_.block<3,3>(21,21) *= 1e-3;  // biases
+      P_.block<3,3>(24,24) *= 1e-3;
       
       Qc_.setIdentity();
       Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(0,0) = 0.05 * I;     // accel noise
-      Qc_.block<3,3>(3,3) = 0.01 * I;     // gyro noise
-      Qc_.block<3,3>(6,6)  = 1e-6 * I;    // foot noise
-      Qc_.block<3,3>(9,9) = 1e-6 * I;     
+      Qc_.block<3,3>(0,0) = 0.005 * I;     // accel noise
+      Qc_.block<3,3>(3,3) = 0.001 * I;     // gyro noise
+      Qc_.block<3,3>(6,6)  = 1e-4 * I;    // foot noise
+      Qc_.block<3,3>(9,9) = 1e-4 * I;     
       Qc_.block<3,3>(12,12) = 1e-5 * I;   // feet orientation noise
       Qc_.block<3,3>(15,15) = 1e-5 * I; 
-      Qc_.block<3,3>(18,18) = 1e-5 * I;   // bias noise
-      Qc_.block<3,3>(21,21) = 1e-5 * I; 
+      Qc_.block<3,3>(18,18) = 1e-3 * I;   // bias noise
+      Qc_.block<3,3>(21,21) = 1e-3 * I; 
 
       g_ << 0, 0, -9.81;
     }
