@@ -1019,9 +1019,9 @@ WalkingManager::update(
                     fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
                     fb_robot_state.position = base_ekf_ptr_->getBasePosition();
                     fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * fb_robot_data.oMf[imu_idx_].rotation() * joint_kf_ptr_->getFilteredOmega(); // per ora metto quello del joint KF, poi vediamo se mettere quello del BEKF o del RI EKF
-                    // fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
-                    fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
+                    fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * fb_robot_data.oMf[imu_idx_].rotation() * base_ekf_ptr_->getBaseOmega(); // per ora metto quello del joint KF, poi vediamo se mettere quello del BEKF o del RI EKF
+                    fb_robot_state.angular_velocity = measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
+                    // fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
 
 
                     // use q_filtered for the joints

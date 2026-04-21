@@ -269,6 +269,8 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   bf_ += dx.segment<3>(ibf);
   bw_ += dx.segment<3>(ibw);
 
+  std::cout << "piede destro: " << pR_.transpose() << std::endl;
+
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
   zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();

@@ -131,7 +131,8 @@ public:
 
       // define R_base_imu to rotate measurements from IMU frame to base frame
       // R_base_imu = Eigen::Matrix3d::Identity();
-      R_base_imu = data_.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+      Eigen::Matrix3d R_world_imu = data_.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+      R_base_imu = q_.toRotationMatrix() * R_world_imu;
 
     // const int imu_torso_id = model_.getFrameId("imu_in_torso");
     // R_imu_torso_to_body_ = R_WB.transpose()
