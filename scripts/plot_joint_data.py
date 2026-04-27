@@ -125,7 +125,7 @@ if __name__ == '__main__':
         des_zmp_position[i, :] = rotation_matrix.T @ des_zmp_position[i, :]
 
 
-    labels_pos = ['x', 'y', 'z']
+    labels_xyz = ['x', 'y', 'z']
     labels_quat = ['w', 'x', 'y', 'z']
     labels_rpy = ['r', 'p', 'y']
 
@@ -700,76 +700,24 @@ if __name__ == '__main__':
 
     for i in range(3):
         axs[i].plot(
-            t, kf_zmp_position[:, i] - kf_zmp_position[0, 0],
-            label=fr'Desired ZMP Position ${labels[i]}$',
+            t, kf_zmp_position[:, i] - kf_zmp_position[0, i],
+            label=fr'Actual ZMP Position ${labels_xyz[i]}$',
             linewidth=2.0
         )
         axs[i].plot(
             t, des_zmp_position[:, i] - des_zmp_position[0, i],
-            label=fr'Actual ZMP Position ${labels[i]}$',
+            label=fr'Desired ZMP Position ${labels_xyz[i]}$',
             linewidth=2.0,
             linestyle='--'
         )
         
         axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
-        axs[i].set_title(f'Comparison between reference and actual ZMP {labels[i]}', fontsize=11)
+        axs[i].set_title(f'Comparison between reference and actual ZMP {labels_xyz[i]}', fontsize=11)
         axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
         axs[i].legend(fontsize=9)
 
     axs[-1].set_xlabel('Time [s]', fontsize=11)
 
-    fig.tight_layout()
-    fig.savefig(
-        "images/ekf/base/errors/comparison_base_position_plot.png",
-        dpi=300,
-        bbox_inches='tight'
-    )
-    plt.close(fig)
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, des_zmp_position[:, 0] - des_zmp_position[0, 0],
-        label=r'Desired ZMP Position $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_zmp_position[:, 0] - kf_zmp_position[0, 0],
-        label=r'Actual ZMP Position $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_zmp_position[:, 1] - des_zmp_position[0, 1],
-        label=r'Desired ZMP Position $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_zmp_position[:, 1] - kf_zmp_position[0, 1],
-        label=r'Actual ZMP Position $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_zmp_position[:, 2],
-        label=r'Desired ZMP Position $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_zmp_position[:, 2],
-        label=r'Actual ZMP Position $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Zero Moment Point Position', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
     fig.tight_layout()
     fig.savefig(
         "images/com/errors/comparison_zmp_position_plot.png",
@@ -778,50 +726,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, des_com_position[:,0] - des_com_position[0, 0],
-        label=r'Desired CoM Position $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_com_position[:,0] - kf_com_position[0, 0],
-        label=r'Actual CoM Position $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_com_position[:, 1] - des_com_position[0, 1],
-        label=r'Desired CoM Position $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_com_position[:, 1] - kf_com_position[0, 1],
-        label=r'Actual CoM Position $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_com_position[:, 2],
-        label=r'Desired CoM Position $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_com_position[:, 2],
-        label=r'Actual CoM Position $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Center of Mass Position', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, kf_com_position[:, i] - kf_com_position[0, i],
+            label=fr'Actual CoM Position ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, des_com_position[:, i] - des_com_position[0, i],
+            label=fr'Desired CoM Position ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between reference and actual ZMP {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/com/errors/comparison_com_position_plot.png",
@@ -830,50 +755,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, des_com_velocity[:,0],
-        label=r'Desired CoM Velocity $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_com_velocity[:,0],
-        label=r'Actual CoM Velocity $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_com_velocity[:, 1],
-        label=r'Desired CoM Velocity $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, des_com_velocity[:, 1],
-        label=r'Actual CoM Velocity $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, des_com_velocity[:, 2],
-        label=r'Desired CoM Velocity $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, kf_com_velocity[:, 2],
-        label=r'Actual CoM Velocity $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Center of Mass Velocity', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, kf_com_velocity[:, i] - kf_com_velocity[0, i],
+            label=fr'Actual CoM Velocity ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, des_com_velocity[:, i] - des_com_velocity[0, i],
+            label=fr'Desired CoM Velocity ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between reference and actual ZMP {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/com/errors/comparison_com_velocity_plot.png",
@@ -1117,50 +1019,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, p_lsole_fb[:, 0] - p_lsole_fb[0, 0],
-        label=r'Actual Left Sole Position $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_lsole_des[:, 0] - p_lsole_des[0, 0],
-        label=r'Desired Left Sole Position $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, p_lsole_fb[:, 1],
-        label=r'Actual Left Sole Position $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_lsole_des[:, 1],
-        label=r'Desired Left Sole Position $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, p_lsole_fb[:, 2],
-        label=r'Actual Left Sole Position $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_lsole_des[:, 2],
-        label=r'Desired Left Sole Position $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Left Sole Position', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, p_lsole_fb[:, i] - p_lsole_fb[0, i],
+            label=fr'Actual Left Sole Position ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, p_lsole_des[:, i] - p_lsole_des[0, i],
+            label=fr'Desired Left Sole Position ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between Desired and Actual Left Sole Position {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/soles/errors/comparison_left_sole_position_plot.png",
@@ -1169,50 +1048,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, p_rsole_fb[:, 0] - p_rsole_fb[0, 0],
-        label=r'Actual Right Sole Position $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_rsole_des[:, 0] - p_rsole_des[0, 0],
-        label=r'Desired Right Sole Position $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, p_rsole_fb[:, 1],
-        label=r'Actual Right Sole Position $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_rsole_des[:, 1],
-        label=r'Desired Right Sole Position $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, p_rsole_fb[:, 2],
-        label=r'Actual Right Sole Position $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, p_rsole_des[:, 2],
-        label=r'Desired Right Sole Position $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Right Sole Position', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, p_rsole_fb[:, i] - p_rsole_fb[0, i],
+            label=fr'Actual Right Sole Position ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, p_rsole_des[:, i] - p_rsole_des[0, i],
+            label=fr'Desired Right Sole Position ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between Desired and Actual Right Sole Position {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/soles/errors/comparison_right_sole_position_plot.png",
@@ -1289,50 +1145,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, v_lsole_fb[:, 0],
-        label=r'Actual Left Sole Velocity $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_lsole_des[:, 0],
-        label=r'Desired Left Sole Velocity $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, v_lsole_fb[:, 1],
-        label=r'Actual Left Sole Velocity $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_lsole_des[:, 1],
-        label=r'Desired Left Sole Velocity $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, v_lsole_fb[:, 2],
-        label=r'Actual Left Sole Velocity $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_lsole_des[:, 2],
-        label=r'Desired Left Sole Velocity $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Left Sole Velocity', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, v_lsole_fb[:, i],
+            label=fr'Actual Left Sole Velocity ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, v_lsole_des[:, i],
+            label=fr'Desired Left Sole Velocity ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between Desired and Actual Left Sole Velocity {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/soles/errors/comparison_left_sole_velocity_plot.png",
@@ -1341,50 +1174,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, v_rsole_fb[:, 0],
-        label=r'Actual Right Sole Velocity $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_rsole_des[:, 0],
-        label=r'Desired Right Sole Velocity $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, v_rsole_fb[:, 1],
-        label=r'Actual Right Sole Velocity $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_rsole_des[:, 1],
-        label=r'Desired Right Sole Velocity $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, v_rsole_fb[:, 2],
-        label=r'Actual Right Sole Velocity $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, v_rsole_des[:, 2],
-        label=r'Desired Right Sole Velocity $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Right Sole Velocity', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, v_rsole_fb[:, i],
+            label=fr'Actual Right Sole Velocity ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, v_rsole_des[:, i],
+            label=fr'Desired Right Sole Velocity ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Comparison between Desired and Actual Right Sole Velocity {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/soles/errors/comparison_right_sole_velocity_plot.png",
@@ -1392,8 +1202,6 @@ if __name__ == '__main__':
         bbox_inches='tight'
     )
     plt.close(fig)
-
-
 
     ##########################
     #  EKF PLOTS
@@ -1914,76 +1722,22 @@ if __name__ == '__main__':
     fig.savefig("images/ekf/torso_angular_velocity_plot.png")
     plt.close(fig)
 
-
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, ekf_base_position[:, 0],
-        label=r'EKF Base Position $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_base_position[:, 1],
-        label=r'EKF Base Position $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_base_position[:, 2],
-        label=r'EKF Base Position $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, odometry_base_position[:, 0],
-        label=r'Measured Base Position $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_base_position[:, 1],
-        label=r'Measured Base Position $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_base_position[:, 2],
-        label=r'Measured Base Position $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured Base Position', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
-    fig.tight_layout()
-    fig.savefig(
-        "images/ekf/base/errors/comparison_base_position_plot.png",
-        dpi=300,
-        bbox_inches='tight'
-    )
-    plt.close(fig)
-
     fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
-
     for i in range(3):
         axs[i].plot(
             t, ekf_base_position[:, i],
-            label=fr'EKF $p_{labels[i]}$',
+            label=fr'EKF ${labels_xyz[i]}$',
             linewidth=2.0
         )
         axs[i].plot(
             t, odometry_base_position[:, i],
-            label=fr'Measured $p_{labels[i]}$',
+            label=fr'Measured ${labels_xyz[i]}$',
             linewidth=2.0,
             linestyle='--'
         )
         
         axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
-        axs[i].set_title(f'Base Position {labels[i]}', fontsize=11)
+        axs[i].set_title(f'Base Position {labels_xyz[i]}', fontsize=11)
         axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
         axs[i].legend(fontsize=9)
 
@@ -1997,51 +1751,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, ekf_base_velocity[:, i],
+            label=fr'EKF Velocity ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, odometry_base_velocity[:, i],
+            label=fr'Odometry Velocity ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Base Velocity {labels_xyz[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, ekf_base_velocity[:, 0],
-        label=r'EKF Base Velocity $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_base_velocity[:, 1],
-        label=r'EKF Base Velocity $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_base_velocity[:, 2],
-        label=r'EKF Base Velocity $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, odometry_base_velocity[:, 0],
-        label=r'Measured Base Velocity $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_base_velocity[:, 1],
-        label=r'Measured Base Velocity $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_base_velocity[:, 2],
-        label=r'Measured Base Velocity $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured Base Velocity', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/ekf/base/errors/comparison_base_velocity_plot.png",
@@ -2050,113 +1780,57 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, ekf_imu_orientation[:, 0],
-        label=r'EKF IMU Orientation $W$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_orientation[:, 1],
-        label=r'EKF IMU Orientation $X$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_orientation[:, 2],
-        label=r'EKF IMU Orientation $Y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_orientation[:, 3],
-        label=r'EKF IMU Orientation $Z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, odometry_imu_orientation[:, 0],
-        label=r'Measured IMU Orientation $W$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_imu_orientation[:, 1],
-        label=r'Measured IMU Orientation $X$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_imu_orientation[:, 2],
-        label=r'Measured IMU Orientation $Y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_imu_orientation[:, 3],
-        label=r'Measured IMU Orientation $Z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Orientation Quat', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(4, 1, figsize=(7, 8), sharex=True)
+
+    for i in range(4):
+        axs[i].plot(
+            t, ekf_imu_orientation[:, i],
+            label=fr'EKF Orientation ${labels_quat[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, odometry_imu_orientation[:, i],
+            label=fr'Odometry Orientation ${labels_quat[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Base Orientation Quaternion {labels_quat[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
-        "images/ekf/base/errors/comparison_imu_orientation_quat_plot.png",
+        "images/ekf/base/errors/comparison_imu_orientation_plot.png",
         dpi=300,
         bbox_inches='tight'
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, ekf_imu_orientation_rpy[:, 0],
-        label=r'EKF IMU Orientation $R$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_orientation_rpy[:, 1],
-        label=r'EKF IMU Orientation $P$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_orientation_rpy[:, 2],
-        label=r'EKF IMU Orientation $Y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, odometry_imu_orientation_rpy[:, 0],
-        label=r'Measured IMU Orientation $R$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_imu_orientation_rpy[:, 1],
-        label=r'Measured IMU Orientation $P$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, odometry_imu_orientation_rpy[:, 2],
-        label=r'Measured IMU Orientation $Y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Orientation RPY', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, ekf_imu_orientation_rpy[:, i],
+            label=fr'EKF Orientation ${labels_rpy[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, odometry_imu_orientation_rpy[:, i],
+            label=fr'Odometry Orientation ${labels_rpy[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Base Orientation RPY {labels_rpy[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/ekf/base/errors/comparison_imu_orientation_rpy_plot.png",
@@ -2165,50 +1839,27 @@ if __name__ == '__main__':
     )
     plt.close(fig)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(
-        t, ekf_imu_angular_velocity[:, 0],
-        label=r'EKF IMU Angular Velocity $x$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_angular_velocity[:, 1],
-        label=r'EKF IMU Angular Velocity $y$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, ekf_imu_angular_velocity[:, 2],
-        label=r'EKF IMU Angular Velocity $z$',
-        linewidth=2.0
-    )
-    ax.plot(
-        t, measured_imu_angular_velocity[:, 0],
-        label=r'Measured IMU Angular Velocity $x$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, measured_imu_angular_velocity[:, 1],
-        label=r'Measured IMU Angular Velocity $y$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.plot(
-        t, measured_imu_angular_velocity[:, 2],
-        label=r'Measured IMU Angular Velocity $z$',
-        linewidth=2.0,
-        linestyle='--'
-    )
-    ax.set_xlabel('Time [s]', fontsize=11)
-    ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Angular Velocity', fontsize=12)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-    ax.legend(
-        loc='best',
-        frameon=True,
-        fontsize=9
-    )
-    ax.tick_params(axis='both', labelsize=10)
+    fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
+    for i in range(3):
+        axs[i].plot(
+            t, ekf_imu_angular_velocity[:, i],
+            label=fr'EKF Angular Velocity ${labels_xyz[i]}$',
+            linewidth=2.0
+        )
+        axs[i].plot(
+            t, measured_imu_angular_velocity[:, i],
+            label=fr'Odometry Angular Velocity ${labels_xyz[i]}$',
+            linewidth=2.0,
+            linestyle='--'
+        )
+        
+        axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
+        axs[i].set_title(f'Base Angular Velocity {labels_xy[i]}', fontsize=11)
+        axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+        axs[i].legend(fontsize=9)
+
+    axs[-1].set_xlabel('Time [s]', fontsize=11)
+
     fig.tight_layout()
     fig.savefig(
         "images/ekf/base/errors/comparison_imu_angular_velocity_plot.png",

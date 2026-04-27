@@ -34,7 +34,7 @@ class HPIPMQPSolver : public QPSolver<double> {
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
 
-    d_dense_qp_dim_set_all(numVariables, numEqualityConstraints, 0, numInequalityConstraints, 0, numInequalityConstraints, &dim_);
+    d_dense_qp_dim_set_all(numVariables, numEqualityConstraints, 0, numInequalityConstraints, numInequalityConstraints, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = malloc(qp_size);
