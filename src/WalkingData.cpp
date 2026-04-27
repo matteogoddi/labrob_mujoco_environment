@@ -101,13 +101,13 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole,
   double step_length_x
 ){
-    double swing_foot_trajectory_height = 0.00;
+    double swing_foot_trajectory_height = 0.05;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    int n_steps = 0;
+    int n_steps = 20;
 
-    double double_support_duration = 10;
-    double single_support_duration = 10;
+    double double_support_duration = 2500;
+    double single_support_duration = 1200;
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),

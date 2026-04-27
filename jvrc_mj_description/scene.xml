@@ -1,6 +1,6 @@
-<mujoco model="unitreeg1 scene">
+<mujoco model="g1_29dof_with_hand scene">
 
-  <include file="unitreeg1.xml"/>
+  <include file="../g1_mj_description/g1_29dof_with_hand.xml"/>
 
   <visual>
     <headlight diffuse="0.6 0.6 0.6"  ambient="0.3 0.3 0.3" specular="0 0 0"/>

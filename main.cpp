@@ -555,6 +555,7 @@ int main(const int argc, const char* argv[]) {
 
   std::string netInterface;
   bool r2Walking = false; // enable second robot walking manager
+  bool standOnly = true;  // default: keep robots standing in simulation
 
   int r2_base_qposadr = -1;
   int r2_base_dofadr = -1;
@@ -565,6 +566,9 @@ int main(const int argc, const char* argv[]) {
         useSim = true;
     } else if (a == "--r2-walking") {
       r2Walking = true;
+      standOnly = false;
+    } else if (a == "--walk") {
+      standOnly = false;
     } else if (a == "--robot" && i + 1 < argc) {
         useRobot = true;
         useSim = true;
@@ -631,9 +635,6 @@ int main(const int argc, const char* argv[]) {
 
   auto get_eqid = [&](const std::string& name)->EqInfo{
     int id = mj_name2id(mj_model_ptr, mjOBJ_EQUALITY, name.c_str());
-    if(id < 0){
-      std::cerr << "ERROR: equality not found: " << name << std::endl;
-    }
     return {id};
   };
 
@@ -937,12 +938,12 @@ int main(const int argc, const char* argv[]) {
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
   // Make Robot1 walk forward (+x in world) by setting step before init/plan
-  walking_manager.set_step_length_x(0.0);
+  walking_manager.set_step_length_x(0.1);
   walking_manager.init(robot_state, armatures);
 
   if (r2Walking) {
     // Robot2 faces Robot1 (yaw=pi), so use positive step to move toward Robot1 along its forward axis
-    r2_walking_manager.set_step_length_x(-0.0);
+    r2_walking_manager.set_step_length_x(-0.1);
   }
 
   // Keep Robot2 state in世界坐标，单独拷贝一份旋转后传给r2_walking_manager，避免循环时再次旋转引起“飞来”
@@ -1152,7 +1153,9 @@ int main(const int argc, const char* argv[]) {
       //   {
       //   }
       // } // end of parallel sections
-      walking_manager.update(robot_state, joint_command, actual_output);
+      if (!standOnly) {
+        walking_manager.update(robot_state, joint_command, actual_output);
+      }
       // Transform r2 state into manager frame (rotate -pi around z to align facing +x)
       const Eigen::Quaterniond r2_rot_world_to_mgr(Eigen::AngleAxisd(-M_PI, Eigen::Vector3d::UnitZ()));
       const Eigen::Matrix3d r2_R_world_to_mgr = r2_rot_world_to_mgr.toRotationMatrix();
@@ -1172,7 +1175,9 @@ int main(const int argc, const char* argv[]) {
       }
       r2_state_mgr.total_force = r2_R_world_to_mgr * r2_state_mgr.total_force;
 
-      r2_walking_manager.update(r2_state_mgr, r2_joint_command, r2_actual_output);
+      if (!standOnly && r2Walking) {
+        r2_walking_manager.update(r2_state_mgr, r2_joint_command, r2_actual_output);
+      }
       // Encapsulated Robot 2 manager update and writeback
       //handleRobot2Walking(mj_model_ptr, mj_data_ptr, r2Walking, walking_manager_r2, robot_state_r2);
       // std::cout<<"10"<<std::endl;
@@ -1196,7 +1201,9 @@ int main(const int argc, const char* argv[]) {
 
       }else{
         auto start_integration = std::chrono::steady_clock::now();
-        robot_state = walking_manager.getNewRobotState(robot_state);
+        if (!standOnly) {
+          robot_state = walking_manager.getNewRobotState(robot_state);
+        }
         // update mujoco state with robot_state (Robot 1)
         mj_data_ptr->qpos[0] = robot_state.position.x();
         mj_data_ptr->qpos[1] = robot_state.position.y();
@@ -1230,12 +1237,14 @@ int main(const int argc, const char* argv[]) {
         // mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
 
         // Robot2 action:
-        r2_robot_state = r2_walking_manager.getNewRobotState(r2_state_mgr);
-        // Transform back to world frame
-        r2_robot_state.orientation = r2_rot_mgr_to_world * r2_robot_state.orientation;
-        r2_robot_state.position = r2_R_mgr_to_world * r2_robot_state.position;
-        r2_robot_state.linear_velocity = r2_R_mgr_to_world * r2_robot_state.linear_velocity;
-        r2_robot_state.angular_velocity = r2_R_mgr_to_world * r2_robot_state.angular_velocity;
+        if (!standOnly && r2Walking) {
+          r2_robot_state = r2_walking_manager.getNewRobotState(r2_state_mgr);
+          // Transform back to world frame
+          r2_robot_state.orientation = r2_rot_mgr_to_world * r2_robot_state.orientation;
+          r2_robot_state.position = r2_R_mgr_to_world * r2_robot_state.position;
+          r2_robot_state.linear_velocity = r2_R_mgr_to_world * r2_robot_state.linear_velocity;
+          r2_robot_state.angular_velocity = r2_R_mgr_to_world * r2_robot_state.angular_velocity;
+        }
         if (r2_base_qposadr >= 0) {
           mj_data_ptr->qpos[r2_base_qposadr + 0] = r2_robot_state.position.x();
           mj_data_ptr->qpos[r2_base_qposadr + 1] = r2_robot_state.position.y();

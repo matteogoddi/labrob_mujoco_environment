@@ -1,6 +1,6 @@
-<mujoco model="unitreeg1 scene">
+<mujoco model="g1_29dof_with_hand scene">
 
-  <include file="unitreeg1_2.xml"/>
+  <include file="g1_29dof_with_hand.xml"/>
 
   <include file="unitreeg1_2_trans.xml"/>
 
@@ -53,91 +53,7 @@
   </asset>
   <worldbody>
     <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
-    <!-- Explicit contact flags so the box collides with ground -->
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="3" conaffinity="3" friction="1.2 0.2 0.02" condim="4" solref="0.001 1" solimp="0.99 0.99 0.001"/>
     <!-- <geom name="floor1" pos="0 0 -0.1" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".1 .1 .1" priority="1" material="groundplane" /> -->
-    <!-- Cooperative box follows hands via soft connects; initial pose above ground -->
-    <body name="carry_box" pos="0.5 0 1.20">
-      <joint name="carry_box_free" type="free"/>
-
-      <geom name="carry_box_geom" type="box"
-        size="0.30 0.15 0.01" mass="10"
-        contype="2" conaffinity="2"
-        rgba="0.3 0.6 0.9 1"
-        friction="2.0 0.25 0.01"
-        condim="4"
-        solref="0.008 1"
-        solimp="0.9 0.95 0.001"
-        margin="0.002"/>
-
-      <!-- Visual axes to show carry_box orientation (render-only, no contact) -->
-      <geom name="carry_box_axis_x" type="capsule" fromto="0 0 0 0.15 0 0" size="0.01"
-        rgba="1 0 0 1" contype="0" conaffinity="0" density="0" group="0"/>
-      <geom name="carry_box_axis_y" type="capsule" fromto="0 0 0 0 0.15 0" size="0.01"
-        rgba="0 1 0 1" contype="0" conaffinity="0" density="0" group="0"/>
-      <geom name="carry_box_axis_z" type="capsule" fromto="0 0 0 0 0 0.15" size="0.01"
-        rgba="0 0 1 1" contype="0" conaffinity="0" density="0" group="0"/>
-
-      <!-- Box grasp sites, adjusted for even narrower box -->
-      <!-- <site name="box_left_front"  size="0.014" pos="-0.25 0.12 0"  rgba="1 0 0 1"/>
-      <site name="box_left_back"   size="0.014" pos="-0.25 -0.12 0" rgba="0 1 0 1"/>
-      <site name="box_right_front" size="0.014" pos="0.25 -0.12 0"   rgba="0 0.35 1 1"/>
-      <site name="box_right_back"  size="0.014" pos="0.25 0.12 0"  rgba="1 1 0 1"/> -->
-
-      <!-- Add massless contact pads for real hand-box collisions -->
-      <!-- <geom name="box_left_front_pad"  type="box" pos="-0.25 0.05 0"  size="0.012 0.02 0.01" contype="1" conaffinity="1" group="1" density="0" rgba="1 0 0 1" friction="1.5 1.2 0.05"/> -->
-      <geom name="box_left_front_pad_upper" type="box" pos="-0.22 -0.12 0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="1 0 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <geom name="box_left_front_pad_lower" type="box" pos="-0.22 -0.12 -0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="1 0 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <!-- <geom name="box_left_back_pad"   type="box" pos="-0.25 -0.05 0" size="0.012 0.02 0.01" contype="1" conaffinity="1" group="1" density="0" rgba="0 1 0 1" friction="1.5 1.2 0.05"/> -->
-      <geom name="box_left_back_pad_upper" type="box" pos="-0.22 0.12 0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="0 1 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <geom name="box_left_back_pad_lower" type="box" pos="-0.22 0.12 -0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="0 1 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <!-- <geom name="box_right_front_pad" type="box" pos="0.25 -0.05 0"   size="0.012 0.02 0.01" contype="1" conaffinity="1" group="1" density="0" rgba="0 0.35 1 1" friction="1.5 1.2 0.05"/> -->
-      <geom name="box_right_front_pad_upper" type="box" pos="0.22 -0.12 0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="0 0.35 1 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <geom name="box_right_front_pad_lower" type="box" pos="0.22 -0.12 -0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="0 0.35 1 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <!-- <geom name="box_right_back_pad"  type="box" pos="0.25 0.05 0"  size="0.012 0.02 0.01" contype="1" conaffinity="1" group="1" density="0" rgba="1 1 0 1" friction="1.5 1.2 0.05"/> -->
-      <geom name="box_right_back_pad_upper" type="box" pos="0.22 0.12 0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="1 1 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-      <geom name="box_right_back_pad_lower" type="box" pos="0.22 0.12 -0.030" size="0.012 0.008 0.005" contype="0" conaffinity="0" condim="4" group="1" density="0" rgba="1 1 0 1" friction="2.2 0.12 0.01" margin="0.002" solref="0.008 1" solimp="0.9 0.95 0.001"/>
-
-      <!-- Explicit weld targets by robot-hand identity (avoid front/back ambiguity) -->
-      <site name="box_r1_left_pad_upper_site"  size="0.014" pos="-0.22 0.12 0.030" rgba="1 0.2 0.2 1"/>
-      <site name="box_r1_left_pad_lower_site"  size="0.014" pos="-0.22 0.12 -0.030" rgba="1 0.2 0.2 1"/>
-      <site name="box_r1_right_pad_upper_site" size="0.014" pos="-0.22 -0.12 0.030"  rgba="0.2 0.4 1 1"/>
-      <site name="box_r1_right_pad_lower_site" size="0.014" pos="-0.22 -0.12 -0.030"  rgba="0.2 0.4 1 1"/>
-      <site name="box_r2_left_pad_upper_site"  size="0.014" pos="0.22 0.12 0.030"  rgba="1 0.4 0.8 1"/>
-      <site name="box_r2_left_pad_lower_site"  size="0.014" pos="0.22 0.12 -0.030"  rgba="1 0.4 0.8 1"/>
-      <site name="box_r2_right_pad_upper_site" size="0.014" pos="0.22 -0.12 0.030"   rgba="1 1 0.2 1"/>
-      <site name="box_r2_right_pad_lower_site" size="0.014" pos="0.22 -0.12 -0.03"   rgba="1 1 0.2 1"/>
-    </body>
-
   </worldbody>
-
-  <!-- Rigid grasp joints: 8-point hand-pad to box-pad hard constraints -->
-  <!-- <equality>
-    <connect name="eq_r1_left_upper"  site1="box_r1_left_pad_upper_site"  site2="r1_left_hand_pad_upper_site"  solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r1_left_lower"  site1="box_r1_left_pad_lower_site"  site2="r1_left_hand_pad_lower_site"  solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r1_right_upper" site1="box_r1_right_pad_upper_site" site2="r1_right_hand_pad_upper_site" solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r1_right_lower" site1="box_r1_right_pad_lower_site" site2="r1_right_hand_pad_lower_site" solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-
-    <connect name="eq_r2_left_upper"  site1="box_r2_left_pad_upper_site"  site2="r2_left_hand_pad_upper_site"  solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r2_left_lower"  site1="box_r2_left_pad_lower_site"  site2="r2_left_hand_pad_lower_site"  solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r2_right_upper" site1="box_r2_right_pad_upper_site" site2="r2_right_hand_pad_upper_site" solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-    <connect name="eq_r2_right_lower" site1="box_r2_right_pad_lower_site" site2="r2_right_hand_pad_lower_site" solref="0.0005 1" solimp="0.98 0.99 0.0001"/>
-  </equality> -->
-
-  <!-- <sensor> -->
-    <!-- Forces/Torques at the 4 grasp sites on the box -->
-    <!-- <force  name="F_box_left_front"  site="box_left_front"/>
-    <torque name="T_box_left_front"  site="box_left_front"/>
-
-    <force  name="F_box_left_back"   site="box_left_back"/>
-    <torque name="T_box_left_back"   site="box_left_back"/>
-
-    <force  name="F_box_right_front" site="box_right_front"/>
-    <torque name="T_box_right_front" site="box_right_front"/>
-
-    <force  name="F_box_right_back"  site="box_right_back"/>
-    <torque name="T_box_right_back"  site="box_right_back"/>
-  </sensor> -->
-
-
 </mujoco>
