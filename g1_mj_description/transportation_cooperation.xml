@@ -55,5 +55,21 @@
     <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane" contype="3" conaffinity="3" friction="1.2 0.2 0.02" condim="4" solref="0.001 1" solimp="0.99 0.99 0.001"/>
     <!-- <geom name="floor1" pos="0 0 -0.1" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".1 .1 .1" priority="1" material="groundplane" /> -->
+
+    <!-- Contact-only cooperative grasp object (no equality constraints) -->
+    <body name="carry_box" pos="0.5 0 1.0">
+      <joint name="carry_box_free" type="free"/>
+
+      <geom name="carry_box_geom" type="box"
+        size="0.22 0.2 0.015" mass="4.5"
+        rgba="0.3 0.6 0.9 1"
+        contype="7" conaffinity="7"
+        priority="2"
+        condim="4"
+        friction="1.6 1.6 0.004"
+        solref="0.003 1.2"
+        solimp="0.95 0.995 0.001"
+        margin="0.008"/>
+    </body>
   </worldbody>
 </mujoco>

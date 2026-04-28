@@ -104,7 +104,13 @@ WalkingData::addSteps(
     double swing_foot_trajectory_height = 0.05;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    int n_steps = 20;
+    int n_steps = 0;
+
+    if (n_steps <= 0) {
+      // Keep the robot in standing mode without entering single-support phases.
+      // This avoids startup sway when the intent is "interactive standing".
+      return;
+    }
 
     double double_support_duration = 2500;
     double single_support_duration = 1200;
