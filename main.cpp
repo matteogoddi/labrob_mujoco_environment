@@ -694,13 +694,36 @@ int main(const int argc, const char* argv[]) {
   mjtNum l_ankle_p_init = r_ankle_p_init;
   mjtNum l_ankle_r_init = -r_ankle_r_init;
   mjtNum r_shoulder_p_init = 0.07;
-  mjtNum r_shoulder_r_init = -0.12;
+  mjtNum r_shoulder_r_init = -0.64358;//-0.12
   mjtNum r_shoulder_y_init = 0.0;
   mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
   mjtNum l_shoulder_p_init = r_shoulder_p_init;
   mjtNum l_shoulder_r_init = -r_shoulder_r_init;
   mjtNum l_shoulder_y_init = 0.0;
   mjtNum l_elbow_p_init = r_elbow_p_init;
+
+  mjtNum left_wrist_roll_init = -2.2;
+  mjtNum left_wrist_pitch_init = 0.785;
+  mjtNum left_wrist_yaw_init = 0.0;
+  mjtNum right_wrist_roll_init = -left_wrist_roll_init;
+  mjtNum right_wrist_pitch_init = left_wrist_pitch_init;
+  mjtNum right_wrist_yaw_init = left_wrist_yaw_init;
+
+  mjtNum left_thumb0_init = 0.0;
+  mjtNum left_thumb1_init = 0.90;
+  mjtNum left_thumb2_init = 0.80;
+  mjtNum left_index0_init = -0.0;
+  mjtNum left_index1_init = -0.50;
+  mjtNum left_middle0_init = left_index0_init;
+  mjtNum left_middle1_init = left_index1_init;
+
+  mjtNum right_thumb0_init = -left_thumb0_init;
+  mjtNum right_thumb1_init = -left_thumb1_init;
+  mjtNum right_thumb2_init = -left_thumb2_init;
+  mjtNum right_index0_init = -left_index0_init;
+  mjtNum right_index1_init = -left_index1_init;
+  mjtNum right_middle0_init = -left_middle0_init;
+  mjtNum right_middle1_init = -left_middle1_init;
 
   for (int i = 0; i < mj_model_ptr->nq; ++i) {
     mj_data_ptr->qpos[i] = 0.0;
@@ -749,6 +772,57 @@ int main(const int argc, const char* argv[]) {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_shoulder_roll_joint")]] = l_shoulder_r_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_shoulder_yaw_joint")]] = l_shoulder_y_init;
   // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "r2_left_elbow_joint")]] = l_elbow_p_init;
+
+  auto set_joint_qpos_if_exists = [&](const std::string& joint_name, mjtNum value) {
+    int joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, joint_name.c_str());
+    if (joint_id >= 0) {
+      mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = value;
+    }
+  };
+
+  set_joint_qpos_if_exists("left_wrist_roll_joint", left_wrist_roll_init);
+  set_joint_qpos_if_exists("left_wrist_pitch_joint", left_wrist_pitch_init);
+  set_joint_qpos_if_exists("left_wrist_yaw_joint", left_wrist_yaw_init);
+  set_joint_qpos_if_exists("left_hand_thumb_0_joint", left_thumb0_init);
+  set_joint_qpos_if_exists("left_hand_thumb_1_joint", left_thumb1_init);
+  set_joint_qpos_if_exists("left_hand_thumb_2_joint", left_thumb2_init);
+  set_joint_qpos_if_exists("left_hand_index_0_joint", left_index0_init);
+  set_joint_qpos_if_exists("left_hand_index_1_joint", left_index1_init);
+  set_joint_qpos_if_exists("left_hand_middle_0_joint", left_middle0_init);
+  set_joint_qpos_if_exists("left_hand_middle_1_joint", left_middle1_init);
+
+  set_joint_qpos_if_exists("right_wrist_roll_joint", right_wrist_roll_init);
+  set_joint_qpos_if_exists("right_wrist_pitch_joint", right_wrist_pitch_init);
+  set_joint_qpos_if_exists("right_wrist_yaw_joint", right_wrist_yaw_init);
+  set_joint_qpos_if_exists("right_hand_thumb_0_joint", right_thumb0_init);
+  set_joint_qpos_if_exists("right_hand_thumb_1_joint", right_thumb1_init);
+  set_joint_qpos_if_exists("right_hand_thumb_2_joint", right_thumb2_init);
+  set_joint_qpos_if_exists("right_hand_index_0_joint", right_index0_init);
+  set_joint_qpos_if_exists("right_hand_index_1_joint", right_index1_init);
+  set_joint_qpos_if_exists("right_hand_middle_0_joint", right_middle0_init);
+  set_joint_qpos_if_exists("right_hand_middle_1_joint", right_middle1_init);
+
+  set_joint_qpos_if_exists("r2_left_wrist_roll_joint", left_wrist_roll_init);
+  set_joint_qpos_if_exists("r2_left_wrist_pitch_joint", left_wrist_pitch_init);
+  set_joint_qpos_if_exists("r2_left_wrist_yaw_joint", left_wrist_yaw_init);
+  set_joint_qpos_if_exists("r2_left_hand_thumb_0_joint", left_thumb0_init);
+  set_joint_qpos_if_exists("r2_left_hand_thumb_1_joint", left_thumb1_init);
+  set_joint_qpos_if_exists("r2_left_hand_thumb_2_joint", left_thumb2_init);
+  set_joint_qpos_if_exists("r2_left_hand_index_0_joint", left_index0_init);
+  set_joint_qpos_if_exists("r2_left_hand_index_1_joint", left_index1_init);
+  set_joint_qpos_if_exists("r2_left_hand_middle_0_joint", left_middle0_init);
+  set_joint_qpos_if_exists("r2_left_hand_middle_1_joint", left_middle1_init);
+
+  set_joint_qpos_if_exists("r2_right_wrist_roll_joint", right_wrist_roll_init);
+  set_joint_qpos_if_exists("r2_right_wrist_pitch_joint", right_wrist_pitch_init);
+  set_joint_qpos_if_exists("r2_right_wrist_yaw_joint", right_wrist_yaw_init);
+  set_joint_qpos_if_exists("r2_right_hand_thumb_0_joint", right_thumb0_init);
+  set_joint_qpos_if_exists("r2_right_hand_thumb_1_joint", right_thumb1_init);
+  set_joint_qpos_if_exists("r2_right_hand_thumb_2_joint", right_thumb2_init);
+  set_joint_qpos_if_exists("r2_right_hand_index_0_joint", right_index0_init);
+  set_joint_qpos_if_exists("r2_right_hand_index_1_joint", right_index1_init);
+  set_joint_qpos_if_exists("r2_right_hand_middle_0_joint", right_middle0_init);
+  set_joint_qpos_if_exists("r2_right_hand_middle_1_joint", right_middle1_init);
 
   // Initialize free bases (both robots) explicitly: [x,y,z,qw,qx,qy,qz]
   // Robot1: keep original height; Robot2: in front of Robot1, facing it (yaw = 180°).
