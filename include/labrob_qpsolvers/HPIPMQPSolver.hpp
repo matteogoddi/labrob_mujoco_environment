@@ -49,7 +49,7 @@ class HPIPMQPSolver : public QPSolver<double> {
     int ipm_arg_size = d_dense_qp_ipm_arg_memsize(&dim_);
     ipm_arg_mem_ = malloc(ipm_arg_size);
     d_dense_qp_ipm_arg_create(&dim_, &arg_, ipm_arg_mem_);
-    enum hpipm_mode mode = SPEED; // set mode ROBUST, SPEED, BALANCE, SPEED_ABS
+    enum hpipm_mode mode = ROBUST; // set mode ROBUST, SPEED, BALANCE, SPEED_ABS
     d_dense_qp_ipm_arg_set_default(mode, &arg_);
 
     int ipm_size = d_dense_qp_ipm_ws_memsize(&dim_, &arg_);
