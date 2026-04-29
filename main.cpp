@@ -13,8 +13,10 @@
 
 #include <thread>
 #include <iomanip>
+#include <algorithm>
 #include <pthread.h>
 #include <sched.h>
+#include <sys/select.h>
 #include <unistd.h>
 #include <cmath>
 #include <sstream>
@@ -694,7 +696,7 @@ int main(const int argc, const char* argv[]) {
   mjtNum l_ankle_p_init = r_ankle_p_init;
   mjtNum l_ankle_r_init = -r_ankle_r_init;
   mjtNum r_shoulder_p_init = 0.07;
-  mjtNum r_shoulder_r_init = -0.64358;//-0.12
+  mjtNum r_shoulder_r_init = -0.9054;//-0.12
   mjtNum r_shoulder_y_init = 0.0;
   mjtNum r_elbow_p_init = 3.14 / 2.0 - 0.44;
   mjtNum l_shoulder_p_init = r_shoulder_p_init;
@@ -702,8 +704,8 @@ int main(const int argc, const char* argv[]) {
   mjtNum l_shoulder_y_init = 0.0;
   mjtNum l_elbow_p_init = r_elbow_p_init;
 
-  mjtNum left_wrist_roll_init = -2.2;
-  mjtNum left_wrist_pitch_init = 0.785;
+  mjtNum left_wrist_roll_init = -2.4618;
+  mjtNum left_wrist_pitch_init = 1.2;
   mjtNum left_wrist_yaw_init = 0.0;
   mjtNum right_wrist_roll_init = -left_wrist_roll_init;
   mjtNum right_wrist_pitch_init = left_wrist_pitch_init;
@@ -711,9 +713,9 @@ int main(const int argc, const char* argv[]) {
 
   mjtNum left_thumb0_init = 0.0;
   mjtNum left_thumb1_init = -0.90;
-  mjtNum left_thumb2_init = 0.80;
+  mjtNum left_thumb2_init = 0.20;
   mjtNum left_index0_init = -0.0;
-  mjtNum left_index1_init = -0.50;
+  mjtNum left_index1_init = -0.8;
   mjtNum left_middle0_init = left_index0_init;
   mjtNum left_middle1_init = left_index1_init;
 
@@ -955,6 +957,26 @@ int main(const int argc, const char* argv[]) {
 
   auto next_tick = std::chrono::steady_clock::now();
 
+  enum class GripperPhase {
+    InitRunning,
+    Thumb1Closing,
+    Thumb1ClosedWaitingStage2,
+    Thumb2Closing,
+    Closed
+  };
+
+  GripperPhase gripper_phase = GripperPhase::InitRunning;
+  mjtNum left_thumb1_cmd = left_thumb1_init;
+  mjtNum right_thumb1_cmd = right_thumb1_init;
+  mjtNum left_thumb2_cmd = left_thumb2_init;
+  mjtNum right_thumb2_cmd = right_thumb2_init;
+  const mjtNum left_thumb1_close_goal = 0.25;
+  const mjtNum left_thumb1_close_step = 0.0005;
+  const mjtNum left_thumb2_close_goal = 1.6;
+  const mjtNum left_thumb2_close_step = 0.0003;
+
+  std::cout << "[TERMINAL] Phase 1: normal operation. When initialization is complete, type 1 and press Enter to start thumb1 closing." << std::endl;
+
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -963,8 +985,73 @@ int main(const int argc, const char* argv[]) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
+      if (gripper_phase == GripperPhase::InitRunning) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+        timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ready = select(STDIN_FILENO + 1, &readfds, nullptr, nullptr, &timeout);
+        if (ready > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
+          std::string terminal_input;
+          std::getline(std::cin, terminal_input);
+          if (terminal_input == "1") {
+            std::cout << "Initialization finished" << std::endl;
+            gripper_phase = GripperPhase::Thumb1Closing;
+          }
+        }
+      }
+
+      if (gripper_phase == GripperPhase::Thumb1ClosedWaitingStage2) {
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(STDIN_FILENO, &readfds);
+        timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+
+        int ready = select(STDIN_FILENO + 1, &readfds, nullptr, nullptr, &timeout);
+        if (ready > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
+          std::string terminal_input;
+          std::getline(std::cin, terminal_input);
+          if (terminal_input == "2") {
+            std::cout << "Stage 2 started: thumb2 closing" << std::endl;
+            gripper_phase = GripperPhase::Thumb2Closing;
+          }
+        }
+      }
+
+      if (gripper_phase == GripperPhase::Thumb1Closing) {
+        left_thumb1_cmd = std::min(left_thumb1_close_goal, left_thumb1_cmd + left_thumb1_close_step);
+        right_thumb1_cmd = -left_thumb1_cmd;
+        if (left_thumb1_cmd >= left_thumb1_close_goal) {
+          gripper_phase = GripperPhase::Thumb1ClosedWaitingStage2;
+          std::cout << "Stage 1 closed (thumb1). Type 2 and press Enter to start stage 2 (thumb2)." << std::endl;
+        }
+      }
+
+      if (gripper_phase == GripperPhase::Thumb2Closing) {
+        left_thumb2_cmd = std::min(left_thumb2_close_goal, left_thumb2_cmd + left_thumb2_close_step);
+        right_thumb2_cmd = -left_thumb2_cmd;
+        if (left_thumb2_cmd >= left_thumb2_close_goal) {
+          gripper_phase = GripperPhase::Closed;
+          std::cout << "Gripper fully closed (stage 2 complete)" << std::endl;
+        }
+      }
+
       Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
       Eigen::VectorXd r2_actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+
+      robot_state.joint_state["left_hand_thumb_1_joint"].pos = left_thumb1_cmd;
+      robot_state.joint_state["right_hand_thumb_1_joint"].pos = right_thumb1_cmd;
+      robot_state.joint_state["left_hand_thumb_2_joint"].pos = left_thumb2_cmd;
+      robot_state.joint_state["right_hand_thumb_2_joint"].pos = right_thumb2_cmd;
+      r2_robot_state.joint_state["left_hand_thumb_1_joint"].pos = left_thumb1_cmd;
+      r2_robot_state.joint_state["right_hand_thumb_1_joint"].pos = right_thumb1_cmd;
+      r2_robot_state.joint_state["left_hand_thumb_2_joint"].pos = left_thumb2_cmd;
+      r2_robot_state.joint_state["right_hand_thumb_2_joint"].pos = right_thumb2_cmd;
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -1175,6 +1262,15 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
         }
 
+        set_joint_qpos_if_exists("left_hand_thumb_1_joint", left_thumb1_cmd);
+        set_joint_qpos_if_exists("right_hand_thumb_1_joint", right_thumb1_cmd);
+        set_joint_qpos_if_exists("left_hand_thumb_2_joint", left_thumb2_cmd);
+        set_joint_qpos_if_exists("right_hand_thumb_2_joint", right_thumb2_cmd);
+        set_joint_qpos_if_exists("r2_left_hand_thumb_1_joint", left_thumb1_cmd);
+        set_joint_qpos_if_exists("r2_right_hand_thumb_1_joint", right_thumb1_cmd);
+        set_joint_qpos_if_exists("r2_left_hand_thumb_2_joint", left_thumb2_cmd);
+        set_joint_qpos_if_exists("r2_right_hand_thumb_2_joint", right_thumb2_cmd);
+
 
         // mj_forward(mj_model_ptr, mj_data_ptr);
 
@@ -1317,18 +1413,28 @@ int main(const int argc, const char* argv[]) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          float q_target = robot_state.joint_state[joint_name].pos;
+          if (joint_name == "left_hand_thumb_1_joint") {
+            q_target = static_cast<float>(left_thumb1_cmd);
+          } else if (joint_name == "right_hand_thumb_1_joint") {
+            q_target = static_cast<float>(right_thumb1_cmd);
+          } else if (joint_name == "left_hand_thumb_2_joint") {
+            q_target = static_cast<float>(left_thumb2_cmd);
+          } else if (joint_name == "right_hand_thumb_2_joint") {
+            q_target = static_cast<float>(right_thumb2_cmd);
+          }
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
+          if (std::abs(q_target) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
-                      << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
+                      << "q_target = " << q_target << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "
                       << "tau_ff = " << joint_command[joint_name] << std::endl;
             std::cout << "Disabling robot for safety." << std::endl;
 
             signalHandler(SIGINT);
           }else {
-            motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
+            motor_command.q_target[i] = q_target;
             motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
             motor_command.tau_ff[i] = joint_command[joint_name];
           }

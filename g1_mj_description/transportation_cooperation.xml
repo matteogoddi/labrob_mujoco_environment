@@ -57,11 +57,11 @@
     <!-- <geom name="floor1" pos="0 0 -0.1" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".1 .1 .1" priority="1" material="groundplane" /> -->
 
     <!-- Contact-only cooperative grasp object (no equality constraints) -->
-    <body name="carry_box" pos="0.5 0 1.0">
+    <body name="carry_box" pos="0.51 0 1.0">
       <joint name="carry_box_free" type="free"/>
 
       <geom name="carry_box_geom" type="box"
-        size="0.22 0.2 0.015" mass="4.5"
+        size="0.38 0.17 0.007" mass="4.5"
         rgba="0.3 0.6 0.9 1"
         contype="7" conaffinity="7"
         priority="2"
