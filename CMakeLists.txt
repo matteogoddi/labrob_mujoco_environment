@@ -12,6 +12,26 @@ find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
 find_package(OpenMP REQUIRED)
 
+find_path(CASADI_INCLUDE_DIR
+  NAMES casadi/casadi.hpp
+  HINTS
+    $ENV{HOME}/.local/lib/python3.8/site-packages/casadi/include
+    /usr/local/include
+    /usr/include
+)
+
+find_library(CASADI_LIBRARY
+  NAMES casadi libcasadi
+  HINTS
+    $ENV{HOME}/.local/lib/python3.8/site-packages/casadi
+    /usr/local/lib
+    /usr/lib
+)
+
+if(NOT CASADI_INCLUDE_DIR OR NOT CASADI_LIBRARY)
+  message(FATAL_ERROR "CasADi not found. Please install CasADi C++ library or set CASADI_INCLUDE_DIR and CASADI_LIBRARY.")
+endif()
+
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
@@ -30,6 +50,7 @@ set(hpipm_LIBRARIES hpipm)
 
 add_library(
   WalkingControllerLibrary STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ComplianceReferenceGenerator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DoubleSupportConfiguration.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlanElement.cpp
@@ -55,12 +76,14 @@ target_include_directories(WalkingControllerLibrary
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
+    ${CASADI_INCLUDE_DIR}
 )
 
 target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
+  ${CASADI_LIBRARY}
   jsoncpp_lib
   OpenMP::OpenMP_CXX
 )
