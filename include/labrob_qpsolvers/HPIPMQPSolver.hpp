@@ -61,8 +61,8 @@ class HPIPMQPSolver : public QPSolver<double> {
 
     Zl_ = std::vector<double>(numIneq_, 1e-6);
     Zu_ = std::vector<double>(numIneq_, 1e-6);
-    zl_ = std::vector<double>(numIneq_, 0.0);
-    zu_ = std::vector<double>(numIneq_, 0.0);
+    zl_ = std::vector<double>(numIneq_, 1e-6);
+    zu_ = std::vector<double>(numIneq_, 1e-6);
 
     u_ = (double*) malloc(numVariables * sizeof(double));
   }
@@ -105,6 +105,11 @@ class HPIPMQPSolver : public QPSolver<double> {
     d_dense_qp_sol_get_v(&qp_sol_, u_);
 
     //std::cout << "Status = " << workspace_.status << std::endl;
+    int status = workspace_.status;
+    if (status != 0) {
+        std::cerr << "HPIPM WBC failed with status: " << status << std::endl;
+        // fallback: return zero torques or previous solution
+    }
   }
 
   const double* get_solution() const override {

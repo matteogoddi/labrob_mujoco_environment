@@ -589,7 +589,7 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isWBCLoopClosed = false;
+    isWBCLoopClosed = true;
     isMPCLoopClosed = true;
     isEKFactive = true;
   }

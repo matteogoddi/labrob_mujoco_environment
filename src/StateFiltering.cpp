@@ -181,6 +181,69 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   pinocchio::SE3 T_wb = data_.oMi[1];
 
+    // --- Re-anchor contact points at touchdown --------------------------------
+    {
+    const int fid_L = model_.getFrameId("left_foot_link");
+    const int fid_R = model_.getFrameId("right_foot_link");
+
+    if (left_contact && !prev_left_contact_) {
+        // FIX Bug 2: ri-ancora usando la FK dello stato POST-predizione
+        Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
+        pos_pred.head(3) = r_;                             // r_ POST-predizione
+        pos_pred.segment(3,4) << q_.x(), q_.y(), q_.z(), q_.w();  // q_ POST-predizione
+        pos_pred.tail(qj.size()) = qj;
+        pinocchio::Data data_td(model_);
+        pinocchio::forwardKinematics(model_, data_td, pos_pred);
+        pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
+
+        pL_ = data_td.oMf[fid_L].translation();
+        zL_ = Eigen::Quaterniond(data_td.oMf[fid_L].rotation()).normalized();
+
+        // FIX Bug 1: azzera TUTTE le cross-covarianze del piede
+        P_.block(ipL, 0, 3, NX).setZero();
+        P_.block(0, ipL, NX, 3).setZero();
+        P_.block<3,3>(ipL, ipL) = Eigen::Matrix3d::Identity() * 1e-3;
+
+        P_.block(ithetaL, 0, 3, NX).setZero();
+        P_.block(0, ithetaL, NX, 3).setZero();
+        P_.block<3,3>(ithetaL, ithetaL) = Eigen::Matrix3d::Identity() * 1e-4;
+
+        // FIX Bug 3: salta il measurement update in questo ciclo di touchdown,
+        // il filtro agirà normalmente dal passo successivo
+        prev_left_contact_ = left_contact;
+        prev_right_contact_ = right_contact;
+        return;  // esci senza eseguire processFoot questo ciclo
+    }
+
+    if (right_contact && !prev_right_contact_) {
+        Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
+        pos_pred.head(3) = r_;
+        pos_pred.segment(3,4) << q_.x(), q_.y(), q_.z(), q_.w();
+        pos_pred.tail(qj.size()) = qj;
+        pinocchio::Data data_td(model_);
+        pinocchio::forwardKinematics(model_, data_td, pos_pred);
+        pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
+
+        pR_ = data_td.oMf[fid_R].translation();
+        zR_ = Eigen::Quaterniond(data_td.oMf[fid_R].rotation()).normalized();
+
+        P_.block(ipR, 0, 3, NX).setZero();
+        P_.block(0, ipR, NX, 3).setZero();
+        P_.block<3,3>(ipR, ipR) = Eigen::Matrix3d::Identity() * 1e-3;
+
+        P_.block(ithetaR, 0, 3, NX).setZero();
+        P_.block(0, ithetaR, NX, 3).setZero();
+        P_.block<3,3>(ithetaR, ithetaR) = Eigen::Matrix3d::Identity() * 1e-4;
+
+        prev_left_contact_ = left_contact;
+        prev_right_contact_ = right_contact;
+        return;
+    }
+
+    prev_left_contact_ = left_contact;
+    prev_right_contact_ = right_contact;
+    }
+
   auto processFoot = [&](int frameId,
                          Eigen::Vector3d& p,
                          Eigen::Quaterniond& z,

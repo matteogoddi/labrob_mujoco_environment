@@ -116,6 +116,8 @@ public:
                     const Eigen::Vector3d& pR_init) {
       r_ << q_init[0], q_init[1], q_init[2];
       q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]).inverse();
+      prev_left_contact_  = true;
+      prev_right_contact_ = true;
 
       pinocchio::Data data(model_);
       pinocchio::forwardKinematics(model_, data, q_init_);
@@ -148,6 +150,8 @@ private:
     Eigen::VectorXd q_init_;
     bool left_initialized_ = false;
     bool right_initialized_ = false;
+    bool prev_left_contact_  = true;
+    bool prev_right_contact_ = true;
 
     // Helper
     Eigen::Quaterniond expMap(const Eigen::Vector3d& w)

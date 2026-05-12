@@ -42,6 +42,7 @@ target_include_directories(WalkingControllerLibrary
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
 )
+add_definitions(-DCOAL_DISABLE_HPP_FCL_WARNINGS)
 
 target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
