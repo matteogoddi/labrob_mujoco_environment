@@ -27,7 +27,7 @@ public:
 
   struct Parameters {
     // Validation switches
-    ComplianceMode compliance_mode = ComplianceMode::HAND_AND_TORSO;
+    ComplianceMode compliance_mode = ComplianceMode::HAND_ONLY;
     HandReferenceFrame hand_reference_frame = HandReferenceFrame::TORSO;
 
     // If true, use M-D-K admittance dynamics.

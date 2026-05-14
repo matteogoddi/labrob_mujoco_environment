@@ -101,6 +101,19 @@ if __name__ == '__main__':
         applied_wrist_force = np.loadtxt(applied_external_force_file, skiprows=1)
         applied_wrist_force = np.atleast_2d(applied_wrist_force)
 
+    compliance_hand_state_file = folder + '/compliance_hand_state.txt'
+    has_compliance_hand_logs = os.path.exists(compliance_hand_state_file)
+    if has_compliance_hand_logs:
+        try:
+            compliance_hand_state = np.loadtxt(compliance_hand_state_file, skiprows=1)
+            compliance_hand_state = np.atleast_2d(compliance_hand_state)
+            if compliance_hand_state.shape[1] < 37:
+                has_compliance_hand_logs = False
+                print('[INFO] compliance_hand_state.txt has fewer than 37 columns, skip compliance plots.')
+        except (ValueError, OSError):
+            has_compliance_hand_logs = False
+            print('[INFO] compliance_hand_state.txt is unreadable, skip compliance plots.')
+
     all_joint_motor_names_file = folder + '/all_joint_motor_names.txt'
     all_joint_motor_time_file = folder + '/all_joint_motor_time.txt'
     all_joint_motor_q_file = folder + '/all_joint_motor_q.txt'
@@ -255,6 +268,8 @@ if __name__ == '__main__':
         estimated_force_right_wrist_filtered = estimated_force_right_wrist_filtered[:num_samples, :]
     if has_applied_wrist_force_logs:
         applied_wrist_force = applied_wrist_force[:num_samples, :]
+    if has_compliance_hand_logs:
+        compliance_hand_state = compliance_hand_state[:num_samples, :]
     
     ekf_base_position = ekf_base_position[:num_samples, :]
     ekf_base_velocity = ekf_base_velocity[:num_samples, :]
@@ -525,6 +540,51 @@ if __name__ == '__main__':
         ax.legend()
         fig.tight_layout()
         fig.savefig('images/forces_torques/applied_external_wrist_force_enable.png')
+        plt.close(fig)
+
+    if has_compliance_hand_logs:
+        compliance_t = compliance_hand_state[:, 0]
+        dof_labels = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+
+        left_delta_x = compliance_hand_state[:, 1:7]
+        left_delta_dx = compliance_hand_state[:, 7:13]
+        left_delta_ddx = compliance_hand_state[:, 13:19]
+        right_delta_x = compliance_hand_state[:, 19:25]
+        right_delta_dx = compliance_hand_state[:, 25:31]
+        right_delta_ddx = compliance_hand_state[:, 31:37]
+
+        fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        for i, label in enumerate(dof_labels):
+            axes[0].plot(compliance_t, left_delta_x[:, i], label=label)
+            axes[1].plot(compliance_t, left_delta_dx[:, i], label=label)
+            axes[2].plot(compliance_t, left_delta_ddx[:, i], label=label)
+        axes[0].set_ylabel('delta_x')
+        axes[1].set_ylabel('delta_dx')
+        axes[2].set_ylabel('delta_ddx')
+        axes[2].set_xlabel('Time [s]')
+        axes[0].set_title('Left Hand Compliance State')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/left_hand_compliance_state.png')
+        plt.close(fig)
+
+        fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
+        for i, label in enumerate(dof_labels):
+            axes[0].plot(compliance_t, right_delta_x[:, i], label=label)
+            axes[1].plot(compliance_t, right_delta_dx[:, i], label=label)
+            axes[2].plot(compliance_t, right_delta_ddx[:, i], label=label)
+        axes[0].set_ylabel('delta_x')
+        axes[1].set_ylabel('delta_dx')
+        axes[2].set_ylabel('delta_ddx')
+        axes[2].set_xlabel('Time [s]')
+        axes[0].set_title('Right Hand Compliance State')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/right_hand_compliance_state.png')
         plt.close(fig)
 
     if has_all_joint_motor_logs and motor_plot_joint_count > 0 and motor_plot_sample_count > 0:

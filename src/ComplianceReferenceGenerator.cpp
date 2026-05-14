@@ -580,19 +580,19 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
     arg["lbx"] = eigenToDM(Eigen::VectorXd(lbx));
     arg["ubx"] = eigenToDM(Eigen::VectorXd(ubx));
 
-    casadi::DMDict res = qp_solver_(arg);
+    casadi::DMDict res = qp_solver_(arg); // solve QP
 
     if (res.find("x") == res.end()) {
       throw std::runtime_error("CasADi result does not contain key 'x'.");
     }
 
-    Eigen::VectorXd sol = dmToEigen(res.at("x"));
+    Eigen::VectorXd sol = dmToEigen(res.at("x")); //final QP solution
 
     if (sol.size() < 6) {
       throw std::runtime_error("CasADi solution size is smaller than 6.");
     }
 
-    delta_xb = sol.head<6>();
+    delta_xb = sol.head<6>(); //transfer solution(DM) to Eigen vector
 
     bool within_bounds = true;
     for (int i = 0; i < 6; ++i) {
@@ -631,7 +631,7 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
   debug_.qp_solve_time_ms =
       std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-  debug_.objective_value = computeObjective(delta_xb, H, g);
+  debug_.objective_value = computeObjective(delta_xb, H, g); //print info for debug
 
   return delta_xb;
 }

@@ -42,6 +42,7 @@
 #include <hrp4_locomotion/globals.h>
 
 #include <hrp4_locomotion/EstimateForce.hpp>
+#include <hrp4_locomotion/ComplianceReferenceGenerator.hpp>
 
 bool isTotalBodyLoopClosed = false;
 bool isCoMLoopClosed = false;
@@ -82,6 +83,13 @@ std::vector<Eigen::VectorXd> left_wrist_wrench_log;
 std::vector<Eigen::VectorXd> right_wrist_wrench_log;
 std::vector<Eigen::VectorXd> left_wrist_wrench_filtered_log;
 std::vector<Eigen::VectorXd> right_wrist_wrench_filtered_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_x_left_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_x_right_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_dx_left_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_dx_right_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_ddx_left_log;
+std::vector<Eigen::Matrix<double, 6, 1>> compliance_delta_ddx_right_log;
+std::vector<double> compliance_time_log;
 std::vector<double> wrist_force_time_log;
 std::vector<Eigen::Vector3d> left_wrist_force_gt_log;
 std::vector<Eigen::Vector3d> right_wrist_force_gt_log;
@@ -115,6 +123,39 @@ void saveEstimateForceLogs() {
   std::ofstream right_wrist_filtered_file("/tmp/estimated_force_right_wrist_filtered.txt");
   for (const auto& v : right_wrist_wrench_filtered_log) {
     right_wrist_filtered_file << v.transpose() << "\n";
+  }
+
+  std::ofstream compliance_file("/tmp/compliance_hand_state.txt");
+  compliance_file << "time "
+                  << "l_dx0 l_dx1 l_dx2 l_dx3 l_dx4 l_dx5 "
+                  << "l_ddx0 l_ddx1 l_ddx2 l_ddx3 l_ddx4 l_ddx5 "
+                  << "l_dddx0 l_dddx1 l_dddx2 l_dddx3 l_dddx4 l_dddx5 "
+                  << "r_dx0 r_dx1 r_dx2 r_dx3 r_dx4 r_dx5 "
+                  << "r_ddx0 r_ddx1 r_ddx2 r_ddx3 r_ddx4 r_ddx5 "
+                  << "r_dddx0 r_dddx1 r_dddx2 r_dddx3 r_dddx4 r_dddx5\n";
+
+  const std::size_t n_compliance = std::min(
+      compliance_time_log.size(),
+      std::min(
+          compliance_delta_x_left_log.size(),
+          std::min(
+              compliance_delta_x_right_log.size(),
+              std::min(
+                  compliance_delta_dx_left_log.size(),
+                  std::min(
+                      compliance_delta_dx_right_log.size(),
+                      std::min(
+                          compliance_delta_ddx_left_log.size(),
+                          compliance_delta_ddx_right_log.size()))))));
+
+  for (std::size_t i = 0; i < n_compliance; ++i) {
+    compliance_file << compliance_time_log[i] << " "
+                    << compliance_delta_x_left_log[i].transpose() << " "
+                    << compliance_delta_dx_left_log[i].transpose() << " "
+                    << compliance_delta_ddx_left_log[i].transpose() << " "
+                    << compliance_delta_x_right_log[i].transpose() << " "
+                    << compliance_delta_dx_right_log[i].transpose() << " "
+                    << compliance_delta_ddx_right_log[i].transpose() << "\n";
   }
 
   std::ofstream validation_file("/tmp/wrist_force_validation.txt");
@@ -969,6 +1010,12 @@ int main(const int argc, const char* argv[]) {
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+
+  labrob::ComplianceReferenceGenerator compliance_reference_generator;
+  labrob::ComplianceReferenceGenerator::Parameters compliance_params;
+  compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::HAND_ONLY;
+  compliance_reference_generator.setParameters(compliance_params);
+  double previous_compliance_time = -1.0;
   
   walking_manager.init(robot_state, armatures);
   estimate_force.initialize(walking_manager.getRobotModel());
@@ -1468,6 +1515,35 @@ int main(const int argc, const char* argv[]) {
       right_wrist_wrench_log.push_back(estimate_force.getRightWristWrench());
       left_wrist_wrench_filtered_log.push_back(estimate_force.getLeftWristWrenchFiltered());
       right_wrist_wrench_filtered_log.push_back(estimate_force.getRightWristWrenchFiltered());
+
+      {
+        labrob::ComplianceReferenceGenerator::Input compliance_input;
+        const double current_time = mj_data_ptr->time;
+        if (previous_compliance_time < 0.0) {
+          const auto controller_frequency = walking_manager.get_controller_frequency();
+          compliance_input.dt = (controller_frequency > 0)
+              ? 1.0 / static_cast<double>(controller_frequency)
+              : 0.002;
+        } else {
+          compliance_input.dt = std::max(1e-6, current_time - previous_compliance_time);
+        }
+        previous_compliance_time = current_time;
+
+        compliance_input.wrench_left = estimate_force.getLeftWristWrenchFiltered();
+        compliance_input.wrench_right = estimate_force.getRightWristWrenchFiltered();
+        compliance_input.wrench_left_ref.setZero();
+        compliance_input.wrench_right_ref.setZero();
+
+        const auto compliance_output = compliance_reference_generator.update(compliance_input);
+
+        compliance_time_log.push_back(current_time);
+        compliance_delta_x_left_log.push_back(compliance_output.delta_xc_left);
+        compliance_delta_x_right_log.push_back(compliance_output.delta_xc_right);
+        compliance_delta_dx_left_log.push_back(compliance_output.delta_dxc_left);
+        compliance_delta_dx_right_log.push_back(compliance_output.delta_dxc_right);
+        compliance_delta_ddx_left_log.push_back(compliance_output.delta_ddxc_left);
+        compliance_delta_ddx_right_log.push_back(compliance_output.delta_ddxc_right);
+      }
       
       if (has_measured_motor_state) {
         std::vector<mjtNum> qfrc_from_xfrc(mj_model_ptr->nv, 0.0);
