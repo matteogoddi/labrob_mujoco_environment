@@ -1013,8 +1013,41 @@ int main(const int argc, const char* argv[]) {
 
   labrob::ComplianceReferenceGenerator compliance_reference_generator;
   labrob::ComplianceReferenceGenerator::Parameters compliance_params;
-  compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::HAND_ONLY;
+  compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::TORSO_ONLY;
+  compliance_params.use_admittance_dynamics = false;
+
+  compliance_params.S_left.setZero();
+  compliance_params.S_right.setZero();
+  // compliance_params.S_left(5, 5) = 1.0; // enable left hand pitch compliance
+
+  compliance_params.Ma_left.setZero();
+  compliance_params.Da_left.setZero();
+  compliance_params.Ka_left.setZero();
+  compliance_params.Ma_right.setZero();
+  compliance_params.Da_right.setZero();
+  compliance_params.Ka_right.setZero();
+
+  // left hand: only z channel really matters, but keep all diagonals positive
+  compliance_params.Ma_left.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
+  compliance_params.Ka_left.diagonal() << 100.0, 100.0, 100.0, 5.0, 5.0, 5.0;
+
+  // critical damping: D = 2 * sqrt(M*K)
+  // for M=5, K=100, D≈44.7
+  compliance_params.Da_left.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
+
+  // right hand disabled by S_right=0, but still give positive matrices
+  compliance_params.Ma_right.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
+  compliance_params.Ka_right.diagonal() << 100.0, 100.0, 100.0, 5.0, 5.0, 5.0;
+  compliance_params.Da_right.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
+
+  // safety limit: do not comment this out
+  compliance_params.delta_xc_left_limit  << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
+  compliance_params.delta_xc_right_limit << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
+
+  compliance_params.filter_alpha = 0.98;
+
   compliance_reference_generator.setParameters(compliance_params);
+  compliance_reference_generator.reset();   // clear workspace shift and velocity history
   double previous_compliance_time = -1.0;
   
   walking_manager.init(robot_state, armatures);
