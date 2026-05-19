@@ -302,7 +302,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-            step_length_x_
+            step_length_x_,
+            n_steps_,
+            start_support_foot_
         );
     };
     
@@ -985,7 +987,7 @@ WalkingManager::update(
             double left_foot_yaw = atan2(left_foot_orientation.y(), left_foot_orientation.x());
             Eigen::Vector3d right_foot_orientation = base_estimation_robot_data.oMf[rsole_idx_].rotation() * Eigen::Vector3d::UnitX();
             double right_foot_yaw = atan2(right_foot_orientation.y(), right_foot_orientation.x());
-            foot_line_angle = 0.5 * (left_foot_yaw + right_foot_yaw);
+            foot_line_angle = left_foot_yaw + 0.5 * angle_difference(right_foot_yaw, left_foot_yaw);
         }
 
         Eigen::AngleAxisd yaw_correction(-foot_line_angle, Eigen::Vector3d::UnitZ());
@@ -1182,7 +1184,9 @@ WalkingManager::update(
             walking_data_.addSteps(
                 labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
                 labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation()),
-                step_length_x_
+                step_length_x_,
+                n_steps_,
+                start_support_foot_
             );
             switchWalkingState = false;
         } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
@@ -1190,6 +1194,17 @@ WalkingManager::update(
             walking_data_.removeSteps();
             switchWalkingState = false;
         }
+    }
+
+    if (request_start_walking_ && walking_data_.getWalkingState() == WalkingState::Standing) {
+        walking_data_.addSteps(
+            labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
+            labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation()),
+            step_length_x_,
+            n_steps_,
+            start_support_foot_
+        );
+        request_start_walking_ = false;
     }
 
     
@@ -1333,7 +1348,8 @@ WalkingManager::update(
     // Torso task
     double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
     double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
-    desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    const double torso_yaw = left_foot_yaw + 0.5 * angle_difference(right_foot_yaw, left_foot_yaw);
+    desired_gait_configuration.torso.pos = Rz(torso_yaw);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 

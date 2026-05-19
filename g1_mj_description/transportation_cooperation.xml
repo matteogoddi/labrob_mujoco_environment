@@ -65,11 +65,24 @@
         rgba="0.3 0.6 0.9 1"
         contype="7" conaffinity="7"
         priority="2"
-        condim="4"
-        friction="1.6 1.6 0.004"
+        condim="6"
+        friction="2.5 0.3 0.01"
         solref="0.003 1.2"
         solimp="0.95 0.995 0.001"
         margin="0.008"/>
+
+      <!-- Thumb-contact targets on the side faces (not corners) -->
+      <site name="box_left_l"  size="0.014" pos="-0.30 0.14 0.007"  rgba="1 0 0 1"/>
+      <site name="box_left_r"  size="0.014" pos="-0.30 -0.14 0.007" rgba="0 1 0 1"/>
+      <site name="box_right_l" size="0.014" pos="0.30 -0.14 0.007"  rgba="0 0.35 1 1"/>
+      <site name="box_right_r" size="0.014" pos="0.30 0.14 0.007"   rgba="1 1 0 1"/>
     </body>
   </worldbody>
+
+  <equality>
+    <connect name="eq_lf" site1="box_left_l"  site2="r1_left_hand_grasp"  active="false" solref="0.0007 3.2" solimp="0.96 0.994 0.0007"/>
+    <connect name="eq_lb" site1="box_left_r"  site2="r1_right_hand_grasp" active="false" solref="0.0007 3.2" solimp="0.96 0.994 0.0007"/>
+    <connect name="eq_rf" site1="box_right_l" site2="r2_left_hand_grasp"  active="false" solref="0.0007 3.2" solimp="0.96 0.994 0.0007"/>
+    <connect name="eq_rb" site1="box_right_r" site2="r2_right_hand_grasp" active="false" solref="0.0007 3.2" solimp="0.96 0.994 0.0007"/>
+  </equality>
 </mujoco>

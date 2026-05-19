@@ -56,7 +56,7 @@
 
   <default>
     <default class="soft_fingertip">
-      <geom condim="4" friction="2.0 0.12 0.006" solref="0.006 1.2" solimp="0.88 0.97 0.003" margin="0.002" priority="4"/>
+      <geom condim="6" friction="3.0 0.25 0.01" solref="0.006 1.2" solimp="0.88 0.97 0.003" margin="0.002" priority="4"/>
     </default>
   </default>
 
@@ -202,22 +202,23 @@
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_wrist_yaw_link"/>
                           <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_palm_link"/>
-                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_hand_palm_link"/>
+                          <geom pos="0.0415 0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_palm_link"/>
                           <body name="left_hand_thumb_0_link" pos="0.067 0.003 0">
                             <inertial pos="-0.000884246 -0.00863407 0.000944293" quat="0.462991 0.643965 -0.460173 0.398986" mass="0.0862366" diaginertia="1.6546e-05 1.60058e-05 1.43741e-05"/>
                             <joint name="left_hand_thumb_0_joint" pos="0 0 0" axis="0 1 0" range="-1.0472 1.0472" actuatorfrcrange="-2.45 2.45"/>
                             <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_thumb_0_link"/>
-                            <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="left_hand_thumb_0_link"/>
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_thumb_0_link"/>
                             <body name="left_hand_thumb_1_link" pos="-0.0025 -0.0193 0">
                               <inertial pos="-0.000827888 -0.0354744 -0.0003809" quat="0.685598 0.705471 -0.15207 0.0956069" mass="0.0588507" diaginertia="1.28514e-05 1.22902e-05 5.9666e-06"/>
                               <joint name="left_hand_thumb_1_joint" pos="0 0 0" axis="0 0 1" range="-0.724312 1.0472" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_thumb_1_link"/>
-                              <geom size="0.01 0.015 0.01" pos="-0.001 -0.032 0" type="box" rgba="0.7 0.7 0.7 1"/>
+                              <geom size="0.01 0.015 0.01" pos="-0.001 -0.032 0" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1"/>
                               <body name="left_hand_thumb_2_link" pos="0 -0.0458 0">
                                 <inertial pos="-0.00171735 -0.0262819 0.000107789" quat="0.703174 0.710977 -0.00017564 -0.00766553" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                                 <joint name="left_hand_thumb_2_joint" pos="0 0 0" axis="0 0 1" range="0 1.74533" actuatorfrcrange="-1.4 1.4"/>
                                 <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_thumb_2_link"/>
-                                <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_thumb_2_link" friction="1.6 0.10 0.004" solref="0.010 2.0" solimp="0.85 0.95 0.008" margin="0.001"/>
+                                <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_thumb_2_link" friction="4.0 1.2 0.05" solref="0.008 2.2" solimp="0.86 0.96 0.006" margin="0.001"/>
+                                <site name="r1_left_hand_grasp" size="0.014" pos="0 -0.042 0.004" rgba="1 0 0 1"/>
                               </body>
                             </body>
                           </body>
@@ -230,7 +231,7 @@
                               <inertial pos="0.0262819 0.00171735 -0.000107789" quat="0.502612 0.491799 0.502639 0.502861" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                               <joint name="left_hand_middle_1_joint" pos="0 0 0" axis="0 0 1" range="-1.74533 0" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_middle_1_link"/>
-                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_middle_1_link"/>
+                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_middle_1_link" friction="3.6 0.8 0.03"/>
                             </body>
                           </body>
                           <body name="left_hand_index_0_link" pos="0.1192 0.0046 0.0285">
@@ -242,7 +243,7 @@
                               <inertial pos="0.0262819 0.00171735 -0.000107789" quat="0.502612 0.491799 0.502639 0.502861" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                               <joint name="left_hand_index_1_joint" pos="0 0 0" axis="0 0 1" range="-1.74533 0" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="left_hand_index_1_link"/>
-                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_index_1_link"/>
+                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="left_hand_index_1_link" friction="3.6 0.8 0.03"/>
                             </body>
                           </body>
                         </body>
@@ -288,22 +289,23 @@
                           <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
                           <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_wrist_yaw_link"/>
                           <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_palm_link"/>
-                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_hand_palm_link"/>
+                          <geom pos="0.0415 -0.003 0" quat="1 0 0 0" type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_palm_link"/>
                           <body name="right_hand_thumb_0_link" pos="0.067 -0.003 0">
                             <inertial pos="-0.000884246 0.00863407 0.000944293" quat="0.643965 0.462991 -0.398986 0.460173" mass="0.0862366" diaginertia="1.6546e-05 1.60058e-05 1.43741e-05"/>
                             <joint name="right_hand_thumb_0_joint" pos="0 0 0" axis="0 1 0" range="-1.0472 1.0472" actuatorfrcrange="-2.45 2.45"/>
                             <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_thumb_0_link"/>
-                            <geom type="mesh" rgba="0.7 0.7 0.7 1" mesh="right_hand_thumb_0_link"/>
+                            <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_thumb_0_link"/>
                             <body name="right_hand_thumb_1_link" pos="-0.0025 0.0193 0">
                               <inertial pos="-0.000827888 0.0354744 -0.0003809" quat="0.705471 0.685598 -0.0956069 0.15207" mass="0.0588507" diaginertia="1.28514e-05 1.22902e-05 5.9666e-06"/>
                               <joint name="right_hand_thumb_1_joint" pos="0 0 0" axis="0 0 1" range="-1.0472 0.724312" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_thumb_1_link"/>
-                              <geom size="0.01 0.015 0.01" pos="-0.001 0.032 0" type="box" rgba="0.7 0.7 0.7 1"/>
+                              <geom size="0.01 0.015 0.01" pos="-0.001 0.032 0" type="box" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1"/>
                               <body name="right_hand_thumb_2_link" pos="0 0.0458 0">
                                 <inertial pos="-0.00171735 0.0262819 0.000107789" quat="0.710977 0.703174 0.00766553 0.00017564" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                                 <joint name="right_hand_thumb_2_joint" pos="0 0 0" axis="0 0 1" range="-1.74533 0" actuatorfrcrange="-1.4 1.4"/>
                                 <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_thumb_2_link"/>
-                                <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_thumb_2_link" friction="1.6 0.10 0.004" solref="0.010 2.0" solimp="0.85 0.95 0.008" margin="0.001"/>
+                                <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_thumb_2_link" friction="4.0 1.2 0.05" solref="0.008 2.2" solimp="0.86 0.96 0.006" margin="0.001"/>
+                                <site name="r1_right_hand_grasp" size="0.014" pos="0 0.042 0.004" rgba="0 1 0 1"/>
                               </body>
                             </body>
                           </body>
@@ -316,7 +318,7 @@
                               <inertial pos="0.0262819 -0.00171735 -0.000107789" quat="0.502861 0.502639 0.491799 0.502612" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                               <joint name="right_hand_middle_1_joint" pos="0 0 0" axis="0 0 1" range="0 1.74533" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_middle_1_link"/>
-                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_middle_1_link"/>
+                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_middle_1_link" friction="3.6 0.8 0.03"/>
                             </body>
                           </body>
                           <body name="right_hand_index_0_link" pos="0.1192 -0.0046 0.0285">
@@ -328,7 +330,7 @@
                               <inertial pos="0.0262819 -0.00171735 -0.000107789" quat="0.502861 0.502639 0.491799 0.502612" mass="0.0203063" diaginertia="4.61314e-06 3.86645e-06 1.53495e-06"/>
                               <joint name="right_hand_index_1_joint" pos="0 0 0" axis="0 0 1" range="0 1.74533" actuatorfrcrange="-1.4 1.4"/>
                               <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.7 0.7 0.7 1" mesh="right_hand_index_1_link"/>
-                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_index_1_link"/>
+                              <geom class="soft_fingertip" type="mesh" group="2" rgba="1.0 0.45 0.1 1" mesh="right_hand_index_1_link" friction="3.6 0.8 0.03"/>
                             </body>
                           </body>
                         </body>

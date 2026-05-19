@@ -4,6 +4,7 @@
 #include <deque>
 
 #include <hrp4_locomotion/FootstepPlanElement.hpp>
+#include <hrp4_locomotion/Foot.hpp>
 #include <hrp4_locomotion/WalkingState.hpp>
 #include <hrp4_locomotion/SE3.hpp>
 
@@ -43,7 +44,9 @@ class WalkingData {
   void addSteps(
     const labrob::SE3& T_lsole,
     const labrob::SE3& T_rsole,
-    double step_length_x = 0.1
+    double step_length_x = 0.1,
+    int n_steps = 0,
+    labrob::Foot start_support_foot = labrob::Foot::RIGHT
   );
 
   void removeSteps();

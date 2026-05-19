@@ -10,6 +10,7 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
+#include <hrp4_locomotion/Foot.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/JointState.hpp>
@@ -49,6 +50,9 @@ class WalkingManager {
   int64_t get_controller_frequency() const;
 
   void set_step_length_x(float step_length_x) { step_length_x_ = step_length_x; }
+  void set_n_steps(int n_steps) { n_steps_ = (n_steps > 0) ? n_steps : 0; }
+  void set_start_support_foot(labrob::Foot support_foot) { start_support_foot_ = support_foot; }
+  void requestWalkingStart() { request_start_walking_ = true; }
 
  protected:
   pinocchio::Model robot_model;
@@ -114,6 +118,9 @@ class WalkingManager {
   Eigen::MatrixXd J_imu_est, J_imu_dot_est, J_left_foot_est, J_right_foot_est;
 
   double step_length_x_ = -0.1; // default backward step for Robot1
+  int n_steps_ = 0;
+  labrob::Foot start_support_foot_ = labrob::Foot::RIGHT;
+  bool request_start_walking_ = false;
 
 private:
 

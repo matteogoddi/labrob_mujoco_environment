@@ -645,6 +645,93 @@ int main(const int argc, const char* argv[]) {
   EqInfo eq_rf = get_eqid("eq_rf");
   EqInfo eq_rb = get_eqid("eq_rb");
 
+  const int box_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "carry_box_free");
+  const int box_qpos_adr = (box_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[box_joint_id] : -1;
+  const int box_dof_adr = (box_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[box_joint_id] : -1;
+  const int site_box_left_l = mj_name2id(mj_model_ptr, mjOBJ_SITE, "box_left_l");
+  const int site_box_left_r = mj_name2id(mj_model_ptr, mjOBJ_SITE, "box_left_r");
+  const int site_box_right_l = mj_name2id(mj_model_ptr, mjOBJ_SITE, "box_right_l");
+  const int site_box_right_r = mj_name2id(mj_model_ptr, mjOBJ_SITE, "box_right_r");
+  const int site_r1_left = mj_name2id(mj_model_ptr, mjOBJ_SITE, "r1_left_hand_grasp");
+  const int site_r1_right = mj_name2id(mj_model_ptr, mjOBJ_SITE, "r1_right_hand_grasp");
+  const int site_r2_left = mj_name2id(mj_model_ptr, mjOBJ_SITE, "r2_left_hand_grasp");
+  const int site_r2_right = mj_name2id(mj_model_ptr, mjOBJ_SITE, "r2_right_hand_grasp");
+
+  auto get_connect_eqid_by_sites = [&](int site1_id, int site2_id) -> int {
+    if (site1_id < 0 || site2_id < 0) {
+      return -1;
+    }
+    for (int i = 0; i < mj_model_ptr->neq; ++i) {
+      if (mj_model_ptr->eq_type[i] != mjEQ_CONNECT) {
+        continue;
+      }
+      const int a = mj_model_ptr->eq_obj1id[i];
+      const int b = mj_model_ptr->eq_obj2id[i];
+      if ((a == site1_id && b == site2_id) || (a == site2_id && b == site1_id)) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  if (eq_lf.id < 0) eq_lf.id = get_connect_eqid_by_sites(site_box_left_l, site_r1_left);
+  if (eq_lb.id < 0) eq_lb.id = get_connect_eqid_by_sites(site_box_left_r, site_r1_right);
+  if (eq_rf.id < 0) eq_rf.id = get_connect_eqid_by_sites(site_box_right_l, site_r2_left);
+  if (eq_rb.id < 0) eq_rb.id = get_connect_eqid_by_sites(site_box_right_r, site_r2_right);
+
+  std::cout << "[INIT] Eq ids: lf=" << eq_lf.id
+            << " lb=" << eq_lb.id
+            << " rf=" << eq_rf.id
+            << " rb=" << eq_rb.id << std::endl;
+
+  auto set_eq_active = [&](const EqInfo& eq, bool active) {
+    if (eq.id < 0) {
+      return false;
+    }
+    mj_data_ptr->eq_active[eq.id] = active ? 1 : 0;
+    return true;
+  };
+
+  auto align_box_to_grasp_sites = [&]() {
+    if (box_qpos_adr < 0) {
+      return false;
+    }
+
+    struct SitePair { int box_site; int hand_site; };
+    const SitePair pairs[] = {
+      {site_box_left_l,  site_r1_left},
+      {site_box_left_r,  site_r1_right},
+      {site_box_right_l, site_r2_left},
+      {site_box_right_r, site_r2_right}
+    };
+
+    double dx = 0.0;
+    double dy = 0.0;
+    double dz = 0.0;
+    int n_valid = 0;
+
+    for (const auto& pair : pairs) {
+      if (pair.box_site < 0 || pair.hand_site < 0) {
+        continue;
+      }
+      const mjtNum* box_pos = mj_data_ptr->site_xpos + 3 * pair.box_site;
+      const mjtNum* hand_pos = mj_data_ptr->site_xpos + 3 * pair.hand_site;
+      dx += (hand_pos[0] - box_pos[0]);
+      dy += (hand_pos[1] - box_pos[1]);
+      dz += (hand_pos[2] - box_pos[2]);
+      n_valid++;
+    }
+
+    if (n_valid == 0) {
+      return false;
+    }
+
+    mj_data_ptr->qpos[box_qpos_adr + 0] += dx / n_valid;
+    mj_data_ptr->qpos[box_qpos_adr + 1] += dy / n_valid;
+    mj_data_ptr->qpos[box_qpos_adr + 2] += dz / n_valid;
+    return true;
+  };
+
   std::ofstream eq_force_file("/tmp/box_connect_forces.txt");
   eq_force_file << std::fixed << std::setprecision(8);
   eq_force_file << "time lf_x lf_y lf_z lb_x lb_y lb_z rf_x rf_y rf_z rb_x rb_y rb_z\n";
@@ -888,11 +975,14 @@ int main(const int argc, const char* argv[]) {
 
   // Make Robot1 walk forward (+x in world) by setting step before init/plan
   walking_manager.set_step_length_x(0.0);
+  walking_manager.set_start_support_foot(labrob::Foot::RIGHT);
   walking_manager.init(robot_state, armatures);
 
   if (r2Walking) {
     // Robot2 faces Robot1 (yaw=pi), so use positive step to move toward Robot1 along its forward axis
-    r2_walking_manager.set_step_length_x(-0.0);
+    r2_walking_manager.set_step_length_x(0.0);
+    // Facing each other: use opposite support-foot phase to align world-frame lateral sway.
+    r2_walking_manager.set_start_support_foot(labrob::Foot::LEFT);
   }
 
   // Keep Robot2 state in世界坐标，单独拷贝一份旋转后传给r2_walking_manager，避免循环时再次旋转引起“飞来”
@@ -974,8 +1064,12 @@ int main(const int argc, const char* argv[]) {
   const mjtNum left_thumb1_close_step = 0.0005;
   const mjtNum left_thumb2_close_goal = 1.6;
   const mjtNum left_thumb2_close_step = 0.0003;
+  const float walk_step_length_robot1 = 0.08f;
+  const float walk_step_length_robot2 = -0.08f;
+  const int walk_n_steps_default = 10;
 
   std::cout << "[TERMINAL] Phase 1: normal operation. When initialization is complete, type 1 and press Enter to start thumb1 closing." << std::endl;
+  std::cout << "[TERMINAL] Type 3 (or: 3 <step1> <step2> <n_steps>) and press Enter at any time to start dual-robot walking." << std::endl;
 
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
@@ -985,7 +1079,7 @@ int main(const int argc, const char* argv[]) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      if (gripper_phase == GripperPhase::InitRunning) {
+      {
         fd_set readfds;
         FD_ZERO(&readfds);
         FD_SET(STDIN_FILENO, &readfds);
@@ -997,28 +1091,79 @@ int main(const int argc, const char* argv[]) {
         if (ready > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
           std::string terminal_input;
           std::getline(std::cin, terminal_input);
+
           if (terminal_input == "1") {
-            std::cout << "Initialization finished" << std::endl;
-            gripper_phase = GripperPhase::Thumb1Closing;
-          }
-        }
-      }
+            if (gripper_phase == GripperPhase::InitRunning) {
+              std::cout << "Initialization finished" << std::endl;
+              gripper_phase = GripperPhase::Thumb1Closing;
+            }
+          } else if (terminal_input == "2") {
+            if (gripper_phase == GripperPhase::Thumb1ClosedWaitingStage2) {
+              std::cout << "Stage 2 started: thumb2 closing" << std::endl;
+              gripper_phase = GripperPhase::Thumb2Closing;
+            }
+          } else if (!terminal_input.empty() && terminal_input[0] == '3') {
+            float step1 = walk_step_length_robot1;
+            float step2 = walk_step_length_robot2;
+            int n_steps = walk_n_steps_default;
+            std::istringstream iss(terminal_input);
+            std::string cmd;
+            iss >> cmd;
+            if (!(iss >> step1)) {
+              step1 = walk_step_length_robot1;
+            }
+            if (!(iss >> step2)) {
+              step2 = -std::abs(step1);
+            }
+            step2 = -std::abs(step2);
+            if (!(iss >> n_steps)) {
+              n_steps = walk_n_steps_default;
+            }
+            if (n_steps <= 0) {
+              n_steps = walk_n_steps_default;
+            }
 
-      if (gripper_phase == GripperPhase::Thumb1ClosedWaitingStage2) {
-        fd_set readfds;
-        FD_ZERO(&readfds);
-        FD_SET(STDIN_FILENO, &readfds);
-        timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 0;
+            standOnly = false;
+            r2Walking = true;
+            walking_manager.set_step_length_x(step1);
+            walking_manager.set_n_steps(n_steps);
+            walking_manager.requestWalkingStart();
+            r2_walking_manager.set_step_length_x(step2);
+            r2_walking_manager.set_n_steps(n_steps);
+            r2_walking_manager.requestWalkingStart();
 
-        int ready = select(STDIN_FILENO + 1, &readfds, nullptr, nullptr, &timeout);
-        if (ready > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
-          std::string terminal_input;
-          std::getline(std::cin, terminal_input);
-          if (terminal_input == "2") {
-            std::cout << "Stage 2 started: thumb2 closing" << std::endl;
-            gripper_phase = GripperPhase::Thumb2Closing;
+            const bool box_aligned = align_box_to_grasp_sites();
+            if (box_aligned) {
+              mj_forward(mj_model_ptr, mj_data_ptr);
+              std::cout << "[TERMINAL] Box pose aligned to current hand grasp sites before sticky mode." << std::endl;
+            } else {
+              std::cout << "[TERMINAL][WARN] Box alignment skipped (missing box joint or grasp sites)." << std::endl;
+            }
+
+            bool eq_ok = false;
+            eq_ok |= set_eq_active(eq_lf, true);
+            eq_ok |= set_eq_active(eq_lb, true);
+            eq_ok |= set_eq_active(eq_rf, true);
+            eq_ok |= set_eq_active(eq_rb, true);
+            if (eq_ok) {
+              if (box_dof_adr >= 0) {
+                for (int i = 0; i < 6; ++i) {
+                  mj_data_ptr->qvel[box_dof_adr + i] = 0.0;
+                }
+              }
+              mj_forward(mj_model_ptr, mj_data_ptr);
+              std::cout << "[TERMINAL] Sticky grasp enabled after walking start. active=["
+                        << ((eq_lf.id >= 0) ? mj_data_ptr->eq_active[eq_lf.id] : -1) << ","
+                        << ((eq_lb.id >= 0) ? mj_data_ptr->eq_active[eq_lb.id] : -1) << ","
+                        << ((eq_rf.id >= 0) ? mj_data_ptr->eq_active[eq_rf.id] : -1) << ","
+                        << ((eq_rb.id >= 0) ? mj_data_ptr->eq_active[eq_rb.id] : -1) << "]" << std::endl;
+            } else {
+              std::cout << "[TERMINAL][WARN] Sticky grasp constraints not found in model; walking starts without sticky mode." << std::endl;
+            }
+
+            std::cout << "[TERMINAL] Walking enabled: step_length_x robot1=" << step1
+                      << ", robot2=" << step2
+                      << ", n_steps=" << n_steps << std::endl;
           }
         }
       }
