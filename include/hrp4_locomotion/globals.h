@@ -15,5 +15,10 @@ extern double startTimeTotalBodyCL;
 extern double startTimeEKF;
 extern double startTimeIMUcalibrating;
 
+extern double torso_spring_kp;
+extern double torso_spring_kd;
+extern double torso_spring_weight;
+extern double waist_yaw_spring_gain;
+
 extern Eigen::Vector3d imu_accelerometer;
 #endif // GLOBALS_H

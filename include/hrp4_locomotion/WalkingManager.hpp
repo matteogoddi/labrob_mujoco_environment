@@ -82,6 +82,7 @@ class WalkingManager {
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
   pinocchio::FrameIndex imu_idx_;
+  int waist_yaw_joint_idx_ = -1;
 
   bool walking_data_initialized_ = false;
 

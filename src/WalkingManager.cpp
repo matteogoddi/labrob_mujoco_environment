@@ -275,6 +275,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     rsole_idx_ = robot_model.getFrameId("right_foot_link");
     torso_idx_ = robot_model.getFrameId("torso_link");
     imu_idx_ = robot_model.getFrameId("imu_in_torso");
+    waist_yaw_joint_idx_ = -1;
+    for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
+        if (robot_model.names[joint_id] == "waist_yaw_joint") {
+            waist_yaw_joint_idx_ = static_cast<int>(joint_id) - 2;
+            break;
+        }
+    }
     const auto& T_lsole_init = sim_robot_data.oMf[lsole_idx_];
     const auto& T_rsole_init = sim_robot_data.oMf[rsole_idx_];
 
@@ -335,6 +342,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     );
 
     auto params = WholeBodyControllerParams::getDefaultParams();
+    params.Kp_torso_motion = torso_spring_kp;
+    params.Kd_torso_motion = torso_spring_kd;
+    params.weight_torso = torso_spring_weight;
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
         robot_model,
@@ -1334,6 +1344,15 @@ WalkingManager::update(
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+
+    if (waist_yaw_joint_idx_ >= 0 && waist_yaw_joint_idx_ < desired_gait_configuration.qjnt.size()) {
+        const double desired_torso_yaw = std::atan2(desired_gait_configuration.torso.pos(1, 0), desired_gait_configuration.torso.pos(0, 0));
+        const double current_torso_yaw = std::atan2(current_gait_configuration.torso.pos(1, 0), current_gait_configuration.torso.pos(0, 0));
+        const double torso_yaw_error = angle_difference(desired_torso_yaw, current_torso_yaw);
+        desired_gait_configuration.qjnt(waist_yaw_joint_idx_) = q_jnt_des_(waist_yaw_joint_idx_) + waist_yaw_spring_gain * torso_yaw_error;
+        desired_gait_configuration.qjntdot(waist_yaw_joint_idx_) = 0.0;
+        desired_gait_configuration.qjntddot(waist_yaw_joint_idx_) = 0.0;
+    }
 
     /////////////////////////////////////
     // 

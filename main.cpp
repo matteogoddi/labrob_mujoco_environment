@@ -15,6 +15,7 @@
 #include <thread>
 #include <iomanip>
 #include <cstdlib>
+#include <cmath>
 #include <pthread.h>
 #include <sched.h>
 #include <unistd.h>
@@ -57,6 +58,11 @@ double startTimeTotalBodyCL = 15000.0;
 double startTimeCoMCL = 15000.0;
 double startTimeEKF = 0.0;
 double startTimeIMUcalibrating = 0.0;
+
+double torso_spring_kp = 8.0;
+double torso_spring_kd = 3.0;
+double torso_spring_weight = 5e-2;
+double waist_yaw_spring_gain = 1.2;
 
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
@@ -808,6 +814,12 @@ int main(const int argc, const char* argv[]) {
   double external_force_start_sec = 5.0;
   double external_force_duration_sec = 2.0;
   double external_force_ramp_sec = 0.2;
+  bool enable_waist_yaw_sine_test = false;
+  double waist_yaw_test_amp_nm = 0.0;
+  double waist_yaw_test_freq_hz = 1.0;
+  double waist_yaw_test_start_sec = 2.0;
+  double waist_yaw_test_duration_sec = 5.0;
+  double waist_yaw_test_max_tau_nm = 12.0;
   bool use_mujoco_step = false;
 
   for (int i = 1; i < argc; ++i) {
@@ -862,6 +874,29 @@ int main(const int argc, const char* argv[]) {
       external_force_duration_sec = std::atof(argv[++i]);
     } else if (a == "--external-force-ramp" && i + 1 < argc) {
       external_force_ramp_sec = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-kp" && i + 1 < argc) {
+      torso_spring_kp = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-kd" && i + 1 < argc) {
+      torso_spring_kd = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-weight" && i + 1 < argc) {
+      torso_spring_weight = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-spring-gain" && i + 1 < argc) {
+      waist_yaw_spring_gain = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-test-amp" && i + 1 < argc) {
+      enable_waist_yaw_sine_test = true;
+      waist_yaw_test_amp_nm = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-test-freq" && i + 1 < argc) {
+      enable_waist_yaw_sine_test = true;
+      waist_yaw_test_freq_hz = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-test-start" && i + 1 < argc) {
+      enable_waist_yaw_sine_test = true;
+      waist_yaw_test_start_sec = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-test-duration" && i + 1 < argc) {
+      enable_waist_yaw_sine_test = true;
+      waist_yaw_test_duration_sec = std::atof(argv[++i]);
+    } else if (a == "--waist-yaw-test-max-tau" && i + 1 < argc) {
+      enable_waist_yaw_sine_test = true;
+      waist_yaw_test_max_tau_nm = std::atof(argv[++i]);
     } else if (a == "--use-mujoco-step") {
       use_mujoco_step = true;
     } else if (a == "--help" || a == "-h") {
@@ -885,6 +920,16 @@ int main(const int argc, const char* argv[]) {
             << "  --external-force-start <sec>\n"
             << "  --external-force-duration <sec>\n"
             << "  --external-force-ramp <sec>\n"
+            << "Torso spring options (WBC torso task):\n"
+            << "  --torso-spring-kp <value>\n"
+            << "  --torso-spring-kd <value>\n"
+            << "  --torso-spring-weight <value>\n"
+            << "  --waist-yaw-spring-gain <value>\n"
+            << "  --waist-yaw-test-amp <N*m>\n"
+            << "  --waist-yaw-test-freq <Hz>\n"
+            << "  --waist-yaw-test-start <sec>\n"
+            << "  --waist-yaw-test-duration <sec>\n"
+            << "  --waist-yaw-test-max-tau <N*m>\n"
             << "Other:\n"
             << "  --use-mujoco-step\n";
       return 0;
@@ -902,6 +947,32 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
+  if (torso_spring_kp < 0.0 || torso_spring_kd < 0.0 || torso_spring_weight < 0.0 || waist_yaw_spring_gain < 0.0) {
+    std::cerr << "Torso/waist spring parameters must be non-negative." << std::endl;
+    return -1;
+  }
+
+  if (enable_waist_yaw_sine_test && !useSim) {
+    std::cerr << "Waist yaw sine test requires simulation mode (--sim)." << std::endl;
+    return -1;
+  }
+  if (waist_yaw_test_freq_hz < 0.0 || waist_yaw_test_duration_sec < 0.0 || waist_yaw_test_max_tau_nm < 0.0) {
+    std::cerr << "Waist yaw sine test frequency, duration and max tau must be non-negative." << std::endl;
+    return -1;
+  }
+
+  std::cout << "Torso spring (WBC): kp=" << torso_spring_kp
+            << ", kd=" << torso_spring_kd
+            << ", weight=" << torso_spring_weight << std::endl;
+  std::cout << "Waist yaw spring gain: " << waist_yaw_spring_gain << std::endl;
+  if (enable_waist_yaw_sine_test) {
+    std::cout << "Waist yaw sine test: amp=" << waist_yaw_test_amp_nm
+              << " N*m, freq=" << waist_yaw_test_freq_hz
+              << " Hz, start=" << waist_yaw_test_start_sec
+              << " s, duration=" << waist_yaw_test_duration_sec
+              << " s, max_tau=" << waist_yaw_test_max_tau_nm << " N*m" << std::endl;
+  }
+
  signal(SIGINT, signalHandler);
 
   // Load MJCF (for Mujoco):
@@ -914,6 +985,26 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
+
+  const int waist_yaw_joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint");
+  const int waist_yaw_qpos_adr = (waist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_qposadr[waist_yaw_joint_id] : -1;
+  const int waist_yaw_dof_adr = (waist_yaw_joint_id >= 0) ? mj_model_ptr->jnt_dofadr[waist_yaw_joint_id] : -1;
+  int waist_yaw_actuator_idx = -1;
+  for (int i = 0; i < mj_model_ptr->nu; ++i) {
+    if (mj_model_ptr->actuator_trnid[i * 2] == waist_yaw_joint_id) {
+      waist_yaw_actuator_idx = i;
+      break;
+    }
+  }
+  if (waist_yaw_joint_id >= 0) {
+    std::cout << "Waist yaw diagnostic: joint_id=" << waist_yaw_joint_id
+              << ", actuator_idx=" << waist_yaw_actuator_idx
+              << ", qpos_adr=" << waist_yaw_qpos_adr
+              << ", dof_adr=" << waist_yaw_dof_adr << std::endl;
+  } else {
+    std::cout << "Waist yaw diagnostic: joint not found in MuJoCo model." << std::endl;
+  }
+  double last_waist_diag_time = -1.0;
 
   if (useRobot) {
     std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
@@ -1451,6 +1542,21 @@ int main(const int argc, const char* argv[]) {
         left_wrist_force_enabled_log.push_back(left_force_enabled ? 1 : 0);
         right_wrist_force_enabled_log.push_back(right_force_enabled ? 1 : 0);
 
+      if (enable_waist_yaw_sine_test) {
+        const double test_end = waist_yaw_test_start_sec + waist_yaw_test_duration_sec;
+        if (mj_data_ptr->time >= waist_yaw_test_start_sec && mj_data_ptr->time <= test_end) {
+          const double t = mj_data_ptr->time - waist_yaw_test_start_sec;
+          const double two_pi = 6.28318530717958647692;
+          const double tau_test = waist_yaw_test_amp_nm * std::sin(two_pi * waist_yaw_test_freq_hz * t);
+          const double tau_cmd = std::clamp(
+              tau_test,
+              -waist_yaw_test_max_tau_nm,
+              waist_yaw_test_max_tau_nm
+          );
+          joint_command["waist_yaw_joint"] = tau_cmd;
+        }
+      }
+
 
       if (true){
         auto start_integration = std::chrono::steady_clock::now();
@@ -1508,6 +1614,37 @@ int main(const int argc, const char* argv[]) {
         // if(integration_duration > std::chrono::milliseconds(1))
         //   std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
 
+      }
+
+      if (waist_yaw_joint_id >= 0 && waist_yaw_actuator_idx >= 0 &&
+          (last_waist_diag_time < 0.0 || (mj_data_ptr->time - last_waist_diag_time) >= 1.0)) {
+        last_waist_diag_time = mj_data_ptr->time;
+        double waist_tau_wbc = 0.0;
+        bool waist_tau_wbc_available = false;
+        try {
+          const auto& joint_command_const = static_cast<const labrob::JointCommand&>(joint_command);
+          waist_tau_wbc = joint_command_const["waist_yaw_joint"];
+          waist_tau_wbc_available = true;
+        } catch (const std::exception&) {
+          waist_tau_wbc_available = false;
+        }
+
+        const double waist_q = (waist_yaw_qpos_adr >= 0) ? mj_data_ptr->qpos[waist_yaw_qpos_adr] : 0.0;
+        const double waist_dq = (waist_yaw_dof_adr >= 0) ? mj_data_ptr->qvel[waist_yaw_dof_adr] : 0.0;
+        const double waist_tau_actuator = (waist_yaw_dof_adr >= 0) ? mj_data_ptr->qfrc_actuator[waist_yaw_dof_adr] : 0.0;
+        const double waist_ctrl = mj_data_ptr->ctrl[waist_yaw_actuator_idx];
+
+        std::cout << "[waist-diag] t=" << mj_data_ptr->time
+                  << " q=" << waist_q
+                  << " dq=" << waist_dq
+                  << " ctrl=" << waist_ctrl
+                  << " tau_act=" << waist_tau_actuator;
+        if (waist_tau_wbc_available) {
+          std::cout << " tau_wbc=" << waist_tau_wbc;
+        } else {
+          std::cout << " tau_wbc=NA";
+        }
+        std::cout << std::endl;
       }
       //Run Dynamics Mujoco:
       //mj_step(mj_model_ptr, mj_data_ptr);
