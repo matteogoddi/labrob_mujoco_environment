@@ -734,7 +734,8 @@ int main(const int argc, const char* argv[]) {
 
   std::ofstream eq_force_file("/tmp/box_connect_forces.txt");
   eq_force_file << std::fixed << std::setprecision(8);
-  eq_force_file << "time lf_x lf_y lf_z lb_x lb_y lb_z rf_x rf_y rf_z rb_x rb_y rb_z\n";
+  eq_force_file << "time lf_x lf_y lf_z lb_x lb_y lb_z rf_x rf_y rf_z rb_x rb_y rb_z "
+                   "lf_tx lf_ty lf_tz lb_tx lb_ty lb_tz rf_tx rf_ty rf_tz rb_tx rb_ty rb_tz\n";
 
 
   if (useRobot) {
@@ -1515,6 +1516,44 @@ int main(const int argc, const char* argv[]) {
           append_eq3(eq_lb);
           append_eq3(eq_rf);
           append_eq3(eq_rb);
+
+          auto append_eq_torque = [&](const EqInfo& eq, int site_id){
+            double fx = NAN, fy = NAN, fz = NAN;
+            int found = 0;
+
+            for(int i=0; i < mj_data_ptr->nefc; ++i){
+              if(mj_data_ptr->efc_type[i] != mjCNSTR_EQUALITY) continue;
+              if(mj_data_ptr->efc_id[i]   != eq.id) continue;
+
+              if(found == 0) fx = mj_data_ptr->efc_force[i];
+              if(found == 1) fy = mj_data_ptr->efc_force[i];
+              if(found == 2) fz = mj_data_ptr->efc_force[i];
+              found++;
+              if(found >= 3) break;
+            }
+
+            if (!std::isfinite(fx) || !std::isfinite(fy) || !std::isfinite(fz) ||
+                site_id < 0 || box_qpos_adr < 0) {
+              oss << " " << NAN << " " << NAN << " " << NAN;
+              return;
+            }
+
+            const mjtNum* p_site = mj_data_ptr->site_xpos + 3 * site_id;
+            const double rx = static_cast<double>(p_site[0] - mj_data_ptr->qpos[box_qpos_adr + 0]);
+            const double ry = static_cast<double>(p_site[1] - mj_data_ptr->qpos[box_qpos_adr + 1]);
+            const double rz = static_cast<double>(p_site[2] - mj_data_ptr->qpos[box_qpos_adr + 2]);
+
+            const double tx = ry * fz - rz * fy;
+            const double ty = rz * fx - rx * fz;
+            const double tz = rx * fy - ry * fx;
+
+            oss << " " << tx << " " << ty << " " << tz;
+          };
+
+          append_eq_torque(eq_lf, site_box_left_l);
+          append_eq_torque(eq_lb, site_box_left_r);
+          append_eq_torque(eq_rf, site_box_right_l);
+          append_eq_torque(eq_rb, site_box_right_r);
 
           oss << "\n";
           eq_force_file << oss.str();

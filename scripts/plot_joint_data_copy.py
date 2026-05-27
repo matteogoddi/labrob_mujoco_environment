@@ -1127,28 +1127,90 @@ if __name__ == '__main__':
     fig.savefig("images/execution_times/total_execution_time_plot.png")
     plt.close(fig)
 
-    data = np.loadtxt(folder + "/box_connect_forces.txt", skiprows=1)
-    t = data[:, 0]
-    F_lf = data[:, 1:4]
-    F_lb = data[:, 4:7]
-    F_rf = data[:, 7:10]
-    F_rb = data[:, 10:13]
+    def plot_force_torque(t, F, Tau, title, save_path):
+        fig, axes = plt.subplots(2, 1, sharex=True, figsize=(10, 7))
 
-    def plot_force(t, F, title, save_path):
-        fig, ax = plt.subplots(1, 1)
-        ax.plot(t, F[:,0], label="Fx")
-        ax.plot(t, F[:,1], label="Fy")
-        ax.plot(t, F[:,2], label="Fz")
-        ax.set_xlabel("Time [s]")
-        ax.set_ylabel("Force [N]")
-        ax.legend()
-        ax.set_title(title)
+        ax_f = axes[0]
+        ax_f.plot(t, F[:, 0], label="Fx")
+        ax_f.plot(t, F[:, 1], label="Fy")
+        ax_f.plot(t, F[:, 2], label="Fz")
+        ax_f.set_ylabel("Force [N]")
+        ax_f.legend()
+        ax_f.grid(True)
+        ax_f.set_title(title)
+
+        ax_tau = axes[1]
+        if Tau is not None:
+            ax_tau.plot(t, Tau[:, 0], label="Tx")
+            ax_tau.plot(t, Tau[:, 1], label="Ty")
+            ax_tau.plot(t, Tau[:, 2], label="Tz")
+            ax_tau.legend()
+        else:
+            ax_tau.text(0.5, 0.5, "Torque channels not available in this log", ha="center", va="center", transform=ax_tau.transAxes)
+        ax_tau.set_xlabel("Time [s]")
+        ax_tau.set_ylabel("Torque [Nm]")
+        ax_tau.grid(True)
+
         fig.tight_layout()
         fig.savefig(save_path, dpi=200)
         plt.close(fig)
 
-    os.makedirs("images/forces_torques", exist_ok=True)
-    plot_force(t, F_lf, "connect force @ left_front",  "images/forces_torques/connect_left_front.png")
-    plot_force(t, F_lb, "connect force @ left_back",   "images/forces_torques/connect_left_back.png")
-    plot_force(t, F_rf, "connect force @ right_front", "images/forces_torques/connect_right_front.png")
-    plot_force(t, F_rb, "connect force @ right_back",  "images/forces_torques/connect_right_back.png")
+    connect_force_path = folder + "/box_connect_forces.txt"
+    if os.path.exists(connect_force_path) and os.path.getsize(connect_force_path) > 0:
+        with open(connect_force_path, "r") as f:
+            header = f.readline().strip().split()
+
+        data = np.loadtxt(connect_force_path, skiprows=1)
+        data = np.atleast_2d(data)
+
+        if data.shape[0] > 0 and data.shape[1] >= 4:
+            t = data[:, 0]
+            header_index = {name: idx for idx, name in enumerate(header)}
+
+            connect_channels = [
+                ("lf", "left_front", "r1 left finger"),
+                ("lb", "left_back", "r1 right finger"),
+                ("rf", "right_front", "r2 left finger"),
+                ("rb", "right_back", "r2 right finger")
+            ]
+
+            os.makedirs("images/forces_torques", exist_ok=True)
+
+            for key, file_suffix, pretty_name in connect_channels:
+                col_x = f"{key}_x"
+                col_y = f"{key}_y"
+                col_z = f"{key}_z"
+                col_tx = f"{key}_tx"
+                col_ty = f"{key}_ty"
+                col_tz = f"{key}_tz"
+
+                if col_x in header_index and col_y in header_index and col_z in header_index:
+                    F = np.column_stack([
+                        data[:, header_index[col_x]],
+                        data[:, header_index[col_y]],
+                        data[:, header_index[col_z]]
+                    ])
+                else:
+                    continue
+
+                Tau = None
+                if col_tx in header_index and col_ty in header_index and col_tz in header_index:
+                    Tau = np.column_stack([
+                        data[:, header_index[col_tx]],
+                        data[:, header_index[col_ty]],
+                        data[:, header_index[col_tz]]
+                    ])
+
+                valid_rows = np.isfinite(F).all(axis=1)
+                if Tau is not None:
+                    valid_rows = valid_rows & np.isfinite(Tau).all(axis=1)
+                if not np.any(valid_rows):
+                    continue
+
+                plot_force_torque(
+                    t[valid_rows],
+                    F[valid_rows, :],
+                    Tau[valid_rows, :] if Tau is not None else None,
+                    f"box_connect_wrench_{key} ({pretty_name})",
+                    f"images/forces_torques/box_connect_wrench_{key}_{file_suffix}.png"
+                )
