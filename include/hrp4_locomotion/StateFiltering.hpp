@@ -120,20 +120,21 @@ public:
       prev_right_contact_ = true;
 
       pinocchio::Data data(model_);
-      pinocchio::forwardKinematics(model_, data, q_init_);
-      pinocchio::framesForwardKinematics(model_, data, q_init_);
+      pinocchio::forwardKinematics(model_, data, q_init);
+      pinocchio::framesForwardKinematics(model_, data, q_init);
 
-      // const auto& bMf_l = data_.oMf[model_.getFrameId("left_foot_link")];
       pL_ = pL_init;
-      zL_ = Eigen::Quaterniond::Identity();
-      
-      // const auto& bMf_r = data_.oMf[model_.getFrameId("right_foot_link")];
+      zL_ = Eigen::Quaterniond(data.oMf[model_.getFrameId("left_foot_link")].rotation()).normalized();
       pR_ = pR_init;
-      zR_ = Eigen::Quaterniond::Identity();
+      zR_ = Eigen::Quaterniond(data.oMf[model_.getFrameId("right_foot_link")].rotation()).normalized();
 
-      // define R_base_imu to rotate measurements from IMU frame to base frame
-      // R_base_imu = Eigen::Matrix3d::Identity();
-      Eigen::Matrix3d R_world_imu = data_.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+      omega_prev_    = Eigen::Vector3d::Zero();
+      acc_body_prev_ = Eigen::Vector3d::Zero();
+
+      // R_base_imu: ruota misure dal frame IMU al frame body.
+      // R_world_imu da FK (usa la variabile locale data, non data_ che non è aggiornata).
+      // q_.toRotationMatrix() = R_BW; R_BW * R_world_imu = R_body_imu.
+      Eigen::Matrix3d R_world_imu = data.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
       R_base_imu = q_.toRotationMatrix() * R_world_imu;
 
     // const int imu_torso_id = model_.getFrameId("imu_in_torso");
@@ -196,7 +197,11 @@ private:
 
     Eigen::MatrixXd R_base_imu;
 
-    // Covariance               
+    // Inputs at k-1 (used for prediction x[k-1]→x[k] at the next call)
+    Eigen::Vector3d omega_prev_     = Eigen::Vector3d::Zero();  // body-frame ω at k-1
+    Eigen::Vector3d acc_body_prev_  = Eigen::Vector3d::Zero();  // body-frame specific force at k-1
+
+    // Covariance
     Eigen::Matrix<double,27,27> P_;
     Eigen::Matrix<double,24,24> Qc_;
 

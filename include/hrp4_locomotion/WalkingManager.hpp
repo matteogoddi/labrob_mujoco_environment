@@ -11,6 +11,8 @@
 
 #include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
 #include <hrp4_locomotion/ISMPC.hpp>
+#include <hrp4_locomotion/JISMPC.hpp>
+#include <hrp4_locomotion/JISMPCWholeBodyController.hpp>
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/ResidualEstimator.hpp>
 #include <hrp4_locomotion/RobotState.hpp>
@@ -54,6 +56,9 @@ class WalkingManager {
   );
 
   int64_t get_controller_frequency() const;
+
+  // Switch to JIS-MPC mode (must be called before init()).
+  void enableJISMPC(bool enable = true) { use_jismpc_ = enable; }
 
  protected:
   pinocchio::Model robot_model;
@@ -104,6 +109,12 @@ class WalkingManager {
 
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
+
+  // JIS-MPC (alternative to IS-MPC)
+  bool use_jismpc_ = false;
+  int64_t jismpc_timestep_msec_ = 100; // 10 Hz MPC
+  std::unique_ptr<labrob::JISMPC> jismpc_ptr_;
+  std::shared_ptr<labrob::JISMPCWholeBodyController> jismpc_wbc_ptr_;
   std::unique_ptr<labrob::ResidualEstimator> residual_estimator_ptr_;
   std::unique_ptr<labrob::JointKF> joint_kf_ptr_;
   std::unique_ptr<labrob::BaseEKF> base_ekf_ptr_;

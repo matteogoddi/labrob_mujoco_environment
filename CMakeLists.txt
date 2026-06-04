@@ -7,10 +7,14 @@ include_directories(/usr/local/include/ddscxx)
 
 find_package(glfw3 REQUIRED)
 find_package(jsoncpp REQUIRED)
-find_package(mujoco REQUIRED)
+
 find_package(pinocchio REQUIRED)
 find_package(unitree_sdk2 REQUIRED)
 find_package(OpenMP REQUIRED)
+set(MUJOCO_ROOT /opt/mujoco-3.1.0)
+
+set(MUJOCO_INCLUDE_DIR ${MUJOCO_ROOT}/include)
+set(MUJOCO_LIBRARY ${MUJOCO_ROOT}/lib/libmujoco.so)
 
 if (NOT EXISTS ${CMAKE_BINARY_DIR}/CMakeCache.txt)
   if (NOT CMAKE_BUILD_TYPE)
@@ -28,6 +32,8 @@ add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/JISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/JISMPCWholeBodyController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateFiltering.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
@@ -41,6 +47,7 @@ target_include_directories(WalkingControllerLibrary
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
+    ${MUJOCO_INCLUDE_DIR}
 )
 add_definitions(-DCOAL_DISABLE_HPP_FCL_WARNINGS)
 
@@ -58,10 +65,11 @@ add_executable(main
 target_include_directories(main
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${MUJOCO_INCLUDE_DIR}
 )
 target_link_libraries(main
   glfw
-  mujoco::mujoco
+  ${MUJOCO_LIBRARY}
   pinocchio::pinocchio
   WalkingControllerLibrary
   unitree_sdk2

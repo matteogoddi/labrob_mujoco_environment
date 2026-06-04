@@ -355,6 +355,31 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_width
     );
 
+    if (use_jismpc_) {
+      const int    jismpc_horizon = 10;
+      const double jismpc_dt     = 0.001 * static_cast<double>(jismpc_timestep_msec_);
+      const double jismpc_eta    = std::sqrt(eta2);
+      const double jismpc_mass   = mass;
+      jismpc_ptr_ = std::make_unique<labrob::JISMPC>(
+          robot_model,
+          jismpc_horizon,
+          jismpc_dt,
+          jismpc_eta,
+          jismpc_mass,
+          foot_constraint_square_length,
+          foot_constraint_square_width,
+          jismpc_timestep_msec_
+      );
+      auto jismpc_wbc_params = labrob::JISMPCWholeBodyControllerParams::getDefaultParams();
+      jismpc_wbc_ptr_ = std::make_shared<labrob::JISMPCWholeBodyController>(
+          jismpc_wbc_params,
+          robot_model,
+          q_jnt_des_,
+          0.001 * controller_timestep_msec_,
+          armatures
+      );
+    }
+
     auto params = WholeBodyControllerParams::getDefaultParams();
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
@@ -1000,13 +1025,14 @@ WalkingManager::update(
         // input_acc = measured_imu_accelerometer;
         // input_gyro = sim_robot_state.angular_velocity; //measured_imu_angular_velocity;
 
-        std::cout << "RI EKF orientation " << ri_ekf_ptr_->getQuaternion().coeffs().transpose() << std::endl;
-        std::cout << "RI EKF position " << ri_ekf_ptr_->getPosition().transpose() << std::endl;
-        std::cout << "RI EKF velocity " << ri_ekf_ptr_->getVelocity().transpose() << std::endl;
-        std::cout << "RI Omega Body: " << ri_ekf_ptr_->getOmegaBody().transpose() << std::endl;
-
-        // angular velocity dal giroscopio bias-compensato in body frame
-        // fb_robot_state.angular_velocity = ri_ekf_ptr_->getOmegaBody();
+        // Debug periodico RI-EKF (ogni 500 step)
+        if (t_msec_ % 500 == 0) {
+            std::cout << "[RI-EKF t=" << t_msec_ << "ms]"
+                      << "  pos=" << ri_ekf_ptr_->getPosition().transpose()
+                      << "  q=" << ri_ekf_ptr_->getQuaternion().coeffs().transpose()
+                      << "  v=" << ri_ekf_ptr_->getVelocity().transpose()
+                      << "  omega_b=" << ri_ekf_ptr_->getOmegaBody().transpose() << std::endl;
+        }
     }
     #pragma omp parallel sections num_threads(2)
     {
@@ -1014,15 +1040,17 @@ WalkingManager::update(
         {
             if(t_msec_ >= startTimeEKF && isEKFactive) {
                 fb_robot_state = updateEKF(actual_output);
-                if (t_msec_ >= 5000 && true){
-                    std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " << std::endl;
-                    fb_robot_state.orientation = base_ekf_ptr_->getBaseOrientation();
-                    fb_robot_state.position = base_ekf_ptr_->getBasePosition();
-                    fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * fb_robot_data.oMf[imu_idx_].rotation() * base_ekf_ptr_->getBaseOmega(); // per ora metto quello del joint KF, poi vediamo se mettere quello del BEKF o del RI EKF
-                    fb_robot_state.angular_velocity = measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
-                    fb_robot_state.angular_velocity = sim_robot_state.angular_velocity; // per ora metto quello del sim, poi vediamo se mettere quello del BEKF o del RI EKF
-
+                if (t_msec_ >= 5000 && false){
+                    // BaseEKF is the primary state source.
+                    // getBaseOrientation() returns R_WB (world←body) quaternion.
+                    // getBaseVelocity()    returns v in world frame → convert to body.
+                    // getBaseOmega()       returns ω in body frame (bias-corrected).
+                    fb_robot_state.orientation      = base_ekf_ptr_->getBaseOrientation();
+                    fb_robot_state.position         = base_ekf_ptr_->getBasePosition();
+                    fb_robot_state.linear_velocity  =
+                        fb_robot_state.orientation.toRotationMatrix().transpose()
+                        * base_ekf_ptr_->getBaseVelocity();
+                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
 
                     // use q_filtered for the joints
                     for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
@@ -1031,23 +1059,14 @@ WalkingManager::update(
                         fb_robot_state.joint_state[joint_name].vel = joint_kf_ptr_->getFilteredJointVelocities()(joint_id);
                     }
 
-                    std::cout << "Big EKF omega: " << fb_robot_state.angular_velocity.transpose() << std::endl;
-                    std::cout << "Joint KF omega: " << (fb_robot_state.orientation.toRotationMatrix() * joint_kf_ptr_->getFilteredOmega()).transpose() << std::endl;
-                    std::cout << "BEKF omega: " << (fb_robot_state.orientation.toRotationMatrix() * base_ekf_ptr_->getBaseOmega()).transpose() << std::endl;
-                    std::cout << "input gyro: " << (fb_robot_state.orientation.toRotationMatrix() * input_gyro).transpose() << std::endl;
-                    std::cout << "RI EKF omega: " << (fb_robot_state.orientation.toRotationMatrix() * ri_ekf_ptr_->getOmegaBody()).transpose() << std::endl;
-                    std::cout << "Omega actual: " << input_gyro.transpose() << std::endl;
-
-                    fb_robot_state.orientation    = ri_ekf_ptr_->getQuaternion();
-                    fb_robot_state.position       = ri_ekf_ptr_->getPosition();
-                    fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * ri_ekf_ptr_->getVelocity();
-                    // fb_robot_state.angular_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * measured_imu_angular_velocity; // per ora metto quello misurato, poi vediamo se mettere quello del RI EKF o del BEKF;
-
-
-                    // fb_robot_state.orientation    = diligent_kio_ptr_->getQuaternion();
-                    // fb_robot_state.position       = diligent_kio_ptr_->getPosition();
-                    // fb_robot_state.linear_velocity= fb_robot_state.orientation.toRotationMatrix().transpose() * diligent_kio_ptr_->getVelocity();
-                    // fb_robot_state.angular_velocity = fb_robot_data.oMf[imu_idx_].rotation() * fb_robot_state.orientation.toRotationMatrix().transpose() * joint_kf_ptr_->getFilteredOmega();
+                    if (t_msec_ % 500 == 0) {
+                        std::cout << "[BaseEKF t=" << t_msec_ << "ms]"
+                                  << "  pos="  << fb_robot_state.position.transpose()
+                                  << "  |pos_err|=" << (sim_robot_state.position
+                                                       - fb_robot_state.position).norm() << "m"
+                                  << "  omega=" << fb_robot_state.angular_velocity.transpose()
+                                  << std::endl;
+                    }
                 }
             }
             else{
@@ -1061,13 +1080,13 @@ WalkingManager::update(
     }
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
-    std::cout << "GT position " << sim_robot_state.position.transpose() << std::endl;
-    std::cout << "GT orientation " << sim_robot_state.orientation.coeffs().transpose() << std::endl;
-    std::cout << "GT velocity " << sim_robot_state.linear_velocity.transpose() << std::endl;
-    std::cout << "BEKF position " << base_ekf_ptr_->getBasePosition().transpose() << std::endl;
-    std::cout << "BEKF orientation " << base_ekf_ptr_->getBaseOrientation().coeffs().transpose() << std::endl;
-    std::cout << "BEKF velocity " << base_ekf_ptr_->getBaseVelocity().transpose() << std::endl;
-    // std::cout << "BEKF omega " << base_ekf_ptr_->getBaseOmega().transpose() << std::endl;
+    // Debug periodico filtri (ogni 500 step)
+    if (t_msec_ % 500 == 0 && t_msec_ >= 1000) {
+        std::cout << "[State t=" << t_msec_ << "ms]"
+                  << "  GT_pos=" << sim_robot_state.position.transpose()
+                  << "  BEKF_pos=" << base_ekf_ptr_->getBasePosition().transpose()
+                  << "  |pos_err|=" << (sim_robot_state.position - base_ekf_ptr_->getBasePosition()).norm() << "m" << std::endl;
+    }
 
     ////////////////////
     // END EKF CALL
@@ -1380,77 +1399,79 @@ WalkingManager::update(
 
     LIPState mpc_LipState_prec = des_LipState;
 
-    Eigen::Vector3d foot_pose = Eigen::Vector3d::Zero();
-    auto start_mpc = std::chrono::system_clock::now();
-    #pragma omp parallel sections num_threads(2)
-    {
-        #pragma omp section
-        {
-            if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
-                foot_pose = Eigen::Vector3d(current_gait_configuration.lsole.pos.p.x(), current_gait_configuration.lsole.pos.p.y(), current_gait_configuration.lsole.pos.p.z());
-                // std::cout << "Left foot support" << std::endl;
-            }
-            else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-                foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), current_gait_configuration.rsole.pos.p.z());
-                // std::cout << "Right foot support" << std::endl;
-            }
-            foot_pose.setZero();
-            if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
-                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, foot_pose);
-                kf_LipState.com_pos_ -= foot_pose;
-                kf_LipState.zmp_pos_ -= foot_pose;
-                des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                    kf_LipState,
-                    ismpc_ptr_->getInput()
-                );
-                kf_LipState.com_pos_ += foot_pose;
-                kf_LipState.zmp_pos_ += foot_pose;
-            }
-            else{
-                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState, foot_pose);
-                des_LipState.com_pos_ -= foot_pose;
-                des_LipState.zmp_pos_ -= foot_pose;
-                des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                    des_LipState,
-                    ismpc_ptr_->getInput()
-                );
-            }
-            des_LipState.com_pos_ += foot_pose;
-            des_LipState.zmp_pos_ += foot_pose;
-        }
-        #pragma omp section
-        {
-        }
+    // JIS-MPC: runs at jismpc_timestep_msec_ rate
+    if (use_jismpc_ && jismpc_ptr_ &&
+        (t_msec_ % jismpc_timestep_msec_ == 0)) {
+        jismpc_ptr_->solve(sim_robot_state, current_gait_configuration,
+                           walking_data_, t_msec_);
     }
 
-    mpc_zmp_velocity_log_.push_back(ismpc_ptr_->getInput().transpose());
-    // con_zmp_velocity_log_.push_back(ismpc_ptr_->getStabConstraintOffset().transpose());
+    Eigen::Vector3d foot_pose = Eigen::Vector3d::Zero();
+    auto start_mpc = std::chrono::system_clock::now();
 
+    if (!use_jismpc_) {
+        #pragma omp parallel sections num_threads(2)
+        {
+            #pragma omp section
+            {
+                if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+                    foot_pose = Eigen::Vector3d(current_gait_configuration.lsole.pos.p.x(), current_gait_configuration.lsole.pos.p.y(), current_gait_configuration.lsole.pos.p.z());
+                }
+                else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+                    foot_pose = Eigen::Vector3d(current_gait_configuration.rsole.pos.p.x(), current_gait_configuration.rsole.pos.p.y(), current_gait_configuration.rsole.pos.p.z());
+                }
+                foot_pose.setZero();
+                if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
+                    ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, foot_pose);
+                    kf_LipState.com_pos_ -= foot_pose;
+                    kf_LipState.zmp_pos_ -= foot_pose;
+                    des_LipState = discrete_lip_dynamics_ptr_->integrate(
+                        kf_LipState,
+                        ismpc_ptr_->getInput()
+                    );
+                    kf_LipState.com_pos_ += foot_pose;
+                    kf_LipState.zmp_pos_ += foot_pose;
+                }
+                else{
+                    ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState, foot_pose);
+                    des_LipState.com_pos_ -= foot_pose;
+                    des_LipState.zmp_pos_ -= foot_pose;
+                    des_LipState = discrete_lip_dynamics_ptr_->integrate(
+                        des_LipState,
+                        ismpc_ptr_->getInput()
+                    );
+                }
+                des_LipState.com_pos_ += foot_pose;
+                des_LipState.zmp_pos_ += foot_pose;
+            }
+            #pragma omp section
+            {
+            }
+        }
+
+        mpc_zmp_velocity_log_.push_back(ismpc_ptr_->getInput().transpose());
+
+        // LOG MPC PREDICTIONS FOR GIF FILES
+        Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
+        Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
+        Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
+        LIPState LipState_mpc = mpc_LipState_prec;
+        for (int i = 0; i < 20; ++i) {
+            LipState_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
+                LipState_mpc,
+                Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
+            );
+            mpc_pred_com_pos_log_.push_back(LipState_mpc.com_pos_);
+            mpc_pred_com_vel_log_.push_back(LipState_mpc.com_vel_);
+            mpc_pred_zmp_pos_log_.push_back(LipState_mpc.zmp_pos_);
+        }
+    }
 
     auto end_mpc = std::chrono::system_clock::now();
 
     /////////////////////////////////////
     // MPC FUNCTION CALL END
     /////////////////////////////////////
-
-    // LOG MPC PREDICTIONS FOR GIF FILES
-
-    Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
-    Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
-    Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
-
-    LIPState LipState_mpc = mpc_LipState_prec;
-
-    for (int i = 0; i < 20; ++i) {
-        LipState_mpc = discrete_lip_dynamics_ptr_mpc_->integrate(
-            LipState_mpc,
-            Eigen::Vector3d(inputSequenceX(i), inputSequenceY(i), inputSequenceZ(i))
-        );
-
-        mpc_pred_com_pos_log_.push_back(LipState_mpc.com_pos_);
-        mpc_pred_com_vel_log_.push_back(LipState_mpc.com_vel_);
-        mpc_pred_zmp_pos_log_.push_back(LipState_mpc.zmp_pos_);
-    }
 
     // FILL DESIRED GAIT CONFIGURATION
 
@@ -1489,17 +1510,27 @@ WalkingManager::update(
     // desired_gait_configuration.qjnt(robot_model.getJointId("right_elbow_joint") - 2) += 1 * step_length;
 
 
-    // CoM (take des values from des lip state, mpc output)
-    Eigen::Vector3d p_CoM_des;
-    Eigen::Vector3d v_CoM_des;
-    Eigen::Vector3d p_ZMP_des;
-    p_CoM_des = des_LipState.com_pos_;
-    v_CoM_des = des_LipState.com_vel_;
-    p_ZMP_des = des_LipState.zmp_pos_;
+    if (!use_jismpc_) {
+        // CoM desired from IS-MPC LIP integration
+        desired_gait_configuration.com.pos = des_LipState.com_pos_;
+        desired_gait_configuration.com.vel = des_LipState.com_vel_;
+        desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+                                           - Eigen::Vector3d(0.0, 0.0, 9.81);
+    } else {
+        // JIS-MPC: no LIP-based CoM reference (WBC does not use com.* in this mode)
+        desired_gait_configuration.com.pos = current_gait_configuration.com.pos;
+        desired_gait_configuration.com.vel = current_gait_configuration.com.vel;
+        desired_gait_configuration.com.acc = Eigen::Vector3d::Zero();
+    }
 
-    desired_gait_configuration.com.pos = p_CoM_des;
-    desired_gait_configuration.com.vel = v_CoM_des;
-    desired_gait_configuration.com.acc = eta2 * (p_CoM_des - p_ZMP_des) - Eigen::Vector3d(0.0, 0.0, 9.81);
+    // contact flags
+    if (use_jismpc_ && jismpc_ptr_) {
+        desired_gait_configuration.is_left_foot_support  = jismpc_ptr_->get_left_in_contact();
+        desired_gait_configuration.is_right_foot_support = jismpc_ptr_->get_right_in_contact();
+    } else {
+        desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
+        desired_gait_configuration.is_right_foot_support = current_gait_configuration.is_right_foot_support;
+    }
 
     // feet tasks
     if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
@@ -1558,7 +1589,24 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
+            if (use_jismpc_ && jismpc_wbc_ptr_) {
+                // JIS-MPC mode: use simplified WBC with nu_dot from JIS-MPC
+                const Eigen::VectorXd& nu_dot_des =
+                    jismpc_ptr_ ? jismpc_ptr_->get_nu_dot_0()
+                                : Eigen::VectorXd::Zero(robot_model.nv);
+                const labrob::RobotState& rs =
+                    (t_msec_ >= startTimeWBCCL && isWBCLoopClosed)
+                    ? fb_robot_state : sim_robot_state;
+                pinocchio::Data& rd =
+                    (t_msec_ >= startTimeWBCCL && isWBCLoopClosed)
+                    ? fb_robot_data : sim_robot_data;
+                joint_command = jismpc_wbc_ptr_->compute_inverse_dynamics(
+                    robot_model, rs, rd,
+                    current_gait_configuration,
+                    desired_gait_configuration,
+                    nu_dot_des
+                );
+            } else if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
                     fb_robot_state,
@@ -1618,15 +1666,15 @@ WalkingManager::update(
 
     fb_com_position_log_.push_back(p_CoM_fb.transpose());
     kf_com_position_log_.push_back(kf_LipState.com_pos_.transpose());
-    des_com_position_log_.push_back(p_CoM_des.transpose());
+    des_com_position_log_.push_back(desired_gait_configuration.com.pos.transpose());
 
     fb_com_velocity_log_.push_back(v_CoM_fb.transpose());
     kf_com_velocity_log_.push_back((kf_LipState.com_vel_).transpose());
-    des_com_velocity_log_.push_back(v_CoM_des.transpose());
+    des_com_velocity_log_.push_back(desired_gait_configuration.com.vel.transpose());
 
     fb_zmp_position_log_.push_back(zmp_3d_fb.transpose());
     kf_zmp_position_log_.push_back(kf_LipState.zmp_pos_.transpose());
-    des_zmp_position_log_.push_back(p_ZMP_des.transpose());
+    des_zmp_position_log_.push_back(des_LipState.zmp_pos_.transpose());
 
     des_com_acceleration_log_.push_back(desired_gait_configuration.com.acc.transpose());
 

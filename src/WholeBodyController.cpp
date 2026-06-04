@@ -355,10 +355,19 @@ WholeBodyController::compute_inverse_dynamics(
   d_min << d_min_acc, d_min_force_one, d_min_force_one;
   d_max << d_max_acc, d_max_force_one, d_max_force_one;
 
+  const Eigen::VectorXd prev_q_ddot = q_ddot_;
+  const Eigen::VectorXd prev_flr    = flr;
+
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
-  Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
-  q_ddot_ = solution.head(6 + n_joints_);
-  flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
+
+  if (wbc_solver_ptr_->get_status() != 0) {
+    q_ddot_ = prev_q_ddot;
+    flr     = prev_flr;
+  } else {
+    Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
+    q_ddot_ = solution.head(6 + n_joints_);
+    flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
+  }
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
   left_foot_wrench_ = T_l * fl;

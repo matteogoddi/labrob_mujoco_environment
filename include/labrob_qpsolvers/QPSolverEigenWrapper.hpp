@@ -2,6 +2,7 @@
 #define LABROB_QP_SOLVER_EIGEN_WRAPPER_HPP_
 
 #include "QPSolver.hpp"
+#include "HPIPMQPSolver.hpp"
 
 // STL
 #include <memory>
@@ -42,6 +43,12 @@ class QPSolverEigenWrapper {
         lg.data(),
         ug.data()
     );
+  }
+
+  int get_status() const {
+    if (auto* h = dynamic_cast<HPIPMQPSolver*>(qp_solver_ptr_.get()))
+      return h->get_status();
+    return 0;
   }
 
   Eigen::Matrix<Scalar, Eigen::Dynamic, 1>

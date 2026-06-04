@@ -54,10 +54,10 @@ JointKF::filter(const Eigen::VectorXd& q_meas, const Eigen::VectorXd& qdd)
 {
     q_filtered_ = F * q_filtered_ + G * qdd;
     q_filtered_ = q_filtered_ + K * (q_meas - H * q_filtered_);
-    JointPos_ = q_filtered_.head(29);
-    JointVel_ = q_filtered_.segment(29, 29);
+    const int nq = JointPos_.size();
+    JointPos_ = q_filtered_.head(nq);
+    JointVel_ = q_filtered_.segment(nq, nq);
     Omega_ = q_filtered_.tail(3);
-    std::cout << "ciao" << std::endl;
 }
 
 //////////////////////////
@@ -128,19 +128,32 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   vel.segment(3, 3) << omega_;
   vel.tail(qj_dot.size()) = qj_dot;
 
-  Eigen::Vector3d acc = R_base_imu * acc_meas - bf_;
+  // Bias-correct current measurements (time k)
+  const Eigen::Vector3d acc_body_curr = R_base_imu * acc_meas  - bf_;
+  const Eigen::Vector3d omega_curr    = R_base_imu * gyro_meas - bw_;
 
-  omega_ = R_base_imu * gyro_meas - bw_;
-  omega_world = C_world_to_base.transpose() * omega_;
+  // Snapshot k-1 inputs before overwriting them — needed for both the
+  // state prediction AND the F-matrix linearisation below.
+  const Eigen::Vector3d acc_body_km1 = acc_body_prev_;
+  const Eigen::Vector3d omega_km1    = omega_prev_;
 
-  Eigen::Vector3d a_world = C_world_to_base.transpose() * acc + g_;
+  // PREDICTION x[k-1] → x[k] uses inputs u[k-1].
+  // Using u[k] would introduce a one-step look-ahead bias.
+  const Eigen::Vector3d a_world = C_world_to_base.transpose() * acc_body_km1 + g_;
 
-  Eigen::Vector3d r_prec = r_;
-  Eigen::Vector3d v_prec = v_;
-  Eigen::Quaterniond q_prec = q_;
+  // Save pre-prediction state (used by processFoot for measurement Jacobians)
+  const Eigen::Vector3d    r_prec = r_;
+  const Eigen::Quaterniond q_prec = q_;
+
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
-  q_ = (expMap(dt_ * omega_) * q_).normalized();
+  q_ = (expMap(dt_ * omega_km1) * q_).normalized();
+
+  // Advance saved inputs for next call
+  omega_         = omega_curr;
+  omega_world    = C_world_to_base.transpose() * omega_;
+  omega_prev_    = omega_curr;
+  acc_body_prev_ = acc_body_curr;
 
 
   // =====================
@@ -150,10 +163,11 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, ibf=21, ibw=24;
 
+  // F is the Jacobian of the prediction evaluated at x[k-1] with u[k-1].
   F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
-  F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc) * dt_;
+  F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc_body_km1) * dt_;
   F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
-  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_) * dt_;
+  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_km1) * dt_;
   F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
 
   Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, NX - 3); // no noise for base position dynamics
@@ -263,9 +277,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
 
     Eigen::Quaterniond s_z(T_bf.rotation());
-    Eigen::Quaterniond s_z_hat = q_prec * z.inverse();
-
-
+    // s_z_hat = R_BF_est: body-frame foot orientation from state.
+    // R_BF = R_BW * R_WF = q_prec * z  (NOT z.inverse() — that gives R_FB).
+    Eigen::Quaterniond s_z_hat = q_prec * z;
 
     Eigen::MatrixXd J_foot = Eigen::MatrixXd::Zero(6, model_.nv);
     pinocchio::getFrameJacobian(
@@ -277,6 +291,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     );
 
     Eigen::Vector3d e_p = s_p - s_p_hat;
+    // e_z = log(R_BF_meas * R_BF_est^{-1}): zero when estimate is correct.
     Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
     // Eigen::Vector3d e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
     // e_foot = -(v_prec + J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
@@ -295,9 +310,11 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
     H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
 
+    // d(e_z)/d(phi) = +I  (Rotella eq. 17: body tilt drives ankle joints, so both
+    // s_z and s_z_hat change with phi, and the net linearisation is +I)
     H_accum.block<3,3>(old_rows + e_p.size(), iphi) = Eigen::Matrix3d::Identity();
-    H_accum.block<3,3>(old_rows + e_p.size(), itheta) =
-        - (q_ * z.inverse()).toRotationMatrix();
+    // d(e_z)/d(theta) = -C[q*z] = -R_BF  (Rotella eq. 17, with z=R_WF in code)
+    H_accum.block<3,3>(old_rows + e_p.size(), itheta) = -(q_ * z).toRotationMatrix();
 
     // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iv) = Eigen::Matrix3d::Identity();
     // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iphi) = -skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
@@ -309,17 +326,20 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
-  std::cout << "Measurement error: " << e.transpose() << std::endl; 
-
   if (e.size() == 0)
     return;
+
+  // Avvisa se l'innovazione è insolitamente grande (probabile divergenza)
+  const double e_norm = e.norm();
+  if (e_norm > 0.5)
+      std::cerr << "[BaseEKF] WARN: large innovation norm=" << e_norm
+                << " e=" << e.transpose() << std::endl;
 
   // =====================
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
   Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-2;
-  
 
   Eigen::MatrixXd K = P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
 
@@ -331,8 +351,6 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   pR_ += dx.segment<3>(ipR);
   bf_ += dx.segment<3>(ibf);
   bw_ += dx.segment<3>(ibw);
-
-  std::cout << "piede destro: " << pR_.transpose() << std::endl;
 
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
@@ -629,14 +647,20 @@ RightInvariantEKF::RightInvariantEKF(
 
     // ── R_imu_to_body ──────────────────────────────────────────────────────
     // R_WB = R_world_body; data_.oMf[imu].rotation() = R_world_imu.
-    // We want R such that: v_body = R * v_imu.
-    // R_body_imu = R_world_body^T * R_world_imu = R_WB^T * R_world_imu.
+    // v_body = R_body_imu * v_imu,  con R_body_imu = R_WB^T * R_world_imu.
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
 
-    const int imu_torso_id = model_.getFrameId("imu_in_pelvis");
-    R_imu_torso_to_body_ = R_WB.transpose()
-                   * data_.oMf[imu_torso_id].rotation();
+    // Giroscopio: usa il frame IMU del torso (se disponibile), altrimenti pelvis.
+    // Se il modello non ha "imu_in_torso", getFrameId ritorna model_.nframes (indice invalido).
+    const int imu_torso_id = model_.getFrameId("imu_in_torso");
+    if (imu_torso_id < (int)model_.nframes) {
+        R_imu_torso_to_body_ = R_WB.transpose() * data_.oMf[imu_torso_id].rotation();
+    } else {
+        // Fallback al pelvis IMU se il frame torso non è nel modello
+        R_imu_torso_to_body_ = R_WB.transpose()
+            * data_.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+    }
 
     const int imu_pelvis_id = model_.getFrameId("imu_in_pelvis");
     R_imu_pelvis_to_body_ = R_WB.transpose()
@@ -951,6 +975,13 @@ void RightInvariantEKF::filter(
 
     const Eigen::MatrixXd S = H_all * P_ * H_all.transpose() + N_all;
     const Eigen::MatrixXd K = P_ * H_all.transpose() * S.inverse();
+
+    // Avvisa se l'innovazione è insolitamente grande (potenziale divergenza)
+    const double z_norm = z_all.norm();
+    if (z_norm > 0.3)
+        std::cerr << "[RI-EKF] WARN: large innovation norm=" << z_norm
+                  << "  pos=" << getPosition().transpose()
+                  << "  |bg|=" << bg_.norm() << std::endl;
 
     const Eigen::VectorXd xi_corr = K * z_all;   // dim NR = 21
 
@@ -1466,8 +1497,12 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
 
         const double se2 = (noise_.encoder_noise_deg * M_PI/180.0)
                          * (noise_.encoder_noise_deg * M_PI/180.0);
-        const Eigen::Matrix<double,6,6> Ni = Jf * (se2 * Eigen::MatrixXd::Identity(n_j,n_j))
-                                                * Jf.transpose();
+        Eigen::Matrix<double,6,6> Ni = Jf * (se2 * Eigen::MatrixXd::Identity(n_j,n_j))
+                                          * Jf.transpose();
+        // Add rotation noise floor: encoder-only Ni is near-zero for rotation rows,
+        // giving huge Kalman gain when the foot has any contact bounce or simulation
+        // artifact. 0.05 rad (~3°) floor makes the filter robust to small foot tilts.
+        Ni.block<3,3>(3,3) += (0.05*0.05) * Eigen::Matrix3d::Identity();
 
         // Accumulate
         const int old = static_cast<int>(z_all.rows());
@@ -1499,6 +1534,13 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
 
     const Eigen::MatrixXd S = H_all * P_ * H_all.transpose() + N_all;
     const Eigen::MatrixXd K = P_ * H_all.transpose() * S.inverse();
+
+    // Avvisa se l'innovazione è insolitamente grande (potenziale divergenza)
+    const double z_norm = z_all.norm();
+    if (z_norm > 0.3)
+        std::cerr << "[DILIGENT-KIO] WARN: large innovation norm=" << z_norm
+                  << "  pos=" << p_.transpose()
+                  << "  |bg|=" << bg_.norm() << std::endl;
 
     const Eigen::VectorXd m = K * z_all;   // dim 27
 

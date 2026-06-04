@@ -660,6 +660,7 @@ int main(const int argc, const char* argv[]) {
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  walking_manager.enableJISMPC(false);
   walking_manager.init(robot_state, armatures);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
