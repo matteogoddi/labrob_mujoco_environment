@@ -33,7 +33,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
-  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
+  params.weight_regulation_matrix = Eigen::MatrixXd();
   // params.weight_regulation_matrix.block(10, 10, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
   // params.weight_regulation_matrix.block(16, 16, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
   //fare matrice identità e asssegnare valori più alti per l'ankle roll
@@ -85,6 +85,14 @@ WholeBodyController::WholeBodyController(
   n_wbc_variables_ = 6 + n_joints_ + 2 * 3 * n_contacts_;
   n_wbc_equalities_ = 6 + 2 * 6 + 3 * n_contacts_;
   n_wbc_inequalities_ = 2 * n_joints_ + 2 * 4 * n_contacts_;
+
+  const int state_acc_size = 6 + n_joints_;
+  if (params_.weight_regulation_matrix.rows() != state_acc_size ||
+      params_.weight_regulation_matrix.cols() != state_acc_size) {
+    params_.weight_regulation_matrix =
+        Eigen::MatrixXd::Identity(state_acc_size, state_acc_size) *
+        params_.weight_regulation;
+  }
 
   M_armature_ = Eigen::VectorXd::Zero(n_joints_);
   for (pinocchio::JointIndex joint_id = 0;

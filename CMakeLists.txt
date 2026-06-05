@@ -62,7 +62,7 @@ else()
 endif()
 
 if(CASADI_NEEDS_OLD_ABI)
-  message(WARNING "CasADi appears to be built with old libstdc++ ABI; applying _GLIBCXX_USE_CXX11_ABI=0 only to ComplianceReferenceGenerator.cpp.")
+  message(WARNING "CasADi appears to be built with old libstdc++ ABI; applying _GLIBCXX_USE_CXX11_ABI=0 to CasADi-dependent sources.")
 else()
   message(STATUS "CasADi appears compatible with C++11 ABI (_GLIBCXX_USE_CXX11_ABI=1 default).")
 endif()
@@ -155,6 +155,24 @@ target_include_directories(lip_simulator_main
 )
 target_link_libraries(lip_simulator_main
   pinocchio::pinocchio
+  WalkingControllerLibrary
+  ${CASADI_LIBRARY}
+)
+
+add_executable(validate_torso_compliance_qp
+  tools/validate_torso_compliance_qp.cpp
+)
+if(CASADI_NEEDS_OLD_ABI)
+  set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/tools/validate_torso_compliance_qp.cpp
+    PROPERTIES COMPILE_DEFINITIONS _GLIBCXX_USE_CXX11_ABI=0
+  )
+endif()
+target_include_directories(validate_torso_compliance_qp
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+target_link_libraries(validate_torso_compliance_qp
   WalkingControllerLibrary
   ${CASADI_LIBRARY}
 )

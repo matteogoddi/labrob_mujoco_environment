@@ -580,7 +580,7 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
     arg["lbx"] = eigenToDM(Eigen::VectorXd(lbx));
     arg["ubx"] = eigenToDM(Eigen::VectorXd(ubx));
 
-    casadi::DMDict res = qp_solver_(arg); // solve QP
+    casadi::DMDict res = qp_solver_(arg); // ！！！！solve QP ！！！
 
     if (res.find("x") == res.end()) {
       throw std::runtime_error("CasADi result does not contain key 'x'.");

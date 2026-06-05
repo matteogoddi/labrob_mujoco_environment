@@ -1,5 +1,19 @@
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+if not hasattr(np, 'typeDict'):
+    np.typeDict = np.sctypeDict
+for _np_alias, _np_type in {
+    'bool': bool,
+    'int': int,
+    'float': float,
+    'complex': complex,
+    'object': object,
+    'str': str,
+}.items():
+    if _np_alias not in np.__dict__:
+        setattr(np, _np_alias, _np_type)
 import scipy.spatial.transform
 from math import ceil, floor, sqrt
 from collections import defaultdict
@@ -113,6 +127,32 @@ if __name__ == '__main__':
         except (ValueError, OSError):
             has_compliance_hand_logs = False
             print('[INFO] compliance_hand_state.txt is unreadable, skip compliance plots.')
+
+    compliance_torso_state_file = folder + '/compliance_torso_state.txt'
+    has_compliance_torso_logs = os.path.exists(compliance_torso_state_file)
+    if has_compliance_torso_logs:
+        try:
+            compliance_torso_state = np.loadtxt(compliance_torso_state_file, skiprows=1)
+            compliance_torso_state = np.atleast_2d(compliance_torso_state)
+            if compliance_torso_state.shape[1] < 68:
+                has_compliance_torso_logs = False
+                print('[INFO] compliance_torso_state.txt has fewer than 68 columns, skip torso compliance plots.')
+        except (ValueError, OSError):
+            has_compliance_torso_logs = False
+            print('[INFO] compliance_torso_state.txt is unreadable, skip torso compliance plots.')
+
+    wbc_torso_tracking_file = folder + '/wbc_torso_orientation_tracking.txt'
+    has_wbc_torso_tracking_logs = os.path.exists(wbc_torso_tracking_file)
+    if has_wbc_torso_tracking_logs:
+        try:
+            wbc_torso_tracking = np.loadtxt(wbc_torso_tracking_file, skiprows=1)
+            wbc_torso_tracking = np.atleast_2d(wbc_torso_tracking)
+            if wbc_torso_tracking.shape[1] < 16:
+                has_wbc_torso_tracking_logs = False
+                print('[INFO] wbc_torso_orientation_tracking.txt has fewer than 16 columns, skip WBC torso tracking plots.')
+        except (ValueError, OSError):
+            has_wbc_torso_tracking_logs = False
+            print('[INFO] wbc_torso_orientation_tracking.txt is unreadable, skip WBC torso tracking plots.')
 
     all_joint_motor_names_file = folder + '/all_joint_motor_names.txt'
     all_joint_motor_time_file = folder + '/all_joint_motor_time.txt'
@@ -270,6 +310,10 @@ if __name__ == '__main__':
         applied_wrist_force = applied_wrist_force[:num_samples, :]
     if has_compliance_hand_logs:
         compliance_hand_state = compliance_hand_state[:num_samples, :]
+    if has_compliance_torso_logs:
+        compliance_torso_state = compliance_torso_state[:min(num_samples, compliance_torso_state.shape[0]), :]
+    if has_wbc_torso_tracking_logs:
+        wbc_torso_tracking = wbc_torso_tracking[:min(num_samples, wbc_torso_tracking.shape[0]), :]
     
     ekf_base_position = ekf_base_position[:num_samples, :]
     ekf_base_velocity = ekf_base_velocity[:num_samples, :]
@@ -585,6 +629,139 @@ if __name__ == '__main__':
             axis.legend(loc='upper right', ncol=3)
         fig.tight_layout()
         fig.savefig('images/forces_torques/right_hand_compliance_state.png')
+        plt.close(fig)
+
+    if has_compliance_torso_logs:
+        torso_t = compliance_torso_state[:, 0]
+        dof_labels = ['x', 'y', 'z', 'roll', 'pitch', 'yaw']
+        force_labels = ['Fx', 'Fy', 'Fz']
+        torque_labels = ['Tx', 'Ty', 'Tz']
+
+        left_wrench = compliance_torso_state[:, 1:7]
+        right_wrench = compliance_torso_state[:, 7:13]
+        left_manual_delta = compliance_torso_state[:, 13:19]
+        right_manual_delta = compliance_torso_state[:, 19:25]
+        left_delta_filtered = compliance_torso_state[:, 37:43]
+        right_delta_filtered = compliance_torso_state[:, 43:49]
+        delta_xb = compliance_torso_state[:, 49:55]
+        delta_xb_final = compliance_torso_state[:, 61:67]
+        qp_solved = compliance_torso_state[:, 67]
+        angular_xb_rad = np.hstack((delta_xb[:, 3:6], delta_xb_final[:, 3:6]))
+        angular_xb_limit_rad = max(1.0e-4, 1.05 * np.nanmax(np.abs(angular_xb_rad)))
+
+        fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+        for i, label in enumerate(force_labels):
+            axes[0].plot(torso_t, left_wrench[:, i], label=f'L {label}')
+            axes[0].plot(torso_t, right_wrench[:, i], '--', label=f'R {label}')
+        for i, label in enumerate(torque_labels):
+            axes[1].plot(torso_t, left_wrench[:, i + 3], label=f'L {label}')
+            axes[1].plot(torso_t, right_wrench[:, i + 3], '--', label=f'R {label}')
+        axes[0].set_ylabel('Force [N]')
+        axes[1].set_ylabel('Torque [N*m]')
+        axes[1].set_xlabel('Time [s]')
+        axes[0].set_title('Torso Compliance Numeric Test Input Wrenches')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/torso_compliance_input_wrenches.png')
+        plt.close(fig)
+
+        fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+        for i, label in enumerate(dof_labels[:3]):
+            axes[0].plot(torso_t, left_manual_delta[:, i], label=f'L manual {label}')
+            axes[0].plot(torso_t, right_manual_delta[:, i], '--', label=f'R manual {label}')
+            axes[0].plot(torso_t, left_delta_filtered[:, i], ':', label=f'L filtered {label}')
+            axes[0].plot(torso_t, right_delta_filtered[:, i], '-.', label=f'R filtered {label}')
+        for i, label in enumerate(dof_labels[3:]):
+            idx = i + 3
+            axes[1].plot(torso_t, left_manual_delta[:, idx], label=f'L manual {label}')
+            axes[1].plot(torso_t, right_manual_delta[:, idx], '--', label=f'R manual {label}')
+            axes[1].plot(torso_t, left_delta_filtered[:, idx], ':', label=f'L filtered {label}')
+            axes[1].plot(torso_t, right_delta_filtered[:, idx], '-.', label=f'R filtered {label}')
+        axes[0].set_ylabel('Linear delta_xc [m]')
+        axes[1].set_ylabel('Angular delta_xc [rad]')
+        axes[1].set_xlabel('Time [s]')
+        axes[0].set_title('Torso Compliance Numeric Test Hand Displacement Inputs')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/torso_compliance_hand_displacement_inputs.png')
+        plt.close(fig)
+
+        fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+        for i, label in enumerate(dof_labels[:3]):
+            axes[0].plot(torso_t, delta_xb[:, i], '--', label=f'raw {label}')
+            axes[0].plot(torso_t, delta_xb_final[:, i], label=f'final {label}')
+        for i, label in enumerate(dof_labels[3:]):
+            idx = i + 3
+            axes[1].plot(torso_t, delta_xb[:, idx], '--', label=f'raw {label}')
+            axes[1].plot(torso_t, delta_xb_final[:, idx], label=f'final {label}')
+        axes[0].set_ylabel('Linear delta_xb [m]')
+        axes[1].set_ylabel('Angular delta_xb [rad]')
+        axes[1].set_ylim(-angular_xb_limit_rad, angular_xb_limit_rad)
+        axes[1].set_xlabel('Time [s]')
+        axes[0].set_title('Torso Compliance QP Output')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/torso_compliance_qp_output.png')
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(12, 4))
+        delta_xb_ang_deg = np.rad2deg(delta_xb[:, 3:6])
+        delta_xb_final_ang_deg = np.rad2deg(delta_xb_final[:, 3:6])
+        angular_xb_limit_deg = np.rad2deg(angular_xb_limit_rad)
+        for i, label in enumerate(dof_labels[3:]):
+            ax.plot(torso_t, delta_xb_ang_deg[:, i], '--', label=f'raw {label}')
+            ax.plot(torso_t, delta_xb_final_ang_deg[:, i], label=f'final {label}')
+        ax.set_ylabel('Angular delta_xb [deg]')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylim(-angular_xb_limit_deg, angular_xb_limit_deg)
+        ax.set_title('Torso Compliance QP Angular Output')
+        ax.grid(True)
+        ax.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/torso_compliance_qp_output_angular_deg.png')
+        plt.close(fig)
+
+        fig, ax = plt.subplots()
+        ax.plot(torso_t, qp_solved, label='qp_solved')
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Solved Flag')
+        ax.set_title('Torso Compliance QP Solve Status')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/torso_compliance_qp_solved.png')
+        plt.close(fig)
+
+    if has_wbc_torso_tracking_logs:
+        torso_track_t = wbc_torso_tracking[:, 0]
+        torso_offset_deg = np.rad2deg(wbc_torso_tracking[:, 1:4])
+        torso_des_deg = np.rad2deg(wbc_torso_tracking[:, 7:10])
+        torso_cur_deg = np.rad2deg(wbc_torso_tracking[:, 10:13])
+        torso_err_deg = np.rad2deg(wbc_torso_tracking[:, 13:16])
+        angular_labels = ['roll', 'pitch', 'yaw']
+
+        fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
+        for i, label in enumerate(angular_labels):
+            axes[0].plot(torso_track_t, torso_offset_deg[:, i], label=f'offset {label}')
+            axes[1].plot(torso_track_t, torso_des_deg[:, i], '--', label=f'des {label}')
+            axes[1].plot(torso_track_t, torso_cur_deg[:, i], label=f'cur {label}')
+            axes[2].plot(torso_track_t, torso_err_deg[:, i], label=f'err {label}')
+        axes[0].set_ylabel('QP offset [deg]')
+        axes[1].set_ylabel('Torso RPY [deg]')
+        axes[2].set_ylabel('Error [deg]')
+        axes[2].set_xlabel('Time [s]')
+        axes[0].set_title('WBC Torso Orientation Tracking')
+        for axis in axes:
+            axis.grid(True)
+            axis.legend(loc='upper right', ncol=3)
+        fig.tight_layout()
+        fig.savefig('images/forces_torques/wbc_torso_orientation_tracking.png')
         plt.close(fig)
 
     if has_all_joint_motor_logs and motor_plot_joint_count > 0 and motor_plot_sample_count > 0:
@@ -1146,7 +1323,7 @@ if __name__ == '__main__':
     # Plot position error between ekf joint position and simulated joint position
     fig, ax = plt.subplots(figsize=(18, 12))
     num_joints = sim_joint_position.shape[1]
-    colormap = plt.colormaps['tab10'] 
+    colormap = plt.get_cmap('tab10')
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
         color = colormap(i % 10)
@@ -1169,7 +1346,7 @@ if __name__ == '__main__':
 
     # Plot velocity error between ekf joint velocity and simulated joint velocity
     fig, ax = plt.subplots(figsize=(18, 12))
-    colormap = plt.colormaps['tab10'] 
+    colormap = plt.get_cmap('tab10')
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
         color = colormap(i % 10)
@@ -1191,7 +1368,7 @@ if __name__ == '__main__':
 
     #plot position error between ekf joint position and fb joint position
     fig, ax = plt.subplots(figsize=(18, 12))
-    colormap = plt.colormaps['tab10'] 
+    colormap = plt.get_cmap('tab10')
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
         color = colormap(i % 10)
@@ -1213,7 +1390,7 @@ if __name__ == '__main__':
 
     #plot velocity error between ekf joint velocity and fb joint velocity
     fig, ax = plt.subplots(figsize=(18, 12))
-    colormap = plt.colormaps['tab10'] 
+    colormap = plt.get_cmap('tab10')
     line_styles = ['-', '--', '-.', ':']
     for i in range(num_joints):
         color = colormap(i % 10)

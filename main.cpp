@@ -11,6 +11,8 @@
 #include <filesystem>
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <stdexcept>
 
 #include <thread>
 #include <iomanip>
@@ -21,6 +23,8 @@
 #include <unistd.h>
 
 // Pinocchio
+#include <pinocchio/algorithm/frames.hpp>
+#include <pinocchio/algorithm/jacobian.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 #include <pinocchio/multibody/model.hpp>
@@ -85,6 +89,26 @@ static const std::string HG_STATE_TOPIC = "rt/lowstate";
 labrob::WalkingManager walking_manager;
 labrob::EstimateForce estimate_force;
 
+using ComplianceVector6d = labrob::ComplianceReferenceGenerator::Vector6d;
+using ComplianceMatrix6d = labrob::ComplianceReferenceGenerator::Matrix6d;
+
+std::filesystem::path resolveProjectPath(const std::filesystem::path& relative_path) {
+  const std::filesystem::path source_dir = std::filesystem::path(__FILE__).parent_path();
+  const std::vector<std::filesystem::path> candidates{
+      std::filesystem::current_path() / relative_path,
+      std::filesystem::current_path() / ".." / relative_path,
+      source_dir / relative_path,
+  };
+
+  for (const auto& candidate : candidates) {
+    if (std::filesystem::exists(candidate)) {
+      return std::filesystem::weakly_canonical(candidate);
+    }
+  }
+
+  throw std::runtime_error("Cannot find project file: " + relative_path.string());
+}
+
 std::vector<Eigen::VectorXd> left_wrist_wrench_log;
 std::vector<Eigen::VectorXd> right_wrist_wrench_log;
 std::vector<Eigen::VectorXd> left_wrist_wrench_filtered_log;
@@ -107,8 +131,140 @@ std::vector<int> left_wrist_force_enabled_log;
 std::vector<int> right_wrist_force_enabled_log;
 std::vector<double> all_joint_motor_time_log;
 std::map<std::string, std::vector<std::array<float, 5>>> all_joint_motor_log;
+std::vector<double> compliance_torso_time_log;
+std::vector<ComplianceVector6d> compliance_torso_wrench_left_log;
+std::vector<ComplianceVector6d> compliance_torso_wrench_right_log;
+std::vector<ComplianceVector6d> compliance_torso_manual_delta_xc_left_log;
+std::vector<ComplianceVector6d> compliance_torso_manual_delta_xc_right_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xc_left_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xc_right_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xc_left_filtered_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xc_right_filtered_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xb_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xb_filtered_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_xb_final_log;
+std::vector<int> compliance_torso_qp_solved_log;
+std::vector<ComplianceMatrix6d> compliance_torso_Jb_left_log;
+std::vector<ComplianceMatrix6d> compliance_torso_Jb_right_log;
+std::vector<int> compliance_torso_Jb_valid_log;
 
 std::vector<std::pair<std::string, int>> getValidJointNameIndexPairs();
+int getControlledJointIndex(const std::string& joint_name);
+
+ComplianceVector6d computeQuasiStaticComplianceDelta(
+    const ComplianceVector6d& wrench,
+    const ComplianceMatrix6d& stiffness,
+    const ComplianceMatrix6d& selection) {
+  ComplianceMatrix6d stiffness_reg = stiffness;
+  stiffness_reg += 1e-10 * ComplianceMatrix6d::Identity();
+
+  const ComplianceVector6d rhs = selection * wrench;
+  ComplianceVector6d delta = stiffness_reg.ldlt().solve(rhs);
+  if (!delta.allFinite()) {
+    delta.setZero();
+  }
+
+  return delta;
+}
+
+Eigen::MatrixXd dampedPseudoInverse(
+    const Eigen::MatrixXd& A,
+    double damping = 1e-6) {
+  const Eigen::MatrixXd regularized =
+      A * A.transpose() +
+      damping * damping * Eigen::MatrixXd::Identity(A.rows(), A.rows());
+  return A.transpose() * regularized.ldlt().solve(
+      Eigen::MatrixXd::Identity(A.rows(), A.rows()));
+}
+
+bool computeTorsoToWristJacobians(
+    const pinocchio::Model& robot_model,
+    const labrob::RobotState& robot_state,
+    ComplianceMatrix6d& Jb_left,
+    ComplianceMatrix6d& Jb_right) {
+  const pinocchio::FrameIndex torso_frame_id =
+      robot_model.existFrame("torso_link")
+          ? robot_model.getFrameId("torso_link")
+          : robot_model.nframes;
+  const pinocchio::FrameIndex left_wrist_frame_id =
+      robot_model.existFrame("left_wrist_yaw_joint")
+          ? robot_model.getFrameId("left_wrist_yaw_joint")
+          : robot_model.nframes;
+  const pinocchio::FrameIndex right_wrist_frame_id =
+      robot_model.existFrame("right_wrist_yaw_joint")
+          ? robot_model.getFrameId("right_wrist_yaw_joint")
+          : robot_model.nframes;
+
+  if (torso_frame_id >= robot_model.nframes ||
+      left_wrist_frame_id >= robot_model.nframes ||
+      right_wrist_frame_id >= robot_model.nframes) {
+    Jb_left.setZero();
+    Jb_right.setZero();
+    return false;
+  }
+
+  pinocchio::Data robot_data(robot_model);
+  const Eigen::VectorXd q =
+      labrob::robot_state_to_pinocchio_joint_configuration(robot_model, robot_state);
+
+  pinocchio::computeJointJacobians(robot_model, robot_data, q);
+  pinocchio::framesForwardKinematics(robot_model, robot_data, q);
+
+  Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model.nv);
+  Eigen::MatrixXd J_left = Eigen::MatrixXd::Zero(6, robot_model.nv);
+  Eigen::MatrixXd J_right = Eigen::MatrixXd::Zero(6, robot_model.nv);
+
+  pinocchio::getFrameJacobian(
+      robot_model,
+      robot_data,
+      torso_frame_id,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+      J_torso);
+  pinocchio::getFrameJacobian(
+      robot_model,
+      robot_data,
+      left_wrist_frame_id,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+      J_left);
+  pinocchio::getFrameJacobian(
+      robot_model,
+      robot_data,
+      right_wrist_frame_id,
+      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
+      J_right);
+
+  const Eigen::MatrixXd J_torso_pinv = dampedPseudoInverse(J_torso);
+  Jb_left = J_left * J_torso_pinv;
+  Jb_right = J_right * J_torso_pinv;
+
+  if (!Jb_left.allFinite() || !Jb_right.allFinite()) {
+    Jb_left.setZero();
+    Jb_right.setZero();
+    return false;
+  }
+
+  return true;
+}
+
+std::size_t torsoComplianceLogSampleCount() {
+  std::size_t n = compliance_torso_time_log.size();
+  n = std::min(n, compliance_torso_wrench_left_log.size());
+  n = std::min(n, compliance_torso_wrench_right_log.size());
+  n = std::min(n, compliance_torso_manual_delta_xc_left_log.size());
+  n = std::min(n, compliance_torso_manual_delta_xc_right_log.size());
+  n = std::min(n, compliance_torso_delta_xc_left_log.size());
+  n = std::min(n, compliance_torso_delta_xc_right_log.size());
+  n = std::min(n, compliance_torso_delta_xc_left_filtered_log.size());
+  n = std::min(n, compliance_torso_delta_xc_right_filtered_log.size());
+  n = std::min(n, compliance_torso_delta_xb_log.size());
+  n = std::min(n, compliance_torso_delta_xb_filtered_log.size());
+  n = std::min(n, compliance_torso_delta_xb_final_log.size());
+  n = std::min(n, compliance_torso_qp_solved_log.size());
+  n = std::min(n, compliance_torso_Jb_left_log.size());
+  n = std::min(n, compliance_torso_Jb_right_log.size());
+  n = std::min(n, compliance_torso_Jb_valid_log.size());
+  return n;
+}
 
 void saveEstimateForceLogs() {
   std::ofstream left_wrist_file("/tmp/estimated_force_left_wrist.txt");
@@ -162,6 +318,71 @@ void saveEstimateForceLogs() {
                     << compliance_delta_x_right_log[i].transpose() << " "
                     << compliance_delta_dx_right_log[i].transpose() << " "
                     << compliance_delta_ddx_right_log[i].transpose() << "\n";
+  }
+
+  std::ofstream torso_compliance_file("/tmp/compliance_torso_state.txt");
+  torso_compliance_file << "time "
+                        << "l_w0 l_w1 l_w2 l_w3 l_w4 l_w5 "
+                        << "r_w0 r_w1 r_w2 r_w3 r_w4 r_w5 "
+                        << "l_manual_dx0 l_manual_dx1 l_manual_dx2 l_manual_dx3 l_manual_dx4 l_manual_dx5 "
+                        << "r_manual_dx0 r_manual_dx1 r_manual_dx2 r_manual_dx3 r_manual_dx4 r_manual_dx5 "
+                        << "l_dx0 l_dx1 l_dx2 l_dx3 l_dx4 l_dx5 "
+                        << "r_dx0 r_dx1 r_dx2 r_dx3 r_dx4 r_dx5 "
+                        << "l_dxf0 l_dxf1 l_dxf2 l_dxf3 l_dxf4 l_dxf5 "
+                        << "r_dxf0 r_dxf1 r_dxf2 r_dxf3 r_dxf4 r_dxf5 "
+                        << "xb0 xb1 xb2 xb3 xb4 xb5 "
+                        << "xbf0 xbf1 xbf2 xbf3 xbf4 xbf5 "
+                        << "xbfinal0 xbfinal1 xbfinal2 xbfinal3 xbfinal4 xbfinal5 "
+                        << "qp_solved\n";
+
+  const std::size_t n_torso_compliance = torsoComplianceLogSampleCount();
+  for (std::size_t i = 0; i < n_torso_compliance; ++i) {
+    torso_compliance_file << compliance_torso_time_log[i] << " "
+                          << compliance_torso_wrench_left_log[i].transpose() << " "
+                          << compliance_torso_wrench_right_log[i].transpose() << " "
+                          << compliance_torso_manual_delta_xc_left_log[i].transpose() << " "
+                          << compliance_torso_manual_delta_xc_right_log[i].transpose() << " "
+                          << compliance_torso_delta_xc_left_log[i].transpose() << " "
+                          << compliance_torso_delta_xc_right_log[i].transpose() << " "
+                          << compliance_torso_delta_xc_left_filtered_log[i].transpose() << " "
+                          << compliance_torso_delta_xc_right_filtered_log[i].transpose() << " "
+                          << compliance_torso_delta_xb_log[i].transpose() << " "
+                          << compliance_torso_delta_xb_filtered_log[i].transpose() << " "
+                          << compliance_torso_delta_xb_final_log[i].transpose() << " "
+                          << compliance_torso_qp_solved_log[i] << "\n";
+  }
+
+  std::ofstream torso_jacobian_file("/tmp/compliance_torso_jacobian.txt");
+  torso_jacobian_file << "time valid ";
+  for (int side = 0; side < 2; ++side) {
+    const char prefix = (side == 0) ? 'l' : 'r';
+    for (int r = 0; r < 6; ++r) {
+      for (int c = 0; c < 6; ++c) {
+        torso_jacobian_file << prefix << "_Jb_" << r << "_" << c;
+        if (!(side == 1 && r == 5 && c == 5)) {
+          torso_jacobian_file << " ";
+        }
+      }
+    }
+  }
+  torso_jacobian_file << "\n";
+  for (std::size_t i = 0; i < n_torso_compliance; ++i) {
+    torso_jacobian_file << compliance_torso_time_log[i] << " "
+                        << compliance_torso_Jb_valid_log[i] << " ";
+    for (int r = 0; r < 6; ++r) {
+      for (int c = 0; c < 6; ++c) {
+        torso_jacobian_file << compliance_torso_Jb_left_log[i](r, c) << " ";
+      }
+    }
+    for (int r = 0; r < 6; ++r) {
+      for (int c = 0; c < 6; ++c) {
+        torso_jacobian_file << compliance_torso_Jb_right_log[i](r, c);
+        if (!(r == 5 && c == 5)) {
+          torso_jacobian_file << " ";
+        }
+      }
+    }
+    torso_jacobian_file << "\n";
   }
 
   std::ofstream validation_file("/tmp/wrist_force_validation.txt");
@@ -413,10 +634,9 @@ struct MotorState {
 std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 500,      // legs sx
   700, 700, 700, 1000, 900, 500,      // legs dx
-  400,                   // waist
+  400, 400, 400,                       // waist yaw/roll/pitch
   300, 300, 300, 300,  200, 200, 200,  // arms sx
-  300, 300, 300, 300,  200, 200, 200,  // arms dx
-  200, 200                              // right wrist pitch/yaw (29-dof)
+  300, 300, 300, 300,  200, 200, 200   // arms dx
 };
 
 // std::array<float, G1_NUM_MOTOR> Kp = {
@@ -431,10 +651,9 @@ std::array<float, G1_NUM_MOTOR> Kp{
 std::array<float, G1_NUM_MOTOR> Kd{
   10, 10, 10, 10, 10, 10,     // legs sx
   10, 10, 10, 10, 10, 10,     // legs dx
-  10,             // waist
+  10, 10, 10,                  // waist yaw/roll/pitch
   10, 10, 10, 10, 10, 10, 10,  // arms sx
-  10, 10, 10, 10, 10, 10, 10,  // arms dx
-  10, 10                        // right wrist pitch/yaw (29-dof)
+  10, 10, 10, 10, 10, 10, 10   // arms dx
 };
 
 //assign at each value of kd twice the square root of the corresponding kp value
@@ -471,8 +690,8 @@ std::map<std::string, int> joint_name_to_index = {
   {"right_ankle_pitch_joint", 10},
   {"right_ankle_roll_joint", 11},
   {"waist_yaw_joint", 12},
-  // {"waist_roll_joint", 13},        // NOTE INVALID for g1 23dof/29dof with waist locked
-  // {"waist_pitch_joint", 14},      // NOTE INVALID for g1 23dof/29dof with waist locked
+  {"waist_roll_joint", 13},
+  {"waist_pitch_joint", 14},
   {"left_shoulder_pitch_joint", 15},
   {"left_shoulder_roll_joint", 16},
   {"left_shoulder_yaw_joint", 17},
@@ -488,6 +707,302 @@ std::map<std::string, int> joint_name_to_index = {
   {"right_wrist_pitch_joint", 27}, // NOTE INVALID for g1 23dof
   {"right_wrist_yaw_joint", 28}      // NOTE INVALID for g1 23dof
 };
+
+int getControlledJointIndex(const std::string& joint_name) {
+  auto it = joint_name_to_index.find(joint_name);
+  if (it == joint_name_to_index.end()) {
+    return -1;
+  }
+
+  const int idx = it->second;
+  return (idx >= 0 && idx < G1_NUM_MOTOR) ? idx : -1;
+}
+
+bool isHandJoint(const std::string& joint_name) {
+  return joint_name.find("_hand_") != std::string::npos;
+}
+
+double nominalTorqueLimitNm(const std::string& joint_name) {
+  if (joint_name.find("_knee_joint") != std::string::npos) {
+    return 139.0;
+  }
+  if (joint_name.find("_hip_") != std::string::npos) {
+    return 88.0;
+  }
+  if (joint_name == "waist_yaw_joint") {
+    return 88.0;
+  }
+  if (joint_name == "waist_roll_joint" || joint_name == "waist_pitch_joint") {
+    return 50.0;
+  }
+  if (joint_name.find("_ankle_") != std::string::npos) {
+    return 50.0;
+  }
+  if (joint_name.find("_wrist_pitch_joint") != std::string::npos ||
+      joint_name.find("_wrist_yaw_joint") != std::string::npos) {
+    return 5.0;
+  }
+  if (joint_name.find("_shoulder_") != std::string::npos ||
+      joint_name.find("_elbow_joint") != std::string::npos ||
+      joint_name.find("_wrist_roll_joint") != std::string::npos) {
+    return 25.0;
+  }
+  if (joint_name.find("_hand_thumb_0_joint") != std::string::npos) {
+    return 2.45;
+  }
+  if (isHandJoint(joint_name)) {
+    return 1.4;
+  }
+  return 0.0;
+}
+
+double clampJointTorque(
+    const std::string& joint_name,
+    double tau,
+    double limit_scale) {
+  if (limit_scale <= 0.0) {
+    return tau;
+  }
+  const double limit = nominalTorqueLimitNm(joint_name) * limit_scale;
+  if (limit <= 0.0) {
+    return tau;
+  }
+  return std::clamp(tau, -limit, limit);
+}
+
+struct FootContactPointDiag {
+  std::string side;
+  int geom_id;
+  Eigen::Vector3d center;
+  double radius;
+  double surface_z;
+};
+
+std::vector<FootContactPointDiag> getFootContactPointDiagnostics(
+    const mjModel* model,
+    const mjData* data) {
+  std::vector<FootContactPointDiag> points;
+  const int left_body_id = mj_name2id(model, mjOBJ_BODY, "left_ankle_roll_link");
+  const int right_body_id = mj_name2id(model, mjOBJ_BODY, "right_ankle_roll_link");
+
+  for (int geom_id = 0; geom_id < model->ngeom; ++geom_id) {
+    const int body_id = model->geom_bodyid[geom_id];
+    std::string side;
+    if (body_id == left_body_id) {
+      side = "left";
+    } else if (body_id == right_body_id) {
+      side = "right";
+    } else {
+      continue;
+    }
+
+    if (model->geom_type[geom_id] != mjGEOM_SPHERE) {
+      continue;
+    }
+
+    const double radius = model->geom_size[3 * geom_id];
+    const Eigen::Vector3d center(
+        data->geom_xpos[3 * geom_id + 0],
+        data->geom_xpos[3 * geom_id + 1],
+        data->geom_xpos[3 * geom_id + 2]);
+    points.push_back({
+        side,
+        geom_id,
+        center,
+        radius,
+        center.z() - radius
+    });
+  }
+
+  return points;
+}
+
+double computeMujocoTotalMass(const mjModel* model) {
+  double total_mass = 0.0;
+  for (int body_id = 1; body_id < model->nbody; ++body_id) {
+    total_mass += std::max(0.0, static_cast<double>(model->body_mass[body_id]));
+  }
+  return total_mass;
+}
+
+Eigen::Vector3d computeMujocoCom(const mjModel* model, const mjData* data) {
+  Eigen::Vector3d weighted_sum = Eigen::Vector3d::Zero();
+  const double total_mass = computeMujocoTotalMass(model);
+  if (total_mass <= 0.0) {
+    return Eigen::Vector3d::Zero();
+  }
+
+  for (int body_id = 1; body_id < model->nbody; ++body_id) {
+    const double mass = model->body_mass[body_id];
+    if (mass <= 0.0) {
+      continue;
+    }
+    weighted_sum += mass * Eigen::Vector3d(
+        data->xipos[3 * body_id + 0],
+        data->xipos[3 * body_id + 1],
+        data->xipos[3 * body_id + 2]);
+  }
+  return weighted_sum / total_mass;
+}
+
+bool getFootSurfaceHeightRange(
+    const mjModel* model,
+    const mjData* data,
+    double& min_surface_z,
+    double& max_surface_z) {
+  const auto points = getFootContactPointDiagnostics(model, data);
+  if (points.empty()) {
+    return false;
+  }
+
+  min_surface_z = std::numeric_limits<double>::infinity();
+  max_surface_z = -std::numeric_limits<double>::infinity();
+  for (const auto& point : points) {
+    min_surface_z = std::min(min_surface_z, point.surface_z);
+    max_surface_z = std::max(max_surface_z, point.surface_z);
+  }
+  return true;
+}
+
+double computeTotalContactForceZ(const mjModel* model, const mjData* data) {
+  double total_fz = 0.0;
+  double force_contact[6];
+  for (int contact_id = 0; contact_id < data->ncon; ++contact_id) {
+    mj_contactForce(model, data, contact_id, force_contact);
+    double force_world_z = 0.0;
+    for (int col = 0; col < 3; ++col) {
+      force_world_z += data->contact[contact_id].frame[3 * col + 2] * force_contact[col];
+    }
+    total_fz += force_world_z;
+  }
+  return total_fz;
+}
+
+void printInitialStanceDiagnostics(
+    const mjModel* model,
+    const mjData* data,
+    const std::string& label) {
+  const auto points = getFootContactPointDiagnostics(model, data);
+  const Eigen::Vector3d com = computeMujocoCom(model, data);
+  const double total_mass = computeMujocoTotalMass(model);
+
+  if (points.empty()) {
+    std::cout << "[stance-diag] " << label
+              << " no foot contact sphere geoms found on ankle roll bodies."
+              << std::endl;
+    return;
+  }
+
+  double min_x = std::numeric_limits<double>::infinity();
+  double max_x = -std::numeric_limits<double>::infinity();
+  double min_y = std::numeric_limits<double>::infinity();
+  double max_y = -std::numeric_limits<double>::infinity();
+  double min_surface_z = std::numeric_limits<double>::infinity();
+  double max_surface_z = -std::numeric_limits<double>::infinity();
+
+  for (const auto& point : points) {
+    min_x = std::min(min_x, point.center.x());
+    max_x = std::max(max_x, point.center.x());
+    min_y = std::min(min_y, point.center.y());
+    max_y = std::max(max_y, point.center.y());
+    min_surface_z = std::min(min_surface_z, point.surface_z);
+    max_surface_z = std::max(max_surface_z, point.surface_z);
+  }
+
+  const bool com_in_bbox =
+      com.x() >= min_x && com.x() <= max_x &&
+      com.y() >= min_y && com.y() <= max_y;
+  const double support_margin = std::min({
+      com.x() - min_x,
+      max_x - com.x(),
+      com.y() - min_y,
+      max_y - com.y()
+  });
+
+  std::cout << "[stance-diag] " << label
+            << " base_z=" << data->qpos[2]
+            << " mass=" << total_mass
+            << " weight=" << total_mass * 9.81
+            << " com=[" << com.x() << ", " << com.y() << ", " << com.z() << "]"
+            << " support_x=[" << min_x << ", " << max_x << "]"
+            << " support_y=[" << min_y << ", " << max_y << "]"
+            << " com_in_support_bbox=" << (com_in_bbox ? "yes" : "no")
+            << " support_margin=" << support_margin
+            << " min_foot_surface_z=" << min_surface_z
+            << " max_foot_surface_z=" << max_surface_z
+            << " foot_points=" << points.size()
+            << std::endl;
+
+  for (const auto& point : points) {
+    std::cout << "[stance-foot] " << label
+              << " side=" << point.side
+              << " geom_id=" << point.geom_id
+              << " center=[" << point.center.x()
+              << ", " << point.center.y()
+              << ", " << point.center.z() << "]"
+              << " radius=" << point.radius
+              << " surface_z=" << point.surface_z
+              << std::endl;
+  }
+}
+
+void printRuntimeStanceDiagnostics(
+    const mjModel* model,
+    const mjData* data) {
+  double min_surface_z = 0.0;
+  double max_surface_z = 0.0;
+  const bool has_foot_height =
+      getFootSurfaceHeightRange(model, data, min_surface_z, max_surface_z);
+  const Eigen::Vector3d com = computeMujocoCom(model, data);
+  const double total_mass = computeMujocoTotalMass(model);
+  const Eigen::Quaterniond base_quat(
+      data->qpos[3],
+      data->qpos[4],
+      data->qpos[5],
+      data->qpos[6]);
+  const Eigen::Vector3d base_rpy =
+      base_quat.normalized().toRotationMatrix().eulerAngles(0, 1, 2);
+  const auto points = getFootContactPointDiagnostics(model, data);
+  bool has_support_bbox = !points.empty();
+  double min_x = std::numeric_limits<double>::infinity();
+  double max_x = -std::numeric_limits<double>::infinity();
+  double min_y = std::numeric_limits<double>::infinity();
+  double max_y = -std::numeric_limits<double>::infinity();
+  for (const auto& point : points) {
+    min_x = std::min(min_x, point.center.x());
+    max_x = std::max(max_x, point.center.x());
+    min_y = std::min(min_y, point.center.y());
+    max_y = std::max(max_y, point.center.y());
+  }
+  const bool com_in_bbox =
+      has_support_bbox &&
+      com.x() >= min_x && com.x() <= max_x &&
+      com.y() >= min_y && com.y() <= max_y;
+  const double support_margin = has_support_bbox
+      ? std::min({
+            com.x() - min_x,
+            max_x - com.x(),
+            com.y() - min_y,
+            max_y - com.y()})
+      : 0.0;
+
+  std::cout << "[runtime-stance] t=" << data->time
+            << " base_z=" << data->qpos[2]
+            << " base_rpy=[" << base_rpy.x()
+            << ", " << base_rpy.y()
+            << ", " << base_rpy.z() << "]"
+            << " weight=" << total_mass * 9.81
+            << " com=[" << com.x() << ", " << com.y() << ", " << com.z() << "]"
+            << " com_in_support_bbox=" << (com_in_bbox ? "yes" : "no")
+            << " support_margin=" << support_margin
+            << " ncon=" << data->ncon
+            << " contact_fz=" << computeTotalContactForceZ(model, data);
+  if (has_foot_height) {
+    std::cout << " foot_surface_z=[" << min_surface_z
+              << ", " << max_surface_z << "]";
+  }
+  std::cout << std::endl;
+}
 
 std::vector<std::pair<std::string, int>> getValidJointNameIndexPairs() {
   std::vector<std::pair<std::string, int>> valid_joint_pairs;
@@ -541,20 +1056,11 @@ void LowStateHandler(const void* msg){
   }
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  for (int i = 0; i < G1_NUM_MOTOR + 2; ++i) {
-    if (i == 13 || i == 14) continue; // skip waist roll and pitch
-    else if (i < 13) {
-      motor_state_data.q[i] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i] = low_state.motor_state()[i].dq();
-      motor_state_data.ddq[i] = low_state.motor_state()[i].ddq();
-      motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
-    }
-    else if (i > 14) {
-      motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
-      motor_state_data.ddq[i - 2] = low_state.motor_state()[i].ddq();
-      motor_state_data.tau_est[i - 2] = low_state.motor_state()[i].tau_est();
-    }
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    motor_state_data.q[i] = low_state.motor_state()[i].q();
+    motor_state_data.dq[i] = low_state.motor_state()[i].dq();
+    motor_state_data.ddq[i] = low_state.motor_state()[i].ddq();
+    motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
   }
   has_lowstate_data = true;
 
@@ -821,6 +1327,18 @@ int main(const int argc, const char* argv[]) {
   double waist_yaw_test_duration_sec = 5.0;
   double waist_yaw_test_max_tau_nm = 12.0;
   bool use_mujoco_step = false;
+  bool auto_save_logs = false;
+  double stop_time_sec = -1.0;
+  bool enable_torso_compliance_numeric_test = false;
+  bool enable_torso_compliance_zero_input_test = false;
+  bool enable_torso_compliance_wbc_test = false;
+  bool waist_yaw_spring_gain_user_set = false;
+  bool disable_feedback_loops = false;
+  bool feedback_loop_option_user_set = false;
+  bool enable_joint_pd_hold_test = false;
+  double mujoco_torque_limit_scale = 1.0;
+  bool auto_initial_base_height = false;
+  double initial_foot_clearance = 0.001;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
@@ -882,6 +1400,7 @@ int main(const int argc, const char* argv[]) {
       torso_spring_weight = std::atof(argv[++i]);
     } else if (a == "--waist-yaw-spring-gain" && i + 1 < argc) {
       waist_yaw_spring_gain = std::atof(argv[++i]);
+      waist_yaw_spring_gain_user_set = true;
     } else if (a == "--waist-yaw-test-amp" && i + 1 < argc) {
       enable_waist_yaw_sine_test = true;
       waist_yaw_test_amp_nm = std::atof(argv[++i]);
@@ -899,6 +1418,34 @@ int main(const int argc, const char* argv[]) {
       waist_yaw_test_max_tau_nm = std::atof(argv[++i]);
     } else if (a == "--use-mujoco-step") {
       use_mujoco_step = true;
+    } else if (a == "--disable-feedback-loops") {
+      disable_feedback_loops = true;
+      feedback_loop_option_user_set = true;
+    } else if (a == "--enable-feedback-loops") {
+      disable_feedback_loops = false;
+      feedback_loop_option_user_set = true;
+    } else if (a == "--auto-save-logs") {
+      auto_save_logs = true;
+    } else if (a == "--stop-time" && i + 1 < argc) {
+      stop_time_sec = std::atof(argv[++i]);
+    } else if (a == "--torso-compliance-numeric-test") {
+      enable_torso_compliance_numeric_test = true;
+    } else if (a == "--torso-compliance-zero-input-test") {
+      enable_torso_compliance_numeric_test = true;
+      enable_torso_compliance_zero_input_test = true;
+    } else if (a == "--torso-compliance-wbc-test") {
+      enable_torso_compliance_numeric_test = true;
+      enable_torso_compliance_wbc_test = true;
+    } else if (a == "--joint-pd-hold-test") {
+      enable_joint_pd_hold_test = true;
+      disable_feedback_loops = true;
+      feedback_loop_option_user_set = true;
+    } else if (a == "--mujoco-torque-limit-scale" && i + 1 < argc) {
+      mujoco_torque_limit_scale = std::atof(argv[++i]);
+    } else if (a == "--auto-initial-base-height") {
+      auto_initial_base_height = true;
+    } else if (a == "--initial-foot-clearance" && i + 1 < argc) {
+      initial_foot_clearance = std::atof(argv[++i]);
     } else if (a == "--help" || a == "-h") {
       std::cout << "Usage:\n"
             << "  --sim\n"
@@ -930,7 +1477,27 @@ int main(const int argc, const char* argv[]) {
             << "  --waist-yaw-test-start <sec>\n"
             << "  --waist-yaw-test-duration <sec>\n"
             << "  --waist-yaw-test-max-tau <N*m>\n"
+            << "Torso compliance tests:\n"
+            << "  --torso-compliance-numeric-test\n"
+            << "    Uses existing --external-left/right-* inputs, EstimateForce filtered wrist wrench,\n"
+            << "    and current Pinocchio torso-to-wrist Jacobians.\n"
+            << "  --torso-compliance-zero-input-test\n"
+            << "    Uses zero torso generator input with current Pinocchio torso-to-wrist Jacobians.\n"
+            << "  --torso-compliance-wbc-test\n"
+            << "    Applies torso QP angular output as WBC torso orientation reference offset.\n"
             << "Other:\n"
+            << "  --joint-pd-hold-test\n"
+            << "    Bypasses WBC and holds the initial joint pose with bounded joint PD torques.\n"
+            << "  --mujoco-torque-limit-scale <scale>\n"
+            << "    Optional MuJoCo torque clamp before writing ctrl. Use 1 for nominal joint limits.\n"
+            << "  --auto-initial-base-height\n"
+            << "    Shifts the initial floating-base z so the lowest foot contact sphere is near the floor.\n"
+            << "  --initial-foot-clearance <m>\n"
+            << "    Target lowest foot sphere clearance used with --auto-initial-base-height.\n"
+            << "  --disable-feedback-loops\n"
+            << "  --enable-feedback-loops\n"
+            << "  --auto-save-logs\n"
+            << "  --stop-time <sec>\n"
             << "  --use-mujoco-step\n";
       return 0;
     }
@@ -947,6 +1514,17 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
+  if (useSim && !useRobot && !feedback_loop_option_user_set) {
+    disable_feedback_loops = true;
+  }
+
+  if (enable_torso_compliance_wbc_test && !waist_yaw_spring_gain_user_set) {
+    waist_yaw_spring_gain = 0.0;
+  }
+  if (enable_torso_compliance_wbc_test && !feedback_loop_option_user_set) {
+    disable_feedback_loops = true;
+  }
+
   if (torso_spring_kp < 0.0 || torso_spring_kd < 0.0 || torso_spring_weight < 0.0 || waist_yaw_spring_gain < 0.0) {
     std::cerr << "Torso/waist spring parameters must be non-negative." << std::endl;
     return -1;
@@ -958,6 +1536,33 @@ int main(const int argc, const char* argv[]) {
   }
   if (waist_yaw_test_freq_hz < 0.0 || waist_yaw_test_duration_sec < 0.0 || waist_yaw_test_max_tau_nm < 0.0) {
     std::cerr << "Waist yaw sine test frequency, duration and max tau must be non-negative." << std::endl;
+    return -1;
+  }
+  if (enable_torso_compliance_numeric_test && !useSim) {
+    std::cerr << "Torso compliance numeric test requires simulation mode (--sim)." << std::endl;
+    return -1;
+  }
+  if (enable_joint_pd_hold_test && (!useSim || useRobot)) {
+    std::cerr << "Joint PD hold test is simulation-only; use --sim without --robot." << std::endl;
+    return -1;
+  }
+  if (enable_torso_compliance_numeric_test &&
+      !enable_torso_compliance_zero_input_test &&
+      !(enable_external_left_force_test || enable_external_right_force_test ||
+        enable_external_left_torque_test || enable_external_right_torque_test)) {
+    std::cerr << "Torso compliance numeric test requires at least one existing --external-left/right-* wrench input." << std::endl;
+    return -1;
+  }
+  if (stop_time_sec == 0.0 || stop_time_sec < -1.0) {
+    std::cerr << "Stop time must be positive, or negative to disable it." << std::endl;
+    return -1;
+  }
+  if (mujoco_torque_limit_scale == 0.0 || mujoco_torque_limit_scale < -1.0) {
+    std::cerr << "MuJoCo torque limit scale must be positive, or negative to disable it." << std::endl;
+    return -1;
+  }
+  if (initial_foot_clearance < 0.0) {
+    std::cerr << "Initial foot clearance must be non-negative." << std::endl;
     return -1;
   }
 
@@ -972,14 +1577,45 @@ int main(const int argc, const char* argv[]) {
               << " s, duration=" << waist_yaw_test_duration_sec
               << " s, max_tau=" << waist_yaw_test_max_tau_nm << " N*m" << std::endl;
   }
+  if (enable_joint_pd_hold_test) {
+    std::cout << "Joint PD hold test enabled: WBC update is bypassed and the initial joint pose is held." << std::endl;
+  }
+  if (mujoco_torque_limit_scale > 0.0) {
+    std::cout << "MuJoCo torque clamp enabled with scale=" << mujoco_torque_limit_scale << std::endl;
+  }
+  if (auto_initial_base_height) {
+    std::cout << "Auto initial base height enabled: target foot clearance="
+              << initial_foot_clearance << " m" << std::endl;
+  }
+  if (enable_torso_compliance_numeric_test) {
+    if (enable_torso_compliance_wbc_test) {
+      std::cout << "Torso compliance WBC test enabled. Output is logged and angular delta_xb is applied to WBC." << std::endl;
+    } else {
+      std::cout << "Torso compliance numeric test enabled. Output is logged only and is not applied to WBC." << std::endl;
+    }
+    if (enable_torso_compliance_zero_input_test) {
+      std::cout << "  Source wrench: zero input injected only at the torso generator input." << std::endl;
+    } else {
+      std::cout << "  Source wrench: EstimateForce filtered wrist wrench after applying existing external-force test inputs." << std::endl;
+    }
+    std::cout << "  Jb source: current Pinocchio wrist Jacobian times damped pseudoinverse of torso Jacobian." << std::endl;
+    if (enable_torso_compliance_wbc_test) {
+      std::cout << "  WBC coupling: delta_xb_final angular part is applied to the WBC torso orientation reference." << std::endl;
+      std::cout << "  WBC coupling: delta_xb_final linear part is logged but not applied by the current orientation-only torso task." << std::endl;
+      if (disable_feedback_loops) {
+        std::cout << "  Feedback isolation: TotalBody/CoM/EKF feedback loops are disabled for this run." << std::endl;
+      }
+    }
+  }
 
  signal(SIGINT, signalHandler);
 
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* mjcf_filepath = "../g1_mj_description/stair_steps.xml";
-  mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
+  const std::string mjcf_filepath =
+      resolveProjectPath("g1_mj_description/g1_29dof_with_hand_scene.xml").string();
+  mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath.c_str(), nullptr, loadError, kErrorLength);
   if (!mj_model_ptr) {
     std::cerr << "Error loading model: " << loadError << std::endl;
     return -1;
@@ -1005,8 +1641,10 @@ int main(const int argc, const char* argv[]) {
     std::cout << "Waist yaw diagnostic: joint not found in MuJoCo model." << std::endl;
   }
   double last_waist_diag_time = -1.0;
+  double last_ctrl_diag_time = -1.0;
+  double last_runtime_stance_diag_time = -1.0;
 
-  if (useRobot) {
+  if (useRobot && !disable_feedback_loops) {
     std::cout << "Press 'X' on the GAMEPAD to toggle CoM closed loop." << std::endl;
     std::cout << "Press 'Y' on the GAMEPAD to end the program." << std::endl;
     std::cout << "Press 'B' on the GAMEPAD to switch walking state." << std::endl;
@@ -1030,10 +1668,15 @@ int main(const int argc, const char* argv[]) {
         isEKFactive = true;
       } 
     }
-  } else {
+  } else if (!disable_feedback_loops) {
     isTotalBodyLoopClosed = true;
     isCoMLoopClosed = true;
     isEKFactive = true;
+  } else {
+    isTotalBodyLoopClosed = false;
+    isCoMLoopClosed = false;
+    isEKFactive = false;
+    std::cout << "Feedback loops disabled: WBC will use MuJoCo simulation state without EKF/feedback state switching." << std::endl;
   }
   
 
@@ -1068,36 +1711,111 @@ int main(const int argc, const char* argv[]) {
 
   mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
   mj_data_ptr->qpos[3] = 1.0;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_roll_joint")]] = r_hip_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_pitch_joint")]] = r_hip_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_knee_joint")]] = r_knee_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_ankle_pitch_joint")]] = r_ankle_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_ankle_roll_joint")]] = r_ankle_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_yaw_joint")]] = l_hip_y_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_roll_joint")]] = l_hip_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_hip_pitch_joint")]] = l_hip_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_knee_joint")]] = l_knee_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_ankle_pitch_joint")]] = l_ankle_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_ankle_roll_joint")]] = l_ankle_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_pitch_joint")]] = r_shoulder_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_roll_joint")]] = r_shoulder_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_shoulder_yaw_joint")]] = r_shoulder_y_init;
-  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_elbow_joint")]] = r_elbow_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_pitch_joint")]] = l_shoulder_p_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_roll_joint")]] = l_shoulder_r_init;
-  mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_shoulder_yaw_joint")]] = l_shoulder_y_init;
-  // mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
+  auto set_joint_qpos = [&](const char* joint_name, mjtNum value) {
+    const int joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, joint_name);
+    if (joint_id >= 0) {
+      mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = value;
+    }
+  };
+  auto set_hand_joint_hold_qpos = [&](const char* joint_name, mjtNum value) {
+    const int joint_id = mj_name2id(mj_model_ptr, mjOBJ_JOINT, joint_name);
+    if (joint_id < 0) {
+      return;
+    }
 
+    mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = value;
+    const int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
+    mj_model_ptr->dof_damping[dof_id] = std::max<mjtNum>(mj_model_ptr->dof_damping[dof_id], 0.08);
+    mj_model_ptr->dof_frictionloss[dof_id] = std::max<mjtNum>(mj_model_ptr->dof_frictionloss[dof_id], 0.002);
+    mj_model_ptr->dof_armature[dof_id] = std::max<mjtNum>(mj_model_ptr->dof_armature[dof_id], 1e-4);
+  };
+
+  set_joint_qpos("waist_yaw_joint", waist_y_init);
+  set_joint_qpos("waist_roll_joint", 0.0);
+  set_joint_qpos("waist_pitch_joint", 0.0);
+  set_joint_qpos("right_hip_yaw_joint", r_hip_y_init);
+  set_joint_qpos("right_hip_roll_joint", r_hip_r_init);
+  set_joint_qpos("right_hip_pitch_joint", r_hip_p_init);
+  set_joint_qpos("right_knee_joint", r_knee_init);
+  set_joint_qpos("right_ankle_pitch_joint", r_ankle_p_init);
+  set_joint_qpos("right_ankle_roll_joint", r_ankle_r_init);
+  set_joint_qpos("left_hip_yaw_joint", l_hip_y_init);
+  set_joint_qpos("left_hip_roll_joint", l_hip_r_init);
+  set_joint_qpos("left_hip_pitch_joint", l_hip_p_init);
+  set_joint_qpos("left_knee_joint", l_knee_init);
+  set_joint_qpos("left_ankle_pitch_joint", l_ankle_p_init);
+  set_joint_qpos("left_ankle_roll_joint", l_ankle_r_init);
+  set_joint_qpos("right_shoulder_pitch_joint", r_shoulder_p_init);
+  set_joint_qpos("right_shoulder_roll_joint", r_shoulder_r_init);
+  set_joint_qpos("right_shoulder_yaw_joint", r_shoulder_y_init);
+  // set_joint_qpos("right_elbow_joint", r_elbow_p_init);
+  set_joint_qpos("left_shoulder_pitch_joint", l_shoulder_p_init);
+  set_joint_qpos("left_shoulder_roll_joint", l_shoulder_r_init);
+  set_joint_qpos("left_shoulder_yaw_joint", l_shoulder_y_init);
+  // set_joint_qpos("left_elbow_joint", l_elbow_p_init);
+
+  set_hand_joint_hold_qpos("left_hand_thumb_0_joint", 0.0);
+  set_hand_joint_hold_qpos("left_hand_thumb_1_joint", 0.25);
+  set_hand_joint_hold_qpos("left_hand_thumb_2_joint", 0.35);
+  set_hand_joint_hold_qpos("left_hand_middle_0_joint", -0.25);
+  set_hand_joint_hold_qpos("left_hand_middle_1_joint", -0.35);
+  set_hand_joint_hold_qpos("left_hand_index_0_joint", -0.25);
+  set_hand_joint_hold_qpos("left_hand_index_1_joint", -0.35);
+  set_hand_joint_hold_qpos("right_hand_thumb_0_joint", 0.0);
+  set_hand_joint_hold_qpos("right_hand_thumb_1_joint", -0.25);
+  set_hand_joint_hold_qpos("right_hand_thumb_2_joint", -0.35);
+  set_hand_joint_hold_qpos("right_hand_middle_0_joint", 0.25);
+  set_hand_joint_hold_qpos("right_hand_middle_1_joint", 0.35);
+  set_hand_joint_hold_qpos("right_hand_index_0_joint", 0.25);
+  set_hand_joint_hold_qpos("right_hand_index_1_joint", 0.35);
+
+  mj_forward(mj_model_ptr, mj_data_ptr);
+  printInitialStanceDiagnostics(mj_model_ptr, mj_data_ptr, "initial");
+  if (auto_initial_base_height) {
+    double min_foot_surface_z = 0.0;
+    double max_foot_surface_z = 0.0;
+    if (getFootSurfaceHeightRange(
+            mj_model_ptr,
+            mj_data_ptr,
+            min_foot_surface_z,
+            max_foot_surface_z)) {
+      const double base_z_shift = initial_foot_clearance - min_foot_surface_z;
+      mj_data_ptr->qpos[2] += base_z_shift;
+      mj_forward(mj_model_ptr, mj_data_ptr);
+      std::cout << "[stance-diag] auto_initial_base_height shift_z="
+                << base_z_shift << std::endl;
+      printInitialStanceDiagnostics(mj_model_ptr, mj_data_ptr, "after-auto-height");
+    } else {
+      std::cout << "[stance-diag] auto_initial_base_height skipped: no foot contact sphere geoms found."
+                << std::endl;
+    }
+  }
 
   std::map<std::string, double> armatures;
+  std::map<std::string, double> initial_joint_targets;
+  std::map<std::string, double> fixed_hand_joint_targets;
+  int controlled_actuator_count = 0;
+  int fixed_hand_actuator_count = 0;
   for (int i = 0; i < mj_model_ptr->nu; ++i) {
     int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-    std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+    const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+    if (joint_name_cstr == nullptr) {
+      continue;
+    }
+    std::string joint_name = std::string(joint_name_cstr);
     int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
     armatures[joint_name] = mj_model_ptr->dof_armature[dof_id];
+    initial_joint_targets[joint_name] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+    if (getControlledJointIndex(joint_name) >= 0) {
+      ++controlled_actuator_count;
+    } else if (isHandJoint(joint_name)) {
+      fixed_hand_joint_targets[joint_name] = mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]];
+      ++fixed_hand_actuator_count;
+    }
   }
+  std::cout << "MuJoCo actuator summary: total=" << mj_model_ptr->nu
+            << ", WBC controlled=" << controlled_actuator_count
+            << ", fixed hand=" << fixed_hand_actuator_count << std::endl;
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
@@ -1137,11 +1855,27 @@ int main(const int argc, const char* argv[]) {
 
   compliance_params.filter_alpha = 0.98;
 
+  if (enable_torso_compliance_numeric_test) {
+    compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::TORSO_ONLY;
+    compliance_params.use_admittance_dynamics = false;
+    compliance_params.S_left.setIdentity();
+    compliance_params.S_right.setIdentity();
+    compliance_params.delta_xc_left_limit = ComplianceVector6d::Constant(1e9);
+    compliance_params.delta_xc_right_limit = ComplianceVector6d::Constant(1e9);
+  }
+
   compliance_reference_generator.setParameters(compliance_params);
   compliance_reference_generator.reset();   // clear workspace shift and velocity history
   double previous_compliance_time = -1.0;
   
   walking_manager.init(robot_state, armatures);
+  const int wbc_num_joints = walking_manager.getRobotModel().nv - 6;
+  if (wbc_num_joints != G1_NUM_MOTOR) {
+    std::cerr << "WBC model joint count mismatch: expected " << G1_NUM_MOTOR
+              << ", got " << wbc_num_joints
+              << ". Check the reduced URDF joint lock list." << std::endl;
+    return -1;
+  }
   estimate_force.initialize(walking_manager.getRobotModel());
   const int left_wrist_body_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
   const int right_wrist_body_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_wrist_yaw_link");
@@ -1233,15 +1967,17 @@ int main(const int argc, const char* argv[]) {
   // robot_state = walking_manager.getNewRobotState(robot_state);
   // StandStillInfinete(robot_state, mj_model_ptr, mj_data_ptr);
 
+  bool stop_requested = false;
+
   // Simulation loop:
-  while (!mujoco_ui.windowShouldClose()) {
+  while (!mujoco_ui.windowShouldClose() && !stop_requested) {
 
     mjtNum simstart = mj_data_ptr->time;
-    while( mj_data_ptr->time - simstart < 1.0/framerate ) {
+    while( mj_data_ptr->time - simstart < 1.0/framerate && !stop_requested ) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + G1_NUM_MOTOR + 3 + G1_NUM_MOTOR + 6 + 6);
       MotorState measured_motor_state;
       bool has_measured_motor_state = false;
 
@@ -1296,20 +2032,18 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.quaternion[2],
           imu_state_data.quaternion[3]
         ));
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
           actual_output[3 + i] = motor_state_data.q[i];
-          actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
+          actual_output[3 + G1_NUM_MOTOR + 3 + i] = motor_state_data.dq[i];
         }
         measured_motor_state = motor_state_data;
         has_measured_motor_state = has_lowstate_data;
-        actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
-        actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
-        actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
+        actual_output[3 + G1_NUM_MOTOR] = imu_state_data.omega[0];
+        actual_output[3 + G1_NUM_MOTOR + 1] = imu_state_data.omega[1];
+        actual_output[3 + G1_NUM_MOTOR + 2] = imu_state_data.omega[2];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR] = imu_state_data.accelerometer[0];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR + 1] = imu_state_data.accelerometer[1];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR + 2] = imu_state_data.accelerometer[2];
 
         imu_accelerometer = Eigen::Vector3d(
           imu_state_data.accelerometer[0],
@@ -1324,18 +2058,13 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
           const int qpos_adr = mj_model_ptr->jnt_qposadr[joint_id];
           const int dof_adr = mj_model_ptr->jnt_dofadr[joint_id];
-          actual_output[3 + i] = mj_data_ptr->qpos[qpos_adr];
-          actual_output[3 + mj_model_ptr->nu + i + 3] = mj_data_ptr->qvel[dof_adr];
-
-          auto it = joint_name_to_index.find(joint_name);
-          if (it == joint_name_to_index.end()) {
-            continue;
-          }
-          const int idx = it->second;
-          if (idx < 0 || idx >= G1_NUM_MOTOR) {
+          const int idx = getControlledJointIndex(joint_name);
+          if (idx < 0) {
             continue;
           }
 
+          actual_output[3 + idx] = mj_data_ptr->qpos[qpos_adr];
+          actual_output[3 + G1_NUM_MOTOR + 3 + idx] = mj_data_ptr->qvel[dof_adr];
           measured_motor_state.q[idx] = static_cast<float>(mj_data_ptr->qpos[qpos_adr]);
           measured_motor_state.dq[idx] = static_cast<float>(mj_data_ptr->qvel[dof_adr]);
           measured_motor_state.ddq[idx] = static_cast<float>(mj_data_ptr->qacc[dof_adr]);
@@ -1346,9 +2075,9 @@ int main(const int argc, const char* argv[]) {
 
         has_measured_motor_state = true;
         motor_state_data = measured_motor_state;
-        actual_output[3 + mj_model_ptr->nu] = robot_state.angular_velocity.x();
-        actual_output[3 + mj_model_ptr->nu + 1] = robot_state.angular_velocity.y();
-        actual_output[3 + mj_model_ptr->nu + 2] = robot_state.angular_velocity.z();
+        actual_output[3 + G1_NUM_MOTOR] = robot_state.angular_velocity.x();
+        actual_output[3 + G1_NUM_MOTOR + 1] = robot_state.angular_velocity.y();
+        actual_output[3 + G1_NUM_MOTOR + 2] = robot_state.angular_velocity.z();
         imu_accelerometer = Eigen::Vector3d::Zero();
       }
 
@@ -1366,7 +2095,47 @@ int main(const int argc, const char* argv[]) {
       //   }
       // } // end of parallel sections
 
-      walking_manager.update(robot_state, joint_command, actual_output);
+      if (enable_joint_pd_hold_test) {
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          const int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+          if (joint_name_cstr == nullptr) {
+            continue;
+          }
+          const std::string joint_name(joint_name_cstr);
+          if (getControlledJointIndex(joint_name) < 0) {
+            continue;
+          }
+          const int qpos_adr = mj_model_ptr->jnt_qposadr[joint_id];
+          const int dof_adr = mj_model_ptr->jnt_dofadr[joint_id];
+          const double q_target = initial_joint_targets[joint_name];
+
+          double kp_hold = 80.0;
+          double kd_hold = 5.0;
+          if (joint_name.find("_knee_joint") != std::string::npos) {
+            kp_hold = 120.0;
+            kd_hold = 7.0;
+          } else if (joint_name.find("_ankle_") != std::string::npos) {
+            kp_hold = 60.0;
+            kd_hold = 4.0;
+          } else if (joint_name.find("waist_") != std::string::npos) {
+            kp_hold = 40.0;
+            kd_hold = 3.0;
+          } else if (joint_name.find("_shoulder_") != std::string::npos ||
+                     joint_name.find("_elbow_joint") != std::string::npos ||
+                     joint_name.find("_wrist_") != std::string::npos) {
+            kp_hold = 20.0;
+            kd_hold = 1.5;
+          }
+
+          const double tau_hold =
+              kp_hold * (q_target - mj_data_ptr->qpos[qpos_adr]) -
+              kd_hold * mj_data_ptr->qvel[dof_adr];
+          joint_command[joint_name] = clampJointTorque(joint_name, tau_hold, 1.0);
+        }
+      } else {
+        walking_manager.update(robot_state, joint_command, actual_output);
+      }
 
       if (has_measured_motor_state) {
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -1562,10 +2331,88 @@ int main(const int argc, const char* argv[]) {
         auto start_integration = std::chrono::steady_clock::now();
         mj_step1(mj_model_ptr, mj_data_ptr);
   
+        double max_abs_controlled_ctrl = 0.0;
+        double max_abs_raw_controlled_ctrl = 0.0;
+        double max_abs_hand_hold_ctrl = 0.0;
+        int nonzero_controlled_ctrl_count = 0;
+        int nonzero_hand_hold_ctrl_count = 0;
+        int saturated_controlled_ctrl_count = 0;
+        double waist_yaw_ctrl_diag = 0.0;
+        double waist_roll_ctrl_diag = 0.0;
+        double waist_pitch_ctrl_diag = 0.0;
+        std::string max_raw_controlled_joint = "NA";
+        const double hand_hold_kp = 8.0;
+        const double hand_hold_kd = 0.35;
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->ctrl[i] = joint_command[joint_name];
+          const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+          if (joint_name_cstr == nullptr) {
+            mj_data_ptr->ctrl[i] = 0.0;
+            continue;
+          }
+          std::string joint_name = std::string(joint_name_cstr);
+          const int controlled_idx = getControlledJointIndex(joint_name);
+          double tau_cmd = 0.0;
+          double tau_cmd_raw = 0.0;
+          if (controlled_idx >= 0) {
+            tau_cmd_raw = joint_command[joint_name];
+            tau_cmd = clampJointTorque(joint_name, tau_cmd_raw, mujoco_torque_limit_scale);
+          } else {
+            auto fixed_hand_it = fixed_hand_joint_targets.find(joint_name);
+            if (fixed_hand_it != fixed_hand_joint_targets.end()) {
+              const int qpos_adr = mj_model_ptr->jnt_qposadr[joint_id];
+              const int dof_adr = mj_model_ptr->jnt_dofadr[joint_id];
+              tau_cmd = hand_hold_kp * (fixed_hand_it->second - mj_data_ptr->qpos[qpos_adr])
+                        - hand_hold_kd * mj_data_ptr->qvel[dof_adr];
+              tau_cmd = clampJointTorque(joint_name, tau_cmd, 1.0);
+              const double abs_tau = std::abs(tau_cmd);
+              max_abs_hand_hold_ctrl = std::max(max_abs_hand_hold_ctrl, abs_tau);
+              if (abs_tau > 1e-6) {
+                ++nonzero_hand_hold_ctrl_count;
+              }
+            }
+          }
+          mj_data_ptr->ctrl[i] = tau_cmd;
+
+          if (controlled_idx >= 0) {
+            const double abs_raw_tau = std::abs(tau_cmd_raw);
+            const double abs_tau = std::abs(tau_cmd);
+            if (abs_raw_tau > max_abs_raw_controlled_ctrl) {
+              max_abs_raw_controlled_ctrl = abs_raw_tau;
+              max_raw_controlled_joint = joint_name;
+            }
+            if (std::abs(tau_cmd_raw - tau_cmd) > 1e-9) {
+              ++saturated_controlled_ctrl_count;
+            }
+            max_abs_controlled_ctrl = std::max(max_abs_controlled_ctrl, abs_tau);
+            if (abs_tau > 1e-6) {
+              ++nonzero_controlled_ctrl_count;
+            }
+            if (joint_name == "waist_yaw_joint") {
+              waist_yaw_ctrl_diag = tau_cmd;
+            } else if (joint_name == "waist_roll_joint") {
+              waist_roll_ctrl_diag = tau_cmd;
+            } else if (joint_name == "waist_pitch_joint") {
+              waist_pitch_ctrl_diag = tau_cmd;
+            }
+          }
+        }
+        if (last_ctrl_diag_time < 0.0 || (mj_data_ptr->time - last_ctrl_diag_time) >= 1.0) {
+          last_ctrl_diag_time = mj_data_ptr->time;
+          std::cout << "[ctrl-diag] t=" << mj_data_ptr->time
+                    << " nonzero_controlled=" << nonzero_controlled_ctrl_count
+                    << "/" << G1_NUM_MOTOR
+                    << " max_abs_ctrl=" << max_abs_controlled_ctrl
+                    << " max_abs_raw_ctrl=" << max_abs_raw_controlled_ctrl
+                    << " max_raw_joint=" << max_raw_controlled_joint
+                    << " saturated=" << saturated_controlled_ctrl_count
+                    << " waist_ctrl=[" << waist_yaw_ctrl_diag
+                    << ", " << waist_roll_ctrl_diag
+                    << ", " << waist_pitch_ctrl_diag << "]"
+                    << " hand_hold_nonzero=" << nonzero_hand_hold_ctrl_count
+                    << "/" << fixed_hand_joint_targets.size()
+                    << " hand_hold_max_abs=" << max_abs_hand_hold_ctrl
+                    << std::endl;
         }
   
         mj_step2(mj_model_ptr, mj_data_ptr);
@@ -1575,6 +2422,11 @@ int main(const int argc, const char* argv[]) {
         if(integration_duration > std::chrono::milliseconds(1))
           std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
         robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+        if (last_runtime_stance_diag_time < 0.0 ||
+            (mj_data_ptr->time - last_runtime_stance_diag_time) >= 1.0) {
+          last_runtime_stance_diag_time = mj_data_ptr->time;
+          printRuntimeStanceDiagnostics(mj_model_ptr, mj_data_ptr);
+        }
 
       }else{
         auto start_integration = std::chrono::steady_clock::now();
@@ -1602,18 +2454,6 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
         }
-      }
-
-      for (int i = 0; i < mj_model_ptr->nu; ++i) {
-        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-        mj_data_ptr->ctrl[i] = joint_command[joint_name];
-
-        // auto end_integration = std::chrono::steady_clock::now();
-        // auto integration_duration = end_integration - start_integration;
-        // if(integration_duration > std::chrono::milliseconds(1))
-        //   std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
-
       }
 
       if (waist_yaw_joint_id >= 0 && waist_yaw_actuator_idx >= 0 &&
@@ -1680,40 +2520,122 @@ int main(const int argc, const char* argv[]) {
         motor_state_data = measured_motor_state;
       }
 
-      estimate_force.update(robot_state);
-      left_wrist_wrench_log.push_back(estimate_force.getLeftWristWrench());
-      right_wrist_wrench_log.push_back(estimate_force.getRightWristWrench());
-      left_wrist_wrench_filtered_log.push_back(estimate_force.getLeftWristWrenchFiltered());
-      right_wrist_wrench_filtered_log.push_back(estimate_force.getRightWristWrenchFiltered());
+	      estimate_force.update(robot_state);
+	      left_wrist_wrench_log.push_back(estimate_force.getLeftWristWrench());
+	      right_wrist_wrench_log.push_back(estimate_force.getRightWristWrench());
+	      left_wrist_wrench_filtered_log.push_back(estimate_force.getLeftWristWrenchFiltered());
+	      right_wrist_wrench_filtered_log.push_back(estimate_force.getRightWristWrenchFiltered());
 
-      {
-        labrob::ComplianceReferenceGenerator::Input compliance_input;
-        const double current_time = mj_data_ptr->time;
-        if (previous_compliance_time < 0.0) {
-          const auto controller_frequency = walking_manager.get_controller_frequency();
-          compliance_input.dt = (controller_frequency > 0)
-              ? 1.0 / static_cast<double>(controller_frequency)
-              : 0.002;
-        } else {
-          compliance_input.dt = std::max(1e-6, current_time - previous_compliance_time);
-        }
-        previous_compliance_time = current_time;
+	      {
+	        labrob::ComplianceReferenceGenerator::Input compliance_input;
+	        const double current_time = mj_data_ptr->time;
+	        if (previous_compliance_time < 0.0) {
+	          const auto controller_frequency = walking_manager.get_controller_frequency();
+	          compliance_input.dt = (controller_frequency > 0)
+	              ? 1.0 / static_cast<double>(controller_frequency)
+	              : 0.002;
+	        } else {
+	          compliance_input.dt = std::max(1e-6, current_time - previous_compliance_time);
+	        }
+	        previous_compliance_time = current_time;
 
-        compliance_input.wrench_left = estimate_force.getLeftWristWrenchFiltered();
-        compliance_input.wrench_right = estimate_force.getRightWristWrenchFiltered();
-        compliance_input.wrench_left_ref.setZero();
-        compliance_input.wrench_right_ref.setZero();
+	        ComplianceVector6d torso_numeric_wrench_left = ComplianceVector6d::Zero();
+	        ComplianceVector6d torso_numeric_wrench_right = ComplianceVector6d::Zero();
+	        ComplianceVector6d torso_numeric_manual_delta_left = ComplianceVector6d::Zero();
+	        ComplianceVector6d torso_numeric_manual_delta_right = ComplianceVector6d::Zero();
+	        ComplianceMatrix6d torso_numeric_Jb_left = ComplianceMatrix6d::Zero();
+	        ComplianceMatrix6d torso_numeric_Jb_right = ComplianceMatrix6d::Zero();
+	        bool torso_numeric_Jb_valid = false;
 
-        const auto compliance_output = compliance_reference_generator.update(compliance_input);
+	        if (enable_torso_compliance_numeric_test) {
+	          if (!enable_torso_compliance_zero_input_test) {
+	            const Eigen::VectorXd& left_wrench_filtered =
+	                estimate_force.getLeftWristWrenchFiltered();
+	            const Eigen::VectorXd& right_wrench_filtered =
+	                estimate_force.getRightWristWrenchFiltered();
+	            if (left_wrench_filtered.size() >= 6) {
+	              torso_numeric_wrench_left = left_wrench_filtered.head<6>();
+	            }
+	            if (right_wrench_filtered.size() >= 6) {
+	              torso_numeric_wrench_right = right_wrench_filtered.head<6>();
+	            }
 
-        compliance_time_log.push_back(current_time);
-        compliance_delta_x_left_log.push_back(compliance_output.delta_xc_left);
-        compliance_delta_x_right_log.push_back(compliance_output.delta_xc_right);
-        compliance_delta_dx_left_log.push_back(compliance_output.delta_dxc_left);
-        compliance_delta_dx_right_log.push_back(compliance_output.delta_dxc_right);
-        compliance_delta_ddx_left_log.push_back(compliance_output.delta_ddxc_left);
-        compliance_delta_ddx_right_log.push_back(compliance_output.delta_ddxc_right);
-      }
+	            torso_numeric_manual_delta_left = computeQuasiStaticComplianceDelta(
+	                torso_numeric_wrench_left,
+	                compliance_params.Ka_left,
+	                compliance_params.S_left);
+	            torso_numeric_manual_delta_right = computeQuasiStaticComplianceDelta(
+	                torso_numeric_wrench_right,
+	                compliance_params.Ka_right,
+	                compliance_params.S_right);
+	          }
+
+	          compliance_input.use_manual_delta_xc = true;
+	          compliance_input.manual_delta_xc_left = torso_numeric_manual_delta_left;
+	          compliance_input.manual_delta_xc_right = torso_numeric_manual_delta_right;
+	          torso_numeric_Jb_valid = computeTorsoToWristJacobians(
+	              walking_manager.getRobotModel(),
+	              robot_state,
+	              torso_numeric_Jb_left,
+	              torso_numeric_Jb_right);
+	          compliance_input.Jb_left = torso_numeric_Jb_left;
+	          compliance_input.Jb_right = torso_numeric_Jb_right;
+	          if (!torso_numeric_Jb_valid) {
+	            static bool warned_jacobian_failure = false;
+	            if (!warned_jacobian_failure) {
+	              warned_jacobian_failure = true;
+	              std::cout << "Warning: failed to compute torso-to-wrist Jacobians; using zero Jb for torso compliance numeric test." << std::endl;
+	            }
+	          }
+	          compliance_input.wrench_left = torso_numeric_wrench_left;
+	          compliance_input.wrench_right = torso_numeric_wrench_right;
+	        } else {
+	          compliance_input.wrench_left = estimate_force.getLeftWristWrenchFiltered();
+	          compliance_input.wrench_right = estimate_force.getRightWristWrenchFiltered();
+	        }
+	        compliance_input.wrench_left_ref.setZero();
+	        compliance_input.wrench_right_ref.setZero();
+
+	        const auto compliance_output = compliance_reference_generator.update(compliance_input);
+
+	        compliance_time_log.push_back(current_time);
+	        compliance_delta_x_left_log.push_back(compliance_output.delta_xc_left);
+	        compliance_delta_x_right_log.push_back(compliance_output.delta_xc_right);
+	        compliance_delta_dx_left_log.push_back(compliance_output.delta_dxc_left);
+	        compliance_delta_dx_right_log.push_back(compliance_output.delta_dxc_right);
+	        compliance_delta_ddx_left_log.push_back(compliance_output.delta_ddxc_left);
+	        compliance_delta_ddx_right_log.push_back(compliance_output.delta_ddxc_right);
+
+	        if (enable_torso_compliance_numeric_test) {
+	          compliance_torso_time_log.push_back(current_time);
+	          compliance_torso_wrench_left_log.push_back(torso_numeric_wrench_left);
+	          compliance_torso_wrench_right_log.push_back(torso_numeric_wrench_right);
+	          compliance_torso_manual_delta_xc_left_log.push_back(torso_numeric_manual_delta_left);
+	          compliance_torso_manual_delta_xc_right_log.push_back(torso_numeric_manual_delta_right);
+	          compliance_torso_delta_xc_left_log.push_back(compliance_output.delta_xc_left);
+	          compliance_torso_delta_xc_right_log.push_back(compliance_output.delta_xc_right);
+	          compliance_torso_delta_xc_left_filtered_log.push_back(compliance_output.delta_xc_left_filtered);
+	          compliance_torso_delta_xc_right_filtered_log.push_back(compliance_output.delta_xc_right_filtered);
+	          compliance_torso_delta_xb_log.push_back(compliance_output.delta_xb);
+	          compliance_torso_delta_xb_filtered_log.push_back(compliance_output.delta_xb_filtered);
+	          compliance_torso_delta_xb_final_log.push_back(compliance_output.delta_xb_final);
+	          compliance_torso_qp_solved_log.push_back(compliance_output.qp_solved ? 1 : 0);
+	          compliance_torso_Jb_left_log.push_back(torso_numeric_Jb_left);
+	          compliance_torso_Jb_right_log.push_back(torso_numeric_Jb_right);
+	          compliance_torso_Jb_valid_log.push_back(torso_numeric_Jb_valid ? 1 : 0);
+
+	          if (enable_torso_compliance_wbc_test) {
+	            Eigen::Vector3d torso_rpy_offset = Eigen::Vector3d::Zero();
+	            if (compliance_output.qp_solved) {
+	              torso_rpy_offset = compliance_output.delta_xb_final.tail<3>();
+	            }
+	            walking_manager.setTorsoComplianceReference(
+	                torso_rpy_offset,
+	                Eigen::Vector3d::Zero(),
+	                Eigen::Vector3d::Zero());
+	          }
+	        }
+	      }
       
       if (has_measured_motor_state) {
         std::vector<mjtNum> qfrc_from_xfrc(mj_model_ptr->nv, 0.0);
@@ -1784,20 +2706,28 @@ int main(const int argc, const char* argv[]) {
       if (useRobot) {
 
         MotorCommand motor_command;
-        const int num_controlled_joints = std::min(G1_NUM_MOTOR, mj_model_ptr->nu);
       
         // Impostazioni di base
         motor_command.tau_ff.fill(0.0f);
         motor_command.q_target.fill(0.0f);
         motor_command.dq_target.fill(0.0f);
+        motor_command.kp.fill(0.0f);
+        motor_command.kd.fill(0.0f);
 
         // impose kp and kd to increase linearly with time
         if (mj_data_ptr->time < 5.0f) {
-          for (int i = 0; i < num_controlled_joints; ++i) {
-            int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-            std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-            motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
-            motor_command.kd[i] = Kd[i];
+          for (int i = 0; i < mj_model_ptr->nu; ++i) {
+            const int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+            const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+            if (joint_name_cstr == nullptr) {
+              continue;
+            }
+            const int robot_idx = getControlledJointIndex(joint_name_cstr);
+            if (robot_idx < 0) {
+              continue;
+            }
+            motor_command.kp[robot_idx] = Kp[robot_idx] * (mj_data_ptr->time / 5.0f);
+            motor_command.kd[robot_idx] = Kd[robot_idx];
           }
         }
         else{
@@ -1807,8 +2737,16 @@ int main(const int argc, const char* argv[]) {
 
         // assegna i valori di controllo per i giunti
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          const int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+          if (joint_name_cstr == nullptr) {
+            continue;
+          }
+          std::string joint_name = std::string(joint_name_cstr);
+          const int robot_idx = getControlledJointIndex(joint_name);
+          if (robot_idx < 0) {
+            continue;
+          }
 
           // if the values are too big in module, turn off the robot
           if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
@@ -1820,9 +2758,9 @@ int main(const int argc, const char* argv[]) {
 
             signalHandler(SIGINT);
           }else {
-            motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
-            motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
-            motor_command.tau_ff[i] = joint_command[joint_name];
+            motor_command.q_target[robot_idx] = robot_state.joint_state[joint_name].pos;
+            motor_command.dq_target[robot_idx] = robot_state.joint_state[joint_name].vel;
+            motor_command.tau_ff[robot_idx] = joint_command[joint_name];
           }
         }
       
@@ -1831,17 +2769,23 @@ int main(const int argc, const char* argv[]) {
         dds_low_command.mode_pr() = static_cast<uint8_t>(Mode::PR);
         dds_low_command.mode_machine() = mode_machine_;
       
-        for (int i = 0; i < num_controlled_joints; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id)); 
-          int robot_idx = joint_name_to_index[joint_name];
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          const int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          const char* joint_name_cstr = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
+          if (joint_name_cstr == nullptr) {
+            continue;
+          }
+          const int robot_idx = getControlledJointIndex(joint_name_cstr);
+          if (robot_idx < 0) {
+            continue;
+          }
           auto &cmd = dds_low_command.motor_cmd().at(robot_idx);
           cmd.mode() = 1;
-          cmd.q()    = motor_command.q_target[i];
-          cmd.dq()   = motor_command.dq_target[i];
-          cmd.tau()  = motor_command.tau_ff[i];
-          cmd.kp()   = motor_command.kp[i];
-          cmd.kd()   = motor_command.kd[i];
+          cmd.q()    = motor_command.q_target[robot_idx];
+          cmd.dq()   = motor_command.dq_target[robot_idx];
+          cmd.tau()  = motor_command.tau_ff[robot_idx];
+          cmd.kp()   = motor_command.kp[robot_idx];
+          cmd.kd()   = motor_command.kd[robot_idx];
         }
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
@@ -1855,13 +2799,21 @@ int main(const int argc, const char* argv[]) {
       if ( end_sleep - start_sleep < std::chrono::milliseconds(2)) {
           std::this_thread::sleep_until(next_tick);
       }
-      else {
-          // std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep).count() << " us" << std::endl;
-          next_tick = end_sleep;
-      }
-    }
+	      else {
+	          // std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep).count() << " us" << std::endl;
+	          next_tick = end_sleep;
+	      }
 
-    auto start_render =  std::chrono::steady_clock::now();
+	      if (stop_time_sec > 0.0 && mj_data_ptr->time >= stop_time_sec) {
+	        stop_requested = true;
+	      }
+	    }
+
+	    if (stop_requested) {
+	      break;
+	    }
+
+	    auto start_render =  std::chrono::steady_clock::now();
 
     mujoco_ui.render();
 
@@ -1870,12 +2822,18 @@ int main(const int argc, const char* argv[]) {
     if(render_duration > std::chrono::milliseconds(5))
       std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;
 
-  }
+	  }
 
-  // Free memory (Mujoco):
-  mj_deleteData(mj_data_ptr);
+	  if (auto_save_logs) {
+	    std::cout << "Auto-saving logs..." << std::endl;
+	    walking_manager.saveLogs();
+	    saveEstimateForceLogs();
+	    std::cout << "Logs saved." << std::endl;
+	  }
+
+	  // Free memory (Mujoco):
+	  mj_deleteData(mj_data_ptr);
   mj_deleteModel(mj_model_ptr);
 
   return 0;
 }
-

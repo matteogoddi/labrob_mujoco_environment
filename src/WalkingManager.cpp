@@ -4,10 +4,13 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
+#include <stdexcept>
 
 // Eigen
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 
 // Pinocchio
 #include <pinocchio/algorithm/center-of-mass.hpp>
@@ -29,6 +32,40 @@
 #include <hrp4_locomotion/globals.h>
 
 namespace labrob {
+
+namespace {
+
+std::filesystem::path resolveProjectPath(const std::filesystem::path& relative_path) {
+    const std::filesystem::path source_dir = std::filesystem::path(__FILE__).parent_path();
+    const std::filesystem::path project_dir = source_dir.parent_path();
+    const std::vector<std::filesystem::path> candidates{
+        std::filesystem::current_path() / relative_path,
+        std::filesystem::current_path() / ".." / relative_path,
+        project_dir / relative_path,
+    };
+
+    for (const auto& candidate : candidates) {
+        if (std::filesystem::exists(candidate)) {
+            return std::filesystem::weakly_canonical(candidate);
+        }
+    }
+
+    throw std::runtime_error("Cannot find project file: " + relative_path.string());
+}
+
+Eigen::Matrix3d rpyToRotation(const Eigen::Vector3d& rpy) {
+    const Eigen::AngleAxisd Rz(rpy.z(), Eigen::Vector3d::UnitZ());
+    const Eigen::AngleAxisd Ry(rpy.y(), Eigen::Vector3d::UnitY());
+    const Eigen::AngleAxisd Rx(rpy.x(), Eigen::Vector3d::UnitX());
+    return (Rz * Ry * Rx).toRotationMatrix();
+}
+
+Eigen::Vector3d rotationToRpy(const Eigen::Matrix3d& R) {
+    const Eigen::Vector3d ypr = R.eulerAngles(2, 1, 0);
+    return Eigen::Vector3d(ypr.z(), ypr.y(), ypr.x());
+}
+
+}  // namespace
 
 WalkingManager::WalkingManager() :
     kf_LipState(Eigen::Vector3d::Zero(),
@@ -101,6 +138,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     estimated_force_rsole_log_.reserve(max_steps);
 
     angular_momentum_log_.reserve(max_steps);
+    torso_tracking_time_log_.reserve(max_steps);
+    torso_compliance_rpy_offset_log_.reserve(max_steps);
+    torso_nominal_desired_rpy_log_.reserve(max_steps);
+    torso_desired_rpy_log_.reserve(max_steps);
+    torso_current_rpy_log_.reserve(max_steps);
+    torso_tracking_error_log_.reserve(max_steps);
     mpc_predictions_log_.reserve(max_steps);
 
     measured_imu_orientation_log_.reserve(max_steps);
@@ -137,7 +180,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
-    std::string robot_description_filename = "../g1_description/unitreeg1_2.urdf";
+    std::string robot_description_filename =
+        resolveProjectPath("g1_description/g1_29dof_with_hand.urdf").string();
 
     // Build Pinocchio model and data from URDF:
     pinocchio::Model full_robot_model;
@@ -149,6 +193,20 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         full_robot_model
     );
     const std::vector<std::string> joint_to_lock_names{
+        "left_hand_thumb_0_joint",
+        "left_hand_thumb_1_joint",
+        "left_hand_thumb_2_joint",
+        "left_hand_middle_0_joint",
+        "left_hand_middle_1_joint",
+        "left_hand_index_0_joint",
+        "left_hand_index_1_joint",
+        "right_hand_thumb_0_joint",
+        "right_hand_thumb_1_joint",
+        "right_hand_thumb_2_joint",
+        "right_hand_middle_0_joint",
+        "right_hand_middle_1_joint",
+        "right_hand_index_0_joint",
+        "right_hand_index_1_joint",
     };
     std::vector<pinocchio::JointIndex> joint_ids_to_lock;
     for (const auto& joint_name : joint_to_lock_names) {
@@ -162,6 +220,30 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         joint_ids_to_lock,
         pinocchio::neutral(full_robot_model)
     );
+
+    auto add_frame_if_missing = [&](const std::string& frame_name,
+                                    const std::string& parent_frame_name,
+                                    const Eigen::Vector3d& offset) {
+        if (robot_model.existFrame(frame_name) || !robot_model.existFrame(parent_frame_name)) {
+            return;
+        }
+
+        const pinocchio::FrameIndex parent_frame_id = robot_model.getFrameId(parent_frame_name);
+        const pinocchio::Frame& parent_frame = robot_model.frames[parent_frame_id];
+        const pinocchio::SE3 placement =
+            parent_frame.placement * pinocchio::SE3(Eigen::Matrix3d::Identity(), offset);
+        robot_model.addFrame(pinocchio::Frame(
+            frame_name,
+            parent_frame.parentJoint,
+            parent_frame_id,
+            placement,
+            pinocchio::OP_FRAME
+        ));
+    };
+
+    add_frame_if_missing("left_foot_link", "left_ankle_roll_link", Eigen::Vector3d(0.035, 0.0, -0.03));
+    add_frame_if_missing("right_foot_link", "right_ankle_roll_link", Eigen::Vector3d(0.035, 0.0, -0.03));
+
     sim_robot_data = pinocchio::Data(robot_model);
 
     njnt = robot_model.nv - 6;
@@ -413,6 +495,23 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     residual_estimator_ptr_ = std::make_unique<ResidualEstimator>(robot_model, 1.0, armatures);
 
     return true;
+}
+
+void WalkingManager::setTorsoComplianceReference(
+    const Eigen::Vector3d& rpy_offset,
+    const Eigen::Vector3d& angular_velocity,
+    const Eigen::Vector3d& angular_acceleration) {
+    use_torso_compliance_reference_ = true;
+    torso_compliance_rpy_offset_ = rpy_offset;
+    torso_compliance_angular_velocity_ = angular_velocity;
+    torso_compliance_angular_acceleration_ = angular_acceleration;
+}
+
+void WalkingManager::clearTorsoComplianceReference() {
+    use_torso_compliance_reference_ = false;
+    torso_compliance_rpy_offset_.setZero();
+    torso_compliance_angular_velocity_.setZero();
+    torso_compliance_angular_acceleration_.setZero();
 }
 
 RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
@@ -1344,6 +1443,14 @@ WalkingManager::update(
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    const Eigen::Matrix3d nominal_desired_torso_rotation = desired_gait_configuration.torso.pos;
+
+    if (use_torso_compliance_reference_) {
+        desired_gait_configuration.torso.pos =
+            nominal_desired_torso_rotation * rpyToRotation(torso_compliance_rpy_offset_);
+        desired_gait_configuration.torso.vel += torso_compliance_angular_velocity_;
+        desired_gait_configuration.torso.acc += torso_compliance_angular_acceleration_;
+    }
 
     if (waist_yaw_joint_idx_ >= 0 && waist_yaw_joint_idx_ < desired_gait_configuration.qjnt.size()) {
         const double desired_torso_yaw = std::atan2(desired_gait_configuration.torso.pos(1, 0), desired_gait_configuration.torso.pos(0, 0));
@@ -1353,6 +1460,14 @@ WalkingManager::update(
         desired_gait_configuration.qjntdot(waist_yaw_joint_idx_) = 0.0;
         desired_gait_configuration.qjntddot(waist_yaw_joint_idx_) = 0.0;
     }
+
+    torso_tracking_time_log_.push_back(0.001 * static_cast<double>(t_msec_));
+    torso_compliance_rpy_offset_log_.push_back(torso_compliance_rpy_offset_);
+    torso_nominal_desired_rpy_log_.push_back(rotationToRpy(nominal_desired_torso_rotation));
+    torso_desired_rpy_log_.push_back(rotationToRpy(desired_gait_configuration.torso.pos));
+    torso_current_rpy_log_.push_back(rotationToRpy(current_gait_configuration.torso.pos));
+    torso_tracking_error_log_.push_back(
+        err_rotation(desired_gait_configuration.torso.pos, current_gait_configuration.torso.pos));
 
     /////////////////////////////////////
     // 
@@ -1722,6 +1837,29 @@ void WalkingManager::saveLogs() {
     std::ofstream angular_momentum_file("/tmp/angular_momentum.txt");
     for (auto& v : angular_momentum_log_) {
         angular_momentum_file << v.transpose() << "\n";
+    }
+
+    std::ofstream torso_tracking_file("/tmp/wbc_torso_orientation_tracking.txt");
+    torso_tracking_file
+        << "time "
+        << "offset_roll offset_pitch offset_yaw "
+        << "nom_roll nom_pitch nom_yaw "
+        << "des_roll des_pitch des_yaw "
+        << "cur_roll cur_pitch cur_yaw "
+        << "err_roll err_pitch err_yaw\n";
+    std::size_t torso_tracking_samples = torso_tracking_time_log_.size();
+    torso_tracking_samples = std::min(torso_tracking_samples, torso_compliance_rpy_offset_log_.size());
+    torso_tracking_samples = std::min(torso_tracking_samples, torso_nominal_desired_rpy_log_.size());
+    torso_tracking_samples = std::min(torso_tracking_samples, torso_desired_rpy_log_.size());
+    torso_tracking_samples = std::min(torso_tracking_samples, torso_current_rpy_log_.size());
+    torso_tracking_samples = std::min(torso_tracking_samples, torso_tracking_error_log_.size());
+    for (std::size_t i = 0; i < torso_tracking_samples; ++i) {
+        torso_tracking_file << torso_tracking_time_log_[i] << " "
+                            << torso_compliance_rpy_offset_log_[i].transpose() << " "
+                            << torso_nominal_desired_rpy_log_[i].transpose() << " "
+                            << torso_desired_rpy_log_[i].transpose() << " "
+                            << torso_current_rpy_log_[i].transpose() << " "
+                            << torso_tracking_error_log_[i].transpose() << "\n";
     }
     
     std::ofstream measured_joint_position_file("/tmp/measured_joint_position.txt");

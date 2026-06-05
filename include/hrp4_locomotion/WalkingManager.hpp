@@ -48,6 +48,11 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
   const pinocchio::Model& getRobotModel() const;
+  void setTorsoComplianceReference(
+      const Eigen::Vector3d& rpy_offset,
+      const Eigen::Vector3d& angular_velocity,
+      const Eigen::Vector3d& angular_acceleration);
+  void clearTorsoComplianceReference();
 
  protected:
   pinocchio::Model robot_model;
@@ -135,6 +140,10 @@ private:
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
+  bool use_torso_compliance_reference_ = false;
+  Eigen::Vector3d torso_compliance_rpy_offset_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d torso_compliance_angular_velocity_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d torso_compliance_angular_acceleration_ = Eigen::Vector3d::Zero();
 
   Eigen::MatrixXd Kalman_Gain; 
 
@@ -175,6 +184,12 @@ private:
   std::vector<Eigen::Vector3d> estimated_force_rsole_log_;
   
   std::vector<Eigen::Vector3d> angular_momentum_log_;
+  std::vector<double> torso_tracking_time_log_;
+  std::vector<Eigen::Vector3d> torso_compliance_rpy_offset_log_;
+  std::vector<Eigen::Vector3d> torso_nominal_desired_rpy_log_;
+  std::vector<Eigen::Vector3d> torso_desired_rpy_log_;
+  std::vector<Eigen::Vector3d> torso_current_rpy_log_;
+  std::vector<Eigen::Vector3d> torso_tracking_error_log_;
   // std::vector<Eigen::VectorXd> fl_log_;
   // std::vector<Eigen::VectorXd> fr_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;
