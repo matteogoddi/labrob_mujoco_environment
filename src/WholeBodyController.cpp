@@ -21,8 +21,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.Kp_motion = 30.0;
   params.Kd_motion = 10.0;
-  params.Kp_torso_motion = 8.0;
-  params.Kd_torso_motion = 3.0;
+  params.Kp_torso_motion = Eigen::Vector3d::Constant(50.0);
+  params.Kd_torso_motion = Eigen::Vector3d::Constant(10.0);
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
 
@@ -188,7 +188,10 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
   Eigen::VectorXd a_lsole_total = desired.lsole.acc + params_.Kp_motion * err_lsole + params_.Kd_motion * err_lsole_vel;
   Eigen::VectorXd a_rsole_total = desired.rsole.acc + params_.Kp_motion * err_rsole + params_.Kd_motion * err_rsole_vel;
-  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + params_.Kp_torso_motion * err_torso_orientation + params_.Kd_torso_motion * err_torso_orientation_vel;
+  Eigen::VectorXd a_torso_orientation_total =
+      desired.torso.acc +
+      params_.Kp_torso_motion.cwiseProduct(err_torso_orientation) +
+      params_.Kd_torso_motion.cwiseProduct(err_torso_orientation_vel);
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);

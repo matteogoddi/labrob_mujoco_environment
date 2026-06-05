@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 
 // Eigen
@@ -429,9 +430,14 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     );
 
     auto params = WholeBodyControllerParams::getDefaultParams();
-    params.Kp_torso_motion = torso_spring_kp;
-    params.Kd_torso_motion = torso_spring_kd;
+    params.Kp_torso_motion << torso_spring_roll_kp, torso_spring_pitch_kp, torso_spring_yaw_kp;
+    params.Kd_torso_motion << torso_spring_roll_kd, torso_spring_pitch_kd, torso_spring_yaw_kd;
     params.weight_torso = torso_spring_weight;
+    std::cout << "WBC torso task params: kp(r,p,y)=("
+              << params.Kp_torso_motion.transpose()
+              << "), kd(r,p,y)=("
+              << params.Kd_torso_motion.transpose()
+              << "), weight=" << params.weight_torso << std::endl;
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
         robot_model,

@@ -1,0 +1,21 @@
+Fri Jun  5 16:13:36 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:13:43 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:23:12 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:23:20 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:31:49 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:43:26 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+
+Fri Jun  5 16:50:17 2026
+ERROR: an OpenGL platform library has not been loaded into this process, this most likely means that a valid OpenGL context has not been created before mjr_makeContext was called
+

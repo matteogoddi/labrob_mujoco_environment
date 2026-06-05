@@ -17,6 +17,12 @@ extern double startTimeIMUcalibrating;
 
 extern double torso_spring_kp;
 extern double torso_spring_kd;
+extern double torso_spring_roll_kp;
+extern double torso_spring_roll_kd;
+extern double torso_spring_pitch_kp;
+extern double torso_spring_pitch_kd;
+extern double torso_spring_yaw_kp;
+extern double torso_spring_yaw_kd;
 extern double torso_spring_weight;
 extern double waist_yaw_compliance_kp;
 extern double waist_yaw_compliance_kd;

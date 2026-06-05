@@ -63,8 +63,14 @@ double startTimeCoMCL = 15000.0;
 double startTimeEKF = 0.0;
 double startTimeIMUcalibrating = 0.0;
 
-double torso_spring_kp = 8.0;
-double torso_spring_kd = 3.0;
+double torso_spring_kp = 50.0;
+double torso_spring_kd = 10.0;
+double torso_spring_roll_kp = 50.0;
+double torso_spring_roll_kd = 10.0;
+double torso_spring_pitch_kp = 50.0;
+double torso_spring_pitch_kd = 10.0;
+double torso_spring_yaw_kp = 50.0;
+double torso_spring_yaw_kd = 10.0;
 double torso_spring_weight = 5e-2;
 double waist_yaw_compliance_kp = 1.2;
 double waist_yaw_compliance_kd = 0.0;
@@ -1338,8 +1344,11 @@ int main(const int argc, const char* argv[]) {
   bool enable_torso_compliance_zero_input_test = false;
   bool enable_torso_compliance_wbc_test = false;
   bool waist_yaw_compliance_kp_user_set = false;
+  bool waist_yaw_compliance_kd_user_set = false;
   bool waist_roll_compliance_kp_user_set = false;
+  bool waist_roll_compliance_kd_user_set = false;
   bool waist_pitch_compliance_kp_user_set = false;
+  bool waist_pitch_compliance_kd_user_set = false;
   bool disable_feedback_loops = false;
   bool feedback_loop_option_user_set = false;
   bool enable_joint_pd_hold_test = false;
@@ -1401,8 +1410,26 @@ int main(const int argc, const char* argv[]) {
       external_force_ramp_sec = std::atof(argv[++i]);
     } else if (a == "--torso-spring-kp" && i + 1 < argc) {
       torso_spring_kp = std::atof(argv[++i]);
+      torso_spring_roll_kp = torso_spring_kp;
+      torso_spring_pitch_kp = torso_spring_kp;
+      torso_spring_yaw_kp = torso_spring_kp;
     } else if (a == "--torso-spring-kd" && i + 1 < argc) {
       torso_spring_kd = std::atof(argv[++i]);
+      torso_spring_roll_kd = torso_spring_kd;
+      torso_spring_pitch_kd = torso_spring_kd;
+      torso_spring_yaw_kd = torso_spring_kd;
+    } else if (a == "--torso-spring-roll-kp" && i + 1 < argc) {
+      torso_spring_roll_kp = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-roll-kd" && i + 1 < argc) {
+      torso_spring_roll_kd = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-pitch-kp" && i + 1 < argc) {
+      torso_spring_pitch_kp = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-pitch-kd" && i + 1 < argc) {
+      torso_spring_pitch_kd = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-yaw-kp" && i + 1 < argc) {
+      torso_spring_yaw_kp = std::atof(argv[++i]);
+    } else if (a == "--torso-spring-yaw-kd" && i + 1 < argc) {
+      torso_spring_yaw_kd = std::atof(argv[++i]);
     } else if (a == "--torso-spring-weight" && i + 1 < argc) {
       torso_spring_weight = std::atof(argv[++i]);
     } else if ((a == "--waist-yaw-compliance-kp" || a == "--waist-yaw-compliance-gain" || a == "--waist-yaw-spring-gain") && i + 1 < argc) {
@@ -1410,16 +1437,19 @@ int main(const int argc, const char* argv[]) {
       waist_yaw_compliance_kp_user_set = true;
     } else if (a == "--waist-yaw-compliance-kd" && i + 1 < argc) {
       waist_yaw_compliance_kd = std::atof(argv[++i]);
+      waist_yaw_compliance_kd_user_set = true;
     } else if ((a == "--waist-roll-compliance-kp" || a == "--waist-roll-compliance-gain" || a == "--waist-roll-spring-gain") && i + 1 < argc) {
       waist_roll_compliance_kp = std::atof(argv[++i]);
       waist_roll_compliance_kp_user_set = true;
     } else if (a == "--waist-roll-compliance-kd" && i + 1 < argc) {
       waist_roll_compliance_kd = std::atof(argv[++i]);
+      waist_roll_compliance_kd_user_set = true;
     } else if ((a == "--waist-pitch-compliance-kp" || a == "--waist-pitch-compliance-gain" || a == "--waist-pitch-spring-gain") && i + 1 < argc) {
       waist_pitch_compliance_kp = std::atof(argv[++i]);
       waist_pitch_compliance_kp_user_set = true;
     } else if (a == "--waist-pitch-compliance-kd" && i + 1 < argc) {
       waist_pitch_compliance_kd = std::atof(argv[++i]);
+      waist_pitch_compliance_kd_user_set = true;
     } else if (a == "--waist-yaw-test-amp" && i + 1 < argc) {
       enable_waist_yaw_sine_test = true;
       waist_yaw_test_amp_nm = std::atof(argv[++i]);
@@ -1487,15 +1517,21 @@ int main(const int argc, const char* argv[]) {
             << "  --external-force-duration <sec>\n"
             << "  --external-force-ramp <sec>\n"
             << "Torso/waist tracking options:\n"
-            << "  --torso-spring-kp <value>\n"
-            << "  --torso-spring-kd <value>\n"
+            << "  --torso-spring-kp <value> (sets roll/pitch/yaw kp)\n"
+            << "  --torso-spring-kd <value> (sets roll/pitch/yaw kd)\n"
+            << "  --torso-spring-roll-kp <value>\n"
+            << "  --torso-spring-roll-kd <value>\n"
+            << "  --torso-spring-pitch-kp <value>\n"
+            << "  --torso-spring-pitch-kd <value>\n"
+            << "  --torso-spring-yaw-kp <value>\n"
+            << "  --torso-spring-yaw-kd <value>\n"
             << "  --torso-spring-weight <value>\n"
-            << "  --waist-yaw-compliance-kp <value>\n"
-            << "  --waist-yaw-compliance-kd <value>\n"
-            << "  --waist-roll-compliance-kp <value>\n"
-            << "  --waist-roll-compliance-kd <value>\n"
-            << "  --waist-pitch-compliance-kp <value>\n"
-            << "  --waist-pitch-compliance-kd <value>\n"
+            << "  --waist-yaw-compliance-kp <value> (deprecated alias for --torso-spring-yaw-kp in torso WBC test)\n"
+            << "  --waist-yaw-compliance-kd <value> (deprecated alias for --torso-spring-yaw-kd in torso WBC test)\n"
+            << "  --waist-roll-compliance-kp <value> (deprecated alias for --torso-spring-roll-kp in torso WBC test)\n"
+            << "  --waist-roll-compliance-kd <value> (deprecated alias for --torso-spring-roll-kd in torso WBC test)\n"
+            << "  --waist-pitch-compliance-kp <value> (deprecated alias for --torso-spring-pitch-kp in torso WBC test)\n"
+            << "  --waist-pitch-compliance-kd <value> (deprecated alias for --torso-spring-pitch-kd in torso WBC test)\n"
             << "    Legacy kp aliases: --waist-*-compliance-gain, --waist-*-spring-gain\n"
             << "  --waist-yaw-test-amp <N*m>\n"
             << "  --waist-yaw-test-freq <Hz>\n"
@@ -1543,20 +1579,48 @@ int main(const int argc, const char* argv[]) {
     disable_feedback_loops = true;
   }
 
-  if (enable_torso_compliance_wbc_test && !waist_yaw_compliance_kp_user_set) {
+  if (enable_torso_compliance_wbc_test) {
+    if (waist_roll_compliance_kp_user_set) {
+      torso_spring_roll_kp = waist_roll_compliance_kp;
+      std::cout << "Compatibility: --waist-roll-compliance-kp is treated as --torso-spring-roll-kp in torso compliance WBC test." << std::endl;
+    }
+    if (waist_roll_compliance_kd_user_set) {
+      torso_spring_roll_kd = waist_roll_compliance_kd;
+      std::cout << "Compatibility: --waist-roll-compliance-kd is treated as --torso-spring-roll-kd in torso compliance WBC test." << std::endl;
+    }
+    if (waist_pitch_compliance_kp_user_set) {
+      torso_spring_pitch_kp = waist_pitch_compliance_kp;
+      std::cout << "Compatibility: --waist-pitch-compliance-kp is treated as --torso-spring-pitch-kp in torso compliance WBC test." << std::endl;
+    }
+    if (waist_pitch_compliance_kd_user_set) {
+      torso_spring_pitch_kd = waist_pitch_compliance_kd;
+      std::cout << "Compatibility: --waist-pitch-compliance-kd is treated as --torso-spring-pitch-kd in torso compliance WBC test." << std::endl;
+    }
+    if (waist_yaw_compliance_kp_user_set) {
+      torso_spring_yaw_kp = waist_yaw_compliance_kp;
+      std::cout << "Compatibility: --waist-yaw-compliance-kp is treated as --torso-spring-yaw-kp in torso compliance WBC test." << std::endl;
+    }
+    if (waist_yaw_compliance_kd_user_set) {
+      torso_spring_yaw_kd = waist_yaw_compliance_kd;
+      std::cout << "Compatibility: --waist-yaw-compliance-kd is treated as --torso-spring-yaw-kd in torso compliance WBC test." << std::endl;
+    }
+
     waist_yaw_compliance_kp = 0.0;
-  }
-  if (enable_torso_compliance_wbc_test && !waist_roll_compliance_kp_user_set) {
+    waist_yaw_compliance_kd = 0.0;
     waist_roll_compliance_kp = 0.0;
-  }
-  if (enable_torso_compliance_wbc_test && !waist_pitch_compliance_kp_user_set) {
+    waist_roll_compliance_kd = 0.0;
     waist_pitch_compliance_kp = 0.0;
+    waist_pitch_compliance_kd = 0.0;
   }
   if (enable_torso_compliance_wbc_test && !feedback_loop_option_user_set) {
     disable_feedback_loops = true;
   }
 
-  if (torso_spring_kp < 0.0 || torso_spring_kd < 0.0 || torso_spring_weight < 0.0 ||
+  if (torso_spring_kp < 0.0 || torso_spring_kd < 0.0 ||
+      torso_spring_roll_kp < 0.0 || torso_spring_roll_kd < 0.0 ||
+      torso_spring_pitch_kp < 0.0 || torso_spring_pitch_kd < 0.0 ||
+      torso_spring_yaw_kp < 0.0 || torso_spring_yaw_kd < 0.0 ||
+      torso_spring_weight < 0.0 ||
       waist_yaw_compliance_kp < 0.0 || waist_yaw_compliance_kd < 0.0 ||
       waist_roll_compliance_kp < 0.0 || waist_roll_compliance_kd < 0.0 ||
       waist_pitch_compliance_kp < 0.0 || waist_pitch_compliance_kd < 0.0) {
@@ -1600,8 +1664,13 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
-  std::cout << "Torso spring (WBC): kp=" << torso_spring_kp
-            << ", kd=" << torso_spring_kd
+  std::cout << "Torso spring (WBC): kp(r,p,y)=("
+            << torso_spring_roll_kp << ", "
+            << torso_spring_pitch_kp << ", "
+            << torso_spring_yaw_kp << "), kd(r,p,y)=("
+            << torso_spring_roll_kd << ", "
+            << torso_spring_pitch_kd << ", "
+            << torso_spring_yaw_kd << ")"
             << ", weight=" << torso_spring_weight << std::endl;
   std::cout << "Waist compliance gains: yaw(kp,kd)=("
             << waist_yaw_compliance_kp << ", " << waist_yaw_compliance_kd
