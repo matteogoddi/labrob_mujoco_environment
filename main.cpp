@@ -1945,7 +1945,7 @@ int main(const int argc, const char* argv[]) {
 
   // left hand: only z channel really matters, but keep all diagonals positive
   compliance_params.Ma_left.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_left.diagonal() << 100.0, 100.0, 100.0, 5.0, 5.0, 5.0;
+  compliance_params.Ka_left.diagonal() << 10.0, 10.0, 10.0, 0.5, 0.5, 0.5;
 
   // critical damping: D = 2 * sqrt(M*K)
   // for M=5, K=100, D≈44.7
@@ -1953,8 +1953,17 @@ int main(const int argc, const char* argv[]) {
 
   // right hand disabled by S_right=0, but still give positive matrices
   compliance_params.Ma_right.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_right.diagonal() << 100.0, 100.0, 100.0, 5.0, 5.0, 5.0;
+  compliance_params.Ka_right.diagonal() << 10.0, 10.0, 10.0, 0.5, 0.5, 0.5;
   compliance_params.Da_right.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
+
+  compliance_params.Kb.diagonal() << 100.0, 100.0, 100.0, 0.001, 0.001, 0.001;
+  std::cout << "Torso compliance QP params: Kb_diag=("
+            << compliance_params.Kb.diagonal().transpose()
+            << "), Ka_left_diag=("
+            << compliance_params.Ka_left.diagonal().transpose()
+            << "), Ka_right_diag=("
+            << compliance_params.Ka_right.diagonal().transpose()
+            << ")" << std::endl;
 
   // safety limit: do not comment this out
   compliance_params.delta_xc_left_limit  << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
