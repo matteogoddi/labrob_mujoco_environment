@@ -358,10 +358,15 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     torso_idx_ = robot_model.getFrameId("torso_link");
     imu_idx_ = robot_model.getFrameId("imu_in_torso");
     waist_yaw_joint_idx_ = -1;
+    waist_roll_joint_idx_ = -1;
+    waist_pitch_joint_idx_ = -1;
     for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
         if (robot_model.names[joint_id] == "waist_yaw_joint") {
             waist_yaw_joint_idx_ = static_cast<int>(joint_id) - 2;
-            break;
+        } else if (robot_model.names[joint_id] == "waist_roll_joint") {
+            waist_roll_joint_idx_ = static_cast<int>(joint_id) - 2;
+        } else if (robot_model.names[joint_id] == "waist_pitch_joint") {
+            waist_pitch_joint_idx_ = static_cast<int>(joint_id) - 2;
         }
     }
     const auto& T_lsole_init = sim_robot_data.oMf[lsole_idx_];
@@ -1452,13 +1457,36 @@ WalkingManager::update(
         desired_gait_configuration.torso.acc += torso_compliance_angular_acceleration_;
     }
 
+    const Eigen::Vector3d desired_torso_rpy = rotationToRpy(desired_gait_configuration.torso.pos);
+    const Eigen::Vector3d current_torso_rpy = rotationToRpy(current_gait_configuration.torso.pos);
+    const Eigen::Vector3d torso_rpy_error(
+        angle_difference(desired_torso_rpy.x(), current_torso_rpy.x()),
+        angle_difference(desired_torso_rpy.y(), current_torso_rpy.y()),
+        angle_difference(desired_torso_rpy.z(), current_torso_rpy.z()));
+    const Eigen::Vector3d torso_angular_velocity_error =
+        desired_gait_configuration.torso.vel - current_gait_configuration.torso.vel;
+
     if (waist_yaw_joint_idx_ >= 0 && waist_yaw_joint_idx_ < desired_gait_configuration.qjnt.size()) {
-        const double desired_torso_yaw = std::atan2(desired_gait_configuration.torso.pos(1, 0), desired_gait_configuration.torso.pos(0, 0));
-        const double current_torso_yaw = std::atan2(current_gait_configuration.torso.pos(1, 0), current_gait_configuration.torso.pos(0, 0));
-        const double torso_yaw_error = angle_difference(desired_torso_yaw, current_torso_yaw);
-        desired_gait_configuration.qjnt(waist_yaw_joint_idx_) = q_jnt_des_(waist_yaw_joint_idx_) + waist_yaw_spring_gain * torso_yaw_error;
-        desired_gait_configuration.qjntdot(waist_yaw_joint_idx_) = 0.0;
+        const double torso_yaw_error = torso_rpy_error.z();
+        desired_gait_configuration.qjnt(waist_yaw_joint_idx_) =
+            q_jnt_des_(waist_yaw_joint_idx_) + waist_yaw_compliance_kp * torso_yaw_error;
+        desired_gait_configuration.qjntdot(waist_yaw_joint_idx_) =
+            waist_yaw_compliance_kd * torso_angular_velocity_error.z();
         desired_gait_configuration.qjntddot(waist_yaw_joint_idx_) = 0.0;
+    }
+    if (waist_roll_joint_idx_ >= 0 && waist_roll_joint_idx_ < desired_gait_configuration.qjnt.size()) {
+        desired_gait_configuration.qjnt(waist_roll_joint_idx_) =
+            q_jnt_des_(waist_roll_joint_idx_) + waist_roll_compliance_kp * torso_rpy_error.x();
+        desired_gait_configuration.qjntdot(waist_roll_joint_idx_) =
+            waist_roll_compliance_kd * torso_angular_velocity_error.x();
+        desired_gait_configuration.qjntddot(waist_roll_joint_idx_) = 0.0;
+    }
+    if (waist_pitch_joint_idx_ >= 0 && waist_pitch_joint_idx_ < desired_gait_configuration.qjnt.size()) {
+        desired_gait_configuration.qjnt(waist_pitch_joint_idx_) =
+            q_jnt_des_(waist_pitch_joint_idx_) + waist_pitch_compliance_kp * torso_rpy_error.y();
+        desired_gait_configuration.qjntdot(waist_pitch_joint_idx_) =
+            waist_pitch_compliance_kd * torso_angular_velocity_error.y();
+        desired_gait_configuration.qjntddot(waist_pitch_joint_idx_) = 0.0;
     }
 
     torso_tracking_time_log_.push_back(0.001 * static_cast<double>(t_msec_));

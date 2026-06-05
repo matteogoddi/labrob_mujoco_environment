@@ -18,7 +18,12 @@ extern double startTimeIMUcalibrating;
 extern double torso_spring_kp;
 extern double torso_spring_kd;
 extern double torso_spring_weight;
-extern double waist_yaw_spring_gain;
+extern double waist_yaw_compliance_kp;
+extern double waist_yaw_compliance_kd;
+extern double waist_roll_compliance_kp;
+extern double waist_roll_compliance_kd;
+extern double waist_pitch_compliance_kp;
+extern double waist_pitch_compliance_kd;
 
 extern Eigen::Vector3d imu_accelerometer;
 #endif // GLOBALS_H
