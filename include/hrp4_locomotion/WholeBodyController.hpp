@@ -29,6 +29,10 @@ struct WholeBodyControllerParams {
   double Kd_motion;
   double Kp_regulation;
   double Kd_regulation;
+  double Kp_orientation;
+  double Kd_orientation;
+  double Kp_foot;
+  double Kd_foot;
 
   Eigen::MatrixXd Kp_joint_matrix;
   Eigen::MatrixXd Kd_joint_matrix;

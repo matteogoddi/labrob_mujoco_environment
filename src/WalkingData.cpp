@@ -113,16 +113,16 @@ WalkingData::addSteps(
     double double_support_duration = 700;
     double single_support_duration = 700;
 
-    footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
-            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
-        2000,
-        labrob::WalkingState::Standing
-    ));
+    // footstep_plan.push_back(labrob::FootstepPlanElement(
+    //     labrob::DoubleSupportConfiguration(
+    //         labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+    //         labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+    //         labrob::Foot::RIGHT
+    //     ),
+    //     0.0,
+    //     2000,
+    //     labrob::WalkingState::Standing
+    // ));
 
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(

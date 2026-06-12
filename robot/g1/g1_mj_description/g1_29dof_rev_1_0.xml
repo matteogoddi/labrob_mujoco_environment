@@ -1,7 +1,7 @@
 <mujoco model="g1_29dof_rev_1_0">
   <compiler angle="radian" meshdir="meshes"/>
 
-  <option timestep="0.002" iterations="50" tolerance="1e-10" solver="Newton" jacobian="dense" cone="pyramidal" />
+  <option timestep="0.002" iterations="150" tolerance="1e-5" integrator="RK4" jacobian="dense" cone="pyramidal" />
    <!-- <option>-->
   <!--    <flag contact="disable" gravity="disable" />-->
   <!--  </option> -->
@@ -13,7 +13,7 @@
       <motor ctrllimited="false" forcelimited="false" />
     </default>
     <default class="collision">
-  <!--      <geom type="mesh" condim="6" friction="0.6 0.005 0.0001" solref="0.015 1" solimp="0.99 0.99 0.001" priority="1"/>-->
+       <!-- <geom type="mesh" condim="6" friction="0.6 0.005 0.0001" solref="0.015 1" solimp="0.99 0.99 0.001" priority="1"/> -->
       <geom condim="3" group="0" type="mesh" />
     </default>
     <default class="visual">

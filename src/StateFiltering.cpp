@@ -331,9 +331,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   // Avvisa se l'innovazione è insolitamente grande (probabile divergenza)
   const double e_norm = e.norm();
-  if (e_norm > 0.5)
-      std::cerr << "[BaseEKF] WARN: large innovation norm=" << e_norm
-                << " e=" << e.transpose() << std::endl;
+//   if (e_norm > 0.5)
+//       std::cerr << "[BaseEKF] WARN: large innovation norm=" << e_norm
+//                 << " e=" << e.transpose() << std::endl;
 
   // =====================
   // 4) EKF UPDATE
@@ -978,10 +978,10 @@ void RightInvariantEKF::filter(
 
     // Avvisa se l'innovazione è insolitamente grande (potenziale divergenza)
     const double z_norm = z_all.norm();
-    if (z_norm > 0.3)
-        std::cerr << "[RI-EKF] WARN: large innovation norm=" << z_norm
-                  << "  pos=" << getPosition().transpose()
-                  << "  |bg|=" << bg_.norm() << std::endl;
+    // if (z_norm > 0.3)
+    //     std::cerr << "[RI-EKF] WARN: large innovation norm=" << z_norm
+    //               << "  pos=" << getPosition().transpose()
+    //               << "  |bg|=" << bg_.norm() << std::endl;
 
     const Eigen::VectorXd xi_corr = K * z_all;   // dim NR = 21
 
@@ -1537,10 +1537,10 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
 
     // Avvisa se l'innovazione è insolitamente grande (potenziale divergenza)
     const double z_norm = z_all.norm();
-    if (z_norm > 0.3)
-        std::cerr << "[DILIGENT-KIO] WARN: large innovation norm=" << z_norm
-                  << "  pos=" << p_.transpose()
-                  << "  |bg|=" << bg_.norm() << std::endl;
+    // if (z_norm > 0.3)
+    //     std::cerr << "[DILIGENT-KIO] WARN: large innovation norm=" << z_norm
+    //               << "  pos=" << p_.transpose()
+    //               << "  |bg|=" << bg_.norm() << std::endl;
 
     const Eigen::VectorXd m = K * z_all;   // dim 27
 

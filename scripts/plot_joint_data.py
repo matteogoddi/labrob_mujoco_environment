@@ -1854,7 +1854,7 @@ if __name__ == '__main__':
         )
         
         axs[i].set_ylabel(r'[$\mathrm{m}$]', fontsize=10)
-        axs[i].set_title(f'Base Angular Velocity {labels_xy[i]}', fontsize=11)
+        axs[i].set_title(f'Base Angular Velocity {labels_xyz[i]}', fontsize=11)
         axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
         axs[i].legend(fontsize=9)
 

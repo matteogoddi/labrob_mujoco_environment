@@ -60,6 +60,11 @@ class WalkingManager {
   // Switch to JIS-MPC mode (must be called before init()).
   void enableJISMPC(bool enable = true) { use_jismpc_ = enable; }
 
+  // Directory where per-solve MPC snapshots are written.
+  // Default: /tmp/mpc_data  (simulation).
+  // For real-robot experiments set this to the experiment folder before init().
+  void setMpcDataDir(const std::string& dir) { mpc_data_dir_ = dir; }
+
  protected:
   pinocchio::Model robot_model;
   pinocchio::Data sim_robot_data;
@@ -112,6 +117,9 @@ class WalkingManager {
 
   // JIS-MPC (alternative to IS-MPC)
   bool use_jismpc_ = false;
+
+  // Output directory for per-solve MPC snapshots.
+  std::string mpc_data_dir_ = "/tmp/mpc_data";
   int64_t jismpc_timestep_msec_ = 100; // 10 Hz MPC
   std::unique_ptr<labrob::JISMPC> jismpc_ptr_;
   std::shared_ptr<labrob::JISMPCWholeBodyController> jismpc_wbc_ptr_;
@@ -125,6 +133,8 @@ class WalkingManager {
   LIPState LipState;
   LIPState kf_LipState;
   LIPState des_LipState;
+
+  Eigen::Vector3d p_CoM_init;
 
   Eigen::Vector3d fixed_com_pos;
   Eigen::Vector3d fixed_com_vel;
@@ -245,6 +255,12 @@ private:
   std::vector<Eigen::VectorXd> mpc_pred_com_pos_log_;
   std::vector<Eigen::VectorXd> mpc_pred_com_vel_log_;
   std::vector<Eigen::VectorXd> mpc_pred_zmp_pos_log_;
+
+  // Per-solve ISMPC snapshots buffered in memory; flushed to disk in saveLogs().
+  // Each element corresponds to one MPC solve (every mpc_timestep_msec ms).
+  std::vector<int64_t>                        mpc_snapshot_t_log_;   // timestamps [ms]
+  std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_x_log_;   // N+1 state rows per solve
+  std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_u_log_;   // N   input rows per solve
 
   std::vector<Eigen::VectorXd> mpc_zmp_velocity_log_;
   std::vector<Eigen::VectorXd> con_zmp_velocity_log_;

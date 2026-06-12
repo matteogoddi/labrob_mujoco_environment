@@ -110,10 +110,10 @@ class DataBuffer {
 
 const int G1_NUM_MOTOR = 29;
 struct ImuState {
-  std::array<float, 4> quaternion = {};
-  std::array<float, 3> rpy = {};
-  std::array<float, 3> omega = {};
-  std::array<float, 3> accelerometer = {};
+  Eigen::Vector3d rpy = {};
+  Eigen::Vector3d omega = {};
+  Eigen::Vector3d accelerometer = {};
+  Eigen::Vector4d quaternion = {};
 };
 struct MotorCommand {
   std::array<float, G1_NUM_MOTOR> q_target = {};
@@ -134,22 +134,58 @@ struct SportModeState {
 
 
 // Stiffness for all G1 Joints
-std::array<float, G1_NUM_MOTOR> Kp{
-  700, 700, 700, 1000, 900, 600,      // legs sx
-  700, 700, 700, 1000, 900, 600,      // legs dx
-  400, 400, 400,                  // waist
-  400, 400, 400, 400,  200, 200, 200,  // arms sx
-  400, 400, 400, 400,  200, 200, 200   // arms dx
+// const std::array<float, G1_NUM_MOTOR> Kp_reg{
+//   700, 700, 700, 1000, 900, 600,      // legs sx
+//   700, 700, 700, 1000, 900, 600,      // legs dx
+//   400, 400, 400,                  // waist
+//   400, 400, 400, 400,  200, 200, 200,  // arms sx
+//   400, 400, 400, 400,  200, 200, 200   // arms dx
+// };
+
+// // Damping for all G1 Joints
+// const std::array<float, G1_NUM_MOTOR> Kd_reg{
+//   15, 15, 15, 15, 15, 15,     // legs sx
+//   15, 15, 15, 15, 15, 15,     // legs dx
+//   15, 15, 15,         // waist
+//   15, 15, 15, 15, 15, 15, 15,  // arms sx
+//   15, 15, 15, 15, 15, 15, 15   // arms dx
+// };
+
+const std::array<float, G1_NUM_MOTOR> Kp_cl{
+    400, 400, 400, 700, 400, 300,      // legs
+    400, 400, 400, 700, 400, 300,      // legs
+    400, 400, 150,                   // waist
+    200, 200, 120, 70,  40, 40, 40,  // arms
+    200, 200, 120, 70,  40, 40, 40   // arms
 };
 
 // Damping for all G1 Joints
-std::array<float, G1_NUM_MOTOR> Kd{
-  15, 15, 15, 15, 15, 15,     // legs sx
-  15, 15, 15, 15, 15, 15,     // legs dx
-  15, 15, 15,         // waist
-  15, 15, 15, 15, 15, 15, 15,  // arms sx
-  15, 15, 15, 15, 15, 15, 15   // arms dx
+const std::array<float, G1_NUM_MOTOR> Kd_cl{
+    2, 2, 2, 3, 2, 2,     // legs
+    2, 2, 2, 3, 2, 2,     // legs
+    2, 2, 2,              // waist
+    2, 2, 2, 2, 2, 2, 2,  // arms
+    2, 2, 2, 2, 2, 2, 2   // arms
 };
+
+const std::array<float, G1_NUM_MOTOR> Kp_reg{
+    400, 400, 400, 600, 400, 300,      // legs
+    400, 400, 400, 600, 400, 300,      // legs
+    250, 250, 150,                   // waist
+    120, 120, 120, 70,  40, 40, 40,  // arms
+    120, 120, 120, 70,  40, 40, 40   // arms
+};
+
+// Damping for all G1 Joints
+const std::array<float, G1_NUM_MOTOR> Kd_reg{
+    2, 2, 2, 3, 2, 2,     // legs
+    2, 2, 2, 3, 2, 2,     // legs
+    2, 2, 2,              // waist
+    2, 2, 2, 2, 2, 2, 2,  // arms
+    2, 2, 2, 2, 2, 2, 2   // arms
+};
+
+
 
 //assign at each value of kd twice the square root of the corresponding kp value
 // std::array<float, G1_NUM_MOTOR> Kd = {
@@ -277,22 +313,19 @@ void LowStateHandler(const void* msg){
     motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
 
-  imu_pelvis_data.quaternion[0] = low_state.imu_state().quaternion()[0];
-  imu_pelvis_data.quaternion[1] = low_state.imu_state().quaternion()[1];
-  imu_pelvis_data.quaternion[2] = low_state.imu_state().quaternion()[2];
-  imu_pelvis_data.quaternion[3] = low_state.imu_state().quaternion()[3];
-
-  imu_pelvis_data.rpy[0] = low_state.imu_state().rpy()[0];
-  imu_pelvis_data.rpy[1] = low_state.imu_state().rpy()[1];
-  imu_pelvis_data.rpy[2] = low_state.imu_state().rpy()[2];
-
-  imu_pelvis_data.omega[0] = low_state.imu_state().gyroscope()[0];
-  imu_pelvis_data.omega[1] = low_state.imu_state().gyroscope()[1];
-  imu_pelvis_data.omega[2] = low_state.imu_state().gyroscope()[2];
-
-  imu_pelvis_data.accelerometer[0] = low_state.imu_state().accelerometer()[0];
-  imu_pelvis_data.accelerometer[1] = low_state.imu_state().accelerometer()[1];
-  imu_pelvis_data.accelerometer[2] = low_state.imu_state().accelerometer()[2];
+  imu_pelvis_data.quaternion = Eigen::Vector4d(low_state.imu_state().quaternion()[0],
+                                      low_state.imu_state().quaternion()[1],
+                                      low_state.imu_state().quaternion()[2],
+                                      low_state.imu_state().quaternion()[3]);
+  imu_pelvis_data.rpy = Eigen::Vector3d(low_state.imu_state().rpy()[0],
+                              low_state.imu_state().rpy()[1],
+                              low_state.imu_state().rpy()[2]);
+  imu_pelvis_data.omega = Eigen::Vector3d(low_state.imu_state().gyroscope()[0],
+                                  low_state.imu_state().gyroscope()[1],
+                                  low_state.imu_state().gyroscope()[2]);
+  imu_pelvis_data.accelerometer = Eigen::Vector3d(low_state.imu_state().accelerometer()[0],
+                                          low_state.imu_state().accelerometer()[1],
+                                          low_state.imu_state().accelerometer()[2]);
 
   // update gamepad
   memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
@@ -306,58 +339,46 @@ void LowStateHandler(const void* msg){
   }
 }
 
-ImuState imu_state_data;
+ImuState imu_torso_data;
 void imuTorsoHandler(const void* msg) {
   unitree_hg::msg::dds_::IMUState_ imu_state = *(const unitree_hg::msg::dds_::IMUState_*)msg;
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  imu_state_data.quaternion[0] = imu_state.quaternion()[0];
-  imu_state_data.quaternion[1] = imu_state.quaternion()[1];
-  imu_state_data.quaternion[2] = imu_state.quaternion()[2];
-  imu_state_data.quaternion[3] = imu_state.quaternion()[3];
-
-  imu_state_data.rpy[0] = imu_state.rpy()[0];
-  imu_state_data.rpy[1] = imu_state.rpy()[1];
-  imu_state_data.rpy[2] = imu_state.rpy()[2];
-
-  imu_state_data.omega[0] = imu_state.gyroscope()[0];
-  imu_state_data.omega[1] = imu_state.gyroscope()[1];
-  imu_state_data.omega[2] = imu_state.gyroscope()[2];
-
-  imu_state_data.accelerometer[0] = imu_state.accelerometer()[0];
-  imu_state_data.accelerometer[1] = imu_state.accelerometer()[1];
-  imu_state_data.accelerometer[2] = imu_state.accelerometer()[2];
+  imu_torso_data.quaternion = imu_torso_data.quaternion;
+  imu_torso_data.rpy = imu_torso_data.rpy;
+  imu_torso_data.omega = imu_torso_data.omega;
+  imu_torso_data.accelerometer = imu_torso_data.accelerometer;
 }
 
-SportModeState state_data;
+SportModeState odometry_data;
 void SportModeStateHandler(const void* msg){
   SportModeState_ sportmodestate = *(const SportModeState_*)msg;
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  state_data.position[0] = sportmodestate.position()[0];
-  state_data.position[1] = sportmodestate.position()[1];
-  state_data.position[2] = sportmodestate.position()[2];
+  odometry_data.position[0] = sportmodestate.position()[0];
+  odometry_data.position[1] = sportmodestate.position()[1];
+  odometry_data.position[2] = sportmodestate.position()[2];
 
-  state_data.velocity[0] = sportmodestate.velocity()[0];
-  state_data.velocity[1] = sportmodestate.velocity()[1];
-  state_data.velocity[2] = sportmodestate.velocity()[2];
+  odometry_data.velocity[0] = sportmodestate.velocity()[0];
+  odometry_data.velocity[1] = sportmodestate.velocity()[1];
+  odometry_data.velocity[2] = sportmodestate.velocity()[2];
 
-  state_data.imu_state.quaternion[0] = sportmodestate.imu_state().quaternion()[0];
-  state_data.imu_state.quaternion[1] = sportmodestate.imu_state().quaternion()[1];
-  state_data.imu_state.quaternion[2] = sportmodestate.imu_state().quaternion()[2];
-  state_data.imu_state.quaternion[3] = sportmodestate.imu_state().quaternion()[3];
+  odometry_data.imu_state.quaternion[0] = sportmodestate.imu_state().quaternion()[0];
+  odometry_data.imu_state.quaternion[1] = sportmodestate.imu_state().quaternion()[1];
+  odometry_data.imu_state.quaternion[2] = sportmodestate.imu_state().quaternion()[2];
+  odometry_data.imu_state.quaternion[3] = sportmodestate.imu_state().quaternion()[3];
 
-  state_data.imu_state.omega[0] = sportmodestate.imu_state().gyroscope()[0];
-  state_data.imu_state.omega[1] = sportmodestate.imu_state().gyroscope()[1];
-  state_data.imu_state.omega[2] = sportmodestate.imu_state().gyroscope()[2];
+  odometry_data.imu_state.omega[0] = sportmodestate.imu_state().gyroscope()[0];
+  odometry_data.imu_state.omega[1] = sportmodestate.imu_state().gyroscope()[1];
+  odometry_data.imu_state.omega[2] = sportmodestate.imu_state().gyroscope()[2];
 
-  state_data.imu_state.accelerometer[0] = sportmodestate.imu_state().accelerometer()[0];
-  state_data.imu_state.accelerometer[1] = sportmodestate.imu_state().accelerometer()[1];
-  state_data.imu_state.accelerometer[2] = sportmodestate.imu_state().accelerometer()[2];
+  odometry_data.imu_state.accelerometer[0] = sportmodestate.imu_state().accelerometer()[0];
+  odometry_data.imu_state.accelerometer[1] = sportmodestate.imu_state().accelerometer()[1];
+  odometry_data.imu_state.accelerometer[2] = sportmodestate.imu_state().accelerometer()[2];
   
-  state_data.imu_state.rpy[0] = sportmodestate.imu_state().rpy()[0];
-  state_data.imu_state.rpy[1] = sportmodestate.imu_state().rpy()[1];
-  state_data.imu_state.rpy[2] = sportmodestate.imu_state().rpy()[2];
+  odometry_data.imu_state.rpy[0] = sportmodestate.imu_state().rpy()[0];
+  odometry_data.imu_state.rpy[1] = sportmodestate.imu_state().rpy()[1];
+  odometry_data.imu_state.rpy[2] = sportmodestate.imu_state().rpy()[2];
 }
 
 std::string queryServiceName(std::string form,std::string name)
@@ -436,17 +457,21 @@ void signalHandler(int signum) {
             std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
         }
       }
+      if (std::filesystem::exists("/tmp/mpc_data")) {
+        std::filesystem::path destination = std::filesystem::path(experiment_folder) / "mpc_data";
+        std::filesystem::copy("/tmp/mpc_data", destination, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+      }
       // create a README file in the experiment folder
       std::ofstream readme_file(experiment_folder + "/README.txt");
       if (readme_file.is_open()) {
         readme_file << "This folder contains the results of the experiment.\n";
         readme_file << "The gains used for the experiment are:\n";
         readme_file << "Kp: ";
-        for (const auto& kp : Kp) {
+        for (const auto& kp : Kp_cl) {
           readme_file << kp << " ";
         }
         readme_file << "\nKd: ";
-        for (const auto& kd : Kd) {
+        for (const auto& kd : Kd_cl) {
           readme_file << kd << " ";
         }
         readme_file << "\n\n";
@@ -538,11 +563,6 @@ int main(const int argc, const char* argv[]) {
     std::string a = argv[i];
     if (a == "--sim") {
         useSim = true;
-    } else if (a == "--imuCalibration" && i + 1 < argc) {
-        useRobot = true;
-        useSim = true;
-        netInterface = argv[++i];
-        imuCalibration = true;
     } else if (a == "--robot" && i + 1 < argc) {
         useRobot = true;
         useSim = true;
@@ -560,7 +580,7 @@ int main(const int argc, const char* argv[]) {
   // Load MJCF (for Mujoco):
   const int kErrorLength = 1024;          // load error string length
   char loadError[kErrorLength] = "";
-  const char* mjcf_filepath = "../robot/g1/g1_mj_description/stair_steps.xml";
+  const char* mjcf_filepath = robotScenePath.data();
   mjModel* mj_model_ptr = mj_loadXML(mjcf_filepath, nullptr, loadError, kErrorLength);
   mjData* mj_data_ptr = mj_makeData(mj_model_ptr);
 
@@ -591,7 +611,7 @@ int main(const int argc, const char* argv[]) {
   } else {
     isWBCLoopClosed = true;
     isMPCLoopClosed = true;
-    isEKFactive = true;
+    isEKFactive = false;
   }
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
@@ -608,6 +628,7 @@ int main(const int argc, const char* argv[]) {
     msc.reset(new MotionSwitcherClient());
     msc->SetTimeout(5.0f);
     msc->Init();
+    std::cout << "ciao" << std::endl;
 
     while(queryMotionStatus(msc)){
       std::cout << "try to deactivate the motion control - related service" << std::endl;
@@ -634,12 +655,6 @@ int main(const int argc, const char* argv[]) {
     mj_data_ptr->qpos[i] = 0.0;
   }
   mj_data_ptr->qpos[2] = 0.728112;
-  // mj_data_ptr->qpos[2] = 0.716143;
-
-  // mj_data_ptr->qpos[4] = 0.0;
-  // mj_data_ptr->qpos[5] = 0.0;
-  // mj_data_ptr->qpos[6] = 0.247404;
-  // mj_data_ptr->qpos[3] = 0.9689124;
   mj_data_ptr->qpos[3] = 1;
 
   for (int i = 0; i < mj_model_ptr->njnt; ++i) {
@@ -689,7 +704,7 @@ int main(const int argc, const char* argv[]) {
           if (isEKFactive && !xPressed){
             xPressed = true;
             loopClosed = true;
-            // isMPCLoopClosed = !isMPCLoopClosed;
+            isMPCLoopClosed = !isMPCLoopClosed;
             isWBCLoopClosed = !isWBCLoopClosed;
             startTimeMPCCL = 1000 * mj_data_ptr->time + 5000;
             startTimeWBCCL = 1000 * mj_data_ptr->time;
@@ -723,8 +738,8 @@ int main(const int argc, const char* argv[]) {
         std::lock_guard<std::mutex> lock(stateMutex);
         measured_imu_accelerometer = Eigen::Vector3d(imu_pelvis_data.accelerometer[0], imu_pelvis_data.accelerometer[1], imu_pelvis_data.accelerometer[2]);
         measured_imu_angular_velocity = Eigen::Vector3d(imu_pelvis_data.omega[0], imu_pelvis_data.omega[1], imu_pelvis_data.omega[2]);
-        measured_imu_quaternion = Eigen::Vector4d(imu_state_data.quaternion[0], imu_state_data.quaternion[1], imu_state_data.quaternion[2], imu_state_data.quaternion[3]);
-        measured_imu_rpy = Eigen::Vector3d(imu_state_data.rpy[0], imu_state_data.rpy[1], imu_state_data.rpy[2]);
+        measured_imu_quaternion = Eigen::Vector4d(imu_torso_data.quaternion[0], imu_torso_data.quaternion[1], imu_torso_data.quaternion[2], imu_torso_data.quaternion[3]);
+        measured_imu_rpy = Eigen::Vector3d(imu_torso_data.rpy[0], imu_torso_data.rpy[1], imu_torso_data.rpy[2]);
         measured_imu_pelvis_accelerometer = Eigen::Vector3d(imu_pelvis_data.accelerometer[0], imu_pelvis_data.accelerometer[1], imu_pelvis_data.accelerometer[2]);
         measured_imu_pelvis_angular_velocity = Eigen::Vector3d(imu_pelvis_data.omega[0], imu_pelvis_data.omega[1], imu_pelvis_data.omega[2]);
         measured_imu_pelvis_quaternion = Eigen::Vector4d(imu_pelvis_data.quaternion[0], imu_pelvis_data.quaternion[1], imu_pelvis_data.quaternion[2], imu_pelvis_data.quaternion[3]);
@@ -734,23 +749,40 @@ int main(const int argc, const char* argv[]) {
           measured_joint_velocity[i] = motor_state_data.dq[i];
         }
         odometry_base_position = Eigen::Vector3d(
-          state_data.position[0],
-          state_data.position[1],
-          state_data.position[2] + 0.061273
+          odometry_data.position[0],
+          odometry_data.position[1],
+          odometry_data.position[2] + 0.061273
         );
-        odometry_base_velocity = Eigen::Vector3d(state_data.velocity[0], state_data.velocity[1], state_data.velocity[2]);
-        odometry_imu_quaternion = Eigen::Vector4d(state_data.imu_state.quaternion[0], state_data.imu_state.quaternion[1], state_data.imu_state.quaternion[2], state_data.imu_state.quaternion[3]);
-        odometry_imu_rpy = Eigen::Vector3d(state_data.imu_state.rpy[0], state_data.imu_state.rpy[1], state_data.imu_state.rpy[2]);
+        odometry_base_velocity = Eigen::Vector3d(odometry_data.velocity[0], odometry_data.velocity[1], odometry_data.velocity[2]);
+        odometry_imu_quaternion = Eigen::Vector4d(odometry_data.imu_state.quaternion[0], odometry_data.imu_state.quaternion[1], odometry_data.imu_state.quaternion[2], odometry_data.imu_state.quaternion[3]);
+        odometry_imu_rpy = Eigen::Vector3d(odometry_data.imu_state.rpy[0], odometry_data.imu_state.rpy[1], odometry_data.imu_state.rpy[2]);
       }
       
       // Update walking manager:
       labrob::JointCommand joint_command;
       walking_manager.update(robot_state, joint_command);
 
-      if (!useRobot && true){
+      if (!useRobot){
         auto start_integration = std::chrono::steady_clock::now();
 
         mj_step1(mj_model_ptr, mj_data_ptr);
+
+        // ad disturbance to robot
+        double point[3]{0.0, 0.0, 0.0};
+        double force[3]{0.0, 0.0, -100.0};
+        double torque[3]{0.0, 0.0, 0.0};
+        // std::cout << "Time: " << mj_data_ptr->time << std::k;
+        // cast in double to avoid precision issues with the comparison
+        if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {
+          int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
+          mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+          std::cout << "Disturbance applied at time: " << mj_data_ptr->time << std::endl;
+        }
+        //remove force on button pressed
+        if (mj_data_ptr->time > 5.2) {
+          // mujoco_ui.getMousePosition(point[0], point[1]);
+          mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+        }
   
         for (int i = 0; i < mj_model_ptr->nu; ++i) {
           int joint_id = mj_model_ptr->actuator_trnid[i * 2];
@@ -845,13 +877,17 @@ int main(const int argc, const char* argv[]) {
           for (int i = 0; i < G1_NUM_MOTOR; ++i) {
             int joint_id = mj_model_ptr->actuator_trnid[i * 2];
             std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-            motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
-            motor_command.kd[i] = Kd[i];
+            motor_command.kp[i] = 0.0f + Kp_reg[i] * (mj_data_ptr->time / 5.0f);
+            motor_command.kd[i] = Kd_reg[i];
           }
         }
         else{
-          motor_command.kp = Kp;
-          motor_command.kd = Kd;
+          motor_command.kp = Kp_reg;
+          motor_command.kd = Kd_reg;
+          if (isWBCLoopClosed && mj_data_ptr->time >= startTimeWBCCL / 1000.0f) {
+            motor_command.kp = Kp_cl;
+            motor_command.kd = Kd_cl;    
+          }
         }
 
         // assegna i valori di controllo per i giunti
@@ -871,7 +907,15 @@ int main(const int argc, const char* argv[]) {
           }else {
             motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
             motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
-            motor_command.tau_ff[i] = joint_command[joint_name];
+            
+            // std::cout << "Joint: " << joint_name << ", q_target: " << motor_command.q_target[i] << ", dq_target: " << motor_command.dq_target[i] << ", tau_ff: " << joint_command[joint_name] << std::endl;
+
+            if (isWBCLoopClosed && mj_data_ptr->time >= startTimeWBCCL / 1000.0f) {
+              motor_command.tau_ff[i] = joint_command[joint_name];
+
+            } else {
+              motor_command.tau_ff[i] = 0.0;
+            }
           }
         }
       

@@ -180,9 +180,6 @@ ISMPC::solve(
   cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y);
   cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z);
 
-  // A_zmp_.setZero();
-  // b_zmp_min_.setZero();
-  // b_zmp_max_.setZero();
   // Solve QP
   qp_solver_ptr_->solve(
       cost_function_H_,

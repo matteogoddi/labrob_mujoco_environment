@@ -1,5 +1,15 @@
-#ifndef GLOBALS_H
-#define GLOBALS_H
+#pragma once
+
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <string_view>
+#include <tuple>
+#include <utility>
+
+
+constexpr std::string_view robotUrdfPath  = "../../labrob_mujoco_environment/robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+constexpr std::string_view robotScenePath = "../../labrob_mujoco_environment/robot/g1/g1_mj_description/stair_steps.xml";
 
 extern bool isWBCLoopClosed;
 extern bool isEKFactive;
@@ -33,4 +43,3 @@ extern Eigen::Vector3d measured_imu_pelvis_rpy;
 extern Eigen::Vector3d measured_imu_pelvis_angular_velocity;
 extern Eigen::Vector3d measured_imu_pelvis_accelerometer;
 
-#endif // GLOBALS_H

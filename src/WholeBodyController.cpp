@@ -14,15 +14,21 @@
 #include <hrp4_locomotion/JointCommand.hpp>
 #include <hrp4_locomotion/utils.hpp>
 
+#include <hrp4_locomotion/globals.h>
+
 namespace labrob {
 
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 30.0;
-  params.Kd_motion = 10.0;
+  params.Kp_motion = 90.0;
+  params.Kd_motion = 40.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
+  params.Kp_orientation = 200.0;
+  params.Kd_orientation = 500.0;
+  params.Kp_foot = 70.0;
+  params.Kd_foot = 35.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
   params.Kp_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Zero(12, 12);
@@ -40,7 +46,6 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_pelvis = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
-  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1e-4;
 
   params.cmm_selection_matrix_x = 1e-1;
   params.cmm_selection_matrix_y = 1e-1;
@@ -197,11 +202,11 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::VectorXd desired_qddot(6 + n_joints_);
   desired_qddot << Eigen::VectorXd::Zero(6), desired.qjntddot;
   Eigen::VectorXd a_jnt_total = desired_qddot + params_.Kp_joint_matrix * err_posture + params_.Kd_joint_matrix * err_posture_vel;
-  Eigen::VectorXd a_com_total = desired.com.acc + 90 * err_com + 40 * err_com_vel;
-  Eigen::VectorXd a_lsole_total = desired.lsole.acc + 70 * err_lsole + 35 * err_lsole_vel;
-  Eigen::VectorXd a_rsole_total = desired.rsole.acc + 70 * err_rsole + 35 * err_rsole_vel;
-  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + 200 * err_torso_orientation + 500 * err_torso_orientation_vel;
-  Eigen::VectorXd a_pelvis_orientation_total = desired.pelvis.acc + 200 * err_pelvis_orientation + 500 * err_pelvis_orientation_vel;
+  Eigen::VectorXd a_com_total = desired.com.acc + params_.Kp_motion * err_com + params_.Kd_motion * err_com_vel;
+  Eigen::VectorXd a_lsole_total = desired.lsole.acc + params_.Kp_foot * err_lsole + params_.Kd_foot * err_lsole_vel;
+  Eigen::VectorXd a_rsole_total = desired.rsole.acc + params_.Kp_foot * err_rsole + params_.Kd_foot * err_rsole_vel;
+  Eigen::VectorXd a_torso_orientation_total = desired.torso.acc + params_.Kp_orientation * err_torso_orientation + params_.Kd_orientation * err_torso_orientation_vel;
+  Eigen::VectorXd a_pelvis_orientation_total = desired.pelvis.acc + params_.Kp_orientation * err_pelvis_orientation + params_.Kd_orientation * err_pelvis_orientation_vel;
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
@@ -370,10 +375,13 @@ WholeBodyController::compute_inverse_dynamics(
   }
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
+  // if (useRobot && !isWBCLoopClosed){
+  //   fl.setZero();
+  //   fr.setZero();
+  // }
   left_foot_wrench_ = T_l * fl;
   right_foot_wrench_ = T_r * fr;
   Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * left_foot_wrench_ - Jra.transpose() * right_foot_wrench_;
-
 
   JointCommand joint_command;
   for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) n_joints_; ++joint_id) {
