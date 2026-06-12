@@ -1,4 +1,4 @@
-#include <hrp4_locomotion/StateFiltering.hpp>
+#include <StateFiltering.hpp>
 #include <pinocchio/spatial/explog.hpp>
 #include <fstream>
 #include <iostream>

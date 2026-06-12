@@ -1,7 +1,7 @@
 #ifndef LABROB_ROBOT_STATE_H_
 #define LABROB_ROBOT_STATE_H_
 
-// #include <hrp4_locomotion/JointState.hpp>
+// #include <JointState.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -34,7 +34,7 @@ class RobotState {
 
     // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id)
-      q[joint_id + 5] = joint_state[robot_model.names[joint_id]].pos;
+      q[joint_id + 5] = joint_state.at(robot_model.names[joint_id]).pos;
 
     return q;
   };
@@ -49,7 +49,7 @@ class RobotState {
 
     // NOTE: start from joint id (2) to skip frames "universe" and "root_joint".
     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id)
-      qdot[joint_id + 4] = joint_state[robot_model.names[joint_id]].vel;
+      qdot[joint_id + 4] = joint_state.at(robot_model.names[joint_id]).vel;
     
     return qdot;
   };
@@ -61,7 +61,7 @@ class RobotState {
   Eigen::Vector3d linear_velocity;
   Eigen::Vector3d angular_velocity;
 
-  mutable std::map<std::string, JointData> joint_state;
+  std::map<std::string, JointData> joint_state;
 
   Eigen::Vector3d total_force;
 

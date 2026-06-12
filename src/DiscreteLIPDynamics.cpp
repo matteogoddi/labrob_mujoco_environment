@@ -1,5 +1,5 @@
-#include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
-#include <hrp4_locomotion/utils.hpp>
+#include <DiscreteLIPDynamics.hpp>
+#include <utils.hpp>
 #include <iostream>
 
 namespace labrob {

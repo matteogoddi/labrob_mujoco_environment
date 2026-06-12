@@ -6,10 +6,10 @@
 #include <memory>
 #include <vector>
 
-#include <hrp4_locomotion/LIPState.hpp>
-#include <hrp4_locomotion/WalkingData.hpp>
+#include <LIPState.hpp>
+#include <WalkingData.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <QpSolver.hpp>
 
 // Eigen
 #include <Eigen/Core>
@@ -30,8 +30,7 @@ class ISMPC{
   void solve(
       int64_t time,
       const labrob::WalkingData& walking_data,
-      const labrob::LIPState& state,
-      const Eigen::Vector3d& foot_pose
+      const labrob::LIPState& state
   );
 
   const Eigen::Vector3d& getInput() const;
@@ -90,9 +89,12 @@ class ISMPC{
   Eigen::VectorXd zDotOptimalZ;
 
   // QP solver:
-  std::shared_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
+  std::unique_ptr<labrob::QpSolver> qp_solver_ptr_;
 
-  std::ofstream pred_log_file_;
+  // Pre-allocated per-solve buffers (no malloc in hot path):
+  Eigen::VectorXd mc_x_, mc_y_, mc_z_;  // reference ZMP centroid per step
+  Eigen::VectorXd b_decay_;             // geometric decay sequence for A_eq
+  double mpc_timestep_;                 // 0.001 * mpc_timestep_msec_
 
 }; // end class ISMPC
 

@@ -16,11 +16,11 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
-#include <hrp4_locomotion/GaitConfiguration.hpp>
-#include <hrp4_locomotion/RobotState.hpp>
-#include <hrp4_locomotion/WalkingData.hpp>
+#include <GaitConfiguration.hpp>
+#include <RobotState.hpp>
+#include <WalkingData.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <QpSolver.hpp>
 
 namespace labrob {
 
@@ -120,7 +120,7 @@ class JISMPC {
   // Solution
   Eigen::VectorXd nu_dot_0_;
 
-  std::shared_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> qp_solver_ptr_;
+  std::unique_ptr<labrob::QpSolver> qp_solver_ptr_;
 };
 
 } // namespace labrob

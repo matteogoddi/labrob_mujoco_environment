@@ -1,5 +1,5 @@
-#include <hrp4_locomotion/ResidualEstimator.hpp>
-#include <hrp4_locomotion/utils.hpp>
+#include <ResidualEstimator.hpp>
+#include <utils.hpp>
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/algorithm/jacobian.hpp>
 #include <pinocchio/algorithm/compute-all-terms.hpp>
@@ -8,7 +8,7 @@
 #include <Eigen/SVD>
 #include <Eigen/Dense>
 #include <mujoco/mujoco.h>
-#include <hrp4_locomotion/WholeBodyController.hpp> 
+#include <WholeBodyController.hpp> 
 
 namespace labrob {
 

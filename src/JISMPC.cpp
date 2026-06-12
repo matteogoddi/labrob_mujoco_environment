@@ -1,4 +1,4 @@
-#include <hrp4_locomotion/JISMPC.hpp>
+#include <JISMPC.hpp>
 
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/centroidal.hpp>
@@ -7,7 +7,7 @@
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/kinematics.hpp>
 
-#include <hrp4_locomotion/WalkingState.hpp>
+#include <WalkingState.hpp>
 
 #include <hpipm_d_dense_qp_ipm.h>
 
@@ -84,9 +84,7 @@ JISMPC::JISMPC(
   nu_dot_0_.resize(nv_);
   nu_dot_0_.setZero();
 
-  qp_solver_ptr_ = std::make_shared<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(n_var_, n_eq_, n_ineq_, BALANCE, 200)
-  );
+  qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(n_var_, n_eq_, n_ineq_, BALANCE, 200);
 }
 
 // -----------------------------------------------------------------------
@@ -381,7 +379,7 @@ void JISMPC::solve(
   // --- 4. Solve ---
   qp_solver_ptr_->solve(H_, f_, A_eq_, b_eq_, A_ineq_, lg_, ug_);
 
-  if (qp_solver_ptr_->get_status() != 0) {
+  if (!qp_solver_ptr_->has_valid_solution()) {
     std::cerr << "[JISMPC] QP failed with status "
               << qp_solver_ptr_->get_status()
               << ", using previous solution\n";
@@ -399,8 +397,6 @@ void JISMPC::solve(
     nu_dot_[i] = nu_dot_[i + 1];
   nu_dot_[C_ - 1].setZero();
 
-  std::cerr << "[JISMPC] nu_dot_0 norm = " << nu_dot_0_.norm()
-            << "  max = " << nu_dot_0_.cwiseAbs().maxCoeff() << "\n";
 }
 
 } // namespace labrob

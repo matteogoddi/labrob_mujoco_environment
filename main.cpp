@@ -23,11 +23,11 @@
 #include <pinocchio/parsers/urdf.hpp>
 
 // Labrob
-#include <hrp4_locomotion/JointCommand.hpp>
-#include <hrp4_locomotion/RobotState.hpp>
-#include <hrp4_locomotion/WalkingManager.hpp>
-#include <hrp4_locomotion/utils.hpp>
-#include <hrp4_locomotion/gamepad.hpp>
+#include <JointCommand.hpp>
+#include <RobotState.hpp>
+#include <WalkingManager.hpp>
+#include <utils.hpp>
+#include <gamepad.hpp>
 
 #include <unitree/robot/channel/channel_publisher.hpp>
 #include <unitree/robot/channel/channel_subscriber.hpp>
@@ -36,7 +36,7 @@
 #include <unitree/idl/go2/SportModeState_.hpp>
 #include <unitree/robot/b2/motion_switcher/motion_switcher_client.hpp>
 
-#include <hrp4_locomotion/globals.h>
+#include <globals.h>
 #include "MujocoUI.hpp"
 
 bool isWBCLoopClosed = false;
@@ -48,7 +48,6 @@ bool oneTimepress = true;
 bool xPressed = false;
 bool loopClosed = true;
 bool switchWalkingState = false;
-bool imuCalibration = false;
 
 double startTimeWBCCL = 1000.0;
 double startTimeMPCCL = 1000.0;
@@ -344,10 +343,19 @@ void imuTorsoHandler(const void* msg) {
   unitree_hg::msg::dds_::IMUState_ imu_state = *(const unitree_hg::msg::dds_::IMUState_*)msg;
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  imu_torso_data.quaternion = imu_torso_data.quaternion;
-  imu_torso_data.rpy = imu_torso_data.rpy;
-  imu_torso_data.omega = imu_torso_data.omega;
-  imu_torso_data.accelerometer = imu_torso_data.accelerometer;
+  imu_torso_data.quaternion = Eigen::Vector4d(imu_state.quaternion()[0],
+                                      imu_state.quaternion()[1],
+                                      imu_state.quaternion()[2],
+                                      imu_state.quaternion()[3]);
+  imu_torso_data.rpy = Eigen::Vector3d(imu_state.rpy()[0],
+                              imu_state.rpy()[1],
+                              imu_state.rpy()[2]);
+  imu_torso_data.omega = Eigen::Vector3d(imu_state.gyroscope()[0],
+                                  imu_state.gyroscope()[1],
+                                  imu_state.gyroscope()[2]);
+  imu_torso_data.accelerometer = Eigen::Vector3d(imu_state.accelerometer()[0],
+                                          imu_state.accelerometer()[1],
+                                          imu_state.accelerometer()[2]);
 }
 
 SportModeState odometry_data;
@@ -451,15 +459,15 @@ void signalHandler(int signum) {
         }
         ++experiment_counter;
       }
-      for (const auto& entry : std::filesystem::directory_iterator("/tmp")) {
-        if (entry.is_regular_file() && entry.path().extension() == ".txt") {
-            std::filesystem::path destination = experiment_folder / entry.path().filename();
-            std::filesystem::copy_file(entry.path(), destination, std::filesystem::copy_options::overwrite_existing);
-        }
+      if (std::filesystem::exists("/tmp/robot_logs")) {
+        std::filesystem::copy("/tmp/robot_logs",
+            std::filesystem::path(experiment_folder) / "robot_logs",
+            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
       }
       if (std::filesystem::exists("/tmp/mpc_data")) {
-        std::filesystem::path destination = std::filesystem::path(experiment_folder) / "mpc_data";
-        std::filesystem::copy("/tmp/mpc_data", destination, std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
+        std::filesystem::copy("/tmp/mpc_data",
+            std::filesystem::path(experiment_folder) / "mpc_logs",
+            std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing);
       }
       // create a README file in the experiment folder
       std::ofstream readme_file(experiment_folder + "/README.txt");
@@ -725,13 +733,13 @@ int main(const int argc, const char* argv[]) {
         }
 
         if (gamepad_.A.pressed) {
-          if(oneTimepress && !imuCalibration){
+          if(oneTimepress){
             std::cout << "[GAMEPAD] A pressed -> EKF started." << std::endl;
             isEKFactive = true;
             oneTimepress = false;
             startTimeEKF = 1000 * mj_data_ptr->time;
-          } else if(imuCalibration){
-            std::cout << "[GAMEPAD] A pressed -> EKF not started. IMU not calibrated" << std::endl;
+          } else{
+            std::cout << "[GAMEPAD] A pressed -> EKF already active." << std::endl;
           }
         }
 
@@ -769,8 +777,8 @@ int main(const int argc, const char* argv[]) {
 
         // ad disturbance to robot
         double point[3]{0.0, 0.0, 0.0};
-        double force[3]{0.0, 0.0, -100.0};
-        double torque[3]{0.0, 0.0, 0.0};
+        double force[3]{0.0, 0.0, 0.0};
+        double torque[3]{15.0, 0.0, 0.0};
         // std::cout << "Time: " << mj_data_ptr->time << std::k;
         // cast in double to avoid precision issues with the comparison
         if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {

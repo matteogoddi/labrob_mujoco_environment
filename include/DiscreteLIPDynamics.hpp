@@ -1,7 +1,7 @@
 #ifndef LABROB_DISCRETE_LIP_DYNAMICS
 #define LABROB_DISCRETE_LIP_DYNAMICS
 
-#include <hrp4_locomotion/LIPState.hpp>
+#include <LIPState.hpp>
 
 namespace labrob {
 

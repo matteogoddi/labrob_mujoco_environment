@@ -1,6 +1,6 @@
-#include <hrp4_locomotion/WalkingData.hpp>
-#include <hrp4_locomotion/globals.h>
-#include <hrp4_locomotion/utils.hpp>
+#include <WalkingData.hpp>
+#include <globals.h>
+#include <utils.hpp>
 
 #include <iostream>
 

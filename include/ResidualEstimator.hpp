@@ -17,8 +17,8 @@
 #include <iostream>
 #include <mujoco/mujoco.h>
 
-#include <hrp4_locomotion/RobotState.hpp>
-#include <hrp4_locomotion/WholeBodyController.hpp> 
+#include <RobotState.hpp>
+#include <WholeBodyController.hpp> 
 
 namespace labrob {
 

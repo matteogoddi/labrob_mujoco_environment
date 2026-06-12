@@ -18,11 +18,11 @@
 #include <pinocchio/algorithm/crba.hpp>
 #include <pinocchio/spatial/skew.hpp>
 
-#include <hrp4_locomotion/GaitConfiguration.hpp>
-#include <hrp4_locomotion/JointCommand.hpp>
-#include <hrp4_locomotion/RobotState.hpp>
+#include <GaitConfiguration.hpp>
+#include <JointCommand.hpp>
+#include <RobotState.hpp>
 
-#include <labrob_qpsolvers/qpsolvers.hpp>
+#include <QpSolver.hpp>
 
 namespace labrob {
 
@@ -131,7 +131,7 @@ class JISMPCWholeBodyController {
   int n_wbc_equalities_;
   int n_wbc_inequalities_;
 
-  std::unique_ptr<labrob::qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+  std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
 };
 
 } // namespace labrob

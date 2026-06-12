@@ -1,4 +1,4 @@
-#include <hrp4_locomotion/utils.hpp>
+#include <utils.hpp>
 
 // STL
 #include <fstream>
@@ -11,7 +11,7 @@
 #include <Eigen/Geometry>
 
 // hrp4_locomotion
-#include <hrp4_locomotion/SE3.hpp>
+#include <SE3.hpp>
 
 
 namespace labrob {
@@ -121,7 +121,7 @@ robot_state_to_pinocchio_joint_configuration(
       joint_id < (pinocchio::JointIndex) robot_model.njoints;
       ++joint_id) {
     const auto& joint_name = robot_model.names[joint_id];
-    q[joint_id + 5] = robot_state.joint_state[joint_name].pos;
+    q[joint_id + 5] = robot_state.joint_state.at(joint_name).pos;
   }
 
   return q;
@@ -140,7 +140,7 @@ robot_state_to_pinocchio_joint_velocity(
       joint_id < (pinocchio::JointIndex) robot_model.njoints;
       ++joint_id) {
     const auto& joint_name = robot_model.names[joint_id];
-    qdot[joint_id + 4] = robot_state.joint_state[joint_name].vel;
+    qdot[joint_id + 4] = robot_state.joint_state.at(joint_name).vel;
   }
   
   return qdot;

@@ -3,9 +3,9 @@
 
 #include <deque>
 
-#include <hrp4_locomotion/FootstepPlanElement.hpp>
-#include <hrp4_locomotion/WalkingState.hpp>
-#include <hrp4_locomotion/SE3.hpp>
+#include <FootstepPlanElement.hpp>
+#include <WalkingState.hpp>
+#include <SE3.hpp>
 
 namespace labrob {
 

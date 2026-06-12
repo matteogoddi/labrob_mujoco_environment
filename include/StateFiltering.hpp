@@ -8,7 +8,7 @@
 
 #include <iostream>
 
-#include <hrp4_locomotion/utils.hpp>
+#include <utils.hpp>
 
 namespace labrob
 {

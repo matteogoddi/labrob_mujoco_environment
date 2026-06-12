@@ -1,5 +1,6 @@
-#include <hrp4_locomotion/JISMPCWholeBodyController.hpp>
+#include <JISMPCWholeBodyController.hpp>
 
+#include <iostream>
 #include <pinocchio/algorithm/centroidal.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
 #include <pinocchio/algorithm/rnea.hpp>
@@ -105,9 +106,8 @@ JISMPCWholeBodyController::JISMPCWholeBodyController(
     M_armature_(jid - 2) = armatures[robot_model_.names[jid]];
   }
 
-  wbc_solver_ptr_ = std::make_unique<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
-      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(
-          n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_));
+  wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_);
 }
 
 labrob::JointCommand
@@ -263,7 +263,7 @@ JISMPCWholeBodyController::compute_inverse_dynamics(
   // --- Solve ---
   wbc_solver_ptr_->solve(H_, f_, A_, b_, C_, d_min_, d_max_);
 
-  if (wbc_solver_ptr_->get_status() != 0) {
+  if (!wbc_solver_ptr_->has_valid_solution()) {
     std::cerr << "[JISMPC WBC] HPIPM status " << wbc_solver_ptr_->get_status()
               << ", using gravity compensation\n";
     tau_ = ca;

@@ -1,6 +1,7 @@
 
 // GLFW
 #include <GLFW/glfw3.h>
+#include <memory>
 
 // Mujoco
 #include <mujoco/mujoco.h>
@@ -13,21 +14,19 @@ class MujocoUI {
     glfwTerminate();
     mjv_freeScene(&scn_);
     mjr_freeContext(&con_);
-
-    delete mujoco_ui_ptr_;
   }
 
   static MujocoUI* getInstance() {
-    return mujoco_ui_ptr_;
+    return mujoco_ui_ptr_.get();
   }
 
   static MujocoUI* getInstance(mjModel* model_ptr, mjData* data_ptr) {
     if (mujoco_ui_ptr_) {
-      return mujoco_ui_ptr_;
+      return mujoco_ui_ptr_.get();
     } else {
-      mujoco_ui_ptr_ = new MujocoUI();
+      mujoco_ui_ptr_.reset(new MujocoUI());
       mujoco_ui_ptr_->init(model_ptr, data_ptr);
-      return mujoco_ui_ptr_;
+      return mujoco_ui_ptr_.get();
     }
   }
 
@@ -48,50 +47,39 @@ class MujocoUI {
   }
 
   bool windowShouldClose() {
-    auto& mujoco_ui = *mujoco_ui_ptr_;
-    return glfwWindowShouldClose(mujoco_ui.window_);
+    return glfwWindowShouldClose(window_);
   }
 
   // mouse button callback
   void onMouseButton(GLFWwindow* window, int button, int act, int mods) {
-    auto& mujoco_ui = *mujoco_ui_ptr_;
-
     // update button state
-    button_left_ = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+    button_left_   = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT)   == GLFW_PRESS);
     button_middle_ = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS);
-    button_right_ = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS);
+    button_right_  = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT)  == GLFW_PRESS);
 
     // update mouse position
-    glfwGetCursorPos(
-        window,
-        &mujoco_ui.lastx_,
-        &mujoco_ui.lasty_
-    );
+    glfwGetCursorPos(window, &lastx_, &lasty_);
   }
 
   // mouse move callback
   void onMouseMove(GLFWwindow* window, double xpos, double ypos) {
-    auto& mujoco_ui = *mujoco_ui_ptr_;
-
     // no buttons down: nothing to do
-    if (!mujoco_ui.button_left_ &&
-        !mujoco_ui.button_middle_ &&
-        !mujoco_ui.button_right_) {
+    if (!button_left_ && !button_middle_ && !button_right_) {
       return;
     }
 
     // compute mouse displacement, save
-    double dx = xpos - mujoco_ui.lastx_;
-    double dy = ypos - mujoco_ui.lasty_;
-    mujoco_ui.lastx_ = xpos;
-    mujoco_ui.lasty_ = ypos;
+    double dx = xpos - lastx_;
+    double dy = ypos - lasty_;
+    lastx_ = xpos;
+    lasty_ = ypos;
 
     // get current window size
     int width, height;
     glfwGetWindowSize(window, &width, &height);
 
     // get shift key state
-    bool mod_shift = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+    bool mod_shift = (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT)  == GLFW_PRESS ||
                       glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
 
     // determine action based on mouse button
@@ -105,43 +93,25 @@ class MujocoUI {
     }
 
     // move camera
-    mjv_moveCamera(
-        mujoco_ui.model_ptr_,
-        action,
-        dx / height,
-        dy / height,
-        &mujoco_ui.scn_,
-        &mujoco_ui.cam_
-    );
+    mjv_moveCamera(model_ptr_, action, dx / height, dy / height, &scn_, &cam_);
   }
 
   void onScroll(GLFWwindow* window, double xoffset, double yoffset) {
-    auto& mujoco_ui = *mujoco_ui_ptr_;
-
     // emulate vertical mouse motion = 5% of window height
-    mjv_moveCamera(
-        mujoco_ui.model_ptr_,
-        mjMOUSE_ZOOM,
-        0,
-        -0.05 * yoffset,
-        &mujoco_ui.scn_,
-        &mujoco_ui.cam_
-    );
+    mjv_moveCamera(model_ptr_, mjMOUSE_ZOOM, 0, -0.05 * yoffset, &scn_, &cam_);
   }
 
  protected:
   MujocoUI() = default;
 
   void init(mjModel* model_ptr, mjData* data_ptr) {
-    auto& mujoco_ui = *mujoco_ui_ptr_;
-
-    mujoco_ui.model_ptr_ = model_ptr;
-    mujoco_ui.data_ptr_ = data_ptr;
-    mujoco_ui.button_left_ = false;
-    mujoco_ui.button_middle_ = false;
-    mujoco_ui.button_right_ = false;
-    mujoco_ui.lastx_ = 0.0;
-    mujoco_ui.lasty_ = 0.0;
+    model_ptr_     = model_ptr;
+    data_ptr_      = data_ptr;
+    button_left_   = false;
+    button_middle_ = false;
+    button_right_  = false;
+    lastx_         = 0.0;
+    lasty_         = 0.0;
 
     // init GLFW, create window, make OpenGL context current, request v-sync
     glfwInit();
@@ -151,14 +121,13 @@ class MujocoUI {
 
     // initialize visualization data structures
     mjv_defaultCamera(&cam_);
-    //mjv_defaultPerturb(&pert);
     mjv_defaultOption(&opt_);
     mjr_defaultContext(&con_);
 
     // Visualize contact points and contact forces
     opt_.flags[mjVIS_CONTACTPOINT] = true;
     opt_.flags[mjVIS_CONTACTFORCE] = true;
-    opt_.flags[mjVIS_TRANSPARENT] = true;
+    opt_.flags[mjVIS_TRANSPARENT]  = true;
 
     cam_.distance = 4.0;
 
@@ -187,33 +156,31 @@ class MujocoUI {
     );
   }
 
-  static MujocoUI* mujoco_ui_ptr_;
+  static std::unique_ptr<MujocoUI> mujoco_ui_ptr_;
 
  private:
-
-  MujocoUI(MujocoUI& rhs) = delete;
-  MujocoUI operator=(const MujocoUI& rhs) = delete;
+  MujocoUI(const MujocoUI& rhs) = delete;
+  MujocoUI& operator=(const MujocoUI& rhs) = delete;
 
   // Mujoco model:
   mjModel* model_ptr_;
   mjData* data_ptr_;
 
   // Mujoco visualization:
-  mjvCamera cam_;                      // abstract camera
-  mjvOption opt_;                      // visualization options
-  mjvScene scn_;                       // abstract scene
-  mjrContext con_;                     // custom GPU context
+  mjvCamera  cam_;   // abstract camera
+  mjvOption  opt_;   // visualization options
+  mjvScene   scn_;   // abstract scene
+  mjrContext con_;   // custom GPU context
 
   GLFWwindow* window_;
 
   // Mouse interaction:
-  bool button_left_;
-  bool button_middle_;
-  bool button_right_;
+  bool   button_left_;
+  bool   button_middle_;
+  bool   button_right_;
   double lastx_;
   double lasty_;
-
 };
 
-MujocoUI* MujocoUI::mujoco_ui_ptr_ = nullptr;
+std::unique_ptr<MujocoUI> MujocoUI::mujoco_ui_ptr_;
 } // end namespace labrob
