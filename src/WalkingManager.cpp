@@ -26,7 +26,6 @@
 #include <JointCommand.hpp>
 #include <TimingLaw.hpp>
 #include <utils.hpp>
-#include <ResidualEstimator.hpp>
 
 #include <globals.h>
 
@@ -144,8 +143,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     integrated_state_vel = Eigen::VectorXd::Zero(6 + njnt);
 
     fb_robot_data = pinocchio::Data(robot_model);
-    predicted_robot_data = pinocchio::Data(robot_model);
-    estimated_robot_data = pinocchio::Data(robot_model);
 
     fb_robot_state = initial_robot_state;
 
@@ -153,98 +150,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     fixed_com_vel = Eigen::Vector3d::Zero();
     fixed_zmp_pos = Eigen::Vector3d::Zero();
 
-    // INIT FEEDBACK, PREDICTED AND ESTIMATED ROBOT DATA AND COMPUTING PINOCCHIO QUANTITIES
-
     pinocchio::forwardKinematics(robot_model, fb_robot_data, q_init);
     pinocchio::jacobianCenterOfMass(robot_model, fb_robot_data, q_init);
     pinocchio::framesForwardKinematics(robot_model, fb_robot_data, q_init);
-
-    pinocchio::forwardKinematics(robot_model, predicted_robot_data, q_init);
-    pinocchio::jacobianCenterOfMass(robot_model, predicted_robot_data, q_init);
-    pinocchio::framesForwardKinematics(robot_model, predicted_robot_data, q_init);
-
-    pinocchio::forwardKinematics(robot_model, estimated_robot_data, q_init);
-    pinocchio::jacobianCenterOfMass(robot_model, estimated_robot_data, q_init);
-    pinocchio::framesForwardKinematics(robot_model, estimated_robot_data, q_init);
-
-    BASE_IDX = 0;
-    IMU_ROTVEC_IDX = BASE_IDX + 3;
-    JOINTS_IDX = IMU_ROTVEC_IDX + 3;
-
-    // ADDITIONAL OUTPUTS FOR EKF
-
-    // BASE_VEL_IDX = JOINTS_IDX + njnt;
-    // JOINTS_VEL_IDX = BASE_VEL_IDX + 3;
-    // LEFT_FOOT_VEL_IDX = JOINTS_VEL_IDX + njnt;
-    // RIGHT_FOOT_VEL_IDX = LEFT_FOOT_VEL_IDX + 6;
-
-    // STATE COVARIANCE MATRIX
-
-    n_ekf_output = JOINTS_IDX + njnt;
-
-    P_ = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) * 1e-6;
-    P_.block(0, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
-    P_.block(njnt + 6, njnt + 6, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1e-3;
-    P_.block(3,3,3,3) = Eigen::MatrixXd::Identity(3, 3) * 1;
-    P_.block(njnt + 6 + 3, njnt + 6 + 3, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
-
-    // PROCESS NOISE COVARIANCE MATRIX
-
-    Q = Eigen::MatrixXd::Zero(2*(njnt+6), 2*(njnt+6));
-
-    //base position
-    Q.block<3,3>(0,0) = 1e-6 * Eigen::Matrix3d::Identity();
-
-    //imu orientation
-    Q.block<3,3>(3,3) = 1e-6 * Eigen::Matrix3d::Identity();
-
-    //joint position
-    Q.block(6, 6, njnt, njnt) = 1e-6 * Eigen::MatrixXd::Identity(njnt, njnt);
-
-    //base linear and angular velocities
-    Q.block(njnt+6, njnt+6, 6, 6) = 1e-4 * Eigen::MatrixXd::Identity(6,6);
-
-    //joint velocities
-    Q.block(2*6+njnt, 2*6+njnt, njnt, njnt) = 1e-4 * Eigen::MatrixXd::Identity(njnt,njnt);
-
-    // OUTPUT NOISE COVARIANCE MATRIX
-
-    R = Eigen::MatrixXd::Zero(n_ekf_output, n_ekf_output);
-
-    //base position
-    R.block(BASE_IDX, BASE_IDX, 3, 3) = 1e-5 * Eigen::Matrix3d::Identity();
-
-    //imu orientation
-    R.block(IMU_ROTVEC_IDX, IMU_ROTVEC_IDX, 3, 3) = 1e-5 * Eigen::MatrixXd::Identity(3, 3);
-
-    //joint position
-    R.block(JOINTS_IDX, JOINTS_IDX, njnt, njnt) = 1e-5 * Eigen::MatrixXd::Identity(njnt, njnt);
-
-    //ADDITIONAL OUTPUTS FOR EKF
-
-    //base linear velocity
-    // R.block(BASE_VEL_IDX, BASE_VEL_IDX, 3, 3) = 1e-4 * Eigen::MatrixXd::Identity(3, 3);
-
-    //imu angular velocity
-    // R.block(3 + njnt + 3, 3 + njnt + 3, 3, 3) = 1e-3 * Eigen::MatrixXd::Identity(3, 3);
-
-    //joint velocity
-    // R.block(JOINTS_VEL_IDX, JOINTS_VEL_IDX, njnt, njnt) = 25*1e-1 * Eigen::MatrixXd::Identity(njnt, njnt);
-
-    //feet velocity
-    // R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 12, 12) = 1e-1 * Eigen::MatrixXd::Identity(12, 12);
-
-    // INIT ESTIMATE STATE AND OUTPUT
-
-    x_estimate = Eigen::VectorXd::Zero(2 * (njnt + 6));
-    x_estimate.head(3) = q_init.head(3);
-    x_estimate.segment(3, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
-        q_init[6], q_init[3], q_init[4], q_init[5]
-    ));
-    x_estimate.segment(3 + 3, njnt) = q_init.tail(njnt);
-    y_pred = Eigen::VectorXd::Zero(n_ekf_output);
-    y_actual = Eigen::VectorXd::Zero(n_ekf_output);
-    y_estimate = Eigen::VectorXd::Zero(n_ekf_output);
 
 
     // GET INDICES OF INTEREST AND ARMATURES
@@ -320,31 +228,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_width
     );
 
-    if (use_jismpc_) {
-      const int    jismpc_horizon = 10;
-      const double jismpc_dt     = 0.001 * static_cast<double>(jismpc_timestep_msec_);
-      const double jismpc_eta    = std::sqrt(eta2);
-      const double jismpc_mass   = mass;
-      jismpc_ptr_ = std::make_unique<labrob::JISMPC>(
-          robot_model,
-          jismpc_horizon,
-          jismpc_dt,
-          jismpc_eta,
-          jismpc_mass,
-          foot_constraint_square_length,
-          foot_constraint_square_width,
-          jismpc_timestep_msec_
-      );
-      auto jismpc_wbc_params = labrob::JISMPCWholeBodyControllerParams::getDefaultParams();
-      jismpc_wbc_ptr_ = std::make_shared<labrob::JISMPCWholeBodyController>(
-          jismpc_wbc_params,
-          robot_model,
-          q_jnt_des_,
-          0.001 * controller_timestep_msec_,
-          armatures
-      );
-    }
-
     auto params = WholeBodyControllerParams::getDefaultParams();
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
@@ -380,46 +263,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         std::sqrt(eta2)
     );
 
-    // INIT KALMAN GAIN FOR EKF
-
-    Kalman_Gain = Eigen::MatrixXd::Zero(2 * (njnt + 6), n_ekf_output);
-
-    // GET JACOBIANS FOR EKF OUTPUTS
-
-    J_imu_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        imu_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_imu_est
-    );
-    J_imu_dot_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobianTimeVariation(
-        robot_model,
-        estimated_robot_data,
-        imu_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_imu_dot_est
-    );
-    J_left_foot_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        lsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_left_foot_est
-    );
-    J_right_foot_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        rsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_right_foot_est
-    );
-
-    residual_estimator_ptr_ = std::make_unique<ResidualEstimator>(robot_model, 1.0, armatures);
+    simple_ekf_ptr_ = std::make_unique<labrob::SimpleEKF>(
+        robot_model, q_init, 0.001 * controller_timestep_msec_);
 
     // Inizializzazione (in init o costruttore del WalkingManager)
     NoiseParams noise;
@@ -445,306 +290,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         robot_model, q_init, 0.001 * controller_timestep_msec_, feet_kio, noise);
 
     return true;
-}
-
-// PROPAGATE STATE FUNCTION START TO COMPUTE NUMERICAL A MATRIX FOR EKF
-
-Eigen::VectorXd WalkingManager::propagateState(
-    const Eigen::VectorXd& x,
-    const Eigen::VectorXd& q_ddot,
-    double dt)
-{
-    Eigen::VectorXd x_next = Eigen::VectorXd::Zero(x.size());
-
-    // --- Build Pinocchio configuration
-    Eigen::VectorXd q(njnt + 7);
-    q.head(3) = x.head(3);
-    {
-      const auto qr = quaternionFromRotVec(x.segment<3>(3));
-      q.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
-    }
-    q.tail(njnt) = x.segment(6, njnt);
-
-    Eigen::VectorXd v = x.segment(njnt + 6, njnt + 6);
-
-    // --- Integrate
-    Eigen::VectorXd q_next =
-        pinocchio::integrate(robot_model, q, v * dt);
-
-    // --- Fill next state
-    x_next.head(3) = q_next.head(3);
-    x_next.segment<3>(3) =
-        rotVecFromQuaternion(Eigen::Quaterniond(
-            q_next[6], q_next[3], q_next[4], q_next[5]
-        ));
-    x_next.segment(6, njnt) = q_next.tail(njnt);
-
-    x_next.tail(njnt + 6) = v + q_ddot * dt;
-
-    return x_next;
-}
-
-// NUMERICAL A COMPUTATION FUNCTION START
-
-Eigen::MatrixXd WalkingManager::computeNumericalA(
-    const Eigen::VectorXd& x,
-    const Eigen::VectorXd& q_ddot,
-    double dt)
-{
-    const int nx = x.size();
-    Eigen::MatrixXd A(nx, nx);
-    A.setZero();
-
-    Eigen::VectorXd x0 = propagateState(x, q_ddot, dt);
-
-    const double eps = 1e-6;
-
-    for (int i = 0; i < nx; ++i)
-    {
-        Eigen::VectorXd x_plus = x;
-        Eigen::VectorXd x_minus = x;
-
-        // --- configuration perturbation
-        if (i < njnt + 6)
-        {
-            Eigen::VectorXd dq = Eigen::VectorXd::Zero(njnt + 6);
-            dq(i) = eps;
-
-            Eigen::VectorXd q(njnt + 7);
-            q.head(3) = x.head(3);
-            {
-              const auto qr = quaternionFromRotVec(x.segment<3>(3));
-              q.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
-            }
-            q.tail(njnt) = x.segment(6, njnt);
-
-            Eigen::VectorXd q_p = pinocchio::integrate(robot_model, q, dq);
-            Eigen::VectorXd q_m = pinocchio::integrate(robot_model, q, -dq);
-
-            x_plus.head(3) = q_p.head(3);
-            x_plus.segment<3>(3) =
-                rotVecFromQuaternion(Eigen::Quaterniond(
-                    q_p[6], q_p[3], q_p[4], q_p[5]
-                ));
-            x_plus.segment(6, njnt) = q_p.tail(njnt);
-
-            x_minus.head(3) = q_m.head(3);
-            x_minus.segment<3>(3) =
-                rotVecFromQuaternion(Eigen::Quaterniond(
-                    q_m[6], q_m[3], q_m[4], q_m[5]
-                ));
-            x_minus.segment(6, njnt) = q_m.tail(njnt);
-        }
-        else
-        {
-            x_plus(i) += eps;
-            x_minus(i) -= eps;
-        }
-
-        Eigen::VectorXd f_plus  = propagateState(x_plus,  q_ddot, dt);
-        Eigen::VectorXd f_minus = propagateState(x_minus, q_ddot, dt);
-
-        A.col(i) = (f_plus - f_minus) / (2.0 * eps);
-    }
-
-    return A;
-}
-
-// EKF FUNCTION START
-
-RobotState WalkingManager::updateEKF(Eigen::VectorXd y_actual) {
-
-    //USE DIFFERENT COVARIANCES FOR FEET IN AIR AND ON THE GROUND IF USE FEET POS/VEL IN EKF OUTPUTS
-
-
-    // double left_support_check = 1.0;
-    // double right_support_check = 1.0;
-    // if (walking_data_.getWalkingState() == WalkingState::SingleSupport){
-    //     if (walking_data_.footstep_plan.frontrobot_model().getFeetPlacement().getSupportFoot() == Foot::LEFT){
-    //         R.block(RIGHT_FOOT_VEL_IDX, RIGHT_FOOT_VEL_IDX, 6, 6) = 10000 * Eigen::MatrixXd::Identity(6,6);
-    //         R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 6, 6) = 1e-5 * Eigen::MatrixXd::Identity(6,6);
-    //     }
-    //     if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
-    //         R.block(LEFT_FOOT_VEL_IDX, LEFT_FOOT_VEL_IDX, 6, 6) = 10000 * Eigen::MatrixXd::Identity(6,6);
-    //         R.block(RIGHT_FOOT_VEL_IDX, RIGHT_FOOT_VEL_IDX, 6, 6) = 1e-5 * Eigen::MatrixXd::Identity(6,6);
-    //     }
-    // }
-
-    // INIT X PRED
-
-    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(2 * (njnt + 6));
-    // x_pred.segment(njnt + 6, njnt + 6) = x_estimate.segment(njnt + 6, njnt + 6) + (whole_body_controller_ptr_->get_q_ddot()) * controller_timestep_msec_ * 0.001;
-    // x_pred.head(njnt + 6) = x_estimate.head(njnt + 6) + x_estimate.segment(njnt + 6, njnt + 6) * 0.001 * controller_timestep_msec_;
-
-    // INTEGRATE STATE USING PINOCCHIO::INTEGRATE
-
-    Eigen::VectorXd q_current = Eigen::VectorXd::Zero(njnt + 7 + njnt + 6);
-    q_current.head(3) = x_estimate.head(3);
-    {
-      const auto qr = quaternionFromRotVec(x_estimate.segment(3, 3));
-      q_current.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
-    }
-    q_current.segment(7, njnt) = x_estimate.segment(3 + 3, njnt);
-    q_current.tail(6 + njnt) = x_estimate.tail(njnt + 6);
-    Eigen::VectorXd q_next = pinocchio::integrate(
-        robot_model,
-        q_current.head(njnt + 7),
-        q_current.tail(njnt + 6) * 0.001 * controller_timestep_msec_
-    );
-    x_pred.head(3) = q_next.head(3);
-    x_pred.segment(3, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
-        q_next[6], q_next[3], q_next[4], q_next[5]
-    ));
-    x_pred.segment(3 + 3, njnt) = q_next.segment(7, njnt);
-    x_pred.tail(njnt + 6) = x_estimate.tail(njnt + 6) + whole_body_controller_ptr_->get_q_ddot() * controller_timestep_msec_ * 0.001;
-
-    // TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
-
-    Eigen::VectorXd q_pred = Eigen::VectorXd::Zero(njnt + 7);
-    q_pred.head(3) = x_pred.head(3);
-    {
-      const auto qr = quaternionFromRotVec(x_pred.segment(3, 3));
-      q_pred.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
-    }
-    q_pred.tail(njnt) = x_pred.segment(3 + 3, njnt);
-
-    // COMPUTE PINOCCHIO QUANTITIES FOR PREDICTION AND JACOBIANS
-
-    pinocchio::forwardKinematics(robot_model, predicted_robot_data, q_pred);
-    pinocchio::framesForwardKinematics(robot_model, predicted_robot_data, q_pred);
-    pinocchio::updateFramePlacements(robot_model, predicted_robot_data);
-
-    // INIT Y PRED
-
-    Eigen::Quaterniond pred_imu_orientation = Eigen::Quaterniond(
-        predicted_robot_data.oMf[imu_idx_].rotation()
-    );
-    y_pred.segment(BASE_IDX, 3) = x_pred.head(3);
-    y_pred.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(pred_imu_orientation);
-    y_pred.segment(JOINTS_IDX, njnt) = q_pred.tail(njnt);
-
-    // ADDITIONAL OUTPUTS FOR EKF
-
-    // y_pred.segment(BASE_VEL_IDX, 3) = x_pred.segment(6 + njnt, 3);
-    // y_pred.segment(3 + njnt + 3, 3) = J_imu_est.bottomRows(3) * x_pred.tail(njnt + 6);
-    // y_pred.segment(LEFT_FOOT_VEL_IDX, 6) = J_left_foot_pred * x_pred.segment(njnt + 6, njnt + 6);
-    // y_pred.segment(RIGHT_FOOT_VEL_IDX, 6) = J_right_foot_pred * x_pred.segment(njnt + 6, njnt + 6);
-    // y_pred.segment(JOINTS_VEL_IDX, njnt) = x_pred.segment(6 + 6 + njnt, njnt);
-
-
-    // C MATRIX:
-
-    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(n_ekf_output, 2 * (njnt + 6));
-    C.block(BASE_IDX, 0, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
-    C.block(IMU_ROTVEC_IDX, 0, 3, njnt + 6) = J_imu_est.bottomRows(3);
-    C.block(JOINTS_IDX, 6, njnt, njnt) = Eigen::MatrixXd::Identity(njnt, njnt);
-
-    // ADDITIONAL OUTPUTS FOR EKF
-
-    // C.block(BASE_VEL_IDX, njnt + 6, 3, 3) = Eigen::MatrixXd::Identity(3, 3);
-    // C.block(3 + njnt + 3, njnt + 6, 3, njnt + 6) = J_imu_est.bottomRows(3);
-    // C.block(JOINTS_VEL_IDX, njnt + 6 + 6, njnt, njnt) = Eigen::MatrixXd::Identity(njnt, njnt);
-    // C.block(LEFT_FOOT_VEL_IDX, njnt + 6, 6, njnt + 6) = J_left_foot_est;
-    // C.block(RIGHT_FOOT_VEL_IDX, njnt + 6, 6, njnt + 6) = J_right_foot_est;
-
-    // A MATRIX:
-
-    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6));
-    A.block(0, njnt + 6, njnt + 6, njnt + 6) = controller_timestep_msec_ * 0.001 * Eigen::MatrixXd::Identity(njnt + 6, njnt + 6);
-
-    // UNCOMMENT ABOVE TO USE APPROXIMATED A. UNCOMMENT BELOW TO USE NUMERICAL A
-
-    // Eigen::MatrixXd A = computeNumericalA(x_estimate,
-    //                   whole_body_controller_ptr_->get_q_ddot(),
-    //                   controller_timestep_msec_ * 0.001);
-
-    //PREDICTION COVARIANCE (lambda) AND KALMAN GAIN
-
-    Eigen::MatrixXd Lambda_ = A * P_ * A.transpose() + Q;
-    // Kalman_Gain = Lambda_ * C.transpose() * (C * Lambda_ * C.transpose() + R).inverse();
-
-    // ALTERNATIVE WAYS TO COMPUTE KALMAN GAIN BELOW (USE IF INVERSION TOO SLOW)
-
-    // Eigen::LLT<Eigen::MatrixXd> llt(C * Lambda_ * C.transpose() + R);
-    // Eigen::MatrixXd MatInv = llt.solve(Eigen::MatrixXd::Identity(n_ekf_output, n_ekf_output));
-    // Kalman_Gain = Lambda_ * C.transpose() * MatInv;
-
-    Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;   // innovation covariance
-    Kalman_Gain = Lambda_ * C.transpose() * S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
-
-    // Eigen::MatrixXd S = C * Lambda_ * C.transpose() + R;
-    // Kalman_Gain = Lambda_ * C.transpose();
-    // Kalman_Gain = S.ldlt().solve(Kalman_Gain.transpose()).transpose();
-
-    // PROCESS COVARIANCE MATRIX UPDATE
-
-    P_ = (Eigen::MatrixXd::Identity(2 * (njnt + 6), 2 * (njnt + 6)) - Kalman_Gain * C) * Lambda_;
-
-    // y_actual = actual_output;
-
-    // STATE ESTIMATE
-
-    x_estimate = x_pred + Kalman_Gain * (y_actual - y_pred);
-
-    // TAKE ONLY POSITIONS TO CONVERT FROM ROTVEC TO QUATERNION
-
-    Eigen::VectorXd q_estimate = Eigen::VectorXd::Zero(njnt + 7);
-    q_estimate.head(3) = x_estimate.head(3);
-    q_estimate.segment(3, 4) = Eigen::Vector4d(
-        quaternionFromRotVec(x_estimate.segment(3, 3)).x(),
-        quaternionFromRotVec(x_estimate.segment(3, 3)).y(),
-        quaternionFromRotVec(x_estimate.segment(3, 3)).z(),
-        quaternionFromRotVec(x_estimate.segment(3, 3)).w()
-    );
-    q_estimate.tail(njnt) = x_estimate.segment(3 + 3, njnt);
-
-    // COMPUTE PINOCCHIO QUANTITIES FOR ESTIMATE AND JACOBIANS
-
-    pinocchio::forwardKinematics(robot_model, estimated_robot_data, q_estimate);
-    pinocchio::jacobianCenterOfMass(robot_model, estimated_robot_data, q_estimate);
-    pinocchio::computeJointJacobians(robot_model, estimated_robot_data, q_estimate);
-    pinocchio::framesForwardKinematics(robot_model, estimated_robot_data, q_estimate);
-
-    J_imu_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        imu_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_imu_est
-    );
-    J_left_foot_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        lsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_left_foot_est
-    );
-    J_right_foot_est = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        estimated_robot_data,
-        rsole_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_right_foot_est
-    );
-
-    // FILL CURRENT STATE FOR ACTUAL RETURN
-
-    RobotState current_state;
-
-    current_state.position = x_estimate.head(3);
-    current_state.orientation = quaternionFromRotVec(x_estimate.segment<3>(3));
-    current_state.linear_velocity = x_estimate.segment(njnt + 6, 3);
-    current_state.angular_velocity = x_estimate.segment(njnt + 6 + 3, 3);
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        current_state.joint_state[joint_name].pos = x_estimate(joint_id + 6);
-        current_state.joint_state[joint_name].vel = x_estimate(njnt + joint_id + 6 + 6);
-    }
-
-    return current_state;
 }
 
 // UPDATE FUNCTION START
@@ -892,171 +437,126 @@ WalkingManager::update(
         odometry_imu_rpy = measured_imu_rpy;
     }
 
-    // FILL ACTUAL OUTPUT VECTOR FOR EKF
+    // FILL ACTUAL OUTPUT VECTOR FOR SIMPLE EKF
 
-    Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(n_ekf_output);
-    actual_output.segment(BASE_IDX, 3) = odometry_base_position;
-    actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
+    Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(6 + njnt);
+    actual_output.head(3) = odometry_base_position;
+    actual_output.segment(3, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
         odometry_imu_quaternion[0], odometry_imu_quaternion[1], odometry_imu_quaternion[2], odometry_imu_quaternion[3]
     ));
-    // actual_output.segment(IMU_ROTVEC_IDX, 3) = rotVecFromQuaternion(Eigen::Quaterniond(
-    //     sim_robot_data.oMf[imu_idx_].rotation()));
-    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-        std::string joint_name = robot_model.names[joint_id + 2];
-        actual_output(JOINTS_IDX + joint_id) = measured_joint_position(joint_id);
-        // actual_output(JOINTS_VEL_IDX + joint_id) = measured_joint_velocity(joint_id);
-    }
-
-    // ADDITIONAL OUTPUTS FOR EKF
-
-    // actual_output.segment(BASE_VEL_IDX, 3) = odometry_base_velocity;
-    // actual_output.segment(LEFT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
-    // actual_output.segment(RIGHT_FOOT_VEL_IDX, 6) = Eigen::VectorXd::Zero(6);
+    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex)njnt; ++joint_id)
+        actual_output(6 + joint_id) = measured_joint_position(joint_id);
 
     ////////////////////////
-    // EKF FUNCTION CALL (IN DIFFERENT THREADS)
+    // FILTER CALLS
     ////////////////////////
 
-    bool left_support_check = true;
+    bool left_support_check  = true;
     bool right_support_check = true;
-    if (walking_data_.getWalkingState() == WalkingState::SingleSupport){
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT){
+    if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
+        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::LEFT)
             right_support_check = false;
-        }
-        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT){
+        if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT)
             left_support_check = false;
-        }
     }
+    const std::array<bool,2> contact = {left_support_check, right_support_check};
 
     auto start_ekf = std::chrono::high_resolution_clock::now();
-    Eigen::VectorXd input1 = Eigen::VectorXd::Zero(measured_joint_position.size() + measured_imu_angular_velocity.size());
-    input1.head(measured_joint_position.size()) = measured_joint_position;
-    input1.tail(measured_imu_angular_velocity.size()) = measured_imu_angular_velocity;
-    Eigen::VectorXd input2 = Eigen::VectorXd::Zero(njnt + 3);
-    input2.head(njnt) = whole_body_controller_ptr_->get_q_ddot().tail(njnt);
-    input2.tail(3) = whole_body_controller_ptr_->get_q_ddot().segment(3,3);
-    joint_kf_ptr_->filter(input1, input2);
-    if (t_msec_ == 1000){
-        //concatenate q.head(7) with q_filtered
-        Eigen::VectorXd input(njnt + 7);
-        input.head(7) = q.head(7);
-        input.tail(njnt) = joint_kf_ptr_->getFilteredJointPositions();
-        base_ekf_ptr_->initialize(input, T_lsole_sim.translation(), T_rsole_sim.translation());
-        // std::cout << "INITIALIZATION" << std::endl;
 
-        Eigen::VectorXd q_joints = joint_kf_ptr_->getFilteredJointPositions();
-        ri_ekf_ptr_->addContact(0, q_joints);  // piede sinistro
-        ri_ekf_ptr_->addContact(1, q_joints);  // piede destro
-
-
-        diligent_kio_ptr_->addContact(0, q_joints);  // piede sinistro
-        diligent_kio_ptr_->addContact(1, q_joints);  // piede destro
-    }
-    if (t_msec_ >= 1000 && true){
-
-        input_acc = measured_imu_accelerometer;
-        input_gyro = measured_imu_angular_velocity; // sim_robot_state.angular_velocity; //measured_imu_angular_velocity;
-        // base_ekf_ptr_->filter(input_acc,
-        //     input_gyro,
-        //     joint_kf_ptr_->getFilteredJointPositions(),
-        //     joint_kf_ptr_->getFilteredJointVelocities(),
-        //     whole_body_controller_ptr_->get_q_ddot().head(6),
-        //     left_support_check,
-        //     right_support_check
-        // );
-
-        // std::array<bool,2> contact = {left_support_check, right_support_check};
-        // ri_ekf_ptr_->filter(input_gyro, input_acc,
-        //                     joint_kf_ptr_->getFilteredJointPositions(),
-        //                     joint_kf_ptr_->getFilteredJointVelocities(),
-        //                     contact);
-        
-        // // std::array<bool,2> contact = {left_support_check, right_support_check};
-        // diligent_kio_ptr_->filter(input_gyro, input_acc,
-        //                     joint_kf_ptr_->getFilteredJointPositions(),
-        //                     joint_kf_ptr_->getFilteredJointVelocities(),
-        //                     contact);
-        
-        // input_acc = measured_imu_accelerometer;
-        // input_gyro = sim_robot_state.angular_velocity; //measured_imu_angular_velocity;
-
-        // Debug periodico RI-EKF (ogni 500 step)
-        // if (t_msec_ % 500 == 0) {
-        //     std::cout << "[RI-EKF t=" << t_msec_ << "ms]"
-        //               << "  pos=" << ri_ekf_ptr_->getPosition().transpose()
-        //               << "  q=" << ri_ekf_ptr_->getQuaternion().coeffs().transpose()
-        //               << "  v=" << ri_ekf_ptr_->getVelocity().transpose()
-        //               << "  omega_b=" << ri_ekf_ptr_->getOmegaBody().transpose() << std::endl;
-        // }
-    }
-    #pragma omp parallel sections num_threads(2)
+    // JointKF — always active, lightweight pre-filter that feeds IMU-based filters
     {
-        #pragma omp section
-        {
-            if(t_msec_ >= startTimeEKF && isEKFactive) {
-                fb_robot_state = updateEKF(actual_output);
+        Eigen::VectorXd input1(measured_joint_position.size() + measured_imu_angular_velocity.size());
+        input1 << measured_joint_position, measured_imu_angular_velocity;
+        Eigen::VectorXd input2(njnt + 3);
+        input2 << whole_body_controller_ptr_->get_q_ddot().tail(njnt),
+                  whole_body_controller_ptr_->get_q_ddot().segment(3, 3);
+        joint_kf_ptr_->filter(input1, input2);
+    }
 
-                //use odometry instead
-                // fb_robot_state.position = odometry_base_position;
-                // fb_robot_state.orientation = Eigen::Quaterniond(odometry_imu_quaternion(0), odometry_imu_quaternion(1), odometry_imu_quaternion(2), odometry_imu_quaternion(3));
-                // fb_robot_state.linear_velocity = odometry_base_velocity;
-                // fb_robot_state.angular_velocity = measured_imu_angular_velocity;
-                // for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-                //     std::string joint_name = robot_model.names[joint_id + 2];
-                //     fb_robot_state.joint_state[joint_name].pos = measured_joint_position(joint_id);
-                //     fb_robot_state.joint_state[joint_name].vel = measured_joint_velocity(joint_id);
-                // }
+    // One-time initialization of IMU-based filters at t=1000 ms
+    if (t_msec_ == 1000) {
+        const Eigen::VectorXd q_joints = joint_kf_ptr_->getFilteredJointPositions();
+        Eigen::VectorXd q_full(njnt + 7);
+        q_full.head(7)  = q.head(7);
+        q_full.tail(njnt) = q_joints;
 
-                if (t_msec_ >= 5000 && false){
-                    // BaseEKF is the primary state source.
-                    // getBaseOrientation() returns R_WB (world←body) quaternion.
-                    // getBaseVelocity()    returns v in world frame → convert to body.
-                    // getBaseOmega()       returns ω in body frame (bias-corrected).
-                    fb_robot_state.orientation      = base_ekf_ptr_->getBaseOrientation();
-                    fb_robot_state.position         = base_ekf_ptr_->getBasePosition();
-                    fb_robot_state.linear_velocity  =
-                        fb_robot_state.orientation.toRotationMatrix().transpose()
-                        * base_ekf_ptr_->getBaseVelocity();
-                    fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
-
-                    // use q_filtered for the joints
-                    for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-                        std::string joint_name = robot_model.names[joint_id + 2];
-                        fb_robot_state.joint_state[joint_name].pos = joint_kf_ptr_->getFilteredJointPositions()(joint_id);
-                        fb_robot_state.joint_state[joint_name].vel = joint_kf_ptr_->getFilteredJointVelocities()(joint_id);
-                    }
-
-                    // if (t_msec_ % 500 == 0) {
-                    //     std::cout << "[BaseEKF t=" << t_msec_ << "ms]"
-                    //               << "  pos="  << fb_robot_state.position.transpose()
-                    //               << "  |pos_err|=" << (sim_robot_state.position
-                    //                                    - fb_robot_state.position).norm() << "m"
-                    //               << "  omega=" << fb_robot_state.angular_velocity.transpose()
-                    //               << std::endl;
-                    // }
-                }
-            }
-            else{
-                fb_robot_state = sim_robot_state;
-            }
-
+        if (use_base_ekf_)
+            base_ekf_ptr_->initialize(q_full, T_lsole_sim.translation(), T_rsole_sim.translation());
+        if (use_ri_ekf_) {
+            ri_ekf_ptr_->addContact(0, q_joints);
+            ri_ekf_ptr_->addContact(1, q_joints);
         }
-        #pragma omp section
-        {
+        if (use_diligent_kio_) {
+            diligent_kio_ptr_->addContact(0, q_joints);
+            diligent_kio_ptr_->addContact(1, q_joints);
         }
+    }
+
+    // Run active filters and select primary output for control
+    if (t_msec_ >= startTimeEKF && isEKFactive) {
+        input_acc  = measured_imu_accelerometer;
+        input_gyro = measured_imu_angular_velocity;
+
+        if (use_simple_ekf_)
+            simple_ekf_ptr_->filter(actual_output, whole_body_controller_ptr_->get_q_ddot());
+
+        if (use_base_ekf_ && t_msec_ >= 1000)
+            base_ekf_ptr_->filter(input_acc, input_gyro,
+                joint_kf_ptr_->getFilteredJointPositions(),
+                joint_kf_ptr_->getFilteredJointVelocities(),
+                whole_body_controller_ptr_->get_q_ddot().head(6),
+                left_support_check, right_support_check);
+
+        if (use_ri_ekf_ && t_msec_ >= 1000)
+            ri_ekf_ptr_->filter(input_gyro, input_acc,
+                joint_kf_ptr_->getFilteredJointPositions(),
+                joint_kf_ptr_->getFilteredJointVelocities(), contact);
+
+        if (use_diligent_kio_ && t_msec_ >= 1000)
+            diligent_kio_ptr_->filter(input_gyro, input_acc,
+                joint_kf_ptr_->getFilteredJointPositions(),
+                joint_kf_ptr_->getFilteredJointVelocities(), contact);
+
+        // Fill joints from JointKF — used by all IMU-based filters
+        auto fill_joints_from_kf = [&]() {
+            for (pinocchio::JointIndex id = 0; id < (pinocchio::JointIndex)njnt; ++id) {
+                const std::string& name = robot_model.names[id + 2];
+                fb_robot_state.joint_state[name].pos = joint_kf_ptr_->getFilteredJointPositions()(id);
+                fb_robot_state.joint_state[name].vel = joint_kf_ptr_->getFilteredJointVelocities()(id);
+            }
+        };
+
+        // Primary filter for WBC control (priority: simple > ri > diligent > base)
+        if (use_simple_ekf_) {
+            fb_robot_state = simple_ekf_ptr_->getState();
+        } else if (use_ri_ekf_ && t_msec_ >= 1000) {
+            fb_robot_state.position         = ri_ekf_ptr_->getPosition();
+            fb_robot_state.orientation      = ri_ekf_ptr_->getQuaternion();
+            fb_robot_state.linear_velocity  = ri_ekf_ptr_->getVelocity();
+            fb_robot_state.angular_velocity = ri_ekf_ptr_->getOmegaBody();
+            fill_joints_from_kf();
+        } else if (use_diligent_kio_ && t_msec_ >= 1000) {
+            fb_robot_state.position         = diligent_kio_ptr_->getPosition();
+            fb_robot_state.orientation      = diligent_kio_ptr_->getQuaternion();
+            fb_robot_state.linear_velocity  = diligent_kio_ptr_->getVelocity();
+            fb_robot_state.angular_velocity = diligent_kio_ptr_->getOmegaBody();
+            fill_joints_from_kf();
+        } else if (use_base_ekf_ && t_msec_ >= 1000) {
+            fb_robot_state.orientation      = base_ekf_ptr_->getBaseOrientation();
+            fb_robot_state.position         = base_ekf_ptr_->getBasePosition();
+            fb_robot_state.linear_velocity  =
+                fb_robot_state.orientation.toRotationMatrix().transpose()
+                * base_ekf_ptr_->getBaseVelocity();
+            fb_robot_state.angular_velocity = base_ekf_ptr_->getBaseOmega();
+            fill_joints_from_kf();
+        }
+    } else {
+        fb_robot_state = sim_robot_state;
     }
     auto end_ekf = std::chrono::high_resolution_clock::now();
 
-    // Debug periodico filtri (ogni 500 step)
-    // if (t_msec_ % 500 == 0 && t_msec_ >= 1000) {
-    //     std::cout << "[State t=" << t_msec_ << "ms]"
-    //               << "  GT_pos=" << sim_robot_state.position.transpose()
-    //               << "  BEKF_pos=" << base_ekf_ptr_->getBasePosition().transpose()
-    //               << "  |pos_err|=" << (sim_robot_state.position - base_ekf_ptr_->getBasePosition()).norm() << "m" << std::endl;
-    // }
-
     ////////////////////
-    // END EKF CALL
+    // END FILTER CALLS
     ///////////////////
 
     // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES FOR FEEDBACK FILTERED STATE
@@ -1366,41 +866,33 @@ WalkingManager::update(
 
     LIPState mpc_LipState_prec = des_LipState;
 
-    // JIS-MPC: runs at jismpc_timestep_msec_ rate
-    if (use_jismpc_ && jismpc_ptr_ &&
-        (t_msec_ % jismpc_timestep_msec_ == 0)) {
-        jismpc_ptr_->solve(sim_robot_state, current_gait_configuration,
-                           walking_data_, t_msec_);
-    }
-
     auto start_mpc = std::chrono::system_clock::now();
 
-    if (!use_jismpc_) {
-        #pragma omp parallel sections num_threads(2)
+    #pragma omp parallel sections num_threads(2)
+    {
+        #pragma omp section
         {
-            #pragma omp section
-            {
-                if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
-                    ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
-                    des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                        kf_LipState,
-                        ismpc_ptr_->getInput()
-                    );
-                }
-                else{
-                    ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
-                    des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                        des_LipState,
-                        ismpc_ptr_->getInput()
-                    );
-                }
+            if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
+                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
+                des_LipState = discrete_lip_dynamics_ptr_->integrate(
+                    kf_LipState,
+                    ismpc_ptr_->getInput()
+                );
             }
-            #pragma omp section
-            {
+            else{
+                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
+                des_LipState = discrete_lip_dynamics_ptr_->integrate(
+                    des_LipState,
+                    ismpc_ptr_->getInput()
+                );
             }
         }
+        #pragma omp section
+        {
+        }
+    }
 
-        logger_.log("mpc_zmp_velocity", ismpc_ptr_->getInput());
+    logger_.log("mpc_zmp_velocity", ismpc_ptr_->getInput());
 
         // LOG MPC PREDICTIONS FOR GIF FILES
         Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
@@ -1448,7 +940,6 @@ WalkingManager::update(
             mpc_snapshot_x_log_.push_back(std::move(x_rows));
             mpc_snapshot_u_log_.push_back(std::move(u_rows));
         }
-    }
 
     auto end_mpc = std::chrono::system_clock::now();
 
@@ -1493,41 +984,28 @@ WalkingManager::update(
     // desired_gait_configuration.qjnt(robot_model.getJointId("right_elbow_joint") - 2) += 1 * step_length;
 
 
-    if (!use_jismpc_) {
-        // CoM desired from IS-MPC LIP integration
-        desired_gait_configuration.com.pos = des_LipState.com_pos_;
-        desired_gait_configuration.com.vel = des_LipState.com_vel_;
-        desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
-                                           - Eigen::Vector3d(0.0, 0.0, 9.81);
+    // CoM desired from IS-MPC LIP integration
+    desired_gait_configuration.com.pos = des_LipState.com_pos_;
+    desired_gait_configuration.com.vel = des_LipState.com_vel_;
+    desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+                                       - Eigen::Vector3d(0.0, 0.0, 9.81);
 
-        // assign constant value to com
-        if(useRobot){
-            if(isWBCLoopClosed && t_msec_ >= startTimeWBCCL){
-                desired_gait_configuration.com.pos = fixed_com_pos;
-            } else {
-                desired_gait_configuration.com.pos = p_CoM_init;
-            }
+    // assign constant value to com
+    if(useRobot){
+        if(isWBCLoopClosed && t_msec_ >= startTimeWBCCL){
+            desired_gait_configuration.com.pos = fixed_com_pos;
         } else {
-            desired_gait_configuration.com.pos = Eigen::Vector3d(0.03, 0.0, 0.65);
+            desired_gait_configuration.com.pos = p_CoM_init;
         }
-        desired_gait_configuration.com.vel = Eigen::Vector3d::Zero();
-        desired_gait_configuration.com.acc = Eigen::Vector3d::Zero();
-
     } else {
-        // JIS-MPC: no LIP-based CoM reference (WBC does not use com.* in this mode)
-        desired_gait_configuration.com.pos = current_gait_configuration.com.pos;
-        desired_gait_configuration.com.vel = current_gait_configuration.com.vel;
-        desired_gait_configuration.com.acc = Eigen::Vector3d::Zero();
+        desired_gait_configuration.com.pos = Eigen::Vector3d(0.03, 0.0, 0.65);
     }
+    desired_gait_configuration.com.vel = Eigen::Vector3d::Zero();
+    desired_gait_configuration.com.acc = Eigen::Vector3d::Zero();
 
     // contact flags
-    if (use_jismpc_ && jismpc_ptr_) {
-        desired_gait_configuration.is_left_foot_support  = jismpc_ptr_->get_left_in_contact();
-        desired_gait_configuration.is_right_foot_support = jismpc_ptr_->get_right_in_contact();
-    } else {
-        desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
-        desired_gait_configuration.is_right_foot_support = current_gait_configuration.is_right_foot_support;
-    }
+    desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
+    desired_gait_configuration.is_right_foot_support = current_gait_configuration.is_right_foot_support;
 
     // feet tasks
     if (current_gait_configuration.is_left_foot_support && current_gait_configuration.is_right_foot_support) {
@@ -1583,24 +1061,7 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if (use_jismpc_ && jismpc_wbc_ptr_) {
-                // JIS-MPC mode: use simplified WBC with nu_dot from JIS-MPC
-                const Eigen::VectorXd& nu_dot_des =
-                    jismpc_ptr_ ? jismpc_ptr_->get_nu_dot_0()
-                                : Eigen::VectorXd::Zero(robot_model.nv);
-                const labrob::RobotState& rs =
-                    (t_msec_ >= startTimeWBCCL && isWBCLoopClosed)
-                    ? fb_robot_state : sim_robot_state;
-                pinocchio::Data& rd =
-                    (t_msec_ >= startTimeWBCCL && isWBCLoopClosed)
-                    ? fb_robot_data : sim_robot_data;
-                joint_command = jismpc_wbc_ptr_->compute_inverse_dynamics(
-                    robot_model, rs, rd,
-                    current_gait_configuration,
-                    desired_gait_configuration,
-                    nu_dot_des
-                );
-            } else if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
+            if (t_msec_ >= startTimeWBCCL && isWBCLoopClosed){
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
                     fb_robot_state,
@@ -1609,7 +1070,6 @@ WalkingManager::update(
                     desired_gait_configuration
                 );
             } else {
-                // Use the MPC to compute the joint command:
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
                     robot_model,
                     sim_robot_state,
@@ -1629,24 +1089,7 @@ WalkingManager::update(
     // END WHOLE BODY CONTROLLER FUNCTION CALL
     /////////////////////////////////////
 
-    // get measured joint torques from the joint command
-    Eigen::VectorXd measured_torques(robot_model.nv - 6);  // Exclude floating base
-    int idx = 0;
-    for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
-        const auto& joint_name = robot_model.names[joint_id];
-        measured_torques(idx++) = joint_command[joint_name];
-    }
-
-    // FORCE ESTIMATION WITH RESIDUAL ESTIMATOR
-
-    residual_estimator_ptr_->computeResidualWithWBCWrenches(
-        fb_robot_state,
-        fb_robot_data,
-        measured_torques,
-        *whole_body_controller_ptr_,
-        controller_timestep_msec_*0.001
-    );
-    estimated_force = residual_estimator_ptr_->getFeetEstimatedForce();
+    estimated_force = Eigen::VectorXd::Zero(6);
 
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_
@@ -1818,10 +1261,11 @@ void WalkingManager::saveLogs() {
     logger_.save("/tmp/robot_logs");
 
     // MPC per-solve snapshots: nested structure, written to individual subdirectories.
-    std::filesystem::remove_all(mpc_data_dir_);
-    std::filesystem::create_directories(mpc_data_dir_);
+    constexpr const char* mpc_data_dir = "/tmp/mpc_data";
+    std::filesystem::remove_all(mpc_data_dir);
+    std::filesystem::create_directories(mpc_data_dir);
     for (std::size_t k = 0; k < mpc_snapshot_t_log_.size(); ++k) {
-        const std::string subdir = mpc_data_dir_ + "/" + std::to_string(mpc_snapshot_t_log_[k]);
+        const std::string subdir = std::string(mpc_data_dir) + "/" + std::to_string(mpc_snapshot_t_log_[k]);
         std::filesystem::create_directories(subdir);
         {
             std::ofstream fx(subdir + "/x.txt");

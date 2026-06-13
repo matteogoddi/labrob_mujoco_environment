@@ -1,5 +1,8 @@
 #include <StateFiltering.hpp>
 #include <pinocchio/spatial/explog.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/center-of-mass.hpp>
+#include <pinocchio/algorithm/jacobian.hpp>
 #include <fstream>
 #include <iostream>
 
@@ -1587,4 +1590,154 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
     P_ = 0.5 * (P_ + P_.transpose());
 }
 
-} // namespace state_filtering
+///////////////////////////////////////////////////////////////////////////////
+// SimpleEKF
+///////////////////////////////////////////////////////////////////////////////
+
+SimpleEKF::SimpleEKF(const pinocchio::Model& model,
+                     const Eigen::VectorXd& q_init,
+                     double dt)
+    : model_(model),
+      predicted_data_(model),
+      estimated_data_(model),
+      njnt_(model.nv - 6),
+      dt_(dt),
+      n_output_(6 + model.nv - 6)
+{
+    imu_idx_ = model_.getFrameId("imu_in_pelvis");
+
+    pinocchio::forwardKinematics(model_, predicted_data_, q_init);
+    pinocchio::framesForwardKinematics(model_, predicted_data_, q_init);
+    pinocchio::forwardKinematics(model_, estimated_data_, q_init);
+    pinocchio::framesForwardKinematics(model_, estimated_data_, q_init);
+
+    const int nx = 2 * (njnt_ + 6);
+
+    P_ = Eigen::MatrixXd::Identity(nx, nx) * 1e-6;
+    P_.block<3,3>(0, 0)                         = Eigen::Matrix3d::Identity();
+    P_.block<3,3>(3, 3)                         = Eigen::Matrix3d::Identity();
+    P_.block<3,3>(njnt_+6, njnt_+6)             = 1e-3 * Eigen::Matrix3d::Identity();
+    P_.block<3,3>(njnt_+9, njnt_+9)             = Eigen::Matrix3d::Identity();
+
+    Q_ = Eigen::MatrixXd::Zero(nx, nx);
+    Q_.block<3,3>(0, 0)                                 = 1e-6 * Eigen::Matrix3d::Identity();
+    Q_.block<3,3>(3, 3)                                 = 1e-6 * Eigen::Matrix3d::Identity();
+    Q_.block(6, 6, njnt_, njnt_)                        = 1e-6 * Eigen::MatrixXd::Identity(njnt_, njnt_);
+    Q_.block(njnt_+6, njnt_+6, 6, 6)                   = 1e-4 * Eigen::MatrixXd::Identity(6, 6);
+    Q_.block(njnt_+12, njnt_+12, njnt_, njnt_)          = 1e-4 * Eigen::MatrixXd::Identity(njnt_, njnt_);
+
+    R_ = Eigen::MatrixXd::Zero(n_output_, n_output_);
+    R_.block<3,3>(0, 0)                         = 1e-5 * Eigen::Matrix3d::Identity();
+    R_.block<3,3>(3, 3)                         = 1e-5 * Eigen::Matrix3d::Identity();
+    R_.block(6, 6, njnt_, njnt_)                = 1e-5 * Eigen::MatrixXd::Identity(njnt_, njnt_);
+
+    x_estimate_ = Eigen::VectorXd::Zero(nx);
+    x_estimate_.head(3) = q_init.head(3);
+    x_estimate_.segment(3, 3) = rotVecFromQuaternion(
+        Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]));
+    x_estimate_.segment(6, njnt_) = q_init.tail(njnt_);
+
+    y_pred_       = Eigen::VectorXd::Zero(n_output_);
+    Kalman_Gain_  = Eigen::MatrixXd::Zero(nx, n_output_);
+
+    J_imu_est_ = Eigen::MatrixXd::Zero(6, njnt_ + 6);
+    pinocchio::computeJointJacobians(model_, estimated_data_, q_init);
+    pinocchio::getFrameJacobian(model_, estimated_data_, imu_idx_,
+                                pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_imu_est_);
+}
+
+void SimpleEKF::filter(const Eigen::VectorXd& y_actual, const Eigen::VectorXd& q_ddot)
+{
+    const int nx = 2 * (njnt_ + 6);
+
+    // ── Prediction ────────────────────────────────────────────────────────────
+    Eigen::VectorXd q_curr(njnt_ + 7);
+    q_curr.head(3) = x_estimate_.head(3);
+    {
+        const auto qr = quaternionFromRotVec(x_estimate_.segment(3, 3));
+        q_curr.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
+    }
+    q_curr.tail(njnt_) = x_estimate_.segment(6, njnt_);
+
+    const Eigen::VectorXd& v_curr = x_estimate_.tail(njnt_ + 6);
+    Eigen::VectorXd q_next = pinocchio::integrate(model_, q_curr, v_curr * dt_);
+
+    Eigen::VectorXd x_pred = Eigen::VectorXd::Zero(nx);
+    x_pred.head(3)             = q_next.head(3);
+    x_pred.segment(3, 3)       = rotVecFromQuaternion(
+        Eigen::Quaterniond(q_next[6], q_next[3], q_next[4], q_next[5]));
+    x_pred.segment(6, njnt_)   = q_next.tail(njnt_);
+    x_pred.tail(njnt_ + 6)     = x_estimate_.tail(njnt_ + 6) + q_ddot * dt_;
+
+    // Build q_pred for forward kinematics
+    Eigen::VectorXd q_pred(njnt_ + 7);
+    q_pred.head(3) = x_pred.head(3);
+    {
+        const auto qr = quaternionFromRotVec(x_pred.segment(3, 3));
+        q_pred.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
+    }
+    q_pred.tail(njnt_) = x_pred.segment(6, njnt_);
+
+    pinocchio::forwardKinematics(model_, predicted_data_, q_pred);
+    pinocchio::framesForwardKinematics(model_, predicted_data_, q_pred);
+    pinocchio::updateFramePlacements(model_, predicted_data_);
+
+    const Eigen::Quaterniond pred_imu_quat(predicted_data_.oMf[imu_idx_].rotation());
+    y_pred_.head(3)          = x_pred.head(3);
+    y_pred_.segment(3, 3)    = rotVecFromQuaternion(pred_imu_quat);
+    y_pred_.segment(6, njnt_) = q_pred.tail(njnt_);
+
+    // ── Output jacobian C ─────────────────────────────────────────────────────
+    Eigen::MatrixXd C = Eigen::MatrixXd::Zero(n_output_, nx);
+    C.block<3,3>(0, 0)              = Eigen::Matrix3d::Identity();
+    C.block(3, 0, 3, njnt_+6)      = J_imu_est_.bottomRows(3);
+    C.block(6, 6, njnt_, njnt_)    = Eigen::MatrixXd::Identity(njnt_, njnt_);
+
+    // ── System matrix A (linear approximation) ────────────────────────────────
+    Eigen::MatrixXd A = Eigen::MatrixXd::Identity(nx, nx);
+    A.block(0, njnt_+6, njnt_+6, njnt_+6) =
+        dt_ * Eigen::MatrixXd::Identity(njnt_+6, njnt_+6);
+
+    // ── Kalman update ─────────────────────────────────────────────────────────
+    const Eigen::MatrixXd Lambda = A * P_ * A.transpose() + Q_;
+    const Eigen::MatrixXd S      = C * Lambda * C.transpose() + R_;
+    Kalman_Gain_ = Lambda * C.transpose() *
+                   S.ldlt().solve(Eigen::MatrixXd::Identity(S.rows(), S.cols()));
+
+    P_          = (Eigen::MatrixXd::Identity(nx, nx) - Kalman_Gain_ * C) * Lambda;
+    x_estimate_ = x_pred + Kalman_Gain_ * (y_actual - y_pred_);
+
+    // ── Update Jacobian for next iteration ────────────────────────────────────
+    Eigen::VectorXd q_est(njnt_ + 7);
+    q_est.head(3) = x_estimate_.head(3);
+    {
+        const auto qr = quaternionFromRotVec(x_estimate_.segment(3, 3));
+        q_est.segment(3, 4) = Eigen::Vector4d(qr.x(), qr.y(), qr.z(), qr.w());
+    }
+    q_est.tail(njnt_) = x_estimate_.segment(6, njnt_);
+
+    pinocchio::forwardKinematics(model_, estimated_data_, q_est);
+    pinocchio::computeJointJacobians(model_, estimated_data_, q_est);
+    pinocchio::framesForwardKinematics(model_, estimated_data_, q_est);
+
+    J_imu_est_.setZero();
+    pinocchio::getFrameJacobian(model_, estimated_data_, imu_idx_,
+                                pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_imu_est_);
+}
+
+RobotState SimpleEKF::getState() const
+{
+    RobotState state;
+    state.position         = x_estimate_.head(3);
+    state.orientation      = quaternionFromRotVec(x_estimate_.segment<3>(3));
+    state.linear_velocity  = x_estimate_.segment(njnt_ + 6, 3);
+    state.angular_velocity = x_estimate_.segment(njnt_ + 9, 3);
+    for (pinocchio::JointIndex id = 0; id < (pinocchio::JointIndex)njnt_; ++id) {
+        const std::string& name = model_.names[id + 2];
+        state.joint_state[name].pos = x_estimate_(6 + id);
+        state.joint_state[name].vel = x_estimate_(njnt_ + 12 + id);
+    }
+    return state;
+}
+
+} // namespace labrob

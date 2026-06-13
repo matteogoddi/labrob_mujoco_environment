@@ -32,9 +32,6 @@ add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JISMPC.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/JISMPCWholeBodyController.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ResidualEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateFiltering.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp

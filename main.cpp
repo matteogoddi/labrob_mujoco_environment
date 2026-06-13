@@ -619,7 +619,7 @@ int main(const int argc, const char* argv[]) {
   } else {
     isWBCLoopClosed = true;
     isMPCLoopClosed = true;
-    isEKFactive = false;
+    isEKFactive = true;
   }
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
@@ -683,7 +683,6 @@ int main(const int argc, const char* argv[]) {
 
   // Walking Manager:
   labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  walking_manager.enableJISMPC(false);
   walking_manager.init(robot_state, armatures);
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
@@ -781,11 +780,11 @@ int main(const int argc, const char* argv[]) {
         double torque[3]{15.0, 0.0, 0.0};
         // std::cout << "Time: " << mj_data_ptr->time << std::k;
         // cast in double to avoid precision issues with the comparison
-        if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {
-          int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
-          mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
-          std::cout << "Disturbance applied at time: " << mj_data_ptr->time << std::endl;
-        }
+        // if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {
+        //   int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
+        //   mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+        //   std::cout << "Disturbance applied at time: " << mj_data_ptr->time << std::endl;
+        // }
         //remove force on button pressed
         if (mj_data_ptr->time > 5.2) {
           // mujoco_ui.getMousePosition(point[0], point[1]);
