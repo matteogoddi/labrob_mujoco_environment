@@ -103,8 +103,8 @@ class WalkingManager {
 
   int64_t mpc_prediction_horizon_msec = 1000;
   int64_t mpc_timestep_msec = 50;
-  double foot_constraint_square_length = 0.22;
-  double foot_constraint_square_width = 0.08;
+  double foot_constraint_square_length = 0.20;
+  double foot_constraint_square_width = 0.07;
 
   Eigen::VectorXd q_jnt_des_;
 

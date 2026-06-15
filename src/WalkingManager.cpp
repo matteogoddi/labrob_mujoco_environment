@@ -328,7 +328,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(!useRobot && false){
+    if(!useRobot && true){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -349,6 +349,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     Eigen::Vector3d p_CoM_sim = sim_robot_data.com[0];
     p_CoM_init = p_CoM_sim;
     double com_target_height = p_CoM_sim.z() - T_lsole_init.translation().z();
+    // com_target_height = 0.6;
     eta2 = 9.81 / com_target_height;
     Eigen::Vector3d p_ZMP_sim = p_CoM_sim - Eigen::Vector3d(0.0, 0.0, com_target_height);
     kf_LipState = labrob::LIPState(
@@ -1201,6 +1202,7 @@ WalkingManager::update(
         fixed_com_pos = p_CoM_fb;
         fixed_com_vel = v_CoM_fb;
         double com_target_height = p_CoM_fb.z() - (T_lsole_fb.translation().z() + T_lsole_fb.translation().z())/2;
+        // com_target_height = 0.55;
         eta2 = 9.81 / com_target_height;
         fixed_zmp_pos = p_CoM_fb - Eigen::Vector3d(0, 0, com_target_height);
 
@@ -1331,7 +1333,6 @@ WalkingManager::update(
         LipState = LIPState(p_CoM_sim, J_CoM_sim * qdot, zmp_3d_sim);
     }
     kf_LipState = com_kf_ptr_->filter(kf_LipState, LipState, ismpc_ptr_->getInput());
-    // kf_LipState = LipState;
     auto end_kf = std::chrono::high_resolution_clock::now();
 
     ////////////////////////////////////
@@ -1412,6 +1413,16 @@ WalkingManager::update(
         current_gait_configuration.rsole.pos = labrob::SE3(sim_robot_data.oMf[rsole_idx_].rotation(), sim_robot_data.oMf[rsole_idx_].translation());
         current_gait_configuration.rsole.vel = J_rsole_sim * qdot;
     }
+
+    // at t = 2000 modify target height in ismpc
+    // if (std::abs(t_msec_- 3000)< 1e-6){
+    //     double target_height = 0.65;
+    //     double eta2_new = 9.81 / target_height;
+    //     ismpc_ptr_->setEta(std::sqrt(eta2_new));
+    //     discrete_lip_dynamics_ptr_->setEta(std::sqrt(eta2));
+    //     discrete_lip_dynamics_ptr_mpc_->setEta(std::sqrt(eta2));
+    //     com_kf_ptr_->setEta(std::sqrt(eta2));
+    // }
 
     /////////////////////////////////////
     // MPC FUNCTION CALL

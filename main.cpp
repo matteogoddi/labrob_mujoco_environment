@@ -50,8 +50,8 @@ bool loopClosed = true;
 bool switchWalkingState = false;
 bool imuCalibration = false;
 
-double startTimeWBCCL = 1000.0;
-double startTimeMPCCL = 1000.0;
+double startTimeWBCCL = 0.0;
+double startTimeMPCCL = 0.0;
 double startTimeEKF = 0.0;
 
 Eigen::Vector3d odometry_base_position = Eigen::Vector3d::Zero();
@@ -152,11 +152,11 @@ struct SportModeState {
 // };
 
 const std::array<float, G1_NUM_MOTOR> Kp_cl{
-    400, 400, 400, 700, 400, 300,      // legs
-    400, 400, 400, 700, 400, 300,      // legs
-    400, 400, 150,                   // waist
-    200, 200, 120, 70,  40, 40, 40,  // arms
-    200, 200, 120, 70,  40, 40, 40   // arms
+    600, 600, 500, 800, 500, 500,      // legs
+    600, 600, 500, 800, 500, 500,      // legs
+    500, 500, 150,                   // waist
+    400, 400, 120, 140,  40, 40, 40,  // arms
+    400, 400, 120, 140,  40, 40, 40   // arms
 };
 
 // Damping for all G1 Joints
@@ -706,7 +706,7 @@ int main(const int argc, const char* argv[]) {
             loopClosed = true;
             isMPCLoopClosed = !isMPCLoopClosed;
             isWBCLoopClosed = !isWBCLoopClosed;
-            startTimeMPCCL = 1000 * mj_data_ptr->time + 5000;
+            startTimeMPCCL = 1000 * mj_data_ptr->time;
             startTimeWBCCL = 1000 * mj_data_ptr->time;
             if(isMPCLoopClosed)
               std::cout << "[GAMEPAD] X pressed -> Closed loop activated." << std::endl;
@@ -773,11 +773,11 @@ int main(const int argc, const char* argv[]) {
         double torque[3]{0.0, 0.0, 0.0};
         // std::cout << "Time: " << mj_data_ptr->time << std::k;
         // cast in double to avoid precision issues with the comparison
-        if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {
-          int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
-          mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
-          std::cout << "Disturbance applied at time: " << mj_data_ptr->time << std::endl;
-        }
+        // if (std::abs(mj_data_ptr->time - 5.0) < 1e-6) {
+        //   int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
+        //   mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+        //   std::cout << "Disturbance applied at time: " << mj_data_ptr->time << std::endl;
+        // }
         //remove force on button pressed
         if (mj_data_ptr->time > 5.2) {
           // mujoco_ui.getMousePosition(point[0], point[1]);
@@ -896,7 +896,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 1.3 || std::abs(robot_state.joint_state[joint_name].vel) > 3 || std::abs(joint_command[joint_name]) > 105.0)  {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 1.8 || std::abs(robot_state.joint_state[joint_name].vel) > 3 || std::abs(joint_command[joint_name]) > 105.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "

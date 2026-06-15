@@ -31,6 +31,12 @@ class HPIPMQPSolver : public QPSolver<double> {
   HPIPMQPSolver(int numVariables, int numEqualityConstraints, int numInequalityConstraints,
                 enum hpipm_mode solver_mode = SPEED_ABS, int iter_max = 50) :
   QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints), numIneq_(numInequalityConstraints) {
+    memset(&dim_, 0, sizeof(dim_));
+    memset(&qp_, 0, sizeof(qp_));
+    memset(&qp_sol_, 0, sizeof(qp_sol_));
+    memset(&arg_, 0, sizeof(arg_));
+    memset(&workspace_, 0, sizeof(workspace_));
+
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
