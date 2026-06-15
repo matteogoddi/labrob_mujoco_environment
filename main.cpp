@@ -25,6 +25,7 @@
 // Labrob
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
+#include <StateEstimator.hpp>
 #include <WalkingManager.hpp>
 #include <utils.hpp>
 #include <gamepad.hpp>
@@ -49,9 +50,9 @@ bool xPressed = false;
 bool loopClosed = true;
 bool switchWalkingState = false;
 
-double startTimeWBCCL = 1000.0;
-double startTimeMPCCL = 1000.0;
-double startTimeEKF = 0.0;
+double startTimeWBCCL = 0.0;
+double startTimeMPCCL = 0.0;
+double startTimeEKF = 4000.0;
 
 Eigen::Vector3d odometry_base_position = Eigen::Vector3d::Zero();
 Eigen::Vector3d odometry_base_velocity = Eigen::Vector3d::Zero();
@@ -82,7 +83,7 @@ static const std::string HG_CMD_TOPIC = "rt/lowcmd";
 static const std::string HG_IMU_TORSO = "rt/secondary_imu";
 static const std::string HG_STATE_TOPIC = "rt/lowstate";
 static const std::string GO_STATE_TOPIC = "rt/odommodestate";
-labrob::WalkingManager walking_manager;
+alignas(EIGEN_MAX_ALIGN_BYTES) labrob::WalkingManager walking_manager;
 
 template <typename T>
 class DataBuffer {
@@ -682,8 +683,16 @@ int main(const int argc, const char* argv[]) {
   }
 
   // Walking Manager:
-  labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  labrob::RobotState init_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  labrob::RobotState robot_state = init_robot_state;
   walking_manager.init(robot_state, armatures);
+
+  // State Estimator (change Filter enum to switch: SimpleEKF, RightInvariantEKF, DiligentKio):
+  labrob::StateEstimator state_estimator(
+      walking_manager.get_robot_model(),
+      1.0 / walking_manager.get_controller_frequency(),
+      labrob::StateEstimator::Filter::SimpleEKF
+  );
 
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
 
@@ -737,6 +746,7 @@ int main(const int argc, const char* argv[]) {
             isEKFactive = true;
             oneTimepress = false;
             startTimeEKF = 1000 * mj_data_ptr->time;
+            state_estimator.activate(measured_joint_position);
           } else{
             std::cout << "[GAMEPAD] A pressed -> EKF already active." << std::endl;
           }
@@ -765,9 +775,40 @@ int main(const int argc, const char* argv[]) {
         odometry_imu_rpy = Eigen::Vector3d(odometry_data.imu_state.rpy[0], odometry_data.imu_state.rpy[1], odometry_data.imu_state.rpy[2]);
       }
       
+      // State estimator (runs only when activated via gamepad A):
+      if (isEKFactive && 1000 * mj_data_ptr->time > startTimeEKF) {
+        robot_state.position = odometry_base_position;
+        robot_state.linear_velocity = odometry_base_velocity;
+        robot_state.orientation = Eigen::Quaterniond(odometry_imu_quaternion[0], odometry_imu_quaternion[1], odometry_imu_quaternion[2], odometry_imu_quaternion[3]);
+        robot_state.angular_velocity = measured_imu_pelvis_angular_velocity;
+        //fill joint also
+        for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          robot_state.joint_state[joint_name].pos = measured_joint_position[i];
+          robot_state.joint_state[joint_name].vel = measured_joint_velocity[i];
+        } 
+
+        state_estimator.update(
+            robot_state,
+            measured_imu_angular_velocity,
+            measured_imu_accelerometer,
+            walking_manager.get_contact(),
+            walking_manager.get_wbc_q_ddot()
+        );
+      }
+
       // Update walking manager:
       labrob::JointCommand joint_command;
-      walking_manager.update(robot_state, joint_command);
+      //fill joint_command with zeros
+      for (int i = 0; i < mj_model_ptr->nu; ++i) {
+        int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+        std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        joint_command[joint_name] = 0.0;
+      }
+      if (isWBCLoopClosed && 1000 * mj_data_ptr->time > startTimeWBCCL) {
+        walking_manager.update(robot_state, joint_command);
+      }
 
       if (!useRobot){
         auto start_integration = std::chrono::steady_clock::now();
@@ -828,47 +869,52 @@ int main(const int argc, const char* argv[]) {
                 mj_data_ptr->sensordata[adr + 1],
                 mj_data_ptr->sensordata[adr + 2]
             );
-      } else {
-        auto start_integration = std::chrono::steady_clock::now();
-        robot_state = walking_manager.getNewRobotState();
-        labrob::RobotState fb_robot_state = walking_manager.getActualRobotState();
-        // update mujoco state with robot_state
-        mj_data_ptr->qpos[0] = fb_robot_state.position.x();
-        mj_data_ptr->qpos[1] = fb_robot_state.position.y();
-        mj_data_ptr->qpos[2] = fb_robot_state.position.z();
-        mj_data_ptr->qpos[3] = fb_robot_state.orientation.w();
-        mj_data_ptr->qpos[4] = fb_robot_state.orientation.x();
-        mj_data_ptr->qpos[5] = fb_robot_state.orientation.y();
-        mj_data_ptr->qpos[6] = fb_robot_state.orientation.z();
-        //rotate the linear velocity from world to body frame
-        Eigen::Vector3d lin_vel_body = fb_robot_state.orientation.toRotationMatrix() * fb_robot_state.linear_velocity;
-        mj_data_ptr->qvel[0] = lin_vel_body.x();
-        mj_data_ptr->qvel[1] = lin_vel_body.y();
-        mj_data_ptr->qvel[2] = lin_vel_body.z();
-        mj_data_ptr->qvel[3] = fb_robot_state.angular_velocity.x();
-        mj_data_ptr->qvel[4] = fb_robot_state.angular_velocity.y();
-        mj_data_ptr->qvel[5] = fb_robot_state.angular_velocity.z();
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
-          mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
+        } else {
+          mj_data_ptr->qpos[0] = robot_state.position.x();
+          mj_data_ptr->qpos[1] = robot_state.position.y();
+          mj_data_ptr->qpos[2] = robot_state.position.z();
+          mj_data_ptr->qpos[3] = robot_state.orientation.w();
+          mj_data_ptr->qpos[4] = robot_state.orientation.x();
+          mj_data_ptr->qpos[5] = robot_state.orientation.y();
+          mj_data_ptr->qpos[6] = robot_state.orientation.z();
+          //rotate the linear velocity from world to body frame
+          Eigen::Vector3d lin_vel_body = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
+          mj_data_ptr->qvel[0] = lin_vel_body.x();
+          mj_data_ptr->qvel[1] = lin_vel_body.y();
+          mj_data_ptr->qvel[2] = lin_vel_body.z();
+          mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
+          mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
+          mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
+          for (int i = 0; i < mj_model_ptr->nu; ++i) {
+            int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+            std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+            mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
+            mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
+          }
+          // visualize feedback storing data into mj robot data and using mj_forward
+          // mj_data_ptr->qpos[0] = odometry_base_position[0];
+          // mj_data_ptr->qpos[1] = odometry_base_position[1];
+          // mj_data_ptr->qpos[2] = odometry_base_position[2];
+          // mj_data_ptr->qpos[3] = odometry_imu_quaternion[0];
+          // mj_data_ptr->qpos[4] = odometry_imu_quaternion[1];
+          // mj_data_ptr->qpos[5] = odometry_imu_quaternion[2];
+          // mj_data_ptr->qpos[6] = odometry_imu_quaternion[3];
+          // for (int i = 0; i < mj_model_ptr->nu; ++i) {
+          //   int joint_id = mj_model_ptr->actuator_trnid[i * 2];
+          //   std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+          //   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = measured_joint_position[i];
+          // }
+          
+          mj_forward(mj_model_ptr, mj_data_ptr);
+          //increase mj time
+          mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
+          mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+          mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
+          mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+
+          mj_data_ptr->time += 0.002;
+
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
-
-        mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
-        mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
-
-        mj_data_ptr->time += 0.002;
-
-        auto end_integration = std::chrono::steady_clock::now();
-        auto integration_duration = end_integration - start_integration;
-        if(integration_duration > std::chrono::milliseconds(1))
-          std::cout << "Warning: integration took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(integration_duration).count() << " us" << std::endl;
-
-      }
 
       if (useRobot) {
 
@@ -912,15 +958,18 @@ int main(const int argc, const char* argv[]) {
 
             signalHandler(SIGINT);
           }else {
-            motor_command.q_target[i] = robot_state.joint_state[joint_name].pos;
-            motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
             
             // std::cout << "Joint: " << joint_name << ", q_target: " << motor_command.q_target[i] << ", dq_target: " << motor_command.dq_target[i] << ", tau_ff: " << joint_command[joint_name] << std::endl;
 
             if (isWBCLoopClosed && mj_data_ptr->time >= startTimeWBCCL / 1000.0f) {
+              //get wbc desired accelerations and integrate to obtain references
+              auto q_ddot = walking_manager.get_wbc_q_ddot();
+              motor_command.dq_target[i] = robot_state.joint_state[joint_name].vel;
               motor_command.tau_ff[i] = joint_command[joint_name];
-
             } else {
+              //Give fixed references to the robot, to avoid it falling down, fake them from initialization
+              motor_command.q_target[i] = init_robot_state.joint_state[joint_name].pos;
+              motor_command.dq_target[i] = init_robot_state.joint_state[joint_name].vel;
               motor_command.tau_ff[i] = 0.0;
             }
           }

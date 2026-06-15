@@ -13,7 +13,6 @@
 #include <ISMPC.hpp>
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
-#include <StateFiltering.hpp>
 #include <WalkingData.hpp>
 #include <Logger.hpp>
 #include <utils.hpp>
@@ -26,6 +25,8 @@ namespace labrob {
 
 class WalkingManager {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   WalkingManager();
 
   bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
@@ -36,26 +37,26 @@ class WalkingManager {
   void saveLogs();
 
   void update(
-      const labrob::RobotState& sim_robot_state,
+      labrob::RobotState& robot_state,
       labrob::JointCommand& joint_command
   );
 
   int64_t get_controller_frequency() const;
 
+  // Exposes WBC joint+base acceleration for external filters (e.g. JointKF)
+  const Eigen::VectorXd& get_wbc_q_ddot() const {
+    return whole_body_controller_ptr_->get_q_ddot();
+  }
+
+  // Returns {left_in_contact, right_in_contact} based on current walking state
+  std::array<bool,2> get_contact() const;
+
+  const pinocchio::Model& get_robot_model() const { return robot_model; }
+
  protected:
   pinocchio::Model robot_model;
-  pinocchio::Data sim_robot_data;
-  pinocchio::Data fb_robot_data;
+  pinocchio::Data robot_data;
   double mass;
-
-  RobotState fb_robot_state;
-
-  Eigen::Matrix3d imu_calibration_matrix;
-  std::vector<Eigen::Vector3d> acc_samples;
-  std::vector<Eigen::Vector3d> imu_samples;
-
-  Eigen::VectorXd integrated_state_pos;
-  Eigen::VectorXd integrated_state_vel;
 
   int njnt;
 
@@ -79,10 +80,6 @@ class WalkingManager {
   labrob::WalkingData walking_data_;
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
 
-  std::unique_ptr<labrob::JointKF> joint_kf_ptr_;
-  std::unique_ptr<labrob::BaseEKF> base_ekf_ptr_;
-  std::unique_ptr<labrob::CoMKF> com_kf_ptr_;
-
   Eigen::VectorXd M_armature_;
 
   LIPState LipState;
@@ -100,10 +97,24 @@ class WalkingManager {
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
-  std::unique_ptr<labrob::RightInvariantEKF> ri_ekf_ptr_;
-  std::unique_ptr<labrob::DiligentKio> diligent_kio_ptr_;
 
 private:
+
+  // ── CoMKF (inlined) ─────────────────────────────────────────────────────
+  LIPState com_kf_step(LIPState filtered, LIPState current,
+                       const Eigen::Vector3d& input);
+
+  Eigen::Matrix3d com_kf_cov_x_ = Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d com_kf_cov_z_ = Eigen::Matrix3d::Identity();
+  // noise parameters (same defaults as CoMKF class)
+  static constexpr double kComKfMeasPos = 1.0e1;
+  static constexpr double kComKfMeasVel = 1.0e2;
+  static constexpr double kComKfMeasZmp = 1.0e8;
+  static constexpr double kComKfModPos  = 1.0;
+  static constexpr double kComKfModVel  = 1.0;
+  static constexpr double kComKfModZmp  = 1.0;
+  // ────────────────────────────────────────────────────────────────────────
 
   Eigen::MatrixXd pseudoinverse(const Eigen::MatrixXd& J, double damp=1e-6) const;
 
@@ -120,20 +131,6 @@ private:
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
-
-  Eigen::Vector3d input_gyro = Eigen::Vector3d::Zero();
-  Eigen::Vector3d input_acc = Eigen::Vector3d::Zero();
-
-  std::unique_ptr<labrob::SimpleEKF> simple_ekf_ptr_;
-
-  // Filter selection — enable any combination for comparison.
-  // The primary filter for WBC control follows this priority:
-  //   simple_ekf > ri_ekf > diligent_kio > base_ekf
-  // All enabled filters run every step; only the primary feeds fb_robot_state.
-  bool use_simple_ekf_   = true;   // discrete-time EKF (SimpleEKF)
-  bool use_base_ekf_     = false;  // contact-aided base EKF (BaseEKF)
-  bool use_ri_ekf_       = false;  // right-invariant EKF (RightInvariantEKF)
-  bool use_diligent_kio_ = false;  // left-invariant EKF (DiligentKio)
 
   // Logs
   Logger logger_;

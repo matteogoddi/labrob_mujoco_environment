@@ -86,7 +86,7 @@ if __name__ == '__main__':
     parameters_log  = np.loadtxt(folder + '/parameters_log.txt')
     startTimeWBCCL  = parameters_log
 
-    _ref   = np.loadtxt(f"{folder}/fb_com_position.txt")
+    _ref   = np.loadtxt(f"{folder}/com_position.txt")
     total  = _ref.shape[0]
     start  = 0
     end    = total - end_trim if end_trim > 0 else total
@@ -96,9 +96,9 @@ if __name__ == '__main__':
 
     # ── load all signals ──────────────────────────────────────────────────────
 
-    fb_com_position          = L('fb_com_position')
-    fb_com_velocity          = L('fb_com_velocity')
-    fb_zmp_position          = L('fb_zmp_position')
+    com_position          = L('com_position')
+    com_velocity          = L('com_velocity')
+    zmp_position          = L('zmp_position')
     kf_com_position          = L('kf_com_position')
     kf_com_velocity          = L('kf_com_velocity')
     kf_zmp_position          = L('kf_zmp_position')
@@ -106,21 +106,20 @@ if __name__ == '__main__':
     des_com_velocity         = L('des_com_velocity')
     des_zmp_position         = L('des_zmp_position')
     des_com_acceleration     = L('des_com_acceleration')
-    ef_zmp_position          = L('ef_zmp_position')
     input_torque             = L('input_torque')
     wbc_accelerations        = L('wbc_accelerations')
     estimated_force_lsole    = L('estimated_force_lsole')
     estimated_force_rsole    = L('estimated_force_rsole')
-    p_lsole_fb               = L('p_lsole_fb')
-    p_rsole_fb               = L('p_rsole_fb')
-    v_lsole_fb               = L('v_lsole_fb')
-    v_rsole_fb               = L('v_rsole_fb')
+    p_lsole               = L('p_lsole')
+    p_rsole               = L('p_rsole')
+    v_lsole               = L('v_lsole')
+    v_rsole               = L('v_rsole')
     p_lsole_des              = L('p_lsole_des')
     p_rsole_des              = L('p_rsole_des')
     v_lsole_des              = L('v_lsole_des')
     v_rsole_des              = L('v_rsole_des')
-    fb_lsole_orientation     = L('fb_lsole_orientation')
-    fb_rsole_orientation     = L('fb_rsole_orientation')
+    lsole_orientation     = L('lsole_orientation')
+    rsole_orientation     = L('rsole_orientation')
     des_lsole_orientation    = L('des_lsole_orientation')
     des_rsole_orientation    = L('des_rsole_orientation')
     ekf_base_position        = L('ekf_base_position')
@@ -159,7 +158,7 @@ if __name__ == '__main__':
         yaw = odometry_imu_orientation_rpy[0, 2]
         c, s = np.cos(yaw), np.sin(yaw)
         Rz = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
-        for arr in (p_lsole_fb, p_rsole_fb, p_lsole_des, p_rsole_des,
+        for arr in (p_lsole, p_rsole, p_lsole_des, p_rsole_des,
                     kf_com_position, kf_zmp_position,
                     des_com_position, des_zmp_position):
             arr[i] = Rz.T @ arr[i]
@@ -267,8 +266,8 @@ if __name__ == '__main__':
         fig, ax = plt.subplots(figsize=(7, 4))
         ax.plot(t, kf_com_position[:, axis], label=fr'CoM ${labels_xyz[axis]}$',        linewidth=2.0)
         ax.plot(t, kf_zmp_position[:, axis], label=fr'ZMP ${labels_xyz[axis]}$',        linewidth=2.0)
-        ax.plot(t, p_lsole_fb[:, axis],      label=fr'Left foot ${labels_xyz[axis]}$',  linewidth=2.0)
-        ax.plot(t, p_rsole_fb[:, axis],      label=fr'Right foot ${labels_xyz[axis]}$', linewidth=2.0)
+        ax.plot(t, p_lsole[:, axis],      label=fr'Left foot ${labels_xyz[axis]}$',  linewidth=2.0)
+        ax.plot(t, p_rsole[:, axis],      label=fr'Right foot ${labels_xyz[axis]}$', linewidth=2.0)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(fr'Position ${labels_xyz[axis]}$ [$\mathrm{{m}}$]', fontsize=11)
         ax.set_title(f'Motion in the {direction} direction', fontsize=12)
@@ -279,17 +278,6 @@ if __name__ == '__main__':
         os.makedirs('images/com', exist_ok=True)
         fig.savefig(f'images/com/{fname}.png', dpi=300, bbox_inches='tight')
         plt.close(fig)
-
-    fig, ax = plt.subplots()
-    for i, (c, l) in enumerate(zip(['blue', 'orange', 'green'], labels_xyz)):
-        ax.plot(t, ef_zmp_position[:, i], label=f'residual ZMP {l}', color=c)
-        ax.plot(t, fb_zmp_position[:, i], label=f'lip ZMP {l}',      color=c, linestyle='--')
-    ax.set_xlabel('Time [s]'); ax.set_ylabel('Position [m]')
-    ax.set_title('ZMP: LIP-based vs Residual-based')
-    ax.grid(True); ax.legend(); fig.tight_layout()
-    os.makedirs('images/com', exist_ok=True)
-    fig.savefig('images/com/zmp_lip_vs_residual_plot.png')
-    plt.close(fig)
 
     # ══════════════════════════════════════════════════════════════════════════
     #  FEET
@@ -305,42 +293,42 @@ if __name__ == '__main__':
         'Desired Right Sole Position', r'Position [$\mathrm{m}$]',
         'images/soles/references/desired_right_sole_position_plot.png')
 
-    plot_components(t, p_lsole_des - p_lsole_fb,
+    plot_components(t, p_lsole_des - p_lsole,
         [fr'L Sole Pos Error ${l}$' for l in labels_xyz],
         'Error – Left Sole Position', r'Position [$\mathrm{m}$]',
         'images/soles/errors/error_left_sole_position_plot.png')
 
-    plot_components(t, p_rsole_des - p_rsole_fb,
+    plot_components(t, p_rsole_des - p_rsole,
         [fr'R Sole Pos Error ${l}$' for l in labels_xyz],
         'Error – Right Sole Position', r'Position [$\mathrm{m}$]',
         'images/soles/errors/error_right_sole_position_plot.png')
 
-    plot_components(t, v_lsole_des - v_lsole_fb,
+    plot_components(t, v_lsole_des - v_lsole,
         [fr'L Sole Vel Error ${l}$' for l in labels_xyz],
         'Error – Left Sole Velocity', r'Velocity [$\mathrm{m/s}$]',
         'images/soles/errors/error_left_sole_velocity_plot.png')
 
-    plot_components(t, v_rsole_des - v_rsole_fb,
+    plot_components(t, v_rsole_des - v_rsole,
         [fr'R Sole Vel Error ${l}$' for l in labels_xyz],
         'Error – Right Sole Velocity', r'Velocity [$\mathrm{m/s}$]',
         'images/soles/errors/error_right_sole_velocity_plot.png')
 
-    plot_comparison(t, p_lsole_fb - p_lsole_fb[0], p_lsole_des - p_lsole_des[0],
+    plot_comparison(t, p_lsole - p_lsole[0], p_lsole_des - p_lsole_des[0],
         [fr'${l}$' for l in labels_xyz],
         'Left Sole Position', r'[$\mathrm{m}$]',
         'images/soles/errors/comparison_left_sole_position_plot.png')
 
-    plot_comparison(t, p_rsole_fb - p_rsole_fb[0], p_rsole_des - p_rsole_des[0],
+    plot_comparison(t, p_rsole - p_rsole[0], p_rsole_des - p_rsole_des[0],
         [fr'${l}$' for l in labels_xyz],
         'Right Sole Position', r'[$\mathrm{m}$]',
         'images/soles/errors/comparison_right_sole_position_plot.png')
 
-    plot_comparison(t, v_lsole_fb, v_lsole_des,
+    plot_comparison(t, v_lsole, v_lsole_des,
         [fr'${l}$' for l in labels_xyz],
         'Left Sole Velocity', r'[$\mathrm{m/s}$]',
         'images/soles/errors/comparison_left_sole_velocity_plot.png')
 
-    plot_comparison(t, v_rsole_fb, v_rsole_des,
+    plot_comparison(t, v_rsole, v_rsole_des,
         [fr'${l}$' for l in labels_xyz],
         'Right Sole Velocity', r'[$\mathrm{m/s}$]',
         'images/soles/errors/comparison_right_sole_velocity_plot.png')

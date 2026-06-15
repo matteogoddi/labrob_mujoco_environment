@@ -30,8 +30,14 @@ class QpSolver {
       : n_vars_(num_variables),
         solution_(Eigen::VectorXd::Zero(num_variables)) {
 
+    memset(&dim_,       0, sizeof(dim_));
+    memset(&qp_,        0, sizeof(qp_));
+    memset(&qp_sol_,    0, sizeof(qp_sol_));
+    memset(&arg_,       0, sizeof(arg_));
+    memset(&workspace_, 0, sizeof(workspace_));
+
     int dim_size = d_dense_qp_dim_memsize();
-    dim_mem_ = malloc(dim_size);
+    dim_mem_ = calloc(1, dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
 
     d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
@@ -39,22 +45,22 @@ class QpSolver {
                            num_inequality_constraints, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
-    qp_mem_ = malloc(qp_size);
+    qp_mem_ = calloc(1, qp_size);
     d_dense_qp_create(&dim_, &qp_, qp_mem_);
 
     int qp_sol_size = d_dense_qp_sol_memsize(&dim_);
-    qp_sol_mem_ = malloc(qp_sol_size);
+    qp_sol_mem_ = calloc(1, qp_sol_size);
     d_dense_qp_sol_create(&dim_, &qp_sol_, qp_sol_mem_);
 
     int ipm_arg_size = d_dense_qp_ipm_arg_memsize(&dim_);
-    ipm_arg_mem_ = malloc(ipm_arg_size);
+    ipm_arg_mem_ = calloc(1, ipm_arg_size);
     d_dense_qp_ipm_arg_create(&dim_, &arg_, ipm_arg_mem_);
     d_dense_qp_ipm_arg_set_default(solver_mode, &arg_);
     if (iter_max > 0)
       d_dense_qp_ipm_arg_set_iter_max(&iter_max, &arg_);
 
     int ipm_size = d_dense_qp_ipm_ws_memsize(&dim_, &arg_);
-    ipm_mem_ = malloc(ipm_size);
+    ipm_mem_ = calloc(1, ipm_size);
     d_dense_qp_ipm_ws_create(&dim_, &arg_, &workspace_, ipm_mem_);
 
     idxs_sg_.resize(num_inequality_constraints);
@@ -64,7 +70,7 @@ class QpSolver {
     zl_ = std::vector<double>(num_inequality_constraints, 0.0);
     zu_ = std::vector<double>(num_inequality_constraints, 0.0);
 
-    sol_buf_ = (double*) malloc(num_variables * sizeof(double));
+    sol_buf_ = (double*) calloc(num_variables, sizeof(double));
   }
 
   ~QpSolver() {
