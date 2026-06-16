@@ -1,6 +1,7 @@
 // std
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <string>
 #include <vector>
@@ -32,19 +33,26 @@
 #include <RobotInterface.hpp>
 
 // ── Control-loop flags (main-thread only) ────────────────────────────────────
+bool running          = true;
 bool isWBCLoopClosed  = false;
 bool isMPCLoopClosed  = false;
 bool isEKFactive      = false;
 bool useSim           = false;
 bool useRobot         = false;
+bool useViz           = true;
 bool oneTimepress     = true;
 bool xPressed         = false;
 bool loopClosed       = true;
 bool switchWalkingState = false;
 
+using Clock = std::chrono::steady_clock;
+
+// Used internally by WalkingManager (extern in globals.h)
 double startTimeWBCCL = 0.0;
 double startTimeMPCCL = 0.0;
-double startTimeEKF   = 4000.0;
+
+enum class ExperimentMode { Regulation, WBC };
+ExperimentMode experiment_mode = ExperimentMode::Regulation;
 
 alignas(EIGEN_MAX_ALIGN_BYTES) labrob::WalkingManager walking_manager;
 
@@ -55,6 +63,7 @@ void signalHandler(int signum) {
     std::string user_input;
     std::getline(std::cin, user_input);
 
+    running = false;
     if (user_input == "y" || user_input == "Y" || user_input == "yes" ||
         user_input == "Yes" || user_input == "YES") {
         std::cout << "Saving logs..." << std::endl;
@@ -144,6 +153,119 @@ labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+static void handle_gamepad(
+    labrob::WalkingManager&             wm,
+    labrob::StateEstimator&             se,
+    const labrob::RobotState&           robot_state,
+    std::map<std::string, double>&        armatures,
+    const Eigen::VectorXd&               measured_joint_pos,
+    double                               current_sim_ms)
+{
+    if (gamepad_.Y.pressed) {
+        std::cout << "[GAMEPAD] Y -> Deactivating motors..." << std::endl;
+        signalHandler(SIGINT);
+    }
+    if (gamepad_.X.pressed) {
+        if (!xPressed && experiment_mode == ExperimentMode::Regulation) {
+            xPressed        = true;
+            experiment_mode = ExperimentMode::WBC;
+            wm.init(robot_state, armatures);
+            isWBCLoopClosed = true;
+            isMPCLoopClosed = true;
+            startTimeWBCCL  = current_sim_ms;
+            startTimeMPCCL  = current_sim_ms + 5000.0;
+            std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
+        }
+    } else {
+        xPressed = false;
+    }
+    if (gamepad_.B.on_press) {
+        switchWalkingState = true;
+        std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
+    }
+    if (gamepad_.A.pressed) {
+        if (oneTimepress) {
+            std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
+            isEKFactive  = true;
+            oneTimepress = false;
+            se.activate(measured_joint_pos);
+        } else {
+            std::cout << "[GAMEPAD] A -> EKF already active." << std::endl;
+        }
+    }
+}
+
+static void send_dds_command(
+    ChannelPublisherPtr<LowCmd_>&   publisher,
+    mjModel*                        m,
+    labrob::RobotState&       robot_state,
+    labrob::JointCommand&     joint_command,
+    Clock::duration                 elapsed)
+{
+    MotorCommand motor_command;
+    motor_command.tau_ff.fill(0.0f);
+    motor_command.q_target.fill(0.0f);
+    motor_command.dq_target.fill(0.0f);
+
+    const bool  wbc_active = (experiment_mode == ExperimentMode::WBC);
+    const float t_s        = std::chrono::duration<float>(elapsed).count();
+    const bool  in_ramp    = elapsed < std::chrono::seconds(5);
+
+    if (in_ramp) {
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            motor_command.kp[i] = Kp_reg[i] * (t_s / 5.0f);
+            motor_command.kd[i] = Kd_reg[i];
+        }
+    } else if (wbc_active) {
+        motor_command.kp = Kp_cl;
+        motor_command.kd = Kd_cl;
+    } else {
+        motor_command.kp = Kp_reg;
+        motor_command.kd = Kd_reg;
+    }
+
+    for (int i = 0; i < m->nu; ++i) {
+        int jid = m->actuator_trnid[i * 2];
+        std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
+        if (wbc_active) {
+            if (std::abs(robot_state.joint_state[jname].pos) > 1.3 ||
+                std::abs(robot_state.joint_state[jname].vel) > 3   ||
+                std::abs(joint_command[jname]) > 105.0) {
+                std::cout << "Safety limit exceeded on " << jname << ": "
+                          << "q="   << robot_state.joint_state[jname].pos
+                          << " dq=" << robot_state.joint_state[jname].vel
+                          << " tau=" << joint_command[jname] << std::endl;
+                signalHandler(SIGINT);
+            }
+            motor_command.dq_target[i] = robot_state.joint_state.at(jname).vel;
+            motor_command.tau_ff[i]    = joint_command[jname];
+            motor_command.q_target[i]  = robot_state.joint_state[jname].pos;
+        } else {
+            motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
+            motor_command.dq_target[i] = 0.0f;
+        }
+    }
+
+    LowCmd_ dds_cmd;
+    dds_cmd.mode_pr()      = static_cast<uint8_t>(Mode::PR);
+    dds_cmd.mode_machine() = mode_machine_;
+    for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+        int jid   = m->actuator_trnid[i * 2];
+        std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
+        int ridx  = joint_name_to_index.at(jname);
+        auto& cmd = dds_cmd.motor_cmd().at(ridx);
+        cmd.mode() = 1;
+        cmd.q()    = motor_command.q_target[i];
+        cmd.dq()   = motor_command.dq_target[i];
+        cmd.tau()  = motor_command.tau_ff[i];
+        cmd.kp()   = motor_command.kp[i];
+        cmd.kd()   = motor_command.kd[i];
+    }
+    dds_cmd.crc() = Crc32Core((uint32_t*)&dds_cmd, (sizeof(dds_cmd) >> 2) - 1);
+    publisher->Write(dds_cmd);
+}
+
+
 int main(const int argc, const char* argv[]) {
 
     std::string netInterface;
@@ -155,6 +277,8 @@ int main(const int argc, const char* argv[]) {
             useRobot = true;
             useSim   = true;
             netInterface = argv[++i];
+        } else if (a == "--no-viz") {
+            useViz = false;
         }
     }
     if (!useRobot && !useSim) {
@@ -171,24 +295,15 @@ int main(const int argc, const char* argv[]) {
     mjData*  mj_data_ptr  = mj_makeData(mj_model_ptr);
 
     if (useRobot) {
-        std::cout << "Press 'Y' on the GAMEPAD to end the program.\n";
-        std::cout << "Press 'A' on the GAMEPAD to start EKF.\n";
-        std::cout << "Press 'X' on the GAMEPAD to start Closed Loop on Whole Body.\n";
-        std::cout << "Press 'B' on the GAMEPAD to switch walking state.\n";
-        std::cout << "Options: 1=MPC (t+20s)  2=WBC (t+15s) — space-separated: ";
-        std::string user_input;
-        std::getline(std::cin, user_input);
-        std::istringstream iss(user_input);
-        std::string token;
-        while (iss >> token) {
-            if (token == "1") { isMPCLoopClosed = true; startTimeMPCCL = 20000; }
-            if (token == "2") { isWBCLoopClosed = true; startTimeWBCCL = 15000; }
-        }
-    } else {
-        isWBCLoopClosed = true;
-        isMPCLoopClosed = true;
-        // EKF in sim is activated explicitly by setting isEKFactive after init
+        std::cout << "Gamepad controls:\n";
+        std::cout << "  A -> start EKF (optional, can be done at any time)\n";
+        std::cout << "  X -> switch Regulation -> WBC\n";
+        std::cout << "  B -> switch walking state\n";
+        std::cout << "  Y -> exit\n";
+        std::cout << "Starting in Regulation mode. Press Enter to start..." << std::endl;
+        std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     }
+    // isWBCLoopClosed stays false for sim (set on first tick) and robot (set on X press)
 
     // SDK setup (robot mode only):
     ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
@@ -254,17 +369,20 @@ int main(const int argc, const char* argv[]) {
         labrob::StateEstimator::Filter::SimpleEKF
     );
 
-    auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
+    labrob::MujocoUI* mujoco_ui_ptr = useViz
+        ? labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr)
+        : nullptr;
     static constexpr int framerate = 60;
-    auto next_tick = std::chrono::steady_clock::now();
+    const Clock::time_point t_start = Clock::now();
 
-    // ── Main simulation loop ──────────────────────────────────────────────────
-    while (!mujoco_ui.windowShouldClose()) {
+    // ── Main loop ─────────────────────────────────────────────────────────────
+    while (running) {
+        if (useViz && mujoco_ui_ptr->windowShouldClose()) break;
 
         mjtNum simstart = mj_data_ptr->time;
         while (mj_data_ptr->time - simstart < 1.0 / framerate) {
 
-            auto start_sleep = std::chrono::steady_clock::now();
+            const auto tick_start = Clock::now();
 
             // Per-tick sensor snapshot (populated below, robot or sim):
             Eigen::VectorXd measured_joint_pos = Eigen::VectorXd::Zero(29);
@@ -273,41 +391,9 @@ int main(const int argc, const char* argv[]) {
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
             if (useRobot) {
-                // ── Gamepad ───────────────────────────────────────────────────
-                if (gamepad_.Y.pressed) {
-                    std::cout << "[GAMEPAD] Y -> Deactivating motors..." << std::endl;
-                    signalHandler(SIGINT);
-                }
-                if (gamepad_.X.pressed) {
-                    if (isEKFactive && !xPressed) {
-                        xPressed = true;
-                        isMPCLoopClosed = !isMPCLoopClosed;
-                        isWBCLoopClosed = !isWBCLoopClosed;
-                        startTimeMPCCL  = 1000 * mj_data_ptr->time + 5000;
-                        startTimeWBCCL  = 1000 * mj_data_ptr->time;
-                        std::cout << "[GAMEPAD] X -> Closed loop "
-                                  << (isMPCLoopClosed ? "activated." : "deactivated.") << std::endl;
-                    } else if (!isEKFactive) {
-                        std::cout << "[GAMEPAD] X -> Activate EKF first." << std::endl;
-                    }
-                } else {
-                    xPressed = false;
-                }
-                if (gamepad_.B.on_press) {
-                    switchWalkingState = true;
-                    std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
-                }
-                if (gamepad_.A.pressed) {
-                    if (oneTimepress) {
-                        std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
-                        isEKFactive  = true;
-                        oneTimepress = false;
-                        startTimeEKF = 1000 * mj_data_ptr->time;
-                        state_estimator.activate(measured_joint_pos);
-                    } else {
-                        std::cout << "[GAMEPAD] A -> EKF already active." << std::endl;
-                    }
-                }
+                handle_gamepad(walking_manager, state_estimator, robot_state,
+                               armatures, measured_joint_pos,
+                               1000.0 * mj_data_ptr->time);
 
                 // ── Read sensors from SDK callbacks ───────────────────────────
                 {
@@ -346,24 +432,8 @@ int main(const int argc, const char* argv[]) {
                 }
             }
 
-            // ── State estimator ───────────────────────────────────────────────
-            // In sim: always runs (isEKFactive=true set above), reads MuJoCo sensors.
-            // In robot mode: runs only when explicitly activated (gamepad A).
-            if (isEKFactive && 1000 * mj_data_ptr->time > startTimeEKF) {
-                if (!useRobot) {
-                    // Read simulated IMU for the estimator:
-                    int acc_id  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
-                    int gyro_id = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
-                    int adr = mj_model_ptr->sensor_adr[acc_id];
-                    imu_acc  = Eigen::Vector3d(mj_data_ptr->sensordata[adr],
-                                               mj_data_ptr->sensordata[adr + 1],
-                                               mj_data_ptr->sensordata[adr + 2]);
-                    adr = mj_model_ptr->sensor_adr[gyro_id];
-                    imu_gyro = Eigen::Vector3d(mj_data_ptr->sensordata[adr],
-                                               mj_data_ptr->sensordata[adr + 1],
-                                               mj_data_ptr->sensordata[adr + 2]);
-                    robot_state.angular_velocity = imu_gyro;
-                }
+            // ── State estimator (robot mode only) ────────────────────────────
+            if (useRobot && isEKFactive) {
                 if (state_estimator.is_active()) {
                     state_estimator.update(
                         robot_state, imu_gyro, imu_acc,
@@ -379,11 +449,16 @@ int main(const int argc, const char* argv[]) {
                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                 joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
             }
-            if (isWBCLoopClosed && 1000 * mj_data_ptr->time > startTimeWBCCL)
-                walking_manager.update(robot_state, joint_command);
 
             if (!useRobot) {
-                // ── Simulation step ───────────────────────────────────────────
+                // ── Simulation ────────────────────────────────────────────────
+                // First tick: init walking manager with ground-truth MuJoCo state
+                if (!isWBCLoopClosed) {
+                    robot_state     = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+                    isWBCLoopClosed = true;
+                }
+                walking_manager.update(robot_state, joint_command);
+
                 auto t0 = std::chrono::steady_clock::now();
                 mj_step1(mj_model_ptr, mj_data_ptr);
 
@@ -405,111 +480,68 @@ int main(const int argc, const char* argv[]) {
                 robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
             } else {
-                // ── Robot mode: push state to MuJoCo for visualization ────────
-                mj_data_ptr->qpos[0] = robot_state.position.x();
-                mj_data_ptr->qpos[1] = robot_state.position.y();
-                mj_data_ptr->qpos[2] = robot_state.position.z();
-                mj_data_ptr->qpos[3] = robot_state.orientation.w();
-                mj_data_ptr->qpos[4] = robot_state.orientation.x();
-                mj_data_ptr->qpos[5] = robot_state.orientation.y();
-                mj_data_ptr->qpos[6] = robot_state.orientation.z();
-                Eigen::Vector3d lv = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
-                mj_data_ptr->qvel[0] = lv.x();
-                mj_data_ptr->qvel[1] = lv.y();
-                mj_data_ptr->qvel[2] = lv.z();
-                mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
-                mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
-                mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
-                for (int i = 0; i < mj_model_ptr->nu; ++i) {
-                    int jid = mj_model_ptr->actuator_trnid[i * 2];
-                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                    mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[jid]] = robot_state.joint_state[jname].pos;
-                    mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[jid]]  = robot_state.joint_state[jname].vel;
+                // ── Experiment ────────────────────────────────────────────────
+                switch (experiment_mode) {
+                    case ExperimentMode::Regulation:
+                        // joint_command stays zero; PD holds measured position
+                        break;
+
+                    case ExperimentMode::WBC:
+                        walking_manager.update(robot_state, joint_command);
+                        break;
                 }
-                mj_forward(mj_model_ptr, mj_data_ptr);
-                mju_zero(mj_data_ptr->ctrl,         mj_model_ptr->nu);
-                mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
-                mju_zero(mj_data_ptr->qacc,         mj_model_ptr->nv);
-                mju_zero(mj_data_ptr->act,          mj_model_ptr->nu);
+
+                // ── Push robot state to MuJoCo for visualization (optional) ──
+                if (useViz) {
+                    mj_data_ptr->qpos[0] = robot_state.position.x();
+                    mj_data_ptr->qpos[1] = robot_state.position.y();
+                    mj_data_ptr->qpos[2] = robot_state.position.z();
+                    mj_data_ptr->qpos[3] = robot_state.orientation.w();
+                    mj_data_ptr->qpos[4] = robot_state.orientation.x();
+                    mj_data_ptr->qpos[5] = robot_state.orientation.y();
+                    mj_data_ptr->qpos[6] = robot_state.orientation.z();
+                    Eigen::Vector3d lv = robot_state.orientation.toRotationMatrix() * robot_state.linear_velocity;
+                    mj_data_ptr->qvel[0] = lv.x();
+                    mj_data_ptr->qvel[1] = lv.y();
+                    mj_data_ptr->qvel[2] = lv.z();
+                    mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
+                    mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
+                    mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
+                    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                        int jid = mj_model_ptr->actuator_trnid[i * 2];
+                        std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                        mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[jid]] = robot_state.joint_state[jname].pos;
+                        mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[jid]]  = robot_state.joint_state[jname].vel;
+                    }
+                    mj_forward(mj_model_ptr, mj_data_ptr);
+                    mju_zero(mj_data_ptr->ctrl,         mj_model_ptr->nu);
+                    mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+                    mju_zero(mj_data_ptr->qacc,         mj_model_ptr->nv);
+                    mju_zero(mj_data_ptr->act,          mj_model_ptr->nu);
+                }
                 mj_data_ptr->time += 0.002;
 
+                // ── Timing: pad tick to 2 ms before sending ──────────────────
+                const auto remaining = std::chrono::milliseconds(2) - (Clock::now() - tick_start);
+                if (remaining > Clock::duration::zero())
+                    std::this_thread::sleep_for(remaining);
+
                 // ── Send motor commands via DDS ───────────────────────────────
-                MotorCommand motor_command;
-                motor_command.tau_ff.fill(0.0f);
-                motor_command.q_target.fill(0.0f);
-                motor_command.dq_target.fill(0.0f);
-
-                if (mj_data_ptr->time < 5.0f) {
-                    for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-                        motor_command.kp[i] = Kp_reg[i] * (mj_data_ptr->time / 5.0f);
-                        motor_command.kd[i] = Kd_reg[i];
-                    }
-                } else {
-                    motor_command.kp = Kp_reg;
-                    motor_command.kd = Kd_reg;
-                    if (isWBCLoopClosed && mj_data_ptr->time >= startTimeWBCCL / 1000.0f) {
-                        motor_command.kp = Kp_cl;
-                        motor_command.kd = Kd_cl;
-                    }
-                }
-
-                for (int i = 0; i < mj_model_ptr->nu; ++i) {
-                    int jid = mj_model_ptr->actuator_trnid[i * 2];
-                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-
-                    if (std::abs(robot_state.joint_state[jname].pos) > 1.3 ||
-                        std::abs(robot_state.joint_state[jname].vel) > 3   ||
-                        std::abs(joint_command[jname]) > 105.0) {
-                        std::cout << "Safety limit exceeded on " << jname << ": "
-                                  << "q=" << robot_state.joint_state[jname].pos
-                                  << " dq=" << robot_state.joint_state[jname].vel
-                                  << " tau=" << joint_command[jname] << std::endl;
-                        signalHandler(SIGINT);
-                    }
-
-                    if (isWBCLoopClosed && mj_data_ptr->time >= startTimeWBCCL / 1000.0f) {
-                        motor_command.dq_target[i] = robot_state.joint_state[jname].vel;
-                        motor_command.tau_ff[i]    = joint_command[jname];
-                    } else {
-                        motor_command.q_target[i]  = init_robot_state.joint_state[jname].pos;
-                        motor_command.dq_target[i] = init_robot_state.joint_state[jname].vel;
-                    }
-                }
-
-                LowCmd_ dds_cmd;
-                dds_cmd.mode_pr()      = static_cast<uint8_t>(Mode::PR);
-                dds_cmd.mode_machine() = mode_machine_;
-                for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-                    int jid    = mj_model_ptr->actuator_trnid[i * 2];
-                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                    int ridx   = joint_name_to_index.at(jname);
-                    auto& cmd  = dds_cmd.motor_cmd().at(ridx);
-                    cmd.mode() = 1;
-                    cmd.q()    = motor_command.q_target[i];
-                    cmd.dq()   = motor_command.dq_target[i];
-                    cmd.tau()  = motor_command.tau_ff[i];
-                    cmd.kp()   = motor_command.kp[i];
-                    cmd.kd()   = motor_command.kd[i];
-                }
-                dds_cmd.crc() = Crc32Core((uint32_t*)&dds_cmd, (sizeof(dds_cmd) >> 2) - 1);
-                lowcmd_publisher->Write(dds_cmd);
+                send_dds_command(lowcmd_publisher, mj_model_ptr, robot_state,
+                                 joint_command, Clock::now() - t_start);
             }
 
-            next_tick += std::chrono::milliseconds(2);
-            auto now = std::chrono::steady_clock::now();
-            if (now - start_sleep < std::chrono::milliseconds(2))
-                std::this_thread::sleep_until(next_tick);
-            else
-                next_tick = now;
         }
 
-        auto t0 = std::chrono::steady_clock::now();
-        mujoco_ui.render();
-        auto render_dt = std::chrono::steady_clock::now() - t0;
-        if (render_dt > std::chrono::milliseconds(5))
-            std::cout << "Warning: render took "
-                      << std::chrono::duration_cast<std::chrono::microseconds>(render_dt).count()
-                      << " us" << std::endl;
+        if (useViz) {
+            auto t0 = std::chrono::steady_clock::now();
+            mujoco_ui_ptr->render();
+            auto render_dt = std::chrono::steady_clock::now() - t0;
+            if (render_dt > std::chrono::milliseconds(5))
+                std::cout << "Warning: render took "
+                          << std::chrono::duration_cast<std::chrono::microseconds>(render_dt).count()
+                          << " us" << std::endl;
+        }
     }
 
     mj_deleteData(mj_data_ptr);

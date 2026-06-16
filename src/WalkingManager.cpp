@@ -429,56 +429,6 @@ WalkingManager::update(
     //     }
     // }
 
-    // IF USE ROBOT, USE FEEDBACK FEET POSITIONS FOR STEPS
-
-    // if (loopClosed && t_msec_ >= startTimeWBCCL && isWBCLoopClosed && useRobot) {
-
-    //     walking_data_.swapStanding(
-    //         labrob::SE3(T_lsole.rotation(), Eigen::Vector3d(T_lsole.translation().x(), T_lsole.translation().y(), (T_lsole.translation().z() + T_lsole.translation().z())/2)),
-    //         labrob::SE3(T_rsole.rotation(), Eigen::Vector3d(T_rsole.translation().x(), T_rsole.translation().y(), (T_rsole.translation().z() + T_rsole.translation().z())/2))
-    //     );
-    //     fixed_com_pos = p_CoM;
-    //     fixed_com_vel = v_CoM;
-    //     double com_target_height = p_CoM.z() - (T_lsole.translation().z() + T_lsole.translation().z())/2;
-    //     eta2 = 9.81 / com_target_height;
-    //     fixed_zmp_pos = p_CoM - Eigen::Vector3d(0, 0, com_target_height);
-
-    //     kf_LipState = labrob::LIPState(
-    //         fixed_com_pos,
-    //         Eigen::Vector3d::Zero(),
-    //         fixed_zmp_pos
-    //     );
-    //     des_LipState = labrob::LIPState(
-    //         fixed_com_pos,
-    //         Eigen::Vector3d::Zero(),
-    //         fixed_zmp_pos
-    //     );
-    //     // ismpc_ptr_->resetInput();
-    //     ismpc_ptr_->setEta(std::sqrt(eta2));
-    //     discrete_lip_dynamics_ptr_->setEta(std::sqrt(eta2));
-    //     discrete_lip_dynamics_ptr_mpc_->setEta(std::sqrt(eta2));
-    //     com_kf_cov_x_ = Eigen::Matrix3d::Identity();
-    //     com_kf_cov_y_ = Eigen::Matrix3d::Identity();
-    //     com_kf_cov_z_ = Eigen::Matrix3d::Identity();
-
-    //     // remove previous parameters
-    //     parameters_log_.clear();
-    //     parameters_log_.push_back(startTimeWBCCL);
-
-    //     loopClosed = false;
-    // }
-
-    // ADD STEPS FOR SIMULATION
-
-    if(!useRobot && t_msec_ == 1000 && false){
-        double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(robot_data.oMf[imu_idx_].rotation())).z();
-        walking_data_.addSteps(
-            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
-            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-            yaw_angle
-        );
-    };
-
     walking_data_.updateWalkingState(t_msec_);
 
     /////////////////////////////////////
@@ -496,21 +446,21 @@ WalkingManager::update(
 
     // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
 
-    // if (switchWalkingState){
-    //     double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(robot_data.oMf[imu_idx_].rotation())).z();
-    //     if (walking_data_.getWalkingState() == WalkingState::Standing) {
-    //         walking_data_.addSteps(
-    //             labrob::SE3(T_lsole.rotation(), Eigen::Vector3d(T_lsole.translation().x(), T_lsole.translation().y(), (T_lsole.translation().z() + T_lsole.translation().z())/2)),
-    //             labrob::SE3(T_rsole.rotation(), Eigen::Vector3d(T_rsole.translation().x(), T_rsole.translation().y(), (T_rsole.translation().z() + T_rsole.translation().z())/2)),
-    //             yaw_angle
-    //         );
-    //         switchWalkingState = false;
-    //     } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
-    //         std::cout << "Removing steps" << std::endl;
-    //         walking_data_.removeSteps();
-    //         switchWalkingState = false;
-    //     }
-    // }
+    if (switchWalkingState){
+        double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(robot_data.oMf[imu_idx_].rotation())).z();
+        if (walking_data_.getWalkingState() == WalkingState::Standing) {
+            walking_data_.addSteps(
+                labrob::SE3(T_lsole.rotation(), Eigen::Vector3d(T_lsole.translation().x(), T_lsole.translation().y(), (T_lsole.translation().z() + T_lsole.translation().z())/2)),
+                labrob::SE3(T_rsole.rotation(), Eigen::Vector3d(T_rsole.translation().x(), T_rsole.translation().y(), (T_rsole.translation().z() + T_rsole.translation().z())/2)),
+                yaw_angle
+            );
+            switchWalkingState = false;
+        } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
+            std::cout << "Removing steps" << std::endl;
+            walking_data_.removeSteps();
+            switchWalkingState = false;
+        }
+    }
 
     // FILL CURRENT GAIT CONFIGURATION
 
