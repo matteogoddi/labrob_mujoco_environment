@@ -179,9 +179,15 @@ static void handle_gamepad(
     } else {
         xPressed = false;
     }
-    if (gamepad_.B.on_press) {
-        switchWalkingState = true;
-        std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
+    static bool bPressed = false;
+    if (gamepad_.B.pressed) {
+        if (!bPressed) {
+            bPressed = true;
+            switchWalkingState = true;
+            std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
+        }
+    } else {
+        bPressed = false;
     }
     if (gamepad_.A.pressed) {
         if (oneTimepress) {
