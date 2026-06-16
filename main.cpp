@@ -69,8 +69,8 @@ double torso_spring_roll_kp = 50.0;
 double torso_spring_roll_kd = 10.0;
 double torso_spring_pitch_kp = 50.0;
 double torso_spring_pitch_kd = 10.0;
-double torso_spring_yaw_kp = 50.0;
-double torso_spring_yaw_kd = 10.0;
+double torso_spring_yaw_kp = 500.0;
+double torso_spring_yaw_kd = 30.0;
 double torso_spring_weight = 5e-2;
 double waist_yaw_compliance_kp = 1.2;
 double waist_yaw_compliance_kd = 0.0;
@@ -1956,7 +1956,7 @@ int main(const int argc, const char* argv[]) {
   compliance_params.Ka_right.diagonal() << 10.0, 10.0, 10.0, 0.5, 0.5, 0.5;
   compliance_params.Da_right.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
 
-  compliance_params.Kb.diagonal() << 100.0, 100.0, 100.0, 0.001, 0.001, 0.001;
+  compliance_params.Kb.diagonal() << 100.0, 100.0, 100.0, 100.0, 100.0, 0.001;
   std::cout << "Torso compliance QP params: Kb_diag=("
             << compliance_params.Kb.diagonal().transpose()
             << "), Ka_left_diag=("

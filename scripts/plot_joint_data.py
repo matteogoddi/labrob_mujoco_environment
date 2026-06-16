@@ -741,19 +741,29 @@ if __name__ == '__main__':
     if has_wbc_torso_tracking_logs:
         torso_track_t = wbc_torso_tracking[:, 0]
         torso_offset_deg = np.rad2deg(wbc_torso_tracking[:, 1:4])
-        torso_des_deg = np.rad2deg(wbc_torso_tracking[:, 7:10])
-        torso_cur_deg = np.rad2deg(wbc_torso_tracking[:, 10:13])
+        torso_des_rad = wbc_torso_tracking[:, 7:10]
+        torso_cur_rad = wbc_torso_tracking[:, 10:13]
+
+        def relative_rpy_change_deg(rpy_rad: np.ndarray) -> np.ndarray:
+            rotations = R.from_euler('ZYX', rpy_rad[:, [2, 1, 0]])
+            relative_rotations = rotations[0].inv() * rotations
+            relative_ypr_rad = relative_rotations.as_euler('ZYX')
+            return np.rad2deg(relative_ypr_rad[:, [2, 1, 0]])
+
+        torso_des_delta_deg = relative_rpy_change_deg(torso_des_rad)
+        torso_cur_delta_deg = relative_rpy_change_deg(torso_cur_rad)
         torso_err_deg = np.rad2deg(wbc_torso_tracking[:, 13:16])
         angular_labels = ['roll', 'pitch', 'yaw']
 
         fig, axes = plt.subplots(3, 1, figsize=(12, 9), sharex=True)
         for i, label in enumerate(angular_labels):
             axes[0].plot(torso_track_t, torso_offset_deg[:, i], label=f'offset {label}')
-            axes[1].plot(torso_track_t, torso_des_deg[:, i], '--', label=f'des {label}')
-            axes[1].plot(torso_track_t, torso_cur_deg[:, i], label=f'cur {label}')
+            axes[1].plot(torso_track_t, torso_des_delta_deg[:, i], '--', label=f'des {label}')
+            axes[1].plot(torso_track_t, torso_cur_delta_deg[:, i], label=f'cur {label}')
             axes[2].plot(torso_track_t, torso_err_deg[:, i], label=f'err {label}')
         axes[0].set_ylabel('QP offset [deg]')
-        axes[1].set_ylabel('Torso RPY [deg]')
+        axes[1].set_ylabel('Torso RPY change [deg]')
+        axes[1].set_ylim(-20, 20)
         axes[2].set_ylabel('Error [deg]')
         axes[2].set_xlabel('Time [s]')
         axes[0].set_title('WBC Torso Orientation Tracking')
