@@ -35,7 +35,7 @@ You need the following dependencies:
    mkdir build
    cd build
    cmake .. -DCMAKE_BUILD_TYPE=Release
-   make -j4
+   make -j$(nproc)
    sudo make install
    ```
 
@@ -46,48 +46,13 @@ You need the following dependencies:
    ```
    mkdir build
    cd build
-   cmake ..
+   cmake .. -DCMAKE_BUILD_TYPE=Release
    make -j(nproc)
    sudo make install
    ```
 
 4. HPIPM & BLASFEO
    To install HPIPM (together with Blasfeo), follow the instructions under the section "C" at: https://github.com/giaf/hpipm
-
-### Connect to github
-
-0. clone the repository
-   ```bash
-   git clone 'repository_link'
-   ```
-   
-1. to create another branch different from 'main'
-   ```bash
-   git checkout -b 'new_branch_name'
-   ```
-   and to switch from one branch to another
-   ```bash
-   git checkout 'branch_name'
-   ```
-2. pull changes
-   ```bash
-   git pull 'remote_name' main
-   // to reset the project and copy all 
-   git fetch 'remote_name' && git reset --hard 'remote_name'/'branch_name'
-   ```
-   
-3. push changes
-   ```bash
-   git add -A
-   git commit -m "Explain changes"
-   git push 'remote_name' 'branch_name'
-   ```
-
-4. usually 'remote_name' is origin, to add another remote for personal changes
-   ```bash
-   git remote add 'new_remote_name' 'new_repository_link'
-   git remote -v
-   ```
 
 ### Installation to run python scripts
 
@@ -124,12 +89,14 @@ You need the following dependencies:
 
 ### Laboratory simulation with UNITREE G1
 
-In order to communicate with the robot and perform a laboratory simulation with the unitree G1 robot it is essential to download the official SDK from the git repo "unitreerobotics".
+In order to communicate with the robot and perform a laboratory simulation with the unitree G1 robot, the official SDK from the git repo "unitreerobotics" was used.
 An alternative is to install ROS2, as shown in the website. However, UnitreeSDK is way simpler. Nevertheless ROS2 may be installed to check the channels were the robot is publishing.
-Note that UnitreeSDK subscripts and publishes over the same channels (sportmodestate, ecc...).
-Once done we need to establish a physical connection between the machine and the G1, which may be via Ethernet or Wi-fi. //TODO find user and password to connect via Wi-fi.
+Note that UnitreeSDK subscripts and publishes over the same channels (lowstate, etc...).
+Once done we need to establish a physical connection between the machine and the G1, which may be via Ethernet or Wi-fi.
 To clear further doubts the documentation is found in the following site (https://support.unitree.com/home/en/G1_developer/about_G1).
 The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/2025/03/G1-User-Manual_compressed.pdf.)
+
+0. Unitree Explorer App:
 
 1. Install Unitree SDK:
    ```bash
@@ -167,6 +134,7 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
       ```bash
       ifconfig
       ```
+   2. WiFi
 
 
 3. Run simulation:
@@ -180,20 +148,9 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
       ```
 
 ### TO DO LIST
-1. Closed loop on CoM doesn't work (robot falls forward). Possible causes:
-   1. IMU orientation bias, implement a calibration routine to be performed once.
+0. Make the robot walk.
 
-2. Reduce computational burden
-   1. Variables are duplicated for simulation and feedback, is it necessary?
-   2. Storing data in more efficient way (maybe save a value every 2) and in different forms (maybe arrays cause spikes)
+1. Implement footstep correction within IS-MPC framework.
 
-3. Clean code.
-
-4. Improve plots.
-
-5. Implement footstep correction within IS-MPC framework.
-
-6. Fix mujoco model (thumbs swinging for some reasons).
-
-7. Add arm swing task.
+2. Add arm swing task.
 
