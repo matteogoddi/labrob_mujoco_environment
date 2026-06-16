@@ -133,11 +133,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "des_lsole_orientation", "des_rsole_orientation",
         "estimated_force_lsole", "estimated_force_rsole",
         "wbc_accelerations", "angular_momentum", "input_torque",
-        "odometry_base_position",       "odometry_base_velocity",
-        "odometry_imu_orientation",     "odometry_imu_orientation_rpy",
-        "measured_imu_orientation",     "measured_imu_orientation_rpy",
-        "measured_imu_angular_velocity","measured_imu_accelerometer",
-        "measured_joint_position",      "measured_joint_velocity",
         "ekf_base_position",      "ekf_base_velocity",
         "ekf_base_orientation",   "ekf_base_orientation_rpy", "ekf_base_angular_velocity",
         "ekf_imu_orientation",    "ekf_imu_orientation_rpy",  "ekf_imu_angular_velocity",
@@ -767,25 +762,6 @@ WalkingManager::update(
     logger_.log("estimated_force_rsole", estimated_force.tail<3>());
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("angular_momentum",      angular_momentum);
-
-    logger_.log("odometry_base_position",        odometry_base_position);
-    logger_.log("odometry_base_velocity",        odometry_base_velocity);
-    logger_.log("odometry_imu_orientation",      odometry_imu_quaternion);
-    logger_.log("odometry_imu_orientation_rpy",  odometry_imu_rpy);
-    logger_.log("measured_imu_orientation",      measured_imu_quaternion);
-    logger_.log("measured_imu_orientation_rpy",  measured_imu_rpy);
-    logger_.log("measured_imu_angular_velocity", measured_imu_angular_velocity);
-    logger_.log("measured_imu_accelerometer",    measured_imu_accelerometer);
-
-    {
-        Eigen::VectorXd jp(njnt), jv(njnt);
-        for (pinocchio::JointIndex id = 0; id < (pinocchio::JointIndex)njnt; ++id) {
-            jp(id) = measured_joint_position(id);
-            jv(id) = measured_joint_velocity(id);
-        }
-        logger_.log("measured_joint_position", jp);
-        logger_.log("measured_joint_velocity", jv);
-    }
 
     logger_.log("ekf_base_position",         robot_state.position);
     logger_.log("ekf_base_velocity",         robot_state.linear_velocity);

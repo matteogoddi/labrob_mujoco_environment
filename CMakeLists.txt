@@ -59,6 +59,7 @@ target_link_libraries(WalkingControllerLibrary
 
 add_executable(main
   main.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotInterface.cpp
 )
 target_include_directories(main
   PUBLIC
