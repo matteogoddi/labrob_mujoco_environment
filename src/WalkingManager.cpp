@@ -1051,15 +1051,15 @@ WalkingManager::update(
                 fb_robot_state = updateEKF(actual_output);
 
                 //use odometry instead
-                // fb_robot_state.position = odometry_base_position;
-                // fb_robot_state.orientation = Eigen::Quaterniond(odometry_imu_quaternion(0), odometry_imu_quaternion(1), odometry_imu_quaternion(2), odometry_imu_quaternion(3));
-                // fb_robot_state.linear_velocity = odometry_base_velocity;
-                // fb_robot_state.angular_velocity = measured_imu_angular_velocity;
-                // for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
-                //     std::string joint_name = robot_model.names[joint_id + 2];
-                //     fb_robot_state.joint_state[joint_name].pos = measured_joint_position(joint_id);
-                //     fb_robot_state.joint_state[joint_name].vel = measured_joint_velocity(joint_id);
-                // }
+                fb_robot_state.position = odometry_base_position;
+                fb_robot_state.orientation = Eigen::Quaterniond(odometry_imu_quaternion(0), odometry_imu_quaternion(1), odometry_imu_quaternion(2), odometry_imu_quaternion(3));
+                fb_robot_state.linear_velocity = fb_robot_state.orientation.toRotationMatrix().transpose() * odometry_base_velocity;
+                fb_robot_state.angular_velocity = measured_imu_angular_velocity;
+                for (pinocchio::JointIndex joint_id = 0; joint_id < (pinocchio::JointIndex) njnt; ++joint_id) {
+                    std::string joint_name = robot_model.names[joint_id + 2];
+                    fb_robot_state.joint_state[joint_name].pos = measured_joint_position(joint_id);
+                    fb_robot_state.joint_state[joint_name].vel = measured_joint_velocity(joint_id);
+                }
 
                 if (t_msec_ >= 5000 && false){
                     // BaseEKF is the primary state source.

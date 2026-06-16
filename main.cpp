@@ -151,12 +151,20 @@ struct SportModeState {
 //   15, 15, 15, 15, 15, 15, 15   // arms dx
 // };
 
+// const std::array<float, G1_NUM_MOTOR> Kp_cl{
+//     600, 600, 500, 800, 500, 500,      // legs
+//     600, 600, 500, 800, 500, 500,      // legs
+//     500, 500, 150,                   // waist
+//     400, 400, 120, 140,  40, 40, 40,  // arms
+//     400, 400, 120, 140,  40, 40, 40   // arms
+// };
+
 const std::array<float, G1_NUM_MOTOR> Kp_cl{
-    600, 600, 500, 800, 500, 500,      // legs
-    600, 600, 500, 800, 500, 500,      // legs
-    500, 500, 150,                   // waist
-    400, 400, 120, 140,  40, 40, 40,  // arms
-    400, 400, 120, 140,  40, 40, 40   // arms
+    100, 100, 100, 200, 100, 100,      // legs
+    100, 100, 100, 200, 100, 100,      // legs
+    50, 50, 50,                   // waist
+    100, 100, 70, 70,  40, 40, 40,  // arms
+    100, 100, 70, 70,  40, 40, 40   // arms
 };
 
 // Damping for all G1 Joints
@@ -847,7 +855,7 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = fb_robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = fb_robot_state.joint_state[joint_name].vel;
         }
-        mj_forward(mj_model_ptr, mj_data_ptr);
+        // mj_forward(mj_model_ptr, mj_data_ptr);
 
         mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
@@ -896,7 +904,7 @@ int main(const int argc, const char* argv[]) {
           std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
 
           // if the values are too big in module, turn off the robot
-          if (std::abs(robot_state.joint_state[joint_name].pos) > 1.8 || std::abs(robot_state.joint_state[joint_name].vel) > 3 || std::abs(joint_command[joint_name]) > 105.0)  {
+          if (std::abs(robot_state.joint_state[joint_name].pos) > 1.8 || std::abs(robot_state.joint_state[joint_name].vel) > 0.8 || std::abs(joint_command[joint_name]) > 50.0)  {
             std::cout << "Warning: motor command values too high for joint " << joint_name << ": "
                       << "q_target = " << robot_state.joint_state[joint_name].pos << ", "
                       << "dq_target = " << robot_state.joint_state[joint_name].vel << ", "
@@ -938,20 +946,20 @@ int main(const int argc, const char* argv[]) {
         }
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
+        auto end_sleep = std::chrono::steady_clock::now();
+        auto exec_time = std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep);
+        if ( exec_time < std::chrono::microseconds(2000)) {
+            auto sleep_time = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::microseconds(2000) - exec_time);
+            // std::cout << "sleep time" << sleep_time.count() << std::endl;
+            // std::cout << "exec time" << exec_time.count() << std::endl;
+            std::this_thread::sleep_for(sleep_time);
+        }
+
         lowcmd_publisher->Write(dds_low_command);
-      }
-
-      next_tick += std::chrono::milliseconds(2);
-
-      // Calcola quanto dormire
-      auto end_sleep = std::chrono::steady_clock::now();
-      if ( end_sleep - start_sleep < std::chrono::milliseconds(2)) {
-          std::this_thread::sleep_until(next_tick);
-      }
-      else {
-          // std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep).count() << " us" << std::endl;
-          next_tick = end_sleep;
-      }
+      }      
+      auto end_loop = std::chrono::steady_clock::now();
+      auto whole_loop_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_loop - start_sleep);
+      // std::cout << whole_loop_duration.count() << std::endl;
     }
 
     auto start_render =  std::chrono::steady_clock::now();
@@ -962,7 +970,6 @@ int main(const int argc, const char* argv[]) {
     auto render_duration = end_render - start_render;
     if(render_duration > std::chrono::milliseconds(5))
       std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;
-
   }
 
   // Free memory (Mujoco):

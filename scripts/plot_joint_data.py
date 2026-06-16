@@ -25,15 +25,15 @@ if __name__ == '__main__':
     if endPlot != '':
         endPlot = int(float(endPlot) * 500)  # Assuming a control frequency of 500 Hz
     else:
-        endPlot = 10
+        endPlot = 0
 
     joint_names = open(folder + '/joint_names.txt').readlines()
 
     parameters_log = np.loadtxt(folder + '/parameters_log.txt')
 
     startTimeWBCCL = parameters_log
-    startPlot = int(0.001 * startTimeWBCCL * 500 + 10)  # Assuming a control frequency of 500 Hz
-    startPlot = 0
+    startPlot = int(0.001 * startTimeWBCCL * 500)  # Assuming a control frequency of 500 Hz
+    # startPlot = 0
 
     fb_com_position = np.loadtxt(folder + '/fb_com_position.txt')
     num_samples = fb_com_position.shape[0] - endPlot
@@ -1022,12 +1022,12 @@ if __name__ == '__main__':
     fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
     for i in range(3):
         axs[i].plot(
-            t, p_lsole_fb[:, i] - p_lsole_fb[0, i],
+            t, p_lsole_fb[:, i],
             label=fr'Actual Left Sole Position ${labels_xyz[i]}$',
             linewidth=2.0
         )
         axs[i].plot(
-            t, p_lsole_des[:, i] - p_lsole_des[0, i],
+            t, p_lsole_des[:, i],
             label=fr'Desired Left Sole Position ${labels_xyz[i]}$',
             linewidth=2.0,
             linestyle='--'
@@ -1051,12 +1051,12 @@ if __name__ == '__main__':
     fig, axs = plt.subplots(3, 1, figsize=(7, 8), sharex=True)
     for i in range(3):
         axs[i].plot(
-            t, p_rsole_fb[:, i] - p_rsole_fb[0, i],
+            t, p_rsole_fb[:, i],
             label=fr'Actual Right Sole Position ${labels_xyz[i]}$',
             linewidth=2.0
         )
         axs[i].plot(
-            t, p_rsole_des[:, i] - p_rsole_des[0, i],
+            t, p_rsole_des[:, i],
             label=fr'Desired Right Sole Position ${labels_xyz[i]}$',
             linewidth=2.0,
             linestyle='--'
