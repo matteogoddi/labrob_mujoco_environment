@@ -17,7 +17,6 @@ extern bool isMPCLoopClosed;
 extern bool useSim;
 extern bool useRobot;
 extern bool switchWalkingState;
-extern bool oneTimepress;
 extern bool loopClosed;
 
 extern double startTimeMPCCL;

@@ -250,7 +250,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         );
     };
 
-    parameters_log_.push_back(startTimeWBCCL);
 
     // Save and read again footstep plan to double check it's working:
     //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
@@ -795,9 +794,6 @@ void WalkingManager::saveLogs() {
         }
     }
 
-    std::ofstream parameters_log_file("/tmp/robot_logs/parameters_log.txt");
-    for (double param : parameters_log_)
-        parameters_log_file << param << "\n";
 }
 
 

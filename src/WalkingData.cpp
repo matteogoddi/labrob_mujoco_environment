@@ -73,6 +73,8 @@ WalkingData::initializeWalkingData(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole
 ){
+    footstep_plan.clear();
+    t0 = 0;
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
@@ -90,7 +92,7 @@ WalkingData::initializeWalkingData(
             labrob::Foot::RIGHT
         ),
         0.0,
-        15000,
+        2000,
         labrob::WalkingState::Standing
     ));
 }
@@ -101,8 +103,8 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole,
   const double yaw_angle
 ){
-    double swing_foot_trajectory_height = 0.06;
-    double step_length_x = 0.2;
+    double swing_foot_trajectory_height = 0.02;
+    double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     Eigen::Matrix3d R_yaw = labrob::Rz(yaw_angle);

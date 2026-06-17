@@ -23,6 +23,7 @@
 
 // Labrob
 #include <JointCommand.hpp>
+#include <Logger.hpp>
 #include <RobotState.hpp>
 #include <StateEstimator.hpp>
 #include <WalkingManager.hpp>
@@ -40,7 +41,6 @@ bool isEKFactive      = false;
 bool useSim           = false;
 bool useRobot         = false;
 bool useViz           = true;
-bool oneTimepress     = true;
 bool xPressed         = false;
 bool loopClosed       = true;
 bool switchWalkingState = false;
@@ -55,6 +55,7 @@ enum class ExperimentMode { Regulation, WBC };
 ExperimentMode experiment_mode = ExperimentMode::Regulation;
 
 alignas(EIGEN_MAX_ALIGN_BYTES) labrob::WalkingManager walking_manager;
+labrob::Logger sensor_logger;
 
 // ── Signal handler ────────────────────────────────────────────────────────────
 void signalHandler(int signum) {
@@ -68,6 +69,7 @@ void signalHandler(int signum) {
         user_input == "Yes" || user_input == "YES") {
         std::cout << "Saving logs..." << std::endl;
         walking_manager.saveLogs();
+        sensor_logger.save("/tmp/robot_logs");
         std::cout << "Logs saved." << std::endl;
 
         if (useRobot) {
@@ -108,6 +110,7 @@ void signalHandler(int signum) {
                 }
                 readme.close();
             }
+            std::cout << "Experiment saved in folder experiment_" << n << std::endl; 
         }
     } else {
         std::cout << "Logs not saved." << std::endl;
@@ -173,7 +176,7 @@ static void handle_gamepad(
             isWBCLoopClosed = true;
             isMPCLoopClosed = true;
             startTimeWBCCL  = current_sim_ms;
-            startTimeMPCCL  = current_sim_ms + 5000.0;
+            startTimeMPCCL  = current_sim_ms;
             std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
         }
     } else {
@@ -189,15 +192,18 @@ static void handle_gamepad(
     } else {
         bPressed = false;
     }
+    static bool aPressed = false;
     if (gamepad_.A.pressed) {
-        if (oneTimepress) {
-            std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
-            isEKFactive  = true;
-            oneTimepress = false;
-            se.activate(measured_joint_pos);
-        } else {
-            std::cout << "[GAMEPAD] A -> EKF already active." << std::endl;
+        if (!aPressed) {
+            aPressed = true;
+            if (!isEKFactive) {
+                std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
+                isEKFactive = true;
+                se.activate(measured_joint_pos);
+            }
         }
+    } else {
+        aPressed = false;
     }
 }
 
@@ -235,8 +241,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
             if (std::abs(robot_state.joint_state[jname].pos) > 1.3 ||
-                std::abs(robot_state.joint_state[jname].vel) > 3   ||
-                std::abs(joint_command[jname]) > 105.0) {
+                std::abs(robot_state.joint_state[jname].vel) > 1   ||
+                std::abs(joint_command[jname]) > 60.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
@@ -424,10 +430,10 @@ int main(const int argc, const char* argv[]) {
                         odometry_data.velocity[2]
                     );
                     robot_state.orientation = Eigen::Quaterniond(
-                        odometry_data.imu_state.quaternion[0],
-                        odometry_data.imu_state.quaternion[1],
-                        odometry_data.imu_state.quaternion[2],
-                        odometry_data.imu_state.quaternion[3]
+                        odometry_data.quaternion[0],
+                        odometry_data.quaternion[1],
+                        odometry_data.quaternion[2],
+                        odometry_data.quaternion[3]
                     );
                     for (int i = 0; i < mj_model_ptr->nu; ++i) {
                         int jid = mj_model_ptr->actuator_trnid[i * 2];
@@ -435,6 +441,18 @@ int main(const int argc, const char* argv[]) {
                         robot_state.joint_state[jname].pos = measured_joint_pos[i];
                         robot_state.joint_state[jname].vel = measured_joint_vel[i];
                     }
+
+                    // ── Log sensor feedback ───────────────────────────────────
+                    sensor_logger.log("pelvis_acc",  imu_pelvis_data.accelerometer);
+                    sensor_logger.log("pelvis_gyro", imu_pelvis_data.omega);
+                    sensor_logger.log("torso_acc",   imu_torso_data.accelerometer);
+                    sensor_logger.log("torso_gyro",  imu_torso_data.omega);
+                    sensor_logger.log("odom_pos",    odometry_data.position);
+                    sensor_logger.log("odom_vel",    odometry_data.velocity);
+                    sensor_logger.log("odom_quat",   odometry_data.quaternion);
+                    sensor_logger.log("odom_rpy",    odometry_data.rpy);
+                    sensor_logger.log("joint_pos",   measured_joint_pos);
+                    sensor_logger.log("joint_vel",   measured_joint_vel);
                 }
             }
 

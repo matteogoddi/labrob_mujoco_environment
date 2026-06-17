@@ -50,6 +50,14 @@ def plot_comparison(t, actual, desired, coord_labels, title_prefix, ylabel, path
     plt.close(fig)
 
 
+def try_load(folder, name):
+    """Load name.txt if it exists, else return None."""
+    path = f"{folder}/{name}.txt"
+    if not os.path.exists(path):
+        return None
+    return np.loadtxt(path)
+
+
 def plot_bar_joint(values, joint_names, title, ylabel, path, figsize=(10, 6)):
     fig, ax = plt.subplots(figsize=figsize)
     ax.bar(range(len(values)), values, color='skyblue')
@@ -83,9 +91,6 @@ if __name__ == '__main__':
     end_trim = int(float(end_input) * CTRL_HZ) if end_input.strip() else 0
 
     joint_names = open(folder + '/joint_names.txt').readlines()
-    parameters_log  = np.loadtxt(folder + '/parameters_log.txt')
-    startTimeWBCCL  = parameters_log
-
     _ref   = np.loadtxt(f"{folder}/com_position.txt")
     total  = _ref.shape[0]
     start  = 0
@@ -136,16 +141,46 @@ if __name__ == '__main__':
     torso_angular_velocity   = L('torso_angular_velocity')
     des_torso_orientation    = L('des_torso_orientation')
     des_torso_angular_velocity = L('des_torso_angular_velocity')
-    odometry_base_position       = L('odometry_base_position')
-    odometry_base_velocity       = L('odometry_base_velocity')
-    odometry_imu_orientation     = L('odometry_imu_orientation')
-    odometry_imu_orientation_rpy = L('odometry_imu_orientation_rpy')
-    measured_joint_position      = L('measured_joint_position')
-    measured_joint_velocity      = L('measured_joint_velocity')
-    measured_imu_orientation     = L('measured_imu_orientation')
-    measured_imu_orientation_rpy = L('measured_imu_orientation_rpy')
-    measured_imu_angular_velocity= L('measured_imu_angular_velocity')
-    measured_imu_accelerometer   = L('measured_imu_accelerometer')
+    # ── load sensor-logger data and define aligned / full slice helpers ──────
+    _sens_raw = {}
+    _T_sensor = None
+    for _nm in ('pelvis_acc', 'pelvis_gyro', 'torso_acc', 'torso_gyro',
+                'odom_pos', 'odom_vel', 'odom_quat', 'odom_rpy',
+                'joint_pos', 'joint_vel'):
+        _d = try_load(folder, _nm)
+        if _d is not None:
+            _sens_raw[_nm] = _d
+            if _T_sensor is None:
+                _T_sensor = _d.shape[0]
+
+    if _T_sensor is not None:
+        _ae = _T_sensor - end_trim if end_trim > 0 else _T_sensor   # common end
+        _as = max(0, _T_sensor - total)                              # aligned start
+
+        def _align(nm):
+            d = _sens_raw.get(nm)
+            return d[_as:_ae] if d is not None else None
+
+        def _full(nm):
+            d = _sens_raw.get(nm)
+            return d[:_ae] if d is not None else None
+
+        t_full = np.linspace(0.0, DT * _ae, _ae)
+    else:
+        def _align(nm): return None
+        def _full(nm):  return None
+        t_full = t
+
+    odometry_base_position       = _align('odom_pos')
+    odometry_base_velocity       = _align('odom_vel')
+    odometry_imu_orientation     = _align('odom_quat')
+    odometry_imu_orientation_rpy = _align('odom_rpy')
+    measured_joint_position      = _align('joint_pos')
+    measured_joint_velocity      = _align('joint_vel')
+    measured_imu_angular_velocity= _align('pelvis_gyro')
+    measured_imu_accelerometer   = _align('pelvis_acc')
+    torso_acc  = _align('torso_acc')
+    torso_gyro = _align('torso_gyro')
     execution_time_ekf    = L('execution_time_ekf')
     execution_time_kf     = L('execution_time_kf')
     execution_time_mpc    = L('execution_time_mpc')
@@ -169,7 +204,22 @@ if __name__ == '__main__':
     labels_xyz  = ['x', 'y', 'z']
     labels_quat = ['w', 'x', 'y', 'z']
     labels_rpy  = ['r', 'p', 'y']
-    grouped_indices = defaultdict(list)   # populate to enable per-group joint plots
+    grouped_indices = defaultdict(list)
+    _kw_groups = {
+        'hips':      'hip',
+        'knees':     'knee',
+        'ankles':    'ankle',
+        'waist':     'waist',
+        'shoulders': 'shoulder',
+        'elbows':    'elbow',
+        'wrists':    'wrist',
+    }
+    for i, jn in enumerate(joint_names):
+        n = jn.strip().lower()
+        for gname, kw in _kw_groups.items():
+            if kw in n:
+                grouped_indices[gname].append(i)
+                break
 
     # ══════════════════════════════════════════════════════════════════════════
     #  JOINT TORQUES & ESTIMATED FORCES
@@ -513,69 +563,74 @@ if __name__ == '__main__':
         'images/ekf/base/errors/error_imu_angular_velocity_plot.png')
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  FEEDBACK
+    #  FEEDBACK  (full sensor data – dal tick 0)
     # ══════════════════════════════════════════════════════════════════════════
 
-    plot_components(t, odometry_base_position,
+    plot_components(t_full, _full('odom_pos'),
         [fr'Odometry Pos ${l}$' for l in labels_xyz],
         'Odometry Base Position', r'Position [$\mathrm{m}$]',
         'images/feedback/base/odometry_base_position_plot.png')
 
-    plot_components(t, odometry_base_velocity,
+    plot_components(t_full, _full('odom_vel'),
         [fr'Odometry Vel ${l}$' for l in labels_xyz],
         'Odometry Base Velocity', r'Velocity [$\mathrm{m/s}$]',
         'images/feedback/base/odometry_base_velocity_plot.png')
 
-    plot_components(t, odometry_imu_orientation,
-        [fr'Odometry IMU Orient ${l}$' for l in labels_quat],
+    plot_components(t_full, _full('odom_quat'),
+        [fr'Odometry IMU Orient ${l}$' for l in ['x', 'y', 'z', 'w']],
         'Odometry IMU Orientation Quat', r'Orientation [quat]',
         'images/feedback/base/odometry_imu_orientation_quat_plot.png')
 
-    plot_components(t, odometry_imu_orientation_rpy,
+    plot_components(t_full, _full('odom_rpy'),
         [fr'Odometry IMU Orient ${l}$' for l in labels_rpy],
         'Odometry IMU Orientation RPY', r'Orientation [$\mathrm{rad}$]',
         'images/feedback/base/odometry_imu_orientation_rpy_plot.png')
 
-    plot_components(t, measured_imu_orientation,
-        [fr'Measured IMU Orient ${l}$' for l in labels_quat],
-        'Measured IMU Orientation Quat', r'Orientation [quat]',
-        'images/feedback/base/measured_imu_orientation_quat_plot.png')
+    plot_components(t_full, _full('pelvis_gyro'),
+        [fr'Pelvis AngVel ${l}$' for l in labels_xyz],
+        'Pelvis IMU – Gyroscope', r'Angular Velocity [$\mathrm{rad/s}$]',
+        'images/feedback/base/pelvis_imu_angular_velocity_plot.png')
 
-    plot_components(t, measured_imu_orientation_rpy,
-        [fr'Measured IMU Orient ${l}$' for l in labels_rpy],
-        'Measured IMU Orientation RPY', r'Orientation [$\mathrm{rad}$]',
-        'images/feedback/base/measured_imu_orientation_rpy_plot.png')
+    plot_components(t_full, _full('pelvis_acc'),
+        [fr'Pelvis Acc ${l}$' for l in labels_xyz],
+        'Pelvis IMU – Accelerometer', r'Acceleration [$\mathrm{m/s^2}$]',
+        'images/feedback/base/pelvis_imu_acceleration_plot.png')
 
-    plot_components(t, measured_imu_angular_velocity,
-        [fr'Measured AngVel ${l}$' for l in labels_xyz],
-        'Measured IMU Angular Velocity', r'Angular Velocity [$\mathrm{rad/s}$]',
-        'images/feedback/base/measured_imu_angular_velocity_plot.png')
+    if _full('torso_acc') is not None:
+        plot_components(t_full, _full('torso_acc'),
+            [fr'Torso Acc ${l}$' for l in labels_xyz],
+            'Torso IMU – Accelerometer', r'Acceleration [$\mathrm{m/s^2}$]',
+            'images/feedback/base/torso_imu_acceleration_plot.png')
 
-    plot_components(t, measured_imu_accelerometer,
-        [fr'Measured Acc ${l}$' for l in labels_xyz],
-        'Measured IMU Acceleration', r'Acceleration [$\mathrm{m/s^2}$]',
-        'images/feedback/base/measured_imu_acceleration_plot.png')
+        plot_components(t_full, _full('torso_gyro'),
+            [fr'Torso AngVel ${l}$' for l in labels_xyz],
+            'Torso IMU – Gyroscope', r'Angular Velocity [$\mathrm{rad/s}$]',
+            'images/feedback/base/torso_imu_angular_velocity_plot.png')
 
-    fig, ax = plt.subplots(figsize=(18, 12))
-    for i in range(measured_joint_velocity.shape[1]):
-        ax.plot(t, measured_joint_velocity[:, i], label=joint_names[i].strip())
-    ax.set_xlabel('Time [s]'); ax.set_ylabel('Velocity [rad/s]')
-    ax.set_title('Feedback Joint Velocities'); ax.grid(True); ax.legend()
-    fig.tight_layout()
-    os.makedirs('images/feedback/joints/velocities', exist_ok=True)
-    fig.savefig('images/feedback/joints/velocities/overall_joint_velocity_plot.png')
-    plt.close(fig)
+    _jv_full = _full('joint_vel')
+    if _jv_full is not None:
+        fig, ax = plt.subplots(figsize=(18, 12))
+        for i in range(_jv_full.shape[1]):
+            ax.plot(t_full, _jv_full[:, i], label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]'); ax.set_ylabel('Velocity [rad/s]')
+        ax.set_title('Feedback Joint Velocities'); ax.grid(True); ax.legend()
+        fig.tight_layout()
+        os.makedirs('images/feedback/joints/velocities', exist_ok=True)
+        fig.savefig('images/feedback/joints/velocities/overall_joint_velocity_plot.png')
+        plt.close(fig)
 
+    _jp_full = _full('joint_pos')
     for gname, idx in grouped_indices.items():
-        plot_components(t, measured_joint_position[:, idx],
-            [joint_names[i].strip() for i in idx],
-            gname.replace('_', ' ').title(), r'Position [$\mathrm{rad}$]',
-            f'images/feedback/joints/positions/{gname}_position_plot.png', loc='upper left')
+        if _jp_full is not None:
+            plot_components(t_full, _jp_full[:, idx],
+                [joint_names[i].strip() for i in idx],
+                gname.replace('_', ' ').title(), r'Position [$\mathrm{rad}$]',
+                f'images/feedback/joints/positions/{gname}_position_plot.png', loc='upper left')
 
-        plot_components(t, measured_joint_velocity[:, idx],
-            [joint_names[i].strip() for i in idx],
-            gname.replace('_', ' ').title(), r'Velocity [$\mathrm{rad/s}$]',
-            f'images/feedback/joints/velocities/{gname}_velocity_plot.png', loc='upper left')
+            plot_components(t_full, _jv_full[:, idx],
+                [joint_names[i].strip() for i in idx],
+                gname.replace('_', ' ').title(), r'Velocity [$\mathrm{rad/s}$]',
+                f'images/feedback/joints/velocities/{gname}_velocity_plot.png', loc='upper left')
 
     # ══════════════════════════════════════════════════════════════════════════
     #  EXECUTION TIMES
@@ -620,3 +675,5 @@ if __name__ == '__main__':
     fig.savefig('images/execution_times/total_execution_time_plot.png',
                 dpi=300, bbox_inches='tight')
     plt.close(fig)
+
+    print("Done.")

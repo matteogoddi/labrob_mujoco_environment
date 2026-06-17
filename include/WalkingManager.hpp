@@ -140,8 +140,6 @@ private:
   std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_x_log_;
   std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_u_log_;
 
-  std::vector<double> parameters_log_;
-
 }; // end class WalkingManager
 
 } // end namespace labrob

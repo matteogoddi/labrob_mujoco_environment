@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Animate ISMPC predictions saved by WalkingManager.
 
-Each MPC solve writes two files inside  mpc_data/<t_ms>/:
+Each MPC solve writes two files inside  mpc_logs/<t_ms>/:
   x.txt  – (N+1) x 9  rows: [com_px com_py com_pz  com_vx com_vy com_vz  zmp_x zmp_y zmp_z]
   u.txt  –  N    x 3  rows: [zdot_x zdot_y zdot_z]
 
-Run from the build/run directory that contains the mpc_data/ folder:
+Run from the build/run directory that contains the mpc_logs/ folder:
   python3 scripts/animate_mpc.py [--base-dir <path>]
 """
 import numpy as np
@@ -42,9 +42,9 @@ def parse_timestep(name: str):
 def main() -> None:
     exp_number = input("Enter 0 to animate data from the last simulation or the number of the experiment: ").strip()
     if exp_number == '0':
-        base_dir = Path('/tmp/mpc_data')
+        base_dir = Path('/tmp/mpc_logs')
     else:
-        base_dir = Path('experiments/experiment_' + exp_number) / 'mpc_data'
+        base_dir = Path('experiments/experiment_' + exp_number) / 'mpc_logs'
     if not base_dir.exists():
         print(f'[error] Directory not found: {base_dir}')
         return

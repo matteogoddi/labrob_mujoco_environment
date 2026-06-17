@@ -29,14 +29,7 @@ void LowStateHandler(const void* msg) {
     for (int i = 0; i < G1_NUM_MOTOR; ++i) {
         motor_state_data.q[i]  = low_state.motor_state()[i].q();
         motor_state_data.dq[i] = low_state.motor_state()[i].dq();
-    }
-    imu_pelvis_data.quaternion    = Eigen::Vector4d(
-        low_state.imu_state().quaternion()[0], low_state.imu_state().quaternion()[1],
-        low_state.imu_state().quaternion()[2], low_state.imu_state().quaternion()[3]);
-    imu_pelvis_data.rpy           = Eigen::Vector3d(
-        low_state.imu_state().rpy()[0], low_state.imu_state().rpy()[1],
-        low_state.imu_state().rpy()[2]);
-    imu_pelvis_data.omega         = Eigen::Vector3d(
+    }imu_pelvis_data.omega         = Eigen::Vector3d(
         low_state.imu_state().gyroscope()[0], low_state.imu_state().gyroscope()[1],
         low_state.imu_state().gyroscope()[2]);
     imu_pelvis_data.accelerometer = Eigen::Vector3d(
@@ -57,11 +50,6 @@ void imuTorsoHandler(const void* msg) {
     auto imu_state = *(const unitree_hg::msg::dds_::IMUState_*)msg;
 
     std::lock_guard<std::mutex> lock(stateMutex);
-    imu_torso_data.quaternion    = Eigen::Vector4d(
-        imu_state.quaternion()[0], imu_state.quaternion()[1],
-        imu_state.quaternion()[2], imu_state.quaternion()[3]);
-    imu_torso_data.rpy           = Eigen::Vector3d(
-        imu_state.rpy()[0], imu_state.rpy()[1], imu_state.rpy()[2]);
     imu_torso_data.omega         = Eigen::Vector3d(
         imu_state.gyroscope()[0], imu_state.gyroscope()[1], imu_state.gyroscope()[2]);
     imu_torso_data.accelerometer = Eigen::Vector3d(
@@ -73,26 +61,23 @@ void SportModeStateHandler(const void* msg) {
     auto sportmodestate = *(const SportModeState_*)msg;
 
     std::lock_guard<std::mutex> lock(stateMutex);
-    odometry_data.position[0] = sportmodestate.position()[0];
-    odometry_data.position[1] = sportmodestate.position()[1];
-    odometry_data.position[2] = sportmodestate.position()[2];
-    odometry_data.velocity[0] = sportmodestate.velocity()[0];
-    odometry_data.velocity[1] = sportmodestate.velocity()[1];
-    odometry_data.velocity[2] = sportmodestate.velocity()[2];
-
-    odometry_data.imu_state.quaternion[0] = sportmodestate.imu_state().quaternion()[0];
-    odometry_data.imu_state.quaternion[1] = sportmodestate.imu_state().quaternion()[1];
-    odometry_data.imu_state.quaternion[2] = sportmodestate.imu_state().quaternion()[2];
-    odometry_data.imu_state.quaternion[3] = sportmodestate.imu_state().quaternion()[3];
-    odometry_data.imu_state.omega[0]        = sportmodestate.imu_state().gyroscope()[0];
-    odometry_data.imu_state.omega[1]        = sportmodestate.imu_state().gyroscope()[1];
-    odometry_data.imu_state.omega[2]        = sportmodestate.imu_state().gyroscope()[2];
-    odometry_data.imu_state.accelerometer[0] = sportmodestate.imu_state().accelerometer()[0];
-    odometry_data.imu_state.accelerometer[1] = sportmodestate.imu_state().accelerometer()[1];
-    odometry_data.imu_state.accelerometer[2] = sportmodestate.imu_state().accelerometer()[2];
-    odometry_data.imu_state.rpy[0]          = sportmodestate.imu_state().rpy()[0];
-    odometry_data.imu_state.rpy[1]          = sportmodestate.imu_state().rpy()[1];
-    odometry_data.imu_state.rpy[2]          = sportmodestate.imu_state().rpy()[2];
+    odometry_data.position = Eigen::Vector3d(sportmodestate.position()[0],
+        sportmodestate.position()[1],
+        sportmodestate.position()[2]
+    );
+    odometry_data.velocity = Eigen::Vector3d(sportmodestate.velocity()[0],
+        sportmodestate.velocity()[1],
+        sportmodestate.velocity()[2]
+    );
+    odometry_data.quaternion = Eigen::Vector4d(sportmodestate.imu_state().quaternion()[0],
+        sportmodestate.imu_state().quaternion()[1],
+        sportmodestate.imu_state().quaternion()[2],
+        sportmodestate.imu_state().quaternion()[3]
+    );
+    odometry_data.rpy = Eigen::Vector3d(sportmodestate.imu_state().rpy()[0],
+        sportmodestate.imu_state().rpy()[1],
+        sportmodestate.imu_state().rpy()[2]
+    );
 }
 
 // ── Motion switcher helpers ───────────────────────────────────────────────────

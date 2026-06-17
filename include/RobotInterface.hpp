@@ -35,10 +35,8 @@ enum class Mode { PR = 0, AB = 1 };
 
 // ── Data structs ─────────────────────────────────────────────────────────────
 struct ImuState {
-    Eigen::Vector3d rpy          = Eigen::Vector3d::Zero();
-    Eigen::Vector3d omega        = Eigen::Vector3d::Zero();
     Eigen::Vector3d accelerometer = Eigen::Vector3d::Zero();
-    Eigen::Vector4d quaternion   = Eigen::Vector4d(1, 0, 0, 0);
+    Eigen::Vector3d omega        = Eigen::Vector3d::Zero();
 };
 
 struct MotorState {
@@ -55,9 +53,10 @@ struct MotorCommand {
 };
 
 struct SportModeState {
-    std::array<float, 3> position = {};
-    std::array<float, 3> velocity = {};
-    ImuState imu_state            = {};
+    Eigen::Vector3d position = {};
+    Eigen::Vector3d velocity = {};
+    Eigen::Vector4d quaternion   = Eigen::Vector4d(1, 0, 0, 0);
+    Eigen::Vector3d rpy          = Eigen::Vector3d::Zero();
 };
 
 // ── Thread-safe single-value buffer ──────────────────────────────────────────
