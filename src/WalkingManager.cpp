@@ -500,7 +500,7 @@ WalkingManager::update(
     {
         #pragma omp section
         {
-            if(isMPCLoopClosed && t_msec_>= startTimeMPCCL){
+            if(isMPCLoopClosed){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
@@ -582,7 +582,7 @@ WalkingManager::update(
 
     // assign constant value to com
     // if(useRobot){
-    //     if(isWBCLoopClosed && t_msec_ >= startTimeWBCCL){
+    //     if(isWBCLoopClosed){
     //         desired_gait_configuration.com.pos = fixed_com_pos;
     //     } else {
     //         desired_gait_configuration.com.pos = p_CoM_init;

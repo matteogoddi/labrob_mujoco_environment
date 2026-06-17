@@ -47,9 +47,6 @@ bool switchWalkingState = false;
 
 using Clock = std::chrono::steady_clock;
 
-// Used internally by WalkingManager (extern in globals.h)
-double startTimeWBCCL = 0.0;
-double startTimeMPCCL = 0.0;
 
 enum class ExperimentMode { Regulation, WBC };
 ExperimentMode experiment_mode = ExperimentMode::Regulation;
@@ -175,8 +172,6 @@ static void handle_gamepad(
             wm.init(robot_state, armatures);
             isWBCLoopClosed = true;
             isMPCLoopClosed = true;
-            startTimeWBCCL  = current_sim_ms;
-            startTimeMPCCL  = current_sim_ms;
             std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
         }
     } else {

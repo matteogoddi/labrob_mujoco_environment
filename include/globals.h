@@ -19,6 +19,4 @@ extern bool useRobot;
 extern bool switchWalkingState;
 extern bool loopClosed;
 
-extern double startTimeMPCCL;
-extern double startTimeWBCCL;
 
