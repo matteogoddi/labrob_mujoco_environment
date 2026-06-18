@@ -207,7 +207,9 @@ static void send_dds_command(
     mjModel*                        m,
     labrob::RobotState&       robot_state,
     labrob::JointCommand&     joint_command,
-    Clock::duration                 elapsed)
+    Clock::duration                 elapsed,
+    const Eigen::VectorXd&          q_ref,
+    const Eigen::VectorXd&          dq_ref)
 {
     MotorCommand motor_command;
     motor_command.tau_ff.fill(0.0f);
@@ -244,9 +246,9 @@ static void send_dds_command(
                           << " tau=" << joint_command[jname] << std::endl;
                 signalHandler(SIGINT);
             }
-            motor_command.dq_target[i] = robot_state.joint_state.at(jname).vel;
+            motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
             motor_command.tau_ff[i]    = joint_command[jname];
-            motor_command.q_target[i]  = robot_state.joint_state[jname].pos;
+            motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
         } else {
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
             motor_command.dq_target[i] = 0.0f;
@@ -382,6 +384,10 @@ int main(const int argc, const char* argv[]) {
     static constexpr int framerate = 60;
     const Clock::time_point t_start = Clock::now();
 
+    Eigen::VectorXd q_ref_joints  = Eigen::VectorXd::Zero(29);
+    Eigen::VectorXd dq_ref_joints = Eigen::VectorXd::Zero(29);
+    bool wbc_cmd_refs_initialized = false;
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     while (running) {
         if (useViz && mujoco_ui_ptr->windowShouldClose()) break;
@@ -507,6 +513,23 @@ int main(const int argc, const char* argv[]) {
 
                     case ExperimentMode::WBC:
                         walking_manager.update(robot_state, joint_command);
+                        {
+                            constexpr double cmd_dt = 0.002;
+                            const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
+                            if (!wbc_cmd_refs_initialized) {
+                                for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                                    int jid = mj_model_ptr->actuator_trnid[i * 2];
+                                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                                    q_ref_joints[i]  = robot_state.joint_state.at(jname).pos;
+                                    dq_ref_joints[i] = robot_state.joint_state.at(jname).vel;
+                                }
+                                wbc_cmd_refs_initialized = true;
+                            } else {
+                                const Eigen::VectorXd jddot_joints = jddot.tail(mj_model_ptr->nu);
+                                q_ref_joints  += dq_ref_joints * cmd_dt + 0.5 * jddot_joints * cmd_dt * cmd_dt;
+                                dq_ref_joints += jddot_joints * cmd_dt;
+                            }
+                        }
                         break;
                 }
 
@@ -547,7 +570,8 @@ int main(const int argc, const char* argv[]) {
 
                 // ── Send motor commands via DDS ───────────────────────────────
                 send_dds_command(lowcmd_publisher, mj_model_ptr, robot_state,
-                                 joint_command, Clock::now() - t_start);
+                                 joint_command, Clock::now() - t_start,
+                                q_ref_joints, dq_ref_joints);
             }
 
         }
