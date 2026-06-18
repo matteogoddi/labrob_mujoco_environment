@@ -132,6 +132,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "lsole_orientation",  "rsole_orientation",
         "des_lsole_orientation", "des_rsole_orientation",
         "estimated_force_lsole", "estimated_force_rsole",
+        "wbc_force_lsole", "wbc_force_rsole",
         "wbc_accelerations", "angular_momentum", "input_torque",
         "ekf_base_position",      "ekf_base_velocity",
         "ekf_base_orientation",   "ekf_base_orientation_rpy", "ekf_base_angular_velocity",
@@ -249,6 +250,39 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
             0.0
         );
     };
+
+    initial_gait_configuration.qjnt = q_jnt_des_;
+    initial_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
+    initial_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
+
+    // CoM initial from IS-MPC LIP integration
+    initial_gait_configuration.com.pos = robot_data.com[0];
+    initial_gait_configuration.com.vel = Eigen::Vector3d::Zero();
+    initial_gait_configuration.com.acc = Eigen::Vector3d::Zero();
+
+    // contact flags
+
+    initial_gait_configuration.lsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getLeftFootConfiguration();
+    initial_gait_configuration.lsole.vel = Eigen::VectorXd::Zero(6);
+    initial_gait_configuration.lsole.acc = Eigen::VectorXd::Zero(6);
+    initial_gait_configuration.rsole.pos = walking_data_.footstep_plan.front().getFeetPlacement().getRightFootConfiguration();
+    initial_gait_configuration.rsole.vel = Eigen::VectorXd::Zero(6);
+    initial_gait_configuration.rsole.acc = Eigen::VectorXd::Zero(6);
+
+    // torso task
+    double left_foot_yaw_init = std::atan2(initial_gait_configuration.lsole.pos.R(1, 0), initial_gait_configuration.lsole.pos.R(0, 0));
+    double right_foot_yaw_init = std::atan2(initial_gait_configuration.rsole.pos.R(1, 0), initial_gait_configuration.rsole.pos.R(0, 0));
+    
+    initial_gait_configuration.torso.pos = robot_data.oMf[torso_idx_].rotation();
+    // initial_gait_configuration.torso.vel = (initial_gait_configuration.lsole.vel.tail(3) + initial_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    initial_gait_configuration.torso.vel = Eigen::Vector3d::Zero();
+    // initial_gait_configuration.torso.acc = (initial_gait_configuration.lsole.acc.tail(3) + initial_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    initial_gait_configuration.torso.acc = Eigen::Vector3d::Zero();
+    initial_gait_configuration.pelvis.pos = initial_robot_state.orientation;
+    // initial_gait_configuration.pelvis.vel = (initial_gait_configuration.lsole.vel.tail(3) + initial_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    // initial_gait_configuration.pelvis.acc = (initial_gait_configuration.lsole.acc.tail(3) + initial_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    initial_gait_configuration.pelvis.vel = Eigen::Vector3d::Zero();
+    initial_gait_configuration.pelvis.acc = Eigen::Vector3d::Zero();
 
 
     // Save and read again footstep plan to double check it's working:
@@ -636,12 +670,15 @@ WalkingManager::update(
     double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
     
     desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-    desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
-    desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    // desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    desired_gait_configuration.torso.vel.setZero();
+    // desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    desired_gait_configuration.torso.acc.setZero();
     desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
-    desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
-    desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-
+    // desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
+    // desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
+    desired_gait_configuration.pelvis.vel.setZero();
+    desired_gait_configuration.pelvis.acc.setZero();
     /////////////////////////////////////
     // START WHOLE BODY CONTROLLER FUNCTION CALL
     /////////////////////////////////////
@@ -656,7 +693,7 @@ WalkingManager::update(
                 robot_state,
                 robot_data,
                 current_gait_configuration,
-                desired_gait_configuration
+                initial_gait_configuration
             );
         }
         #pragma omp section
@@ -709,6 +746,8 @@ WalkingManager::update(
 
     logger_.log("estimated_force_lsole", estimated_force.head<3>());
     logger_.log("estimated_force_rsole", estimated_force.tail<3>());
+    logger_.log("wbc_force_lsole",       whole_body_controller_ptr_->getLeftFootWrench());
+    logger_.log("wbc_force_rsole",       whole_body_controller_ptr_->getRightFootWrench());
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("angular_momentum",      angular_momentum);
 

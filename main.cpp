@@ -205,9 +205,11 @@ static void handle_gamepad(
 static void send_dds_command(
     ChannelPublisherPtr<LowCmd_>&   publisher,
     mjModel*                        m,
-    labrob::RobotState&       robot_state,
-    labrob::JointCommand&     joint_command,
-    Clock::duration                 elapsed)
+    labrob::RobotState&             robot_state,
+    labrob::JointCommand&           joint_command,
+    Clock::duration                 elapsed,
+    const Eigen::VectorXd&          q_ref,
+    const Eigen::VectorXd&          dq_ref)
 {
     MotorCommand motor_command;
     motor_command.tau_ff.fill(0.0f);
@@ -235,8 +237,8 @@ static void send_dds_command(
         int jid = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
-            if (std::abs(robot_state.joint_state[jname].pos) > 1.3 ||
-                std::abs(robot_state.joint_state[jname].vel) > 1   ||
+            if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
+                std::abs(robot_state.joint_state[jname].vel) > 4   ||
                 std::abs(joint_command[jname]) > 60.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
@@ -244,9 +246,9 @@ static void send_dds_command(
                           << " tau=" << joint_command[jname] << std::endl;
                 signalHandler(SIGINT);
             }
-            motor_command.dq_target[i] = robot_state.joint_state.at(jname).vel;
+            motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
+            motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
             motor_command.tau_ff[i]    = joint_command[jname];
-            motor_command.q_target[i]  = robot_state.joint_state[jname].pos;
         } else {
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
             motor_command.dq_target[i] = 0.0f;
@@ -382,6 +384,17 @@ int main(const int argc, const char* argv[]) {
     static constexpr int framerate = 60;
     const Clock::time_point t_start = Clock::now();
 
+    // IIR low-pass for raw motor dq (removes encoder noise before WBC Coriolis).
+    // alpha = 0.85 → ~12 Hz cutoff at 500 Hz. Tune lower (e.g. 0.7) for more smoothing.
+    Eigen::VectorXd filtered_joint_vel = Eigen::VectorXd::Zero(29);
+    constexpr double vel_filter_alpha = 0.85;
+
+    // Joint position/velocity references sent as q_target / dq_target to the motor PD.
+    // Propagated each tick via Euler integration of the WBC desired joint accelerations.
+    Eigen::VectorXd q_ref_joints  = Eigen::VectorXd::Zero(29);
+    Eigen::VectorXd dq_ref_joints = Eigen::VectorXd::Zero(29);
+    bool wbc_cmd_refs_initialized = false;
+
     // ── Main loop ─────────────────────────────────────────────────────────────
     while (running) {
         if (useViz && mujoco_ui_ptr->windowShouldClose()) break;
@@ -398,9 +411,6 @@ int main(const int argc, const char* argv[]) {
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
             if (useRobot) {
-                handle_gamepad(walking_manager, state_estimator, robot_state,
-                               armatures, measured_joint_pos,
-                               1000.0 * mj_data_ptr->time);
 
                 // ── Read sensors from SDK callbacks ───────────────────────────
                 {
@@ -410,6 +420,8 @@ int main(const int argc, const char* argv[]) {
                     for (int i = 0; i < mj_model_ptr->nu; ++i) {
                         measured_joint_pos[i] = motor_state_data.q[i];
                         measured_joint_vel[i] = motor_state_data.dq[i];
+                        filtered_joint_vel[i] = vel_filter_alpha * filtered_joint_vel[i]
+                                              + (1.0 - vel_filter_alpha) * measured_joint_vel[i];
                     }
                     robot_state.angular_velocity = imu_pelvis_data.omega;
 
@@ -417,13 +429,14 @@ int main(const int argc, const char* argv[]) {
                     robot_state.position = Eigen::Vector3d(
                         odometry_data.position[0],
                         odometry_data.position[1],
-                        odometry_data.position[2] + 0.061273
+                        odometry_data.position[2]
                     );
-                    robot_state.linear_velocity = Eigen::Vector3d(
-                        odometry_data.velocity[0],
-                        odometry_data.velocity[1],
-                        odometry_data.velocity[2]
-                    );
+                    robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+                        Eigen::Vector3d(
+                            odometry_data.velocity[0],
+                            odometry_data.velocity[1],
+                            odometry_data.velocity[2]
+                        );
                     robot_state.orientation = Eigen::Quaterniond(
                         odometry_data.quaternion[0],
                         odometry_data.quaternion[1],
@@ -449,6 +462,10 @@ int main(const int argc, const char* argv[]) {
                     sensor_logger.log("joint_pos",   measured_joint_pos);
                     sensor_logger.log("joint_vel",   measured_joint_vel);
                 }
+
+                handle_gamepad(walking_manager, state_estimator, robot_state,
+                               armatures, measured_joint_pos,
+                               1000.0 * mj_data_ptr->time);
             }
 
             // ── State estimator (robot mode only) ────────────────────────────
@@ -475,6 +492,7 @@ int main(const int argc, const char* argv[]) {
                 if (!isWBCLoopClosed) {
                     robot_state     = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
                     isWBCLoopClosed = true;
+                    isMPCLoopClosed = true;
                 }
                 walking_manager.update(robot_state, joint_command);
 
@@ -507,6 +525,23 @@ int main(const int argc, const char* argv[]) {
 
                     case ExperimentMode::WBC:
                         walking_manager.update(robot_state, joint_command);
+                        {
+                            constexpr double cmd_dt = 0.002;
+                            const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
+                            if (!wbc_cmd_refs_initialized) {
+                                for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                                    int jid = mj_model_ptr->actuator_trnid[i * 2];
+                                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                                    q_ref_joints[i]  = robot_state.joint_state.at(jname).pos;
+                                    dq_ref_joints[i] = robot_state.joint_state.at(jname).vel;
+                                }
+                                wbc_cmd_refs_initialized = true;
+                            } else {
+                                const Eigen::VectorXd jddot_joints = jddot.tail(mj_model_ptr->nu);
+                                q_ref_joints  += dq_ref_joints * cmd_dt + 0.5 * jddot_joints * cmd_dt * cmd_dt;
+                                dq_ref_joints += jddot_joints * cmd_dt;
+                            }
+                        }
                         break;
                 }
 
@@ -547,7 +582,8 @@ int main(const int argc, const char* argv[]) {
 
                 // ── Send motor commands via DDS ───────────────────────────────
                 send_dds_command(lowcmd_publisher, mj_model_ptr, robot_state,
-                                 joint_command, Clock::now() - t_start);
+                                 joint_command, Clock::now() - t_start,
+                                 q_ref_joints, dq_ref_joints);
             }
 
         }

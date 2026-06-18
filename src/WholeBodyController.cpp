@@ -24,34 +24,34 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 40.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 400.0;
-  params.Kd_orientation = 80.0;
+  params.Kp_orientation = 100.0;
+  params.Kd_orientation = 1.0;
   params.Kp_foot = 70.0;
-  params.Kd_foot = 35.0;
+  params.Kd_foot = 1.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1;
   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120;
-  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90;
+  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;
   params.weight_lsole            = 1;
   params.weight_rsole            = 1;
-  params.weight_torso            = 1e-4;
+  params.weight_torso            = 1e-7;
   params.weight_pelvis           = 1e-1;
-  params.weight_angular_momentum = 1e-4;
-  params.weight_regulation       = 1e-4;
+  params.weight_angular_momentum = 1e-7;
+  params.weight_regulation       = 1e-6;
 
   params.cmm_selection_matrix_x = 1e-1;
   params.cmm_selection_matrix_y = 1e-1;
   params.cmm_selection_matrix_z = 1;
 
   params.beta = 0;
-  params.gamma = 50;
-  params.mu = 0.5;
+  params.gamma = 30;
+  params.mu = 0.8;
 
   params.foot_length = 0.20;
   params.foot_width  = 0.07;
@@ -274,6 +274,18 @@ WholeBodyController::compute_inverse_dynamics(
       desired.torso.acc + params_.Kp_orientation * err_torso + params_.Kd_orientation * err_torso_vel;
   const Eigen::VectorXd a_pelvis_total =
       desired.pelvis.acc + params_.Kp_orientation * err_pelvis + params_.Kd_orientation * err_pelvis_vel;
+
+  // print each accelerations
+  std::cout << "a_jnt_total " << a_jnt_total.transpose() << "\n" << std::endl;
+  std::cout << "a_com_total " << a_com_total.transpose() << "\n" << std::endl;
+  std::cout << "a_lsole_total " << a_lsole_total.transpose() << "\n" << std::endl;
+  std::cout << "a_rsole_total " << a_rsole_total.transpose() << "\n" << std::endl;
+  std::cout << "a_torso_total " << a_torso_total.transpose() << "\n" << std::endl;
+  std::cout << "a_pelvis_total " << a_pelvis_total.transpose() << "\n" << std::endl;
+
+
+  std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
+  // std::cout << "error rsole pos " << err_rsole.transpose() << " vel " << err_rsole_vel.transpose() << "\n" << std::endl;
 
   // ── H_acc / f_acc (no temporaries, noalias products) ─────────────────────
   H_acc_.setZero();
