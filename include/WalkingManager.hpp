@@ -17,8 +17,12 @@
 #include <Logger.hpp>
 #include <utils.hpp>
 #include <WholeBodyController.hpp>
+#include <WristForceEstimator.hpp>
+#include <FootstepPlannerCoop.hpp>
+#include <HandAdmittanceController.hpp>
 
 #include <QpSolver.hpp>
+#include <globals.h>
 
 
 namespace labrob {
@@ -31,8 +35,17 @@ class WalkingManager {
 
   bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
 
-  RobotState getNewRobotState();
-  RobotState getActualRobotState();
+
+  void setReactiveStanding(bool r) { reactive_standing_ = r;};
+  void setVerboseCoop(bool v) { verbose_coop_ = v;};
+
+  void setHandForces(
+    const Eigen::Vector3d& f_l_W,
+    const Eigen::Vector3d& f_r_W
+  ) {
+    hac_f_l_W = f_l_W;
+    hac_f_r_W = f_r_W;
+  }
 
   void saveLogs();
 
@@ -63,6 +76,8 @@ class WalkingManager {
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
+  pinocchio::FrameIndex lwrist_idx_;
+  pinocchio::FrameIndex rwrist_idx_;
   pinocchio::FrameIndex pelvis_idx_;
   pinocchio::FrameIndex imu_idx_;
 
@@ -97,6 +112,7 @@ class WalkingManager {
   Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
+  std::unique_ptr<labrob::WristForceEstimator> wrist_force_estimator_ptr_;
 
 private:
 
@@ -124,11 +140,48 @@ private:
       pinocchio::Motion& swing_foot_acceleration
   ) const;
 
+  Eigen::Vector3d p_F_hac_;
+  Eigen::Matrix3d R_F_hac_;
+  pinocchio::SE3 T_lsole_;
+  pinocchio::SE3 T_rsole_;
+  void updateHACLocalFrame();
+
+  // DEBUG HELPERS //
+  void showPlan(const labrob::FootstepPlannerCoop::QP2DResult res);
+  void showDeque(const labrob::WalkingData wd);
+
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
+  std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
+
+    // Private members online planner
+  std::unique_ptr<labrob::FootstepPlannerCoop> coop_planner_ptr_;
+  bool reactive_standing_ = true;
+  bool verbose_coop_ = false;
+  bool coop_walking_triggered_ = false;
+  bool coop_walking_active_ = false;
+  labrob::Foot prev_support_foot_ = labrob::Foot::LEFT;
+  Eigen::Vector2d integral_eh_ = Eigen::Vector2d::Zero();
+  int64_t coop_T_ds_ms_ = 800;   // ms DS (T_step=1400ms, ratio=0.4)
+  int64_t coop_T_ss_ms_ = 4000;   // ms SS
+  double  coop_step_height_ = 0.06;
+  bool waiting_for_rolling_ = false;
+  bool stopping_requested_ = false;
+
+    // Private members HAC
+  Eigen::Vector3d hac_f_l_W = Eigen::Vector3d::Zero();
+  Eigen::Vector3d hac_f_r_W = Eigen::Vector3d::Zero();
+  labrob::Foot hac_last_support_foot_ = labrob::Foot::LEFT; // to detect switch support in HAC
+
+
+  // Private memebers RW-BO
+  Eigen::VectorXd torques_filt_;
+
+  Eigen::VectorXd joint_vel_filt_;   // EMA velocità di giunto per l'observer
+  bool joint_vel_filt_init_ = false;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
 

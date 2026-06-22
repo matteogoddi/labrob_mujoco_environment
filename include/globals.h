@@ -14,9 +14,13 @@ constexpr std::string_view robotScenePath = "../../labrob_mujoco_environment/rob
 extern bool isWBCLoopClosed;
 extern bool isEKFactive;
 extern bool isMPCLoopClosed;
+extern bool isObserverActive;
 extern bool useSim;
 extern bool useRobot;
 extern bool switchWalkingState;
+extern bool switchCoopState;
 extern bool loopClosed;
+
+extern Eigen::VectorXd measured_joint_velocity;
 
 

@@ -38,6 +38,9 @@ struct WholeBodyControllerParams {
   double Kd_orientation;
   double Kp_foot;
   double Kd_foot;
+  double Kp_wrist;
+  double Kd_wrist;
+
 
   Eigen::MatrixXd Kp_joint_matrix;
   Eigen::MatrixXd Kd_joint_matrix;
@@ -46,6 +49,8 @@ struct WholeBodyControllerParams {
   double weight_com;
   double weight_lsole;
   double weight_rsole;
+  double weight_lwrist;
+  double weight_rwrist;
   double weight_torso;
   double weight_pelvis;
   double weight_regulation;
@@ -93,10 +98,10 @@ class WholeBodyController {
   pinocchio::Model robot_model_;
   pinocchio::Data  robot_data_;
 
-  pinocchio::FrameIndex lsole_idx_, rsole_idx_, torso_idx_, pelvis_idx_;
+  pinocchio::FrameIndex lsole_idx_, rsole_idx_, lwrist_idx_, rwrist_idx_, torso_idx_, pelvis_idx_;
 
-  Eigen::MatrixXd J_torso_,     J_pelvis_,     J_lsole_,     J_rsole_;
-  Eigen::MatrixXd J_torso_dot_, J_pelvis_dot_, J_lsole_dot_, J_rsole_dot_;
+  Eigen::MatrixXd J_torso_,     J_pelvis_,     J_lsole_,     J_rsole_,     J_lwrist_,     J_rwrist_;
+  Eigen::MatrixXd J_torso_dot_, J_pelvis_dot_, J_lsole_dot_, J_rsole_dot_, J_lwrist_dot_, J_rwrist_dot_;
 
   Eigen::VectorXd q_jnt_reg_;
   Eigen::VectorXd q_ddot_;

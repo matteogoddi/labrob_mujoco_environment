@@ -101,6 +101,59 @@ class MujocoUI {
     mjv_moveCamera(model_ptr_, mjMOUSE_ZOOM, 0, -0.05 * yoffset, &scn_, &cam_);
   }
 
+    void addForceArrow(
+      const mjtNum* from,      // punto di applicazione [3]
+      const mjtNum* force,     // vettore forza [3]
+      float scale,             // es. 0.005f (m/N)
+      const float* rgba        // colore [4]
+  ) {
+      if (scn_.ngeom >= scn_.maxgeom) return;
+
+      // Calcola il punto "to" = from + scale * force
+      mjtNum to[3] = {
+          from[0] + scale * force[0],
+          from[1] + scale * force[1],
+          from[2] + scale * force[2]
+      };
+
+      mjvGeom* g = scn_.geoms + scn_.ngeom;
+      mjv_initGeom(g, mjGEOM_ARROW, NULL, NULL, NULL, rgba);
+      mjv_connector(g, mjGEOM_ARROW, /*width=*/0.01, from, to);
+      scn_.ngeom++;
+  }
+
+  // In MujocoUI.hpp, nella sezione public:
+
+  void renderWithHandForces(
+      const Eigen::Vector3d& p_lhand,
+      const Eigen::Vector3d& f_lhand,
+      const Eigen::Vector3d& p_rhand,
+      const Eigen::Vector3d& f_rhand
+  ) {
+      // 1. Aggiorna la scena (reset + rebuild geoms da MuJoCo)
+      mjrRect viewport = {0, 0, 0, 0};
+      glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);
+      mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
+
+      // 2. Aggiungi frecce mano sinistra (blu) e destra (rossa)
+      float rgba_left[4]  = {0.0f, 0.4f, 1.0f, 0.9f};
+      float rgba_right[4] = {1.0f, 0.3f, 0.0f, 0.9f};
+      float scale = 0.05f; // 0.05 m/N -> a 10 N = freccia 50 cm
+
+      mjtNum from_l[3] = {p_lhand.x(), p_lhand.y(), p_lhand.z()};
+      mjtNum f_l[3]    = {f_lhand.x(), f_lhand.y(), f_lhand.z()};
+      mjtNum from_r[3] = {p_rhand.x(), p_rhand.y(), p_rhand.z()};
+      mjtNum f_r[3]    = {f_rhand.x(), f_rhand.y(), f_rhand.z()};
+
+      addForceArrow(from_l, f_l, scale, rgba_left);
+      addForceArrow(from_r, f_r, scale, rgba_right);
+
+      // 3. Render
+      mjr_render(viewport, &scn_, &con_);
+      glfwSwapBuffers(window_);
+      glfwPollEvents();
+  }
+
  protected:
   MujocoUI() = default;
 

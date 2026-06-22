@@ -31,6 +31,8 @@ set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlannerCoop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/HandAdmittanceController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateFiltering.cpp
@@ -38,6 +40,7 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WholeBodyController.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/WristForceEstimator.cpp
 )
 
 target_include_directories(WalkingControllerLibrary

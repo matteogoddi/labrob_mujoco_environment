@@ -24,26 +24,30 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 40.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 100.0;
-  params.Kd_orientation = 1.0;
+  params.Kp_orientation = 400.0;
+  params.Kd_orientation = 80.0;
   params.Kp_foot = 70.0;
-  params.Kd_foot = 1.0;
+  params.Kd_foot = 35.0;
+  params.Kp_wrist = 30.0;
+  params.Kd_wrist = 10.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 1;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120;
-  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 1;
+  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90;
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;
   params.weight_lsole            = 1;
   params.weight_rsole            = 1;
-  params.weight_torso            = 1e-7;
+  params.weight_lwrist            = 1e-3;
+  params.weight_rwrist            = 1e-3;
+  params.weight_torso            = 1e-4;
   params.weight_pelvis           = 1e-1;
-  params.weight_angular_momentum = 1e-7;
-  params.weight_regulation       = 1e-6;
+  params.weight_angular_momentum = 1e-4;
+  params.weight_regulation       = 1e-4;
 
   params.cmm_selection_matrix_x = 1e-1;
   params.cmm_selection_matrix_y = 1e-1;
@@ -74,6 +78,8 @@ WholeBodyController::WholeBodyController(
 
   lsole_idx_  = robot_model_.getFrameId("left_foot_link");
   rsole_idx_  = robot_model_.getFrameId("right_foot_link");
+  lwrist_idx_  = robot_model_.getFrameId("left_wrist_yaw_link");
+  rwrist_idx_  = robot_model_.getFrameId("right_wrist_yaw_link");
   torso_idx_  = robot_model_.getFrameId("torso_link");
   pelvis_idx_ = robot_model_.getFrameId("pelvis");
 
@@ -81,10 +87,14 @@ WholeBodyController::WholeBodyController(
   J_pelvis_    = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_lsole_     = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_rsole_     = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lwrist_     = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rwrist_     = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_torso_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_pelvis_dot_= Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_lsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_rsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lwrist_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rwrist_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 
   n_joints_         = robot_model.nv - 6;
   n_contacts_       = 4;
@@ -219,18 +229,24 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobian(robot_model, robot_data, pelvis_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_pelvis_);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_lsole_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_rsole_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, lwrist_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_lwrist_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, rwrist_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_rwrist_);
 
   pinocchio::centerOfMass(robot_model, robot_data, q, qdot, zero_nv_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, torso_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_torso_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, pelvis_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_pelvis_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lsole_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_lsole_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
+  pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lwrist_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_lwrist_dot_);
+  pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rwrist_idx_,  pinocchio::LOCAL_WORLD_ALIGNED, J_rwrist_dot_);
 
   const auto& J_com                    = robot_data.Jcom;
   const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
   const auto& a_com_drift              = robot_data.acom[0];
   const auto  a_lsole_drift            = J_lsole_dot_ * qdot;
   const auto  a_rsole_drift            = J_rsole_dot_ * qdot;
+  const auto  a_lwrist_drift            = J_lwrist_dot_.topRows<3>() * qdot;
+  const auto  a_rwrist_drift            = J_rwrist_dot_.topRows<3>() * qdot;
   const auto  a_torso_drift            = J_torso_dot_.bottomRows<3>() * qdot;
   const auto  a_pelvis_drift           = J_pelvis_dot_.bottomRows<3>() * qdot;
 
@@ -247,6 +263,12 @@ WholeBodyController::compute_inverse_dynamics(
       pinocchio::SE3(desired.rsole.pos.R, desired.rsole.pos.p),
       pinocchio::SE3(current.rsole.pos.R, current.rsole.pos.p));
   const auto err_rsole_vel = desired.rsole.vel - current.rsole.vel;
+
+  const auto err_lwrist     = desired.lwrist.pos - current.lwrist.pos;
+  const auto err_lwrist_vel = desired.lwrist.vel - current.lwrist.vel;
+
+  const auto err_rwrist     = desired.rwrist.pos - current.rwrist.pos;
+  const auto err_rwrist_vel = desired.rwrist.vel - current.rwrist.vel;
 
   const auto err_torso         = err_rotation(desired.torso.pos, current.torso.pos);
   const auto err_torso_vel     = desired.torso.vel - current.torso.vel;
@@ -270,21 +292,25 @@ WholeBodyController::compute_inverse_dynamics(
       desired.lsole.acc + params_.Kp_foot * err_lsole + params_.Kd_foot * err_lsole_vel;
   const Eigen::VectorXd a_rsole_total =
       desired.rsole.acc + params_.Kp_foot * err_rsole + params_.Kd_foot * err_rsole_vel;
+  const Eigen::VectorXd a_lwrist_total =
+      desired.lwrist.acc + params_.Kp_wrist * err_lwrist + params_.Kd_wrist * err_lwrist_vel;
+  const Eigen::VectorXd a_rwrist_total =
+      desired.rwrist.acc + params_.Kp_wrist * err_rwrist + params_.Kd_wrist * err_rwrist_vel;
   const Eigen::VectorXd a_torso_total =
       desired.torso.acc + params_.Kp_orientation * err_torso + params_.Kd_orientation * err_torso_vel;
   const Eigen::VectorXd a_pelvis_total =
       desired.pelvis.acc + params_.Kp_orientation * err_pelvis + params_.Kd_orientation * err_pelvis_vel;
 
   // print each accelerations
-  std::cout << "a_jnt_total " << a_jnt_total.transpose() << "\n" << std::endl;
-  std::cout << "a_com_total " << a_com_total.transpose() << "\n" << std::endl;
-  std::cout << "a_lsole_total " << a_lsole_total.transpose() << "\n" << std::endl;
-  std::cout << "a_rsole_total " << a_rsole_total.transpose() << "\n" << std::endl;
-  std::cout << "a_torso_total " << a_torso_total.transpose() << "\n" << std::endl;
-  std::cout << "a_pelvis_total " << a_pelvis_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_jnt_total " << a_jnt_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_com_total " << a_com_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_lsole_total " << a_lsole_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_rsole_total " << a_rsole_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_torso_total " << a_torso_total.transpose() << "\n" << std::endl;
+  // std::cout << "a_pelvis_total " << a_pelvis_total.transpose() << "\n" << std::endl;
 
 
-  std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
+  // std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
   // std::cout << "error rsole pos " << err_rsole.transpose() << " vel " << err_rsole_vel.transpose() << "\n" << std::endl;
 
   // ── H_acc / f_acc (no temporaries, noalias products) ─────────────────────
@@ -293,6 +319,8 @@ WholeBodyController::compute_inverse_dynamics(
   H_acc_.noalias() += params_.weight_com     * (J_com.transpose()                 * J_com);
   H_acc_.noalias() += params_.weight_lsole   * (J_lsole_.transpose()              * J_lsole_);
   H_acc_.noalias() += params_.weight_rsole   * (J_rsole_.transpose()              * J_rsole_);
+  H_acc_.noalias() += params_.weight_lwrist   * (J_lwrist_.topRows<3>().transpose() * J_lwrist_.topRows<3>());
+  H_acc_.noalias() += params_.weight_rwrist   * (J_rwrist_.topRows<3>().transpose() * J_rwrist_.topRows<3>());
   H_acc_.noalias() += params_.weight_torso   * (J_torso_.bottomRows<3>().transpose()  * J_torso_.bottomRows<3>());
   H_acc_.noalias() += params_.weight_pelvis  * (J_pelvis_.bottomRows<3>().transpose() * J_pelvis_.bottomRows<3>());
   H_acc_.noalias() += params_.weight_regulation * err_posture_sel_;
@@ -306,6 +334,8 @@ WholeBodyController::compute_inverse_dynamics(
   f_acc_.noalias() += params_.weight_com    * J_com.transpose()                 * (a_com_drift - a_com_total);
   f_acc_.noalias() += params_.weight_lsole  * J_lsole_.transpose()              * (a_lsole_drift - a_lsole_total);
   f_acc_.noalias() += params_.weight_rsole  * J_rsole_.transpose()              * (a_rsole_drift - a_rsole_total);
+  f_acc_.noalias() += params_.weight_lwrist  * J_lwrist_.topRows<3>().transpose() * (a_lwrist_drift - a_lwrist_total);
+  f_acc_.noalias() += params_.weight_rwrist  * J_rwrist_.topRows<3>().transpose() * (a_rwrist_drift - a_rwrist_total);
   f_acc_.noalias() += params_.weight_torso  * J_torso_.bottomRows<3>().transpose()  * (a_torso_drift  - a_torso_total);
   f_acc_.noalias() += params_.weight_pelvis * J_pelvis_.bottomRows<3>().transpose() * (a_pelvis_drift - a_pelvis_total);
   f_acc_.noalias() -= params_.weight_regulation * err_posture_sel_ * a_jnt_total;

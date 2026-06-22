@@ -102,7 +102,7 @@ WalkingData::addSteps(
   const double yaw_angle
 ){
     double swing_foot_trajectory_height = 0.04;
-    double step_length_x = 0.0;
+    double step_length_x = 0.2;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     Eigen::Matrix3d R_yaw = labrob::Rz(yaw_angle);
@@ -110,8 +110,8 @@ WalkingData::addSteps(
     step_length_x = step_vector.x();
     step_length_y = step_vector.y();
     int n_steps = 6;
-    double double_support_duration = 1000;
-    double single_support_duration = 1000;
+    double double_support_duration = 400;
+    double single_support_duration = 700;
 
     // footstep_plan.push_back(labrob::FootstepPlanElement(
     //     labrob::DoubleSupportConfiguration(
@@ -243,5 +243,66 @@ WalkingData::removeSteps(){
   while (footstep_plan.size() > 2) {
     footstep_plan.erase(footstep_plan.begin() + 1);
   }
+}
+
+void
+WalkingData::startWalkingCoop(
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole,
+    labrob::Foot first_swing_foot,
+    int64_t T_ds_ms,
+    int64_t T_ss_ms,
+    double step_height)
+{
+    // Breve pausa in Standing prima di partire
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            first_swing_foot == labrob::Foot::RIGHT ? labrob::Foot::LEFT
+                                                     : labrob::Foot::RIGHT),
+        0.0, 500,
+        labrob::WalkingState::Standing
+    ));
+
+    // Starting: prima DS, entrambi i piedi fermi
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            first_swing_foot == labrob::Foot::RIGHT ? labrob::Foot::LEFT
+                                                     : labrob::Foot::RIGHT),
+        0.0, T_ds_ms,
+        labrob::WalkingState::Starting
+    ));
+}
+
+void
+WalkingData::stopWalkingCoop(
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole,
+    labrob::Foot support_foot
+)
+{
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            support_foot
+        ),
+        0.0,
+        0,
+        labrob::WalkingState::Stopping
+    ));
+    footstep_plan.push_back(labrob::FootstepPlanElement(
+        labrob::DoubleSupportConfiguration(
+            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+            support_foot
+        ),
+        0.0,
+        10000,
+        labrob::WalkingState::Standing
+    ));
 }
 } // end namespace labrob

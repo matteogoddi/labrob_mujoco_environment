@@ -37,13 +37,16 @@
 bool running          = true;
 bool isWBCLoopClosed  = false;
 bool isMPCLoopClosed  = false;
+bool isObserverActive = false;
 bool isEKFactive      = false;
 bool useSim           = false;
 bool useRobot         = false;
 bool useViz           = true;
-bool xPressed         = false;
-bool loopClosed       = true;
 bool switchWalkingState = false;
+bool reactiveStanding = false;
+bool verboseCoop = false;
+
+Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
 using Clock = std::chrono::steady_clock;
 
@@ -165,6 +168,7 @@ static void handle_gamepad(
         std::cout << "[GAMEPAD] Y -> Deactivating motors..." << std::endl;
         signalHandler(SIGINT);
     }
+    static bool xPressed = false;
     if (gamepad_.X.pressed) {
         if (!xPressed && experiment_mode == ExperimentMode::Regulation) {
             xPressed        = true;
@@ -194,7 +198,7 @@ static void handle_gamepad(
             if (!isEKFactive) {
                 std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
                 isEKFactive = true;
-                se.activate(measured_joint_pos);
+                se.activate(robot_state, measured_joint_pos);
             }
         }
     } else {
@@ -288,6 +292,10 @@ int main(const int argc, const char* argv[]) {
             netInterface = argv[++i];
         } else if (a == "--no-viz") {
             useViz = false;
+        } else if (a == "--walk") {
+            reactiveStanding = false;
+        } else if (a == "--verbose") {
+            verboseCoop = true;
         }
     }
     if (!useRobot && !useSim) {
@@ -369,13 +377,14 @@ int main(const int argc, const char* argv[]) {
 
     labrob::RobotState init_robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
     labrob::RobotState robot_state      = init_robot_state;
+    walking_manager.setReactiveStanding(reactiveStanding);
+    walking_manager.setVerboseCoop(verboseCoop);
     walking_manager.init(robot_state, armatures);
 
-    // State Estimator (change Filter enum to switch: SimpleEKF, RightInvariantEKF, DiligentKio):
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::SimpleEKF
+        labrob::StateEstimator::Filter::BaseEKF
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -384,16 +393,27 @@ int main(const int argc, const char* argv[]) {
     static constexpr int framerate = 60;
     const Clock::time_point t_start = Clock::now();
 
-    // IIR low-pass for raw motor dq (removes encoder noise before WBC Coriolis).
-    // alpha = 0.85 → ~12 Hz cutoff at 500 Hz. Tune lower (e.g. 0.7) for more smoothing.
-    Eigen::VectorXd filtered_joint_vel = Eigen::VectorXd::Zero(29);
-    constexpr double vel_filter_alpha = 0.85;
+    // EMA on raw motor dq — smoothing factor alpha: weight on the new measurement.
+    // alpha = 0.15 → ~12 Hz cutoff at 500 Hz. Increase for less lag, decrease for more smoothing.
+    Eigen::VectorXd ema_joint_vel = Eigen::VectorXd::Zero(29);
+    constexpr double ema_alpha = 0.15;
+
+    // EMA on pelvis IMU gyroscope.
+    Eigen::Vector3d ema_imu_gyro = Eigen::Vector3d::Zero();
+    constexpr double ema_alpha_gyro = 0.15;
 
     // Joint position/velocity references sent as q_target / dq_target to the motor PD.
     // Propagated each tick via Euler integration of the WBC desired joint accelerations.
     Eigen::VectorXd q_ref_joints  = Eigen::VectorXd::Zero(29);
     Eigen::VectorXd dq_ref_joints = Eigen::VectorXd::Zero(29);
-    bool wbc_cmd_refs_initialized = false;
+
+    // Hand forces
+    Eigen::Vector3d f_l_test = Eigen::Vector3d::Zero();
+    Eigen::Vector3d f_r_test = Eigen::Vector3d::Zero();
+    Eigen::Vector3d p_lhand  = Eigen::Vector3d::Zero();
+    Eigen::Vector3d p_rhand  = Eigen::Vector3d::Zero();
+    int lhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
+    int rhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_wrist_yaw_link");
 
     // ── Main loop ─────────────────────────────────────────────────────────────
     while (running) {
@@ -417,13 +437,15 @@ int main(const int argc, const char* argv[]) {
                     std::lock_guard<std::mutex> lock(stateMutex);
                     imu_acc  = imu_pelvis_data.accelerometer;
                     imu_gyro = imu_pelvis_data.omega;
+                    ema_imu_gyro = ema_alpha_gyro * imu_gyro
+                                 + (1.0 - ema_alpha_gyro) * ema_imu_gyro;
                     for (int i = 0; i < mj_model_ptr->nu; ++i) {
                         measured_joint_pos[i] = motor_state_data.q[i];
                         measured_joint_vel[i] = motor_state_data.dq[i];
-                        filtered_joint_vel[i] = vel_filter_alpha * filtered_joint_vel[i]
-                                              + (1.0 - vel_filter_alpha) * measured_joint_vel[i];
+                        ema_joint_vel[i] = ema_alpha * measured_joint_vel[i]
+                                         + (1.0 - ema_alpha) * ema_joint_vel[i];
                     }
-                    robot_state.angular_velocity = imu_pelvis_data.omega;
+                    robot_state.angular_velocity = imu_gyro;
 
                     // Fill robot_state for EKF:
                     robot_state.position = Eigen::Vector3d(
@@ -447,8 +469,11 @@ int main(const int argc, const char* argv[]) {
                         int jid = mj_model_ptr->actuator_trnid[i * 2];
                         std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                         robot_state.joint_state[jname].pos = measured_joint_pos[i];
-                        robot_state.joint_state[jname].vel = measured_joint_vel[i];
+                        robot_state.joint_state[jname].vel = ema_joint_vel[i];
+                        measured_joint_velocity[i] = ema_joint_vel[i];
                     }
+
+                    
 
                     // ── Log sensor feedback ───────────────────────────────────
                     sensor_logger.log("pelvis_acc",  imu_pelvis_data.accelerometer);
@@ -479,6 +504,31 @@ int main(const int argc, const char* argv[]) {
                 }
             }
 
+            // Log robot_state base quantities (odometry before EKF activation,
+            // filtered estimates after pressing A).
+            if (useRobot) {
+                sensor_logger.log("filtered_base_position", robot_state.position);
+                sensor_logger.log("filtered_base_velocity", robot_state.linear_velocity);
+                sensor_logger.log("filtered_base_quat",
+                    Eigen::Vector4d(
+                        robot_state.orientation.w(), robot_state.orientation.x(),
+                        robot_state.orientation.y(), robot_state.orientation.z()));
+                sensor_logger.log("filtered_base_rpy",     labrob::rpyFromQuaternion(robot_state.orientation));
+                sensor_logger.log("filtered_base_ang_vel", robot_state.angular_velocity);
+                {
+                    Eigen::VectorXd filt_jpos(mj_model_ptr->nu);
+                    Eigen::VectorXd filt_jvel(mj_model_ptr->nu);
+                    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                        int jid = mj_model_ptr->actuator_trnid[i * 2];
+                        std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                        filt_jpos[i] = robot_state.joint_state.at(jname).pos;
+                        filt_jvel[i] = robot_state.joint_state.at(jname).vel;
+                    }
+                    sensor_logger.log("filtered_joint_position", filt_jpos);
+                    sensor_logger.log("filtered_joint_velocity", filt_jvel);
+                }
+            }
+
             // ── Walking Manager ───────────────────────────────────────────────
             labrob::JointCommand joint_command;
             for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -493,7 +543,44 @@ int main(const int argc, const char* argv[]) {
                     robot_state     = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
                     isWBCLoopClosed = true;
                     isMPCLoopClosed = true;
+                    isObserverActive = true;
                 }
+                f_l_test = Eigen::Vector3d::Zero();
+                f_r_test = Eigen::Vector3d::Zero();
+                if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 18.0) {
+                    f_l_test = Eigen::Vector3d(3.0, 0.0, 0.0);  // 3 N along X
+                    f_r_test = Eigen::Vector3d(3.0, 0.0, 0.0);
+                }
+
+                // Apply forces physically in MuJoCo
+                int l_wrist_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
+                int r_wrist_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_wrist_yaw_link");
+
+                if (l_wrist_id >= 0) {
+                    mj_data_ptr->xfrc_applied[l_wrist_id * 6 + 0] = f_l_test.x();
+                    mj_data_ptr->xfrc_applied[l_wrist_id * 6 + 1] = f_l_test.y();
+                    mj_data_ptr->xfrc_applied[l_wrist_id * 6 + 2] = f_l_test.z();
+                }
+                if (r_wrist_id >= 0) {
+                    mj_data_ptr->xfrc_applied[r_wrist_id * 6 + 0] = f_r_test.x();
+                    mj_data_ptr->xfrc_applied[r_wrist_id * 6 + 1] = f_r_test.y();
+                    mj_data_ptr->xfrc_applied[r_wrist_id * 6 + 2] = f_r_test.z();
+                }
+
+
+                // Ground forces right and left wrists
+                static std::ofstream gt_right("/tmp/gt_right_wrist.txt");   // truncate at startup
+                static std::ofstream gt_left ("/tmp/gt_left_wrist.txt");
+                gt_right << f_r_test.transpose() << "\n";
+                gt_left  << f_l_test.transpose() << "\n";
+
+                for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                    int jid = mj_model_ptr->actuator_trnid[i * 2];
+                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                    measured_joint_velocity[i] = robot_state.joint_state.at(jname).vel;
+                }
+
+
                 walking_manager.update(robot_state, joint_command);
 
                 auto t0 = std::chrono::steady_clock::now();
@@ -528,18 +615,12 @@ int main(const int argc, const char* argv[]) {
                         {
                             constexpr double cmd_dt = 0.002;
                             const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
-                            if (!wbc_cmd_refs_initialized) {
-                                for (int i = 0; i < mj_model_ptr->nu; ++i) {
-                                    int jid = mj_model_ptr->actuator_trnid[i * 2];
-                                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                                    q_ref_joints[i]  = robot_state.joint_state.at(jname).pos;
-                                    dq_ref_joints[i] = robot_state.joint_state.at(jname).vel;
-                                }
-                                wbc_cmd_refs_initialized = true;
-                            } else {
-                                const Eigen::VectorXd jddot_joints = jddot.tail(mj_model_ptr->nu);
-                                q_ref_joints  += dq_ref_joints * cmd_dt + 0.5 * jddot_joints * cmd_dt * cmd_dt;
-                                dq_ref_joints += jddot_joints * cmd_dt;
+                            const Eigen::VectorXd jddot_joints = jddot.tail(mj_model_ptr->nu);
+                            for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                                int jid = mj_model_ptr->actuator_trnid[i * 2];
+                                std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
                             }
                         }
                         break;
@@ -591,6 +672,24 @@ int main(const int argc, const char* argv[]) {
         if (useViz) {
             auto t0 = std::chrono::steady_clock::now();
             mujoco_ui_ptr->render();
+            // ####################### //
+            // Rendering with hand forces
+            int lhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
+            int rhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_wrist_yaw_link");
+
+            Eigen::Vector3d p_lhand(
+                mj_data_ptr->xpos[3 * lhand_id + 0],
+                mj_data_ptr->xpos[3 * lhand_id + 1],
+                mj_data_ptr->xpos[3 * lhand_id + 2]
+            );
+            Eigen::Vector3d p_rhand(
+                mj_data_ptr->xpos[3 * rhand_id + 0],
+                mj_data_ptr->xpos[3 * rhand_id + 1],
+                mj_data_ptr->xpos[3 * rhand_id + 2]
+            );
+
+            mujoco_ui_ptr->renderWithHandForces(p_lhand, f_l_test, p_rhand, f_r_test);
+
             auto render_dt = std::chrono::steady_clock::now() - t0;
             if (render_dt > std::chrono::milliseconds(5))
                 std::cout << "Warning: render took "

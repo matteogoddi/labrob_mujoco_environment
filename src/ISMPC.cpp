@@ -110,7 +110,7 @@ ISMPC::solve(
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
             : static_cast<double>(i) / n_bar;
-        s0 = 1.0 - s; s1 = s;
+        s0 = s; s1 = 1.0 - s;
       } else { // Stopping
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]

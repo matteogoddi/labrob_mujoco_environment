@@ -51,6 +51,22 @@ class WalkingData {
     const labrob::SE3& T_rsole
   );
 
+    void startWalkingCoop(
+      const labrob::SE3& T_lsole,
+      const labrob::SE3& T_rsole,
+      labrob::Foot first_swing_foot,
+      int64_t T_ds_ms,
+      int64_t T_ss_ms,
+      double step_height
+  );
+
+
+  void stopWalkingCoop(
+    const labrob::SE3& T_lsole,
+    const labrob::SE3& T_rsole,
+    labrob::Foot support_foot
+  );
+
   void removeSteps();
 
 }; // end class WalkingData

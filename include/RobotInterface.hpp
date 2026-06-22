@@ -42,6 +42,7 @@ struct ImuState {
 struct MotorState {
     std::array<float, G1_NUM_MOTOR> q  = {};
     std::array<float, G1_NUM_MOTOR> dq = {};
+    std::array<float, G1_NUM_MOTOR> tau_est = {};
 };
 
 struct MotorCommand {

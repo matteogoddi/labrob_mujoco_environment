@@ -31,6 +31,7 @@ struct GaitConfiguration {
   
   labrob::ee3 com;
   labrob::ee6 lsole, rsole;
+  labrob::ee3 lwrist, rwrist;
   labrob::ee_rot torso;
   labrob::ee_rot pelvis;
 
