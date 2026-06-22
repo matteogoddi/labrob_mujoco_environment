@@ -434,11 +434,18 @@ WalkingManager::update(
 
     auto start_update = std::chrono::high_resolution_clock::now();
 
-    // SET FORCE ESTIMATION
+    // SET FORCE ESTIMATION (1 step causal delay)
 
-    Eigen::Vector3d left_foot_force = estimated_force.head(3);
-    Eigen::Vector3d right_foot_force = estimated_force.tail(3);
-    Eigen::Vector3d total_force = left_foot_force + right_foot_force;
+    double residual_vector_norm = 0;
+    
+    Eigen::Vector3d f_left_wrist  = estimated_force_wrist.head(3);
+    Eigen::Vector3d f_right_wrist = estimated_force_wrist.tail(3);
+    
+
+    Eigen::Vector3d left_foot_force = estimated_force_sole.head(3);
+    Eigen::Vector3d right_foot_force = estimated_force_sole.tail(3);
+
+    Eigen::Vector3d total_force = left_foot_force + right_foot_force + f_left_wrist + f_right_wrist;
 
     // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
 
@@ -541,38 +548,25 @@ WalkingManager::update(
     const auto& a_CoM_drift = robot_data.acom[0];
     Eigen::Vector3d v_CoM = J_CoM * qdot;
 
-    Eigen::Vector3d f_right_wrist = Eigen::Vector3d::Zero();
-    Eigen::Vector3d f_left_wrist  = Eigen::Vector3d::Zero();
-    double residual_vector_norm = 0;
+    
 
 
     Eigen::Vector3d zmp_3d;
 
     if (total_force.z() > 1e-5) {
 
-        // FIRST FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
-
-        // if (left_foot_force.z() > 1e-5) {
-        //     zmp_3d.x() += (T_lsole.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d.z() - T_lsole.translation().z()) * left_foot_force.x() / total_force.z());
-        //     zmp_3d.y() += (T_lsole.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d.z() - T_lsole.translation().z()) * left_foot_force.y() / total_force.z());
-        // }
-        // if (right_foot_force.z() > 1e-5) {
-        //     zmp_3d.x() += (T_rsole.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d.z() - T_rsole.translation().z()) * right_foot_force.x() / total_force.z());
-        //     zmp_3d.y() += (T_rsole.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d.z() - T_rsole.translation().z()) * right_foot_force.y() / total_force.z());
-        // }
-
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
 
         zmp_3d.x() =
             ( left_foot_force.z()  * T_lsole.translation().x() +
-            right_foot_force.z() * T_rsole.translation().x()+ //) / total_force.z();
+            right_foot_force.z() * T_rsole.translation().x()+
             f_right_wrist.z() * T_lwrist.translation().x() +
             f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
             
 
         zmp_3d.y() =
             ( left_foot_force.z()  * T_lsole.translation().y() +
-            right_foot_force.z() * T_rsole.translation().y() + //) / total_force.z();
+            right_foot_force.z() * T_rsole.translation().y() +
             f_right_wrist.z() * T_lwrist.translation().y() +
             f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
             
@@ -581,20 +575,7 @@ WalkingManager::update(
     zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
     zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
 
-    // compute zmp 3d using the 6d vector estimated forces, first three are left foot, second three are right foot
-    // zmp_3d.z() = robot_state.position(2) - total_force.z() / (mass * eta2);
-    // zmp_3d.x() = 0.0;
-    // zmp_3d.y() = 0.0;
-    // if (total_force.z() > 1e-5) {
-    //     if (left_foot_force.z() > 1e-5) {
-    //         zmp_3d.x() += (T_lsole.translation().x() * left_foot_force.z() / total_force.z() + (zmp_3d.z() - T_lsole.translation().z()) * left_foot_force.x() / total_force.z());
-    //         zmp_3d.y() += (T_lsole.translation().y() * left_foot_force.z() / total_force.z() + (zmp_3d.z() - T_lsole.translation().z()) * left_foot_force.y() / total_force.z());
-    //     }
-    //     if (right_foot_force.z() > 1e-5) {
-    //         zmp_3d.x() += (T_rsole.translation().x() * right_foot_force.z() / total_force.z() + (zmp_3d.z() - T_rsole.translation().z()) * right_foot_force.x() / total_force.z());
-    //         zmp_3d.y() += (T_rsole.translation().y() * right_foot_force.z() / total_force.z() + (zmp_3d.z() - T_rsole.translation().z()) * right_foot_force.y() / total_force.z());
-    //     }
-    // }
+    
 
     walking_data_.updateWalkingState(t_msec_);
 
@@ -1240,8 +1221,11 @@ WalkingManager::update(
                 controller_timestep_msec_ * 0.001
             );
     
-            f_right_wrist = wrist_force_estimator_ptr_->getWeightedRightWristForce();
-            f_left_wrist  = wrist_force_estimator_ptr_->getWeightedLeftWristForce();
+            // Save observations
+            estimated_force_sole.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().head<3>();
+            estimated_force_sole.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().head<3>();
+            estimated_force_wrist.tail<3>() = wrist_force_estimator_ptr_->getWeightedLeftWristForce();
+            estimated_force_wrist.head<3>() = wrist_force_estimator_ptr_->getWeightedRightWristForce();
             residual_vector_norm = wrist_force_estimator_ptr_->getResidual().norm();
     
             // Update forces for the HAC at next step (1 step causal delay)
@@ -1263,20 +1247,14 @@ WalkingManager::update(
     // Print estimated wrist forces
     if ((t_msec_ % 500 == 0) && verbose_coop_ && isObserverActive) 
     {
-        std::cout << "[WRIST FORCE] right: " << f_right_wrist.transpose() << "\n";
-        std::cout << "[WRIST FORCE] left:  " << f_left_wrist.transpose()  << "\n";
+        std::cout << "[WRIST FORCE] right: " << estimated_force_wrist.tail<3>().transpose() << "\n";
+        std::cout << "[WRIST FORCE] left:  " << estimated_force_wrist.head<3>().transpose()  << "\n";
     }
     
     // =========================================================================
     // END WristForceEstimator — AFTER the WBC, use torques of the current torques
     // =========================================================================
 
-    if (isObserverActive) {
-        estimated_force.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().head<3>();
-        estimated_force.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().head<3>();
-    } else {
-        estimated_force = Eigen::VectorXd::Zero(6);
-    }
 
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_
@@ -1316,10 +1294,10 @@ WalkingManager::update(
 
     logger_.log("hac_eh",     hac_ptr_->getEh());
     logger_.log("hac_eh_dot", hac_ptr_->getEhDot());
-    logger_.log("estimated_force_lsole", estimated_force.head<3>());
-    logger_.log("estimated_force_rsole", estimated_force.tail<3>());
-    logger_.log("estimated_force_lwrist", f_left_wrist);
-    logger_.log("estimated_force_rwrist", f_right_wrist);
+    logger_.log("estimated_force_lsole", estimated_force_sole.head<3>());
+    logger_.log("estimated_force_rsole", estimated_force_sole.tail<3>());
+    logger_.log("estimated_force_lwrist", estimated_force_wrist.head<3>());
+    logger_.log("estimated_force_rwrist", estimated_force_wrist.tail<3>());
     logger_.log("residual_vector_norm", residual_vector_norm);
 
     {

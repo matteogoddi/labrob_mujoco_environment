@@ -109,7 +109,9 @@ class WalkingManager {
 
   double eta2;
 
-  Eigen::VectorXd estimated_force = Eigen::VectorXd::Zero(6);
+  Eigen::VectorXd estimated_force_sole = Eigen::VectorXd::Zero(6);
+  Eigen::VectorXd estimated_force_wrist = Eigen::VectorXd::Zero(6);
+
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
   std::unique_ptr<labrob::WristForceEstimator> wrist_force_estimator_ptr_;
