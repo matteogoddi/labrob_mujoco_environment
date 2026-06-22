@@ -336,6 +336,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Map to F frame --> obtain rest positions in local frame F
     const Eigen::Vector3d r_l_bar = R_F_init.transpose() * (p_lhand_W - p_F_init);
     const Eigen::Vector3d r_r_bar = R_F_init.transpose() * (p_rhand_W - p_F_init);
+
+    // HAND DEBUG
+    // std::cout << r_l_bar << std::endl;
  
     // --- HAC: parameters (follower, no object: f_bar = 0) ---
     // M = 5 kg on all 3 axes
@@ -606,7 +609,8 @@ WalkingManager::update(
     // Compute current local frame F:
     // Origin = midpoint of ground projections of feet
     // Orientation = current support foot
- 
+    T_lsole_ = robot_data.oMf[lsole_idx_];
+    T_rsole_ = robot_data.oMf[rsole_idx_];
     updateHACLocalFrame();
     
     // Integrate HAC dynamics
@@ -1102,11 +1106,25 @@ WalkingManager::update(
     const bool wrist_task_active =
         (walking_data_.getWalkingState() != WalkingState::Init &&
         walking_data_.getWalkingState() != WalkingState::PostureRegulation);
+
+
+    // --- Re-anchor HAC rest positions at task activation edge ---
+    // The HAC was initialized at startup posture, but posture regulation may have
+    // moved the hands before the wrist task switches on. Re-fix r_i_bar to the
+    // hands' CURRENT measured pose so that e_h starts at ~0 (no spurious transient).
+    if (wrist_task_active && !hac_wrist_task_was_active_) {
+        const Eigen::Vector3d p_lhand_W = robot_data.oMf[lwrist_idx_].translation();
+        const Eigen::Vector3d p_rhand_W = robot_data.oMf[rwrist_idx_].translation();
+        hac_ptr_->reset(p_lhand_W, p_rhand_W, p_F_hac_, R_F_hac_);
+    }
+    hac_wrist_task_was_active_ = wrist_task_active;
+
     
     
     if (wrist_task_active) {
         desired_gait_configuration.lwrist.pos = hac_ptr_->getLeftHandRef();
         desired_gait_configuration.rwrist.pos = hac_ptr_->getRightHandRef();
+
     } else {
         // Errore zero: desired = current, il task non perturba la postura
         desired_gait_configuration.lwrist.pos = robot_data.oMf[lwrist_idx_].translation();
@@ -1253,7 +1271,12 @@ WalkingManager::update(
     // END WristForceEstimator — AFTER the WBC, use torques of the current torques
     // =========================================================================
 
-    estimated_force = Eigen::VectorXd::Zero(6);
+    if (isObserverActive) {
+        estimated_force.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().head<3>();
+        estimated_force.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().head<3>();
+    } else {
+        estimated_force = Eigen::VectorXd::Zero(6);
+    }
 
     // Update timing in milliseconds.
     // NOTE: assuming update() is actually called every controller_timestep_msec_
@@ -1291,8 +1314,10 @@ WalkingManager::update(
     logger_.log("des_lsole_orientation", desired_gait_configuration.lsole.pos.R.eulerAngles(0,1,2));
     logger_.log("des_rsole_orientation", desired_gait_configuration.rsole.pos.R.eulerAngles(0,1,2));
 
-    logger_.log("estimated_force_lsole", left_foot_force);
-    logger_.log("estimated_force_rsole", right_foot_force);
+    logger_.log("hac_eh",     hac_ptr_->getEh());
+    logger_.log("hac_eh_dot", hac_ptr_->getEhDot());
+    logger_.log("estimated_force_lsole", estimated_force.head<3>());
+    logger_.log("estimated_force_rsole", estimated_force.tail<3>());
     logger_.log("estimated_force_lwrist", f_left_wrist);
     logger_.log("estimated_force_rwrist", f_right_wrist);
     logger_.log("residual_vector_norm", residual_vector_norm);

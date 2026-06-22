@@ -124,6 +124,16 @@ void HandAdmittanceController::reset(
 ) {
     r_l_F_ = world2local(r_l_W - p_F, R_F);
     r_r_F_ = world2local(r_r_W - p_F, R_F);
+
+
+
+    // Added to correctly reset rest positions after posture regulation
+    r_l_bar_ = r_l_F_;   // re-anchor rest position to current pose
+    r_r_bar_ = r_r_F_;
+
+
+
+    
     v_l_F_ = Eigen::Vector3d::Zero();
     v_r_F_ = Eigen::Vector3d::Zero();
     p_F_   = p_F;

@@ -39,10 +39,15 @@ class QpSolver {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = calloc(1, dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
+    
+    /*
+    d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
+                           num_inequality_constraints, 0, &dim_);
+    */
 
     d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-                           num_inequality_constraints, 0,
-                           num_inequality_constraints, &dim_);
+                           num_inequality_constraints, num_inequality_constraints, &dim_);
+
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = calloc(1, qp_size);

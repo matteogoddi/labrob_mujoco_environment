@@ -306,9 +306,14 @@ int main(const int argc, const char* argv[]) {
     signal(SIGINT, signalHandler);
 
     // Load MJCF:
+    mj_loadAllPluginLibraries("/usr/local/lib/mujoco", nullptr);
     const int kErrorLength = 1024;
     char loadError[kErrorLength] = "";
     mjModel* mj_model_ptr = mj_loadXML(robotScenePath.data(), nullptr, loadError, kErrorLength);
+    if (!mj_model_ptr) {
+        std::cerr << "mj_loadXML failed: " << loadError << std::endl;
+        return -1;
+    }
     mjData*  mj_data_ptr  = mj_makeData(mj_model_ptr);
 
     if (useRobot) {
@@ -690,11 +695,13 @@ int main(const int argc, const char* argv[]) {
 
             mujoco_ui_ptr->renderWithHandForces(p_lhand, f_l_test, p_rhand, f_r_test);
 
+            /*
             auto render_dt = std::chrono::steady_clock::now() - t0;
-            if (render_dt > std::chrono::milliseconds(5))
+            if (render_dt > std::chrono::milliseconds(20))
                 std::cout << "Warning: render took "
                           << std::chrono::duration_cast<std::chrono::microseconds>(render_dt).count()
                           << " us" << std::endl;
+            */
         }
     }
 

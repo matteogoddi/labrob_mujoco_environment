@@ -176,6 +176,8 @@ private:
   Eigen::Vector3d hac_f_r_W = Eigen::Vector3d::Zero();
   labrob::Foot hac_last_support_foot_ = labrob::Foot::LEFT; // to detect switch support in HAC
 
+  bool hac_wrist_task_was_active_ = false;  ///< previous-tick state of wrist_task_active, to detect activation edge
+
 
   // Private memebers RW-BO
   Eigen::VectorXd torques_filt_;
