@@ -27,6 +27,9 @@ if __name__ == '__main__':
     else:
         endPlot = 10
 
+    if os.path.isdir(folder + '/robot_logs'):
+        folder = folder + '/robot_logs'
+
     joint_names = open(folder + '/joint_names.txt').readlines()
 
     startPlot = 0

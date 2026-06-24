@@ -43,7 +43,7 @@ bool useSim           = false;
 bool useRobot         = false;
 bool useViz           = true;
 bool switchWalkingState = false;
-bool reactiveStanding = false;
+bool reactiveStanding = true;
 bool verboseCoop = false;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
@@ -185,8 +185,12 @@ static void handle_gamepad(
     if (gamepad_.B.pressed) {
         if (!bPressed) {
             bPressed = true;
+            /*
             switchWalkingState = true;
             std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
+            */
+            isObserverActive = true;
+            std::cout << "[GAMEPAD] B pressed -> Wrench observer activated." << std::endl;
         }
     } else {
         bPressed = false;
@@ -281,21 +285,27 @@ static void send_dds_command(
 
 int main(const int argc, const char* argv[]) {
 
+    bool needInterface = false;
+
     std::string netInterface;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--sim") {
             useSim = true;
-        } else if (a == "--robot" && i + 1 < argc) {
+        } else if (a == "--robot") {
             useRobot = true;
             useSim   = true;
-            netInterface = argv[++i];
+            needInterface = true;
+            if (i + 1 < argc && argv[i + 1][0] != '-')
+                netInterface = argv[++i];
         } else if (a == "--no-viz") {
             useViz = false;
         } else if (a == "--walk") {
             reactiveStanding = false;
         } else if (a == "--verbose") {
             verboseCoop = true;
+        } else if (needInterface && netInterface.empty() && a[0] != '-') {
+            netInterface = a;
         }
     }
     if (!useRobot && !useSim) {
@@ -320,7 +330,7 @@ int main(const int argc, const char* argv[]) {
         std::cout << "Gamepad controls:\n";
         std::cout << "  A -> start EKF (optional, can be done at any time)\n";
         std::cout << "  X -> switch Regulation -> WBC\n";
-        std::cout << "  B -> switch walking state\n";
+        std::cout << "  B -> activate RW-BO\n"; //switch walking state\n";
         std::cout << "  Y -> exit\n";
         std::cout << "Starting in Regulation mode. Press Enter to start..." << std::endl;
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
@@ -389,7 +399,7 @@ int main(const int argc, const char* argv[]) {
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::BaseEKF
+        labrob::StateEstimator::Filter::SimpleEKF // BaseEKF
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -676,7 +686,7 @@ int main(const int argc, const char* argv[]) {
 
         if (useViz) {
             auto t0 = std::chrono::steady_clock::now();
-            mujoco_ui_ptr->render();
+            // mujoco_ui_ptr->render();
             // ####################### //
             // Rendering with hand forces
             int lhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");
@@ -695,13 +705,13 @@ int main(const int argc, const char* argv[]) {
 
             mujoco_ui_ptr->renderWithHandForces(p_lhand, f_l_test, p_rhand, f_r_test);
 
-            /*
+            
             auto render_dt = std::chrono::steady_clock::now() - t0;
             if (render_dt > std::chrono::milliseconds(20))
                 std::cout << "Warning: render took "
                           << std::chrono::duration_cast<std::chrono::microseconds>(render_dt).count()
                           << " us" << std::endl;
-            */
+            
         }
     }
 

@@ -231,7 +231,7 @@ private:
 
   double cov_meas_pos = 1.0e1;
   double cov_meas_vel = 1.0e2;
-  double cov_meas_zmp = 1.0e8;
+  double cov_meas_zmp = 1.0e1; //1.0e8;
 
   double cov_mod_pos = 1.0;
   double cov_mod_vel = 1.0;

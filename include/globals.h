@@ -8,7 +8,8 @@
 #include <utility>
 
 
-constexpr std::string_view robotUrdfPath  = "../../labrob_mujoco_environment/robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+// constexpr std::string_view robotUrdfPath  = "../../labrob_mujoco_environment/robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+constexpr std::string_view robotUrdfPath  = "../../labrob_mujoco_environment/robot/g1/g1_description/g1_29dof_dex3.urdf";
 constexpr std::string_view robotScenePath = "../../labrob_mujoco_environment/robot/g1/g1_mj_description/stair_steps.xml";
 
 extern bool isWBCLoopClosed;

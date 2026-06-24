@@ -160,7 +160,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+    // Rubber hand urdf
+    // std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+
+    // Dex3-1 hand urdf
+    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_dex3.urdf";
 
     pinocchio::Model full_robot_model;
 
@@ -624,6 +628,7 @@ WalkingManager::update(
     // END KF FUNCTION CALL
     //=========================================================
 
+    /*
     // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
 
     if (switchWalkingState){
@@ -641,6 +646,7 @@ WalkingManager::update(
             switchWalkingState = false;
         }
     }
+    */
 
 
 
