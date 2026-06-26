@@ -26,7 +26,7 @@
 #include <JointCommand.hpp>
 #include <TimingLaw.hpp>
 #include <utils.hpp>
-
+#include <RobotInterface.hpp>
 
 namespace labrob {
 
@@ -1170,29 +1170,41 @@ WalkingManager::update(
     if (isObserverActive) 
         {   
             
-            // Torque vector from WBC output (only actuated joints, no floating base): used in pure simulation
-            Eigen::VectorXd wbc_torques(robot_model.nv - 6);
-            int wbc_idx = 0;
+            // Collect torques
+            Eigen::VectorXd wbc_torques(njnt);
+            Eigen::VectorXd motor_torques = Eigen::VectorXd::Zero(njnt);
+            std::lock_guard<std::mutex> lock(stateMutex);
             for (pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
                 const auto& joint_name = robot_model.names[joint_id];
-                wbc_torques(wbc_idx++) = joint_command[joint_name];
+
+                int torque_idx = joint_id - 2;
+
+                // Fill wbc_torques with torques from WBC
+                wbc_torques(torque_idx) = joint_command[joint_name];
+
+                // Fill motor_torques with estimated and published torques
+                int sdk_idx = joint_name_to_index.at(joint_name);
+                motor_torques(torque_idx) = motor_state_data.tau_est[sdk_idx];
             }
 
-            // Torques estimated from motor's firmware (only actuated joints, no floating base): used in real robot
-            Eigen::VectorXd motor_torques = Eigen::VectorXd::Zero(njnt - 6);
 
-            // Select which torques to use for the observer: WBC output or measured from robot 
-            Eigen::VectorXd torques = wbc_torques;
+            // Select which torques to use for the observer: 
+            Eigen::VectorXd torques(robot_model.nv - 6);
+            {
+                // 1. In simulation --> WBC output 
+                torques = wbc_torques;
 
-            // Filter measured torques
-            // if (useRobot) {
+                // 2. In real experiments --> estimates from motor's firmware + EMA filter to reduce noise
+                if (useRobot) {
 
-            //     // Filter
-            //     torques_filt_ = 0.1 * torques + 0.9 * torques_filt_;
+                    // Filter
+                    torques_filt_ = 0.1 * torques + 0.9 * torques_filt_;
 
-            //     // Save for logs
-            //     torques = torques_filt_;
-            // }
+                    // Save for logs
+                    torques = torques_filt_;
+                }
+
+            }
             
             // TEST
             // Parti dalle misure grezze del robot
@@ -1223,7 +1235,7 @@ WalkingManager::update(
             wrist_force_estimator_ptr_->update(
                 raw_robot_state, 
                 robot_data,
-                wbc_torques, // torques,
+                torques,
                 controller_timestep_msec_ * 0.001
             );
     
@@ -1253,8 +1265,8 @@ WalkingManager::update(
     // Print estimated wrist forces
     if ((t_msec_ % 500 == 0) && verbose_coop_ && isObserverActive) 
     {
-        std::cout << "[WRIST FORCE] right: " << estimated_force_wrist.tail<3>().transpose() << "\n";
-        std::cout << "[WRIST FORCE] left:  " << estimated_force_wrist.head<3>().transpose()  << "\n";
+        std::cout << "[WRIST FORCE] right: " << estimated_force_wrist.head<3>().transpose() << "\n";
+        std::cout << "[WRIST FORCE] left:  " << estimated_force_wrist.tail<3>().transpose()  << "\n";
     }
     
     // =========================================================================
@@ -1302,8 +1314,8 @@ WalkingManager::update(
     logger_.log("hac_eh_dot", hac_ptr_->getEhDot());
     logger_.log("estimated_force_lsole", estimated_force_sole.head<3>());
     logger_.log("estimated_force_rsole", estimated_force_sole.tail<3>());
-    logger_.log("estimated_force_lwrist", estimated_force_wrist.head<3>());
-    logger_.log("estimated_force_rwrist", estimated_force_wrist.tail<3>());
+    logger_.log("estimated_force_lwrist", estimated_force_wrist.tail<3>());
+    logger_.log("estimated_force_rwrist", estimated_force_wrist.head<3>());
     logger_.log("residual_vector_norm", residual_vector_norm);
 
     {
