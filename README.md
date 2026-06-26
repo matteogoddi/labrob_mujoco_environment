@@ -154,3 +154,30 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 
 2. Add arm swing task.
 
+3. Online and offline footstep planner both add element on the list while walking with offline footstep planner (check if true). Online footstep planner should be toggle or find better solution.
+
+4. Online and offline footstep planner seem to start with different foot, logic should work regardless, modify IS-MPC's mapping of mc's center to adapt.
+
+5. HAC should be turned off if not necessary.
+
+6. Change name of estimator to better capture its nature as a generic estimator and not wrist-focused only.
+
+7. Button for observer missing, add if necessary (decide which one aribtrarily besides of the one already used) or leave it active at all time. If a new button is added, at the start of the experiment should be added as printed in terminal.
+
+8. plot_joint_data.py needs now no definition of new plots, there's an inside function handling plots for 2 cases, an image with 3 plots (mainly used for comparisons) or image with 1 plot (mainly used for errors).
+
+9. However it may make sense to decompose plot_joint_data in multiple files, based on the quantity needed (or use variables to toggle not needed plot).
+
+9. Ideally walking manager should be light, initialization of pointers (see HAC init) should be handled by the pointer definition inside relative .cpp.
+
+10. main.cpp may need a function to handle forces (something like addForce(link_subject_to_force, force_vector, torque_vector, start_time))
+
+11. No file should write on .txt directly, it may add spikes in computation time (see main.cpp).
+
+12. Find a working filter and remove StateFiltering file which is redundant once at least a filter is working.
+
+13. It may make sense to create 2 executables, one for simulation and one for experiments.
+
+14. It may make sense to create 2 different set of parameters for the whole body controller for simulation and experiments.
+
+15. To decide together: use one common version for hpipm, blasfeo, mujoco and pinocchio. Then fix CMakeLists.txt to work for everyone.
