@@ -5,6 +5,7 @@
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
+#include <RobotInterface.hpp>
 #include <utils.hpp>
 
 namespace labrob {
@@ -24,7 +25,6 @@ StateEstimator::StateEstimator(const pinocchio::Model& model,
     } else if (filter_ == Filter::SimpleEKF) {
         simple_ekf_ = std::make_unique<SimpleEKF>(model_, q0, dt_);
     } else {
-        joint_kf_ = std::make_unique<JointKF>(dt_, njnt_);
         if (filter_ == Filter::RightInvariantEKF) {
             std::array<RightInvariantEKF::FootConfig, 2> feet = {{
                 {"left_foot_link",  0},
@@ -41,7 +41,8 @@ StateEstimator::StateEstimator(const pinocchio::Model& model,
     }
 }
 
-void StateEstimator::activate(const RobotState& robot_state, const Eigen::VectorXd& q_joints)
+void StateEstimator::activate(const RobotState& robot_state,
+                              const Eigen::VectorXd& q_joints)
 {
     if (active_) return;
     active_ = true;
@@ -52,6 +53,30 @@ void StateEstimator::activate(const RobotState& robot_state, const Eigen::Vector
         q_init.head<3>()   = robot_state.position;
         q_init.tail(njnt_) = q_joints;
 
+        // Initialise roll/pitch from accelerometer (gravity direction in body frame).
+        // First FK with identity orientation to get R_body_imu (fixed, depends only on joints).
+        {
+            pinocchio::Data data_neutral(model_);
+            pinocchio::forwardKinematics(model_, data_neutral, q_init);
+            pinocchio::framesForwardKinematics(model_, data_neutral, q_init);
+
+            const Eigen::Vector3d acc_meas = imu_pelvis_data.accelerometer;
+            if (acc_meas.norm() > 1.0) {
+                const Eigen::Matrix3d R_body_imu =
+                    data_neutral.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+                const Eigen::Vector3d f_body = R_body_imu * acc_meas;
+                const double roll  = std::atan2( f_body.y(), f_body.z());
+                const double pitch = std::atan2(-f_body.x(),
+                                     std::sqrt(f_body.y()*f_body.y() + f_body.z()*f_body.z()));
+                const Eigen::Quaterniond q_WB =
+                    Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
+                    Eigen::AngleAxisd(roll,  Eigen::Vector3d::UnitX());
+                // Pinocchio free-flyer quaternion layout: [x, y, z, w] at indices 3..6
+                q_init.segment<4>(3) << q_WB.x(), q_WB.y(), q_WB.z(), q_WB.w();
+            }
+        }
+
+        // Re-run FK with the corrected orientation so pL/pR are accurate.
         pinocchio::Data data(model_);
         pinocchio::forwardKinematics(model_, data, q_init);
         pinocchio::framesForwardKinematics(model_, data, q_init);
@@ -63,8 +88,11 @@ void StateEstimator::activate(const RobotState& robot_state, const Eigen::Vector
 
         base_ekf_->initialize(q_init, pL, pR);
     } else if (filter_ == Filter::RightInvariantEKF) {
-        ri_ekf_->addContact(0, q_joints);
-        ri_ekf_->addContact(1, q_joints);
+        Eigen::VectorXd q_init = pinocchio::neutral(model_);
+        q_init.head<3>()   = robot_state.position;
+        q_init.tail(njnt_) = q_joints;
+
+        ri_ekf_->initialize(q_init, q_joints);
     } else if (filter_ == Filter::DiligentKio) {
         diligent_kio_->addContact(0, q_joints);
         diligent_kio_->addContact(1, q_joints);
@@ -123,44 +151,26 @@ void StateEstimator::update(RobotState& robot_state,
         return;
     }
 
-    // JointKF — pre-filters joint positions/velocities (used by RI-EKF and DiligentKio)
-    {
-        Eigen::VectorXd jnt_pos(njnt_);
-        Eigen::VectorXd jnt_vel(njnt_);
-        for (int i = 0; i < njnt_; ++i) {
-            const std::string& name = model_.names[i + 2];
-            jnt_pos(i) = robot_state.joint_state.at(name).pos;
-            jnt_vel(i) = robot_state.joint_state.at(name).vel;
-        }
-
-        Eigen::VectorXd input1(njnt_ + 3);
-        input1 << jnt_pos, gyro;
-        Eigen::VectorXd input2(njnt_ + 3);
-        input2 << wbc_q_ddot.tail(njnt_), wbc_q_ddot.segment(3, 3);
-        joint_kf_->filter(input1, input2);
+    Eigen::VectorXd jnt_pos(njnt_);
+    Eigen::VectorXd jnt_vel(njnt_);
+    for (int i = 0; i < njnt_; ++i) {
+        const std::string& name = model_.names[i + 2];
+        jnt_pos(i) = robot_state.joint_state.at(name).pos;
+        jnt_vel(i) = robot_state.joint_state.at(name).vel;
     }
 
-    const Eigen::VectorXd& filt_pos = joint_kf_->getFilteredJointPositions();
-    const Eigen::VectorXd& filt_vel = joint_kf_->getFilteredJointVelocities();
-
     if (filter_ == Filter::RightInvariantEKF) {
-        ri_ekf_->filter(gyro, acc, filt_pos, filt_vel, contact);
+        ri_ekf_->filter(gyro, acc, jnt_pos, jnt_vel, contact);
         robot_state.position         = ri_ekf_->getPosition();
         robot_state.orientation      = ri_ekf_->getQuaternion();
         robot_state.linear_velocity  = ri_ekf_->getVelocity();
         robot_state.angular_velocity = ri_ekf_->getOmegaBody();
     } else {
-        diligent_kio_->filter(gyro, acc, filt_pos, filt_vel, contact);
+        diligent_kio_->filter(gyro, acc, jnt_pos, jnt_vel, contact);
         robot_state.position         = diligent_kio_->getPosition();
         robot_state.orientation      = diligent_kio_->getQuaternion();
         robot_state.linear_velocity  = diligent_kio_->getVelocity();
         robot_state.angular_velocity = diligent_kio_->getOmegaBody();
-    }
-
-    for (int i = 0; i < njnt_; ++i) {
-        const std::string& name = model_.names[i + 2];
-        robot_state.joint_state.at(name).pos = filt_pos(i);
-        robot_state.joint_state.at(name).vel = filt_vel(i);
     }
 }
 

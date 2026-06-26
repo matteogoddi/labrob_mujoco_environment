@@ -37,6 +37,8 @@ enum class Mode { PR = 0, AB = 1 };
 struct ImuState {
     Eigen::Vector3d accelerometer = Eigen::Vector3d::Zero();
     Eigen::Vector3d omega        = Eigen::Vector3d::Zero();
+    Eigen::Vector4d quaternion        = Eigen::Vector4d::Zero();
+    Eigen::Vector3d rpy        = Eigen::Vector3d::Zero();
 };
 
 struct MotorState {

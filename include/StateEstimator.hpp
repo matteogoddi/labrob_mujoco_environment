@@ -21,7 +21,7 @@ public:
                    const NoiseParams& noise = NoiseParams{});
 
     // Call once when ready to activate (e.g. on gamepad A press).
-    // robot_state: current state (position and orientation used by BaseEKF).
+    // robot_state: current state (position used by BaseEKF).
     // q_joints: current joint positions in Pinocchio ordering (size njnt).
     void activate(const RobotState& robot_state, const Eigen::VectorXd& q_joints);
 
@@ -43,7 +43,6 @@ private:
     Filter           filter_;
 
     std::unique_ptr<BaseEKF>           base_ekf_;
-    std::unique_ptr<JointKF>           joint_kf_;
     std::unique_ptr<SimpleEKF>         simple_ekf_;
     std::unique_ptr<RightInvariantEKF> ri_ekf_;
     std::unique_ptr<DiligentKio>       diligent_kio_;

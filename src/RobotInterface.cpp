@@ -37,6 +37,12 @@ void LowStateHandler(const void* msg) {
     imu_pelvis_data.accelerometer = Eigen::Vector3d(
         low_state.imu_state().accelerometer()[0], low_state.imu_state().accelerometer()[1],
         low_state.imu_state().accelerometer()[2]);
+    imu_pelvis_data.quaternion = Eigen::Vector4d(
+        low_state.imu_state().quaternion()[0], low_state.imu_state().quaternion()[1],
+        low_state.imu_state().quaternion()[2], low_state.imu_state().quaternion()[3]);
+    imu_pelvis_data.rpy = Eigen::Vector3d(
+        low_state.imu_state().rpy()[0], low_state.imu_state().rpy()[1],
+        low_state.imu_state().rpy()[2]);
 
     memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
     gamepad_.update(rx_.RF_RX);
@@ -57,6 +63,12 @@ void imuTorsoHandler(const void* msg) {
     imu_torso_data.accelerometer = Eigen::Vector3d(
         imu_state.accelerometer()[0], imu_state.accelerometer()[1],
         imu_state.accelerometer()[2]);
+    imu_torso_data.quaternion = Eigen::Vector4d(
+        imu_state.quaternion()[0], imu_state.quaternion()[1],
+        imu_state.quaternion()[2], imu_state.quaternion()[3]);
+    imu_torso_data.rpy = Eigen::Vector3d(
+        imu_state.rpy()[0], imu_state.rpy()[1],
+        imu_state.rpy()[2]);
 }
 
 void SportModeStateHandler(const void* msg) {

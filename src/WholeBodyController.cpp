@@ -21,29 +21,29 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
   params.Kp_motion = 120.0;
-  params.Kd_motion = 40.0;
+  params.Kd_motion = 20.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 400.0;
-  params.Kd_orientation = 80.0;
+  params.Kp_orientation = 100.0;
+  params.Kd_orientation = 40.0;
   params.Kp_foot = 70.0;
-  params.Kd_foot = 35.0;
+  params.Kd_foot = 40.0;
   params.Kp_wrist = 30.0;
   params.Kd_wrist = 10.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 30;
   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120;
-  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90;
+  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 40;
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;
   params.weight_lsole            = 1;
   params.weight_rsole            = 1;
-  params.weight_lwrist            = 1e-3;
-  params.weight_rwrist            = 1e-3;
+  params.weight_lwrist            = 0.0;
+  params.weight_rwrist            = 0.0;
   params.weight_torso            = 1e-4;
   params.weight_pelvis           = 1e-1;
   params.weight_angular_momentum = 1e-4;
@@ -344,6 +344,22 @@ WholeBodyController::compute_inverse_dynamics(
     const Eigen::MatrixXd cmm_A = cmm_sel_ * centroidal_momentum_matrix;
     f_acc_.noalias() += w_amom_dt * cmm_A.transpose() * (cmm_A * qdot);
   }
+
+  // std::cout << "a_com_total = " << a_com_total.transpose() << "\n" << std::endl;
+  // std::cout << "err_com = " << err_com.transpose() << "\n" << std::endl;
+  // std::cout << "err_com_vel = " << err_com_vel.transpose() << "\n" << std::endl;
+  // std::cout << "a_lsole_total = " << a_lsole_total.transpose() << "\n" << std::endl;
+  // std::cout << "err_lsole = " << err_lsole.transpose() << "\n" << std::endl;
+  // std::cout << "err_lsole_vel = " << err_lsole_vel.transpose() << "\n" << std::endl;
+  // std::cout << "a_rsole_total = " << a_rsole_total.transpose() << "\n" << std::endl;
+  // std::cout << "err_rsole = " << err_rsole.transpose() << "\n" << std::endl;
+  // std::cout << "err_rsole_vel = " << err_rsole_vel.transpose() << "\n" << std::endl;
+  // std::cout << "a_torso_total = " << a_torso_total.transpose() << "\n" << std::endl;
+  // std::cout << "err_torso = " << err_torso.transpose() << "\n" << std::endl;
+  // std::cout << "err_torso_vel = " << err_torso_vel.transpose() << "\n" << std::endl;
+  // std::cout << "a_pelvis_total = " << a_pelvis_total.transpose() << "\n" << std::endl;
+  // std::cout << "err_pelvis = " << err_pelvis.transpose() << "\n" << std::endl;
+  // std::cout << "err_pelvis_vel = " << err_pelvis_vel.transpose() << "\n" << std::endl;
 
   // Velocity / position limits
   const auto q_jnt_dot_min = -robot_model.velocityLimit.tail(nj);

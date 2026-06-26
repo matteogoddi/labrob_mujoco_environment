@@ -119,7 +119,10 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
   pos.head(3) << r_;
-  pos.segment(3, 4) << q_.x(), q_.y(), q_.z(), q_.w();
+  {
+    const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
+    pos.segment(3, 4) <<  q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
+  }
   pos.tail(qj.size()) = qj;
 
   pinocchio::forwardKinematics(model_, data_, pos);
@@ -131,9 +134,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   vel.segment(3, 3) << omega_;
   vel.tail(qj_dot.size()) = qj_dot;
 
-  // Bias-correct current measurements (time k)
-  const Eigen::Vector3d acc_body_curr = R_base_imu * acc_meas  - bf_;
-  const Eigen::Vector3d omega_curr    = R_base_imu * gyro_meas - bw_;
+  // Rotate IMU measurements into the base body frame
+  const Eigen::Vector3d acc_body_curr = R_base_imu * acc_meas;
+  const Eigen::Vector3d omega_curr    = R_base_imu * gyro_meas;
 
   // Snapshot k-1 inputs before overwriting them — needed for both the
   // state prediction AND the F-matrix linearisation below.
@@ -150,7 +153,7 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
 
   r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
   v_ += dt_ * a_world;
-  q_ = (expMap(dt_ * omega_km1) * q_).normalized();
+  q_ = (expMap(dt_ * (omega_km1 - bw_)) * q_).normalized();
 
   // Advance saved inputs for next call
   omega_         = omega_curr;
@@ -164,30 +167,31 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   // =====================
   Eigen::MatrixXd F = Eigen::MatrixXd::Identity(NX, NX);
 
-  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, ibf=21, ibw=24;
+  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, ibw=21;
+
+  const Eigen::Vector3d omega_unbiased = omega_km1 - bw_;
 
   // F is the Jacobian of the prediction evaluated at x[k-1] with u[k-1].
-  F.block<3,3>(ir, iv) = Eigen::Matrix3d::Identity() * dt_;
-  F.block<3,3>(iv, iphi) = -C_world_to_base.transpose() * skew(acc_body_km1) * dt_;
-  F.block<3,3>(iv, ibf)  = -C_world_to_base.transpose() * dt_;
-  F.block<3,3>(iphi, iphi) = Eigen::Matrix3d::Identity() - skew(omega_km1) * dt_;
-  F.block<3,3>(iphi, ibw) = -Eigen::Matrix3d::Identity() * dt_;
+  F.block<3,3>(ir,   iv)   =  Eigen::Matrix3d::Identity() * dt_;
+  F.block<3,3>(iv,   iphi) = -C_world_to_base.transpose() * skew(acc_body_km1) * dt_;
+  F.block<3,3>(iphi, iphi) =  Eigen::Matrix3d::Identity() - skew(omega_unbiased) * dt_;
+  F.block<3,3>(iphi, ibw)  = -Eigen::Matrix3d::Identity() * dt_;  // bias drives orientation
 
-  Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, NX - 3); // no noise for base position dynamics
-  Lc.block<3,3>(iv, 0) = -C_world_to_base.transpose();
-  Lc.block<3,3>(iphi, 3) = -Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ipL, 6) = C_world_to_base.transpose();
-  Lc.block<3,3>(ipR, 9) = C_world_to_base.transpose();
-  Lc.block<3,3>(ithetaL, 12) = Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ithetaR, 15) = Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ibf, 18) = Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ibw, 21) = Eigen::Matrix3d::Identity();
+  // Noise channels: accel(0:3) gyro(3:6) pL(6:9) pR(9:12) thetaL(12:15) thetaR(15:18) bw(18:21)
+  Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, 21);
+  Lc.block<3,3>(iv,      0)  = -C_world_to_base.transpose();
+  Lc.block<3,3>(iphi,    3)  = -Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ipL,     6)  =  C_world_to_base.transpose();
+  Lc.block<3,3>(ipR,     9)  =  C_world_to_base.transpose();
+  Lc.block<3,3>(ithetaL, 12) =  Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ithetaR, 15) =  Eigen::Matrix3d::Identity();
+  Lc.block<3,3>(ibw,     18) =  Eigen::Matrix3d::Identity();  // bias random walk
 
-  Eigen::Matrix<double,24,24> Qc_step = Qc_;
-  if (!left_contact)  Qc_step.block<3,3>(6,6)  = 100.0 * Eigen::Matrix3d::Identity();
-  if (!right_contact) Qc_step.block<3,3>(9,9)  = 100.0 * Eigen::Matrix3d::Identity();
-  if (!left_contact)  Qc_step.block<3,3>(12,12)  = 100.0 * Eigen::Matrix3d::Identity();
-  if (!right_contact) Qc_step.block<3,3>(15,15)  = 100.0 * Eigen::Matrix3d::Identity();
+  Eigen::Matrix<double,21,21> Qc_step = Qc_;
+  if (!left_contact)  Qc_step.block<3,3>(6,6)   = 100.0 * Eigen::Matrix3d::Identity();
+  if (!right_contact) Qc_step.block<3,3>(9,9)   = 100.0 * Eigen::Matrix3d::Identity();
+  if (!left_contact)  Qc_step.block<3,3>(12,12) = 100.0 * Eigen::Matrix3d::Identity();
+  if (!right_contact) Qc_step.block<3,3>(15,15) = 100.0 * Eigen::Matrix3d::Identity();
   Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
   
   P_ = F * P_ * F.transpose() + Q_;
@@ -206,15 +210,20 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     if (left_contact && !prev_left_contact_) {
         // FIX Bug 2: ri-ancora usando la FK dello stato POST-predizione
         Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
-        pos_pred.head(3) = r_;                             // r_ POST-predizione
-        pos_pred.segment(3,4) << q_.x(), q_.y(), q_.z(), q_.w();  // q_ POST-predizione
+        pos_pred.head(3) = r_;
+        {
+          const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
+          pos_pred.segment(3,4) << q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
+        }
         pos_pred.tail(qj.size()) = qj;
         pinocchio::Data data_td(model_);
         pinocchio::forwardKinematics(model_, data_td, pos_pred);
         pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
 
         pL_ = data_td.oMf[fid_L].translation();
-        zL_ = Eigen::Quaterniond(data_td.oMf[fid_L].rotation()).normalized();
+        const Eigen::Matrix3d R_WFL = data_td.oMf[fid_L].rotation();
+        const double yaw_L = std::atan2(R_WFL(1, 0), R_WFL(0, 0));
+        zL_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_L, Eigen::Vector3d::UnitZ()));
 
         // FIX Bug 1: azzera TUTTE le cross-covarianze del piede
         P_.block(ipL, 0, 3, NX).setZero();
@@ -235,14 +244,19 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     if (right_contact && !prev_right_contact_) {
         Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
         pos_pred.head(3) = r_;
-        pos_pred.segment(3,4) << q_.x(), q_.y(), q_.z(), q_.w();
+        {
+          const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
+          pos_pred.segment(3,4) << q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
+        }
         pos_pred.tail(qj.size()) = qj;
         pinocchio::Data data_td(model_);
         pinocchio::forwardKinematics(model_, data_td, pos_pred);
         pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
 
         pR_ = data_td.oMf[fid_R].translation();
-        zR_ = Eigen::Quaterniond(data_td.oMf[fid_R].rotation()).normalized();
+        const Eigen::Matrix3d R_WFR = data_td.oMf[fid_R].rotation();
+        const double yaw_R = std::atan2(R_WFR(1, 0), R_WFR(0, 0));
+        zR_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_R, Eigen::Vector3d::UnitZ()));
 
         P_.block(ipR, 0, 3, NX).setZero();
         P_.block(0, ipR, NX, 3).setZero();
@@ -276,52 +290,34 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
     const auto& T_wf = data_.oMf[frameId];
     pinocchio::SE3 T_bf = T_wb.inverse() * T_wf;
 
-    Eigen::Vector3d s_p = T_bf.translation();
-    Eigen::Vector3d s_p_hat = C_world_to_base * (p - r_prec);
+    // Measured foot pose in body frame (FK from joint encoders — base-independent)
+    const Eigen::Vector3d    s_p(T_bf.translation());
+    const Eigen::Quaterniond s_z(T_bf.rotation());
 
-    Eigen::Quaterniond s_z(T_bf.rotation());
-    // s_z_hat = R_BF_est: body-frame foot orientation from state.
-    // R_BF = R_BW * R_WF = q_prec * z  (NOT z.inverse() — that gives R_FB).
-    Eigen::Quaterniond s_z_hat = q_prec * z;
+    // Predicted foot pose at a priori (post-prediction) state
+    const Eigen::Matrix3d    C       = q_.toRotationMatrix();  // R_BW post-prediction
+    const Eigen::Vector3d    s_p_hat = C * (p - r_);
+    const Eigen::Quaterniond s_z_hat = q_ * z;                 // R_BW * R_WF = R_BF
 
-    Eigen::MatrixXd J_foot = Eigen::MatrixXd::Zero(6, model_.nv);
-    pinocchio::getFrameJacobian(
-      model_,
-      data_,
-      frameId,
-      pinocchio::ReferenceFrame::LOCAL,
-      J_foot
-    );
-
-    Eigen::Vector3d e_p = s_p - s_p_hat;
-    // e_z = log(R_BF_meas * R_BF_est^{-1}): zero when estimate is correct.
-    Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
-    // Eigen::Vector3d e_foot = -(v_prec + C_world_to_base.transpose() * skew(omega_) * s_p + C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
-    // e_foot = -(v_prec + J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
-        // e_foot = - J_foot.block(0, 0, 3, model_.nv) * vel;
+    const Eigen::Vector3d e_p = s_p - s_p_hat;
+    const Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
 
     int old_rows = e_accum.rows();
-    e_accum.conservativeResize(old_rows + e_p.size() + e_z.size());
-    e_accum.segment(old_rows, e_p.size()) = e_p;
-    e_accum.segment(old_rows + e_p.size(), e_z.size()) = e_z;
-    // e_accum.segment(old_rows + e_p.size() + e_z.size(), e_foot.size()) = e_foot;
+    e_accum.conservativeResize(old_rows + 6);
+    e_accum.segment(old_rows, 3)     = e_p;
+    e_accum.segment(old_rows + 3, 3) = e_z;
 
-    H_accum.conservativeResize(old_rows + e_p.size() + e_z.size(), NX);
-    H_accum.block(old_rows, 0, e_p.size() + e_z.size(), NX).setZero();
+    H_accum.conservativeResize(old_rows + 6, NX);
+    H_accum.block(old_rows, 0, 6, NX).setZero();
 
-    H_accum.block<3,3>(old_rows, ir)   = -C_world_to_base;
-    H_accum.block<3,3>(old_rows, iphi) = skew(C_world_to_base * (p - r_prec));
-    H_accum.block<3,3>(old_rows, ip)   = C_world_to_base;
-
-    // d(e_z)/d(phi) = +I  (Rotella eq. 17: body tilt drives ankle joints, so both
-    // s_z and s_z_hat change with phi, and the net linearisation is +I)
-    H_accum.block<3,3>(old_rows + e_p.size(), iphi) = Eigen::Matrix3d::Identity();
-    // d(e_z)/d(theta) = -C[q*z] = -R_BF  (Rotella eq. 17, with z=R_WF in code)
-    H_accum.block<3,3>(old_rows + e_p.size(), itheta) = -(q_ * z).toRotationMatrix();
-
-    // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iv) = Eigen::Matrix3d::Identity();
-    // H_accum.block<3,3>(old_rows + e_p.size() + e_z.size(), iphi) = -skew(C_world_to_base.transpose() * skew(omega_) * s_p) 
-    //     + skew(C_world_to_base.transpose() * J_foot.block(0, 6, 3, model_.nv - 6) * vel.tail(model_.nv - 6));
+    // Position rows:    H_p = [-C, 0, (C(p-r))×, C, 0, 0, 0]  (Rotella eq. 16)
+    H_accum.block<3,3>(old_rows,     ir)   = -C;
+    H_accum.block<3,3>(old_rows,     iphi) = skew(C * (p - r_));
+    H_accum.block<3,3>(old_rows,     ip)   = C;
+    // Orientation rows: H_z = [0, 0, I, 0, 0, +R_BF, 0, 0]
+    // Right perturbation z_true = z_est * exp(δθ): e_z = +R_BF * δθ
+    H_accum.block<3,3>(old_rows + 3, iphi)   = Eigen::Matrix3d::Identity();
+    H_accum.block<3,3>(old_rows + 3, itheta) = (q_ * z).toRotationMatrix();  // +R_BF
   };
 
   Eigen::MatrixXd H(0, NX);
@@ -329,20 +325,52 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
   processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
 
+  // ZUPT: when both feet are in contact, inject zero-velocity pseudo-measurement
+  if (left_contact && right_contact) {
+    int old_rows = e.rows();
+    e.conservativeResize(old_rows + 3);
+    e.segment<3>(old_rows) = -v_;
+
+    H.conservativeResize(old_rows + 3, NX);
+    H.block(old_rows, 0, 3, NX).setZero();
+    H.block<3,3>(old_rows, iv) = Eigen::Matrix3d::Identity();
+  }
+
+  // Flat-foot contact constraint: foot normal must align with world Z.
+  // Left perturbation on z (R_WF): H_flat = skew(n).topRows<2>()
+  {
+    const Eigen::Vector3d ez(0, 0, 1);
+    auto addFlatFoot = [&](const Eigen::Quaterniond& z, int itheta_idx, bool contact) {
+      if (!contact) return;
+      const Eigen::Vector3d n = z.toRotationMatrix() * ez;
+      int nr = e.rows();
+      e.conservativeResize(nr + 2);
+      e.segment<2>(nr) = (ez - n).head<2>();
+      H.conservativeResize(nr + 2, NX);
+      H.block(nr, 0, 2, NX).setZero();
+      H.block<2,3>(nr, itheta_idx) = skew(n).topRows<2>();
+    };
+    addFlatFoot(zL_, ithetaL, left_contact);
+    addFlatFoot(zR_, ithetaR, right_contact);
+  }
+
   if (e.size() == 0)
     return;
-
-  // Avvisa se l'innovazione è insolitamente grande (probabile divergenza)
-  const double e_norm = e.norm();
-//   if (e_norm > 0.5)
-//       std::cerr << "[BaseEKF] WARN: large innovation norm=" << e_norm
-//                 << " e=" << e.transpose() << std::endl;
 
   // =====================
   // 4) EKF UPDATE
   // =====================
   int m = e.size();
+  const int m_flat = (left_contact ? 2 : 0) + (right_contact ? 2 : 0);
+  const int m_zupt = (left_contact && right_contact) ? 3 : 0;
+
   Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-2;
+  if (m_zupt > 0)
+    R.block(m - m_flat - m_zupt, m - m_flat - m_zupt, m_zupt, m_zupt) =
+        Eigen::MatrixXd::Identity(m_zupt, m_zupt) * 1e-3;
+  if (m_flat > 0)
+    R.block(m - m_flat, m - m_flat, m_flat, m_flat) =
+        Eigen::MatrixXd::Identity(m_flat, m_flat) * 1e-3;
 
   Eigen::MatrixXd K = P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
 
@@ -352,10 +380,9 @@ void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
   v_  += dx.segment<3>(iv);
   pL_ += dx.segment<3>(ipL);
   pR_ += dx.segment<3>(ipR);
-  bf_ += dx.segment<3>(ibf);
-  bw_ += dx.segment<3>(ibw);
 
   q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
+  bw_ += dx.segment<3>(ibw);
   zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
   zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();
 
@@ -654,17 +681,6 @@ RightInvariantEKF::RightInvariantEKF(
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
 
-    // Giroscopio: usa il frame IMU del torso (se disponibile), altrimenti pelvis.
-    // Se il modello non ha "imu_in_torso", getFrameId ritorna model_.nframes (indice invalido).
-    const int imu_torso_id = model_.getFrameId("imu_in_torso");
-    if (imu_torso_id < (int)model_.nframes) {
-        R_imu_torso_to_body_ = R_WB.transpose() * data_.oMf[imu_torso_id].rotation();
-    } else {
-        // Fallback al pelvis IMU se il frame torso non è nel modello
-        R_imu_torso_to_body_ = R_WB.transpose()
-            * data_.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
-    }
-
     const int imu_pelvis_id = model_.getFrameId("imu_in_pelvis");
     R_imu_pelvis_to_body_ = R_WB.transpose()
                    * data_.oMf[imu_pelvis_id].rotation();
@@ -712,6 +728,36 @@ RightInvariantEKF::RightInvariantEKF(
 }
 
 // ============================================================================
+//  initialize  –  full state reset before first use
+// ============================================================================
+void RightInvariantEKF::initialize(const Eigen::VectorXd& q_init,
+                                   const Eigen::VectorXd& joint_pos)
+{
+    // Rotation: q_init[3:7] = (qx,qy,qz,qw) representing R_WB
+    const Eigen::Quaterniond q0(q_init[6], q_init[3], q_init[4], q_init[5]);
+    X_.template block<3,3>(0,0)    = q0.normalized().toRotationMatrix();
+    X_.template block<3,1>(0,COL_P)= q_init.head<3>();
+    X_.template block<3,1>(0,COL_V).setZero();
+
+    bg_.setZero();
+    ba_.setZero();
+    omega_b_.setZero();
+
+    P_.setZero();
+    P_.template block<3,3>(XI_R,  XI_R)  = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_V,  XI_V)  = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_P,  XI_P)  = 0.01 * Eigen::Matrix3d::Identity();
+    for (int i = 0; i < N_FEET; ++i)
+        P_.template block<3,3>(XI_D+3*i, XI_D+3*i) = 0.01 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_BG, XI_BG) = 1e-4 * Eigen::Matrix3d::Identity();
+    P_.template block<3,3>(XI_BA, XI_BA) = 1e-4 * Eigen::Matrix3d::Identity();
+
+    active_contact_.fill(false);
+    for (int i = 0; i < N_FEET; ++i)
+        addContact(i, joint_pos);
+}
+
+// ============================================================================
 //  addContact  (paper Sec. V: contact switching)
 // ============================================================================
 void RightInvariantEKF::addContact(int foot_idx,
@@ -733,7 +779,7 @@ void RightInvariantEKF::addContact(int foot_idx,
     X_.template block<3,1>(0, COL_D + ci) = data_.oMf[fid].translation();
 
     // Reset covariance block for this contact (cross-terms zeroed)
-    const int row = XI_D + 3*foot_idx;
+    const int row = XI_D + 3*ci;
     P_.block(row, 0,   3, NR).setZero();
     P_.block(0,   row, NR, 3).setZero();
     P_.template block<3,3>(row, row) = 0.01 * Eigen::Matrix3d::Identity();
@@ -772,7 +818,7 @@ void RightInvariantEKF::filter(
     //     Rotate to body frame, remove bias.
     // =========================================================================
 
-    const Eigen::Vector3d omega_b = R_imu_torso_to_body_ * gyro_meas - bg_;
+    const Eigen::Vector3d omega_b = R_imu_pelvis_to_body_ * gyro_meas - bg_;
     const Eigen::Vector3d f_body  = R_imu_pelvis_to_body_ * acc_meas  - ba_;
     omega_b_ = omega_b;
 
@@ -834,6 +880,7 @@ void RightInvariantEKF::filter(
     // These make At time-varying (through R_WB); we use the *pre-update* R_WB.
     Phi.template block<3,3>(XI_R, XI_BG) = -Eigen::Matrix3d::Identity() * dt_;
     Phi.template block<3,3>(XI_V, XI_BA) = -R_WB                        * dt_;
+    Phi.template block<3,3>(XI_P, XI_BA) = -0.5 * R_WB                  * dt_ * dt_;
 
     // Inflate process noise for non-active contacts
     Eigen::Matrix<double,NR,NR> Qc_step = Qc_;
@@ -929,8 +976,8 @@ void RightInvariantEKF::filter(
         //      XI_R XI_V XI_P   XI_D+3i  XI_BG XI_BA
         Eigen::Matrix<double,3,NR> Hi;
         Hi.setZero();
-        Hi.template block<3,3>(0, XI_P)       = -Eigen::Matrix3d::Identity();
-        Hi.template block<3,3>(0, XI_D + 3*i) =  Eigen::Matrix3d::Identity();
+        Hi.template block<3,3>(0, XI_P)        = -Eigen::Matrix3d::Identity();
+        Hi.template block<3,3>(0, XI_D + 3*ci) =  Eigen::Matrix3d::Identity();
 
         // Measurement noise: N̂ = J_world · Σα · J_worldᵀ
         // J_world = top 3 rows (linear) of LOCAL_WORLD_ALIGNED Jacobian,
@@ -956,6 +1003,31 @@ void RightInvariantEKF::filter(
         N_all.block(old,  0,     3, old).setZero();
         N_all.block(0,    old, old,   3).setZero();
         N_all.template block<3,3>(old, old) = Ni;
+    }
+
+    // =========================================================================
+    // 4b)  ZERO-VELOCITY UPDATE (ZUPT) — double-support only
+    //
+    // When both feet are in contact the base velocity is approximately zero.
+    // This is a world-frame pseudo-measurement: v_meas = 0.
+    // Innovation:  z_v = 0 - v̂  =  -v̂
+    // Jacobian:    H_v[:, XI_V] = +I   (see sign convention for foot H above)
+    // =========================================================================
+    if (active_contact_[0] && active_contact_[1]) {
+        const Eigen::Vector3d z_v = -X_.template block<3,1>(0, COL_V);
+        const int old = static_cast<int>(z_all.rows());
+        z_all.conservativeResize(old + 3);
+        z_all.segment(old, 3) = z_v;
+
+        H_all.conservativeResize(old + 3, NR);
+        H_all.block(old, 0, 3, NR).setZero();
+        H_all.template block<3,3>(old, XI_V) = Eigen::Matrix3d::Identity();
+
+        N_all.conservativeResize(old + 3, old + 3);
+        N_all.block(old,  0,     3, old).setZero();
+        N_all.block(0,    old, old,   3).setZero();
+        const double sv2_zupt = 1e-6;   // σ_v = 1 mm/s
+        N_all.template block<3,3>(old, old) = sv2_zupt * Eigen::Matrix3d::Identity();
     }
 
     if (z_all.size() == 0)

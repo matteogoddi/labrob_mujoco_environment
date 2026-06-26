@@ -77,26 +77,24 @@ public:
     {
       data_ = pinocchio::Data(model_);
       P_.setIdentity();
-      P_.block<3,3>(0,0) *= 1e-4;    // position
-      P_.block<3,3>(3,3) *= 1e-4;    // velocity
-      P_.block<3,3>(6,6) *= 1e-4;    // orientation
-      P_.block<3,3>(9,9) *= 1e-4;    // feet
-      P_.block<3,3>(12,12) *= 1e-4;
-      P_.block<3,3>(15,15) *= 1e-5;  // feet orientation
-      P_.block<3,3>(18,18) *= 1e-5;
-      P_.block<3,3>(21,21) *= 1e-3;  // biases
-      P_.block<3,3>(24,24) *= 1e-3;
-      
-      Qc_.setIdentity();
-      Eigen::Matrix3d I = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(0,0) = 0.005 * I;     // accel noise
-      Qc_.block<3,3>(3,3) = 0.001 * I;     // gyro noise
-      Qc_.block<3,3>(6,6)  = 1e-4 * I;    // foot noise
-      Qc_.block<3,3>(9,9) = 1e-4 * I;     
-      Qc_.block<3,3>(12,12) = 1e-5 * I;   // feet orientation noise
-      Qc_.block<3,3>(15,15) = 1e-5 * I; 
-      Qc_.block<3,3>(18,18) = 1e-3 * I;   // bias noise
-      Qc_.block<3,3>(21,21) = 1e-3 * I; 
+      P_.block<3,3>(0,0)   *= 1e-4;   // position
+      P_.block<3,3>(3,3)   *= 1e-4;   // velocity
+      P_.block<3,3>(6,6)   *= 1e-4;   // orientation
+      P_.block<3,3>(9,9)   *= 1e-4;   // foot position L
+      P_.block<3,3>(12,12) *= 1e-4;   // foot position R
+      P_.block<3,3>(15,15) *= 1e-5;   // foot orientation L
+      P_.block<3,3>(18,18) *= 1e-5;   // foot orientation R
+      P_.block<3,3>(21,21) *= 1e-6;   // gyro bias
+
+      Qc_.setZero();
+      Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
+      Qc_.block<3,3>(0,0)   = 0.005 * I3;  // accel noise
+      Qc_.block<3,3>(3,3)   = 0.001 * I3;  // gyro noise
+      Qc_.block<3,3>(6,6)   = 1e-4  * I3;  // foot position noise L
+      Qc_.block<3,3>(9,9)   = 1e-4  * I3;  // foot position noise R
+      Qc_.block<3,3>(12,12) = 1e-5  * I3;  // foot orientation noise L
+      Qc_.block<3,3>(15,15) = 1e-5  * I3;  // foot orientation noise R
+      Qc_.block<3,3>(18,18) = 1e-6  * I3;  // gyro bias random walk
 
       g_ << 0, 0, -9.81;
     }
@@ -127,24 +125,26 @@ public:
       pinocchio::framesForwardKinematics(model_, data, q_init);
 
       pL_ = pL_init;
-      zL_ = Eigen::Quaterniond(data.oMf[model_.getFrameId("left_foot_link")].rotation()).normalized();
+      {
+        const Eigen::Matrix3d R_WFL = data.oMf[model_.getFrameId("left_foot_link")].rotation();
+        const double yaw_L = std::atan2(R_WFL(1, 0), R_WFL(0, 0));
+        zL_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_L, Eigen::Vector3d::UnitZ()));
+      }
       pR_ = pR_init;
-      zR_ = Eigen::Quaterniond(data.oMf[model_.getFrameId("right_foot_link")].rotation()).normalized();
+      {
+        const Eigen::Matrix3d R_WFR = data.oMf[model_.getFrameId("right_foot_link")].rotation();
+        const double yaw_R = std::atan2(R_WFR(1, 0), R_WFR(0, 0));
+        zR_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_R, Eigen::Vector3d::UnitZ()));
+      }
 
       omega_prev_    = Eigen::Vector3d::Zero();
       acc_body_prev_ = Eigen::Vector3d::Zero();
+      bw_            = Eigen::Vector3d::Zero();
 
-      // R_base_imu: ruota misure dal frame IMU al frame body.
-      // R_world_imu da FK (usa la variabile locale data, non data_ che non è aggiornata).
-      // q_.toRotationMatrix() = R_BW; R_BW * R_world_imu = R_body_imu.
-      Eigen::Matrix3d R_world_imu = data.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
-      R_base_imu = q_.toRotationMatrix() * R_world_imu;
-
-    // const int imu_torso_id = model_.getFrameId("imu_in_torso");
-    // R_imu_torso_to_body_ = R_WB.transpose()
-    //                * data_.oMf[imu_torso_id].rotation();
-
-
+      // R_base_imu: rotates IMU measurements from IMU sensing axes to base body frame.
+      // R_WI from FK (uses local data, not data_ which is not yet updated).
+      const Eigen::Matrix3d R_world_imu = data.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
+      R_base_imu = q_.toRotationMatrix() * R_world_imu;  // R_BW * R_WI = R_BI
     }
 
 private:
@@ -181,7 +181,7 @@ private:
     }
 
     double dt_;
-    const int NX = 27;
+    const int NX = 24;
 
     // Nominal state
     Eigen::Vector3d r_ = Eigen::Vector3d::Zero();
@@ -194,19 +194,17 @@ private:
     Eigen::Vector3d pR_ = Eigen::Vector3d::Zero();
     Eigen::Quaterniond zL_;
     Eigen::Quaterniond zR_;
+    Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();  // gyro bias in body frame
 
-    Eigen::Vector3d bf_ = Eigen::Vector3d::Zero();
-    Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();
-
-    Eigen::MatrixXd R_base_imu;
+    Eigen::Matrix3d R_base_imu = Eigen::Matrix3d::Identity();
 
     // Inputs at k-1 (used for prediction x[k-1]→x[k] at the next call)
     Eigen::Vector3d omega_prev_     = Eigen::Vector3d::Zero();  // body-frame ω at k-1
     Eigen::Vector3d acc_body_prev_  = Eigen::Vector3d::Zero();  // body-frame specific force at k-1
 
     // Covariance
-    Eigen::Matrix<double,27,27> P_;
-    Eigen::Matrix<double,24,24> Qc_;
+    Eigen::Matrix<double,24,24> P_;
+    Eigen::Matrix<double,21,21> Qc_;
 
     Eigen::Vector3d g_;
 };
@@ -416,6 +414,12 @@ public:
         return Eigen::Quaterniond(X_.block<3,3>(0,0)).normalized();
     }
  
+    /// Full state reset: set R_WB and position from q_init, zero velocity/bias,
+    /// reset covariance, then anchor both contacts via FK.
+    /// q_init layout: [x,y,z, qx,qy,qz,qw, joints...]  (Pinocchio free-flyer).
+    void initialize(const Eigen::VectorXd& q_init,
+                    const Eigen::VectorXd& joint_pos);
+
     /// Reset contact i: re-init position from FK and inflate covariance.
     void addContact   (int foot_idx, const Eigen::VectorXd& joint_pos);
     /// Mark contact i as lost: inflate process noise so P grows freely.

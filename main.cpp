@@ -39,6 +39,7 @@ bool isWBCLoopClosed  = false;
 bool isMPCLoopClosed  = false;
 bool isObserverActive = false;
 bool isEKFactive      = false;
+bool pendingWBCInit   = false;   // set on X press, consumed after EKF update
 bool useSim           = false;
 bool useRobot         = false;
 bool useViz           = true;
@@ -51,7 +52,7 @@ Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 using Clock = std::chrono::steady_clock;
 
 
-enum class ExperimentMode { Regulation, WBC };
+enum class ExperimentMode { Listening, Regulation, WBC };
 ExperimentMode experiment_mode = ExperimentMode::Regulation;
 
 alignas(EIGEN_MAX_ALIGN_BYTES) labrob::WalkingManager walking_manager;
@@ -173,9 +174,7 @@ static void handle_gamepad(
         if (!xPressed && experiment_mode == ExperimentMode::Regulation) {
             xPressed        = true;
             experiment_mode = ExperimentMode::WBC;
-            wm.init(robot_state, armatures);
-            isWBCLoopClosed = true;
-            isMPCLoopClosed = true;
+            pendingWBCInit  = true;   // wm.init() deferred to after EKF update
             std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
         }
     } else {
@@ -220,7 +219,6 @@ static void send_dds_command(
     motor_command.q_target.fill(0.0f);
     motor_command.dq_target.fill(0.0f);
 
-    const bool  wbc_active = (experiment_mode == ExperimentMode::WBC);
     const float t_s        = std::chrono::duration<float>(elapsed).count();
     const bool  in_ramp    = elapsed < std::chrono::seconds(5);
 
@@ -229,10 +227,10 @@ static void send_dds_command(
             motor_command.kp[i] = Kp_reg[i] * (t_s / 5.0f);
             motor_command.kd[i] = Kd_reg[i];
         }
-    } else if (wbc_active) {
+    } else if (experiment_mode == ExperimentMode::WBC) {
         motor_command.kp = Kp_cl;
         motor_command.kd = Kd_cl;
-    } else {
+    } else if (experiment_mode == ExperimentMode::Regulation) {
         motor_command.kp = Kp_reg;
         motor_command.kd = Kd_reg;
     }
@@ -240,10 +238,10 @@ static void send_dds_command(
     for (int i = 0; i < m->nu; ++i) {
         int jid = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
-        if (wbc_active) {
-            if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
+        if (experiment_mode == ExperimentMode::WBC) {
+            if (std::abs(robot_state.joint_state[jname].pos) > 3 ||
                 std::abs(robot_state.joint_state[jname].vel) > 4   ||
-                std::abs(joint_command[jname]) > 60.0) {
+                std::abs(joint_command[jname]) > 100.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
@@ -253,7 +251,7 @@ static void send_dds_command(
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
             motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
             motor_command.tau_ff[i]    = joint_command[jname];
-        } else {
+        } else if (experiment_mode == ExperimentMode::Regulation){
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
             motor_command.dq_target[i] = 0.0f;
         }
@@ -275,7 +273,9 @@ static void send_dds_command(
         cmd.kd()   = motor_command.kd[i];
     }
     dds_cmd.crc() = Crc32Core((uint32_t*)&dds_cmd, (sizeof(dds_cmd) >> 2) - 1);
-    publisher->Write(dds_cmd);
+    if (experiment_mode == ExperimentMode::WBC || experiment_mode == ExperimentMode::Regulation){
+        publisher->Write(dds_cmd);
+    }
 }
 
 
@@ -296,8 +296,11 @@ int main(const int argc, const char* argv[]) {
             reactiveStanding = false;
         } else if (a == "--verbose") {
             verboseCoop = true;
+        } else if (a == "--listen") {
+            experiment_mode = ExperimentMode::Listening;
         }
     }
+    // std::cout << experiment_mode << std::endl;
     if (!useRobot && !useSim) {
         std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
         return -1;
@@ -386,10 +389,19 @@ int main(const int argc, const char* argv[]) {
     walking_manager.setVerboseCoop(verboseCoop);
     walking_manager.init(robot_state, armatures);
 
+    labrob::NoiseParams ri_noise;
+    ri_noise.gyro_noise    = 0.01;    // rad/s/√Hz
+    ri_noise.accel_noise   = 0.1;     // m/s²/√Hz
+    ri_noise.contact_noise = 0.01;    // m/s/√Hz  (foot slip)
+    ri_noise.gyro_bias_rw  = 0.0001;  // rad/s²/√Hz
+    ri_noise.accel_bias_rw = 0.001;   // m/s³/√Hz
+    ri_noise.encoder_noise = 0.01;    // rad/√Hz
+
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::BaseEKF
+        labrob::StateEstimator::Filter::RightInvariantEKF,
+        ri_noise
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -401,7 +413,7 @@ int main(const int argc, const char* argv[]) {
     // EMA on raw motor dq — smoothing factor alpha: weight on the new measurement.
     // alpha = 0.15 → ~12 Hz cutoff at 500 Hz. Increase for less lag, decrease for more smoothing.
     Eigen::VectorXd ema_joint_vel = Eigen::VectorXd::Zero(29);
-    constexpr double ema_alpha = 0.15;
+    constexpr double ema_alpha = 0.1;
 
     // EMA on pelvis IMU gyroscope.
     Eigen::Vector3d ema_imu_gyro = Eigen::Vector3d::Zero();
@@ -483,6 +495,10 @@ int main(const int argc, const char* argv[]) {
                     // ── Log sensor feedback ───────────────────────────────────
                     sensor_logger.log("pelvis_acc",  imu_pelvis_data.accelerometer);
                     sensor_logger.log("pelvis_gyro", imu_pelvis_data.omega);
+                    sensor_logger.log("pelvis_quat", imu_pelvis_data.quaternion);
+                    sensor_logger.log("pelvis_rpy",  imu_pelvis_data.rpy);
+                    sensor_logger.log("torso_quat",  imu_torso_data.quaternion);
+                    sensor_logger.log("torso_rpy",   imu_torso_data.rpy);
                     sensor_logger.log("torso_acc",   imu_torso_data.accelerometer);
                     sensor_logger.log("torso_gyro",  imu_torso_data.omega);
                     sensor_logger.log("odom_pos",    odometry_data.position);
@@ -507,6 +523,15 @@ int main(const int argc, const char* argv[]) {
                         walking_manager.get_wbc_q_ddot()
                     );
                 }
+            }
+
+            // Deferred WBC init: called after EKF update so wm.init() and the
+            // first WBC tick both see the same post-EKF robot_state.
+            if (pendingWBCInit) {
+                pendingWBCInit  = false;
+                walking_manager.init(robot_state, armatures);
+                isWBCLoopClosed = true;
+                isMPCLoopClosed = true;
             }
 
             // Log robot_state base quantities (odometry before EKF activation,
@@ -612,6 +637,10 @@ int main(const int argc, const char* argv[]) {
                 // ── Experiment ────────────────────────────────────────────────
                 switch (experiment_mode) {
                     case ExperimentMode::Regulation:
+                        // joint_command stays zero; PD holds measured position
+                        break;
+                    
+                    case ExperimentMode::Listening:
                         // joint_command stays zero; PD holds measured position
                         break;
 
