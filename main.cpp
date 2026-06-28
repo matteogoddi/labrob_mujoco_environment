@@ -578,8 +578,8 @@ int main(const int argc, const char* argv[]) {
                 f_l_test = Eigen::Vector3d::Zero();
                 f_r_test = Eigen::Vector3d::Zero();
                 if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 18.0) {
-                    f_l_test = Eigen::Vector3d(3.0, 0.0, 0.0);  // 3 N along X
-                    f_r_test = Eigen::Vector3d(3.0, 0.0, 0.0);
+                    f_l_test = Eigen::Vector3d(0.0, 0.0, 0.0);  // 3 N along X
+                    f_r_test = Eigen::Vector3d(0.0, 0.0, 0.0);
                 }
 
                 // Apply forces physically in MuJoCo
@@ -616,8 +616,16 @@ int main(const int argc, const char* argv[]) {
                 auto t0 = std::chrono::steady_clock::now();
                 mj_step1(mj_model_ptr, mj_data_ptr);
 
-                if (mj_data_ptr->time > 5.2)
+
+                if (mj_data_ptr->time > 5.15 && mj_data_ptr->time <= 5.2 && false) {
+                    double point[3]{0.0, 0.0, 0.1};
+                    double force[3] {0.0, 0.0, -10.0};
+                    double torque[3]{0.0, 0.0, 0.0};
+                    int torso_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "torso_link");
+                    mj_applyFT(mj_model_ptr, mj_data_ptr, force, torque, point, torso_id, mj_data_ptr->qfrc_applied);
+                } else if (mj_data_ptr->time > 5.2) {
                     mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
+                }
 
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     int jid = mj_model_ptr->actuator_trnid[i * 2];

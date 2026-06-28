@@ -72,7 +72,10 @@ class ISMPC{
   // Matrices for cost function:
   Eigen::MatrixXd cost_function_H_;
   Eigen::VectorXd cost_function_f_;
-  double beta_ = 10000.0;
+  double beta_x_ = 10000.0;
+  double beta_y_ = 10000.0;
+  double beta_z_ = 10000.0;
+
 
   // Matrices for stability constraint:
   Eigen::MatrixXd A_eq_;

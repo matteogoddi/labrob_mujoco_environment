@@ -40,175 +40,6 @@ private:
   Eigen::VectorXd Omega_;
 };
 
-// =======================
-// EKF State
-// =======================
-struct EKFState
-{
-  Eigen::Vector3d p = Eigen::Vector3d::Zero();
-  Eigen::Vector3d v = Eigen::Vector3d::Zero();
-  Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
-  Eigen::Vector3d bg = Eigen::Vector3d::Zero();
-  Eigen::Vector3d ba = Eigen::Vector3d::Zero();
-
-  Eigen::Matrix<double,15,15> P =
-      Eigen::Matrix<double,15,15>::Identity() * 1e-3;
-};
-
-// =======================
-// IMU calibration
-// =======================
-Eigen::Matrix3d calibrateImuRotation(
-    const std::vector<Eigen::Vector3d>& acc_samples,
-    const Eigen::Matrix3d& R_world_base);
-
-// =======================
-// BaseEKF class
-// =======================
-
-class BaseEKF
-{
-public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-    // Constructor
-    BaseEKF(const pinocchio::Model& model, Eigen::VectorXd& q_init, double dt):
-      model_(model), q_init_(q_init), dt_(dt)
-    {
-      data_ = pinocchio::Data(model_);
-      P_.setIdentity();
-      P_.block<3,3>(0,0)   *= 1e-4;   // position
-      P_.block<3,3>(3,3)   *= 1e-4;   // velocity
-      P_.block<3,3>(6,6)   *= 1e-4;   // orientation
-      P_.block<3,3>(9,9)   *= 1e-4;   // foot position L
-      P_.block<3,3>(12,12) *= 1e-4;   // foot position R
-      P_.block<3,3>(15,15) *= 1e-5;   // foot orientation L
-      P_.block<3,3>(18,18) *= 1e-5;   // foot orientation R
-      P_.block<3,3>(21,21) *= 1e-6;   // gyro bias
-
-      Qc_.setZero();
-      Eigen::Matrix3d I3 = Eigen::Matrix3d::Identity();
-      Qc_.block<3,3>(0,0)   = 0.005 * I3;  // accel noise
-      Qc_.block<3,3>(3,3)   = 0.001 * I3;  // gyro noise
-      Qc_.block<3,3>(6,6)   = 1e-4  * I3;  // foot position noise L
-      Qc_.block<3,3>(9,9)   = 1e-4  * I3;  // foot position noise R
-      Qc_.block<3,3>(12,12) = 1e-5  * I3;  // foot orientation noise L
-      Qc_.block<3,3>(15,15) = 1e-5  * I3;  // foot orientation noise R
-      Qc_.block<3,3>(18,18) = 1e-6  * I3;  // gyro bias random walk
-
-      g_ << 0, 0, -9.81;
-    }
-
-    // Complete filter step (prediction + update)
-    void filter(const Eigen::Vector3d& acc_meas,
-              const Eigen::Vector3d& gyro_meas,
-              const Eigen::VectorXd& joint_pos_meas,
-              const Eigen::VectorXd& joint_vel_meas,
-              const Eigen::VectorXd& q_ddot,
-              bool isLeftFootinContact,
-              bool isRightFootinContact);
-    
-    Eigen::Vector3d getBasePosition() const { return r_; }
-    Eigen::Vector3d getBaseVelocity() const { return v_; }
-    Eigen::Quaterniond getBaseOrientation() const { return q_.inverse(); }
-    Eigen::Vector3d getBaseOmega() const { return omega_; }
-    void initialize(const Eigen::VectorXd& q_init, 
-                    const Eigen::Vector3d& pL_init, 
-                    const Eigen::Vector3d& pR_init) {
-      r_ << q_init[0], q_init[1], q_init[2];
-      q_ = Eigen::Quaterniond(q_init[6], q_init[3], q_init[4], q_init[5]).inverse();
-      prev_left_contact_  = true;
-      prev_right_contact_ = true;
-
-      pinocchio::Data data(model_);
-      pinocchio::forwardKinematics(model_, data, q_init);
-      pinocchio::framesForwardKinematics(model_, data, q_init);
-
-      pL_ = pL_init;
-      {
-        const Eigen::Matrix3d R_WFL = data.oMf[model_.getFrameId("left_foot_link")].rotation();
-        const double yaw_L = std::atan2(R_WFL(1, 0), R_WFL(0, 0));
-        zL_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_L, Eigen::Vector3d::UnitZ()));
-      }
-      pR_ = pR_init;
-      {
-        const Eigen::Matrix3d R_WFR = data.oMf[model_.getFrameId("right_foot_link")].rotation();
-        const double yaw_R = std::atan2(R_WFR(1, 0), R_WFR(0, 0));
-        zR_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_R, Eigen::Vector3d::UnitZ()));
-      }
-
-      omega_prev_    = Eigen::Vector3d::Zero();
-      acc_body_prev_ = Eigen::Vector3d::Zero();
-      bw_            = Eigen::Vector3d::Zero();
-
-      // R_base_imu: rotates IMU measurements from IMU sensing axes to base body frame.
-      // R_WI from FK (uses local data, not data_ which is not yet updated).
-      const Eigen::Matrix3d R_world_imu = data.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
-      R_base_imu = q_.toRotationMatrix() * R_world_imu;  // R_BW * R_WI = R_BI
-    }
-
-private:
-
-    pinocchio::Model model_;
-    pinocchio::Data data_;
-    Eigen::VectorXd q_init_;
-    bool left_initialized_ = false;
-    bool right_initialized_ = false;
-    bool prev_left_contact_  = true;
-    bool prev_right_contact_ = true;
-
-    // Helper
-    Eigen::Quaterniond expMap(const Eigen::Vector3d& w)
-    {
-      double th = w.norm();
-      if (th > M_PI) th -= 2*M_PI;
-      else if (th < -M_PI) th += 2*M_PI;
-
-      if(th < 1e-5)
-        return Eigen::Quaterniond::Identity();
-      
-      Eigen::Vector3d axis = w/th;
-      return Eigen::Quaterniond(Eigen::AngleAxisd(th, axis));
-    }
-
-    Eigen::Vector3d logMap(const Eigen::Quaterniond& q)
-    {
-      Eigen::AngleAxisd aa(q);
-      if (aa.angle() > M_PI) aa.angle() -= 2*M_PI;
-      else if (aa.angle() < -M_PI) aa.angle() += 2*M_PI;
-
-      return aa.axis() * aa.angle();
-    }
-
-    double dt_;
-    const int NX = 24;
-
-    // Nominal state
-    Eigen::Vector3d r_ = Eigen::Vector3d::Zero();
-    Eigen::Vector3d v_ = Eigen::Vector3d::Zero();
-    Eigen::Quaterniond q_ = Eigen::Quaterniond::Identity();
-    Eigen::Vector3d omega_ = Eigen::Vector3d::Zero();
-    Eigen::Vector3d omega_world = Eigen::Vector3d::Zero();
-
-    Eigen::Vector3d pL_ = Eigen::Vector3d::Zero();
-    Eigen::Vector3d pR_ = Eigen::Vector3d::Zero();
-    Eigen::Quaterniond zL_;
-    Eigen::Quaterniond zR_;
-    Eigen::Vector3d bw_ = Eigen::Vector3d::Zero();  // gyro bias in body frame
-
-    Eigen::Matrix3d R_base_imu = Eigen::Matrix3d::Identity();
-
-    // Inputs at k-1 (used for prediction x[k-1]→x[k] at the next call)
-    Eigen::Vector3d omega_prev_     = Eigen::Vector3d::Zero();  // body-frame ω at k-1
-    Eigen::Vector3d acc_body_prev_  = Eigen::Vector3d::Zero();  // body-frame specific force at k-1
-
-    // Covariance
-    Eigen::Matrix<double,24,24> P_;
-    Eigen::Matrix<double,21,21> Qc_;
-
-    Eigen::Vector3d g_;
-};
-
 class CoMKF
 {
 public:
@@ -316,9 +147,9 @@ struct NoiseParams {
  *    ω̃ = ω + bᵍ + nᵍ           angular velocity, body frame
  *    ã = R_WB^T(a−g) + bᵃ + nᵃ  specific force,  sensor frame
  *
- *  After rotating to body and removing bias:
- *    ω_corr = R_imu_body * ω̃ − b̂ᵍ
- *    f_body  = R_imu_body * ã  − b̂ᵃ   (specific force, body frame)
+ *  IMU frame coincides with pelvis (base) frame — no rotation needed:
+ *    ω_corr = ω̃ − b̂ᵍ
+ *    f_body  = ã − b̂ᵃ   (specific force, body frame)
  *    a_world = R_WB * f_body + g
  */
 class RightInvariantEKF
@@ -479,10 +310,6 @@ private:
  
     std::array<FootConfig,N_FEET> feet_;
     NoiseParams noise_;
- 
-    /// Fixed rotation: IMU sensor frame → body frame
-    Eigen::Matrix3d R_imu_pelvis_to_body_;
-    Eigen::Matrix3d R_imu_torso_to_body_;
  
     /// Gravity vector in world frame
     const Eigen::Vector3d g_ {0.0, 0.0, -9.81};
@@ -668,9 +495,6 @@ private:
 
     std::array<FootConfig,N_FEET> feet_;
     NoiseParams noise_;
-
-    /// R_imu_to_body (rotation: IMU sensor frame → body frame, fixed at init)
-    Eigen::Matrix3d R_imu_to_body_;
 
     const Eigen::Vector3d g_world_ {0.0, 0.0, -9.81};
 

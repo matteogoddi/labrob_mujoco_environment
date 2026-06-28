@@ -248,7 +248,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(!useRobot && false){
+    if(true){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -552,6 +552,7 @@ WalkingManager::update(
 
 
     Eigen::Vector3d zmp_3d;
+    zmp_3d.setZero();
 
     if (total_force.z() > 1e-5) {
 
@@ -575,7 +576,6 @@ WalkingManager::update(
     zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
     zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
 
-    
 
     walking_data_.updateWalkingState(t_msec_);
 

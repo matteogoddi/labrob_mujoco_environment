@@ -20,9 +20,7 @@ StateEstimator::StateEstimator(const pinocchio::Model& model,
 
     Eigen::VectorXd q0 = pinocchio::neutral(model_);
 
-    if (filter_ == Filter::BaseEKF) {
-        base_ekf_ = std::make_unique<BaseEKF>(model_, q0, dt_);
-    } else if (filter_ == Filter::SimpleEKF) {
+    if (filter_ == Filter::SimpleEKF) {
         simple_ekf_ = std::make_unique<SimpleEKF>(model_, q0, dt_);
     } else {
         if (filter_ == Filter::RightInvariantEKF) {
@@ -47,47 +45,7 @@ void StateEstimator::activate(const RobotState& robot_state,
     if (active_) return;
     active_ = true;
 
-    if (filter_ == Filter::BaseEKF) {
-        // Build full Pinocchio config: identity orientation, position from odometry.
-        Eigen::VectorXd q_init = pinocchio::neutral(model_);
-        q_init.head<3>()   = robot_state.position;
-        q_init.tail(njnt_) = q_joints;
-
-        // Initialise roll/pitch from accelerometer (gravity direction in body frame).
-        // First FK with identity orientation to get R_body_imu (fixed, depends only on joints).
-        {
-            pinocchio::Data data_neutral(model_);
-            pinocchio::forwardKinematics(model_, data_neutral, q_init);
-            pinocchio::framesForwardKinematics(model_, data_neutral, q_init);
-
-            const Eigen::Vector3d acc_meas = imu_pelvis_data.accelerometer;
-            if (acc_meas.norm() > 1.0) {
-                const Eigen::Matrix3d R_body_imu =
-                    data_neutral.oMf[model_.getFrameId("imu_in_pelvis")].rotation();
-                const Eigen::Vector3d f_body = R_body_imu * acc_meas;
-                const double roll  = std::atan2( f_body.y(), f_body.z());
-                const double pitch = std::atan2(-f_body.x(),
-                                     std::sqrt(f_body.y()*f_body.y() + f_body.z()*f_body.z()));
-                const Eigen::Quaterniond q_WB =
-                    Eigen::AngleAxisd(pitch, Eigen::Vector3d::UnitY()) *
-                    Eigen::AngleAxisd(roll,  Eigen::Vector3d::UnitX());
-                // Pinocchio free-flyer quaternion layout: [x, y, z, w] at indices 3..6
-                q_init.segment<4>(3) << q_WB.x(), q_WB.y(), q_WB.z(), q_WB.w();
-            }
-        }
-
-        // Re-run FK with the corrected orientation so pL/pR are accurate.
-        pinocchio::Data data(model_);
-        pinocchio::forwardKinematics(model_, data, q_init);
-        pinocchio::framesForwardKinematics(model_, data, q_init);
-
-        const Eigen::Vector3d pL =
-            data.oMf[model_.getFrameId("left_foot_link")].translation();
-        const Eigen::Vector3d pR =
-            data.oMf[model_.getFrameId("right_foot_link")].translation();
-
-        base_ekf_->initialize(q_init, pL, pR);
-    } else if (filter_ == Filter::RightInvariantEKF) {
+    if (filter_ == Filter::RightInvariantEKF) {
         Eigen::VectorXd q_init = pinocchio::neutral(model_);
         q_init.head<3>()   = robot_state.position;
         q_init.tail(njnt_) = q_joints;
@@ -107,24 +65,6 @@ void StateEstimator::update(RobotState& robot_state,
                             const Eigen::VectorXd& wbc_q_ddot)
 {
     if (!active_) return;
-
-    if (filter_ == Filter::BaseEKF) {
-        Eigen::VectorXd jnt_pos(njnt_), jnt_vel(njnt_);
-        for (int i = 0; i < njnt_; ++i) {
-            const std::string& name = model_.names[i + 2];
-            jnt_pos(i) = robot_state.joint_state.at(name).pos;
-            jnt_vel(i) = robot_state.joint_state.at(name).vel;
-        }
-
-        base_ekf_->filter(acc, gyro, jnt_pos, jnt_vel, wbc_q_ddot,
-                          contact[0], contact[1]);
-
-        robot_state.position         = base_ekf_->getBasePosition();
-        robot_state.linear_velocity  = base_ekf_->getBaseVelocity();
-        robot_state.orientation      = base_ekf_->getBaseOrientation();
-        robot_state.angular_velocity = base_ekf_->getBaseOmega();
-        return;
-    }
 
     if (filter_ == Filter::SimpleEKF) {
         // Build observation: [base_pos(3), imu_orientation_rotvec(3), joint_pos(njnt_)]

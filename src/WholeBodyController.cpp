@@ -21,11 +21,11 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
   params.Kp_motion = 120.0;
-  params.Kd_motion = 20.0;
+  params.Kd_motion = 80.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 100.0;
-  params.Kd_orientation = 40.0;
+  params.Kd_orientation = 80.0;
   params.Kp_foot = 70.0;
   params.Kd_foot = 40.0;
   params.Kp_wrist = 30.0;

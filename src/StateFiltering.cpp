@@ -64,334 +64,6 @@ JointKF::filter(const Eigen::VectorXd& q_meas, const Eigen::VectorXd& qdd)
 }
 
 //////////////////////////
-// IMU calibration (NOT ACTUALLY USING THIS, USE CALIBRATION VIA APP)
-//////////////////////////
-
-Eigen::Matrix3d calibrateImuRotation(
-    const std::vector<Eigen::Vector3d>& acc_samples,
-    const Eigen::Matrix3d& R_world_base)
-{
-  Eigen::Vector3d acc_mean = Eigen::Vector3d::Zero();
-  for (const auto& a : acc_samples) acc_mean += a;
-  acc_mean /= acc_samples.size();
-
-  Eigen::Vector3d g_imu = acc_mean.normalized();
-
-  Eigen::Vector3d g_world(0.0, 0.0, 1.0);
-  Eigen::Vector3d g_base = R_world_base.transpose() * g_world;
-
-  Eigen::Vector3d v = g_imu.cross(g_base);
-  double c = g_imu.dot(g_base);
-
-  Eigen::Matrix3d vx;
-  vx <<     0, -v.z(),  v.y(),
-         v.z(),     0, -v.x(),
-        -v.y(),  v.x(),     0;
-
-  Eigen::Matrix3d R_delta =
-      Eigen::Matrix3d::Identity() +
-      vx +
-      vx * vx * (1.0 / (1.0 + c));
-
-  return R_delta;
-}
-
-
-//////////////////////////
-// EUCLIDEAN EKF FOR BASE ESTIMATION 
-//////////////////////////
-
-void BaseEKF::filter(const Eigen::Vector3d& acc_meas,
-                          const Eigen::Vector3d& gyro_meas,
-                          const Eigen::VectorXd& qj,
-                          const Eigen::VectorXd& qj_dot,
-                          const Eigen::VectorXd& q_ddot,
-                          bool left_contact,
-                          bool right_contact)
-{
-  // =====================
-  // 1) NOMINAL PREDICTION
-  // =====================
-
-  Eigen::Matrix3d C_world_to_base = q_.toRotationMatrix();
-  // C_world_to_base = (Eigen::Matrix3d::Identity() + 2*q_.w()*skew(q_.vec()) + 2 * skew(q_.vec()) * skew(q_.vec())).transpose();
-
-
-  Eigen::VectorXd pos = Eigen::VectorXd::Zero(model_.nq);
-  pos.head(3) << r_;
-  {
-    const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
-    pos.segment(3, 4) <<  q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
-  }
-  pos.tail(qj.size()) = qj;
-
-  pinocchio::forwardKinematics(model_, data_, pos);
-  pinocchio::framesForwardKinematics(model_, data_, pos);
-  pinocchio::computeJointJacobians(model_, data_, pos);
-
-  Eigen::VectorXd vel = Eigen::VectorXd::Zero(model_.nv);
-  vel.head(3) << C_world_to_base * v_;
-  vel.segment(3, 3) << omega_;
-  vel.tail(qj_dot.size()) = qj_dot;
-
-  // Rotate IMU measurements into the base body frame
-  const Eigen::Vector3d acc_body_curr = R_base_imu * acc_meas;
-  const Eigen::Vector3d omega_curr    = R_base_imu * gyro_meas;
-
-  // Snapshot k-1 inputs before overwriting them — needed for both the
-  // state prediction AND the F-matrix linearisation below.
-  const Eigen::Vector3d acc_body_km1 = acc_body_prev_;
-  const Eigen::Vector3d omega_km1    = omega_prev_;
-
-  // PREDICTION x[k-1] → x[k] uses inputs u[k-1].
-  // Using u[k] would introduce a one-step look-ahead bias.
-  const Eigen::Vector3d a_world = C_world_to_base.transpose() * acc_body_km1 + g_;
-
-  // Save pre-prediction state (used by processFoot for measurement Jacobians)
-  const Eigen::Vector3d    r_prec = r_;
-  const Eigen::Quaterniond q_prec = q_;
-
-  r_ += dt_ * v_ + 0.5 * dt_ * dt_ * a_world;
-  v_ += dt_ * a_world;
-  q_ = (expMap(dt_ * (omega_km1 - bw_)) * q_).normalized();
-
-  // Advance saved inputs for next call
-  omega_         = omega_curr;
-  omega_world    = C_world_to_base.transpose() * omega_;
-  omega_prev_    = omega_curr;
-  acc_body_prev_ = acc_body_curr;
-
-
-  // =====================
-  // 2) COVARIANCE PREDICTION
-  // =====================
-  Eigen::MatrixXd F = Eigen::MatrixXd::Identity(NX, NX);
-
-  int ir=0, iv=3, iphi=6, ipL=9, ipR=12, ithetaL=15, ithetaR=18, ibw=21;
-
-  const Eigen::Vector3d omega_unbiased = omega_km1 - bw_;
-
-  // F is the Jacobian of the prediction evaluated at x[k-1] with u[k-1].
-  F.block<3,3>(ir,   iv)   =  Eigen::Matrix3d::Identity() * dt_;
-  F.block<3,3>(iv,   iphi) = -C_world_to_base.transpose() * skew(acc_body_km1) * dt_;
-  F.block<3,3>(iphi, iphi) =  Eigen::Matrix3d::Identity() - skew(omega_unbiased) * dt_;
-  F.block<3,3>(iphi, ibw)  = -Eigen::Matrix3d::Identity() * dt_;  // bias drives orientation
-
-  // Noise channels: accel(0:3) gyro(3:6) pL(6:9) pR(9:12) thetaL(12:15) thetaR(15:18) bw(18:21)
-  Eigen::MatrixXd Lc = Eigen::MatrixXd::Zero(NX, 21);
-  Lc.block<3,3>(iv,      0)  = -C_world_to_base.transpose();
-  Lc.block<3,3>(iphi,    3)  = -Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ipL,     6)  =  C_world_to_base.transpose();
-  Lc.block<3,3>(ipR,     9)  =  C_world_to_base.transpose();
-  Lc.block<3,3>(ithetaL, 12) =  Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ithetaR, 15) =  Eigen::Matrix3d::Identity();
-  Lc.block<3,3>(ibw,     18) =  Eigen::Matrix3d::Identity();  // bias random walk
-
-  Eigen::Matrix<double,21,21> Qc_step = Qc_;
-  if (!left_contact)  Qc_step.block<3,3>(6,6)   = 100.0 * Eigen::Matrix3d::Identity();
-  if (!right_contact) Qc_step.block<3,3>(9,9)   = 100.0 * Eigen::Matrix3d::Identity();
-  if (!left_contact)  Qc_step.block<3,3>(12,12) = 100.0 * Eigen::Matrix3d::Identity();
-  if (!right_contact) Qc_step.block<3,3>(15,15) = 100.0 * Eigen::Matrix3d::Identity();
-  Eigen::MatrixXd Q_ = F * Lc * Qc_step * Lc.transpose() * F.transpose() * dt_;
-  
-  P_ = F * P_ * F.transpose() + Q_;
-
-  // =====================
-  // 3) KINEMATICS
-  // =====================
-
-  pinocchio::SE3 T_wb = data_.oMi[1];
-
-    // --- Re-anchor contact points at touchdown --------------------------------
-    {
-    const int fid_L = model_.getFrameId("left_foot_link");
-    const int fid_R = model_.getFrameId("right_foot_link");
-
-    if (left_contact && !prev_left_contact_) {
-        // FIX Bug 2: ri-ancora usando la FK dello stato POST-predizione
-        Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
-        pos_pred.head(3) = r_;
-        {
-          const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
-          pos_pred.segment(3,4) << q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
-        }
-        pos_pred.tail(qj.size()) = qj;
-        pinocchio::Data data_td(model_);
-        pinocchio::forwardKinematics(model_, data_td, pos_pred);
-        pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
-
-        pL_ = data_td.oMf[fid_L].translation();
-        const Eigen::Matrix3d R_WFL = data_td.oMf[fid_L].rotation();
-        const double yaw_L = std::atan2(R_WFL(1, 0), R_WFL(0, 0));
-        zL_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_L, Eigen::Vector3d::UnitZ()));
-
-        // FIX Bug 1: azzera TUTTE le cross-covarianze del piede
-        P_.block(ipL, 0, 3, NX).setZero();
-        P_.block(0, ipL, NX, 3).setZero();
-        P_.block<3,3>(ipL, ipL) = Eigen::Matrix3d::Identity() * 1e-3;
-
-        P_.block(ithetaL, 0, 3, NX).setZero();
-        P_.block(0, ithetaL, NX, 3).setZero();
-        P_.block<3,3>(ithetaL, ithetaL) = Eigen::Matrix3d::Identity() * 1e-4;
-
-        // FIX Bug 3: salta il measurement update in questo ciclo di touchdown,
-        // il filtro agirà normalmente dal passo successivo
-        prev_left_contact_ = left_contact;
-        prev_right_contact_ = right_contact;
-        return;  // esci senza eseguire processFoot questo ciclo
-    }
-
-    if (right_contact && !prev_right_contact_) {
-        Eigen::VectorXd pos_pred = Eigen::VectorXd::Zero(model_.nq);
-        pos_pred.head(3) = r_;
-        {
-          const Eigen::Quaterniond q_wb = q_.conjugate();  // R_WB — Pinocchio convention
-          pos_pred.segment(3,4) << q_wb.x(), q_wb.y(), q_wb.z(), q_wb.w();
-        }
-        pos_pred.tail(qj.size()) = qj;
-        pinocchio::Data data_td(model_);
-        pinocchio::forwardKinematics(model_, data_td, pos_pred);
-        pinocchio::framesForwardKinematics(model_, data_td, pos_pred);
-
-        pR_ = data_td.oMf[fid_R].translation();
-        const Eigen::Matrix3d R_WFR = data_td.oMf[fid_R].rotation();
-        const double yaw_R = std::atan2(R_WFR(1, 0), R_WFR(0, 0));
-        zR_ = Eigen::Quaterniond(Eigen::AngleAxisd(yaw_R, Eigen::Vector3d::UnitZ()));
-
-        P_.block(ipR, 0, 3, NX).setZero();
-        P_.block(0, ipR, NX, 3).setZero();
-        P_.block<3,3>(ipR, ipR) = Eigen::Matrix3d::Identity() * 1e-3;
-
-        P_.block(ithetaR, 0, 3, NX).setZero();
-        P_.block(0, ithetaR, NX, 3).setZero();
-        P_.block<3,3>(ithetaR, ithetaR) = Eigen::Matrix3d::Identity() * 1e-4;
-
-        prev_left_contact_ = left_contact;
-        prev_right_contact_ = right_contact;
-        return;
-    }
-
-    prev_left_contact_ = left_contact;
-    prev_right_contact_ = right_contact;
-    }
-
-  auto processFoot = [&](int frameId,
-                         Eigen::Vector3d& p,
-                         Eigen::Quaterniond& z,
-                         int ip,
-                         int itheta,
-                         bool contact,
-                         Eigen::MatrixXd& H_accum,
-                         Eigen::VectorXd& e_accum)
-  {
-    if (!contact)
-      return;
-
-    const auto& T_wf = data_.oMf[frameId];
-    pinocchio::SE3 T_bf = T_wb.inverse() * T_wf;
-
-    // Measured foot pose in body frame (FK from joint encoders — base-independent)
-    const Eigen::Vector3d    s_p(T_bf.translation());
-    const Eigen::Quaterniond s_z(T_bf.rotation());
-
-    // Predicted foot pose at a priori (post-prediction) state
-    const Eigen::Matrix3d    C       = q_.toRotationMatrix();  // R_BW post-prediction
-    const Eigen::Vector3d    s_p_hat = C * (p - r_);
-    const Eigen::Quaterniond s_z_hat = q_ * z;                 // R_BW * R_WF = R_BF
-
-    const Eigen::Vector3d e_p = s_p - s_p_hat;
-    const Eigen::Vector3d e_z = logMap(s_z * s_z_hat.inverse());
-
-    int old_rows = e_accum.rows();
-    e_accum.conservativeResize(old_rows + 6);
-    e_accum.segment(old_rows, 3)     = e_p;
-    e_accum.segment(old_rows + 3, 3) = e_z;
-
-    H_accum.conservativeResize(old_rows + 6, NX);
-    H_accum.block(old_rows, 0, 6, NX).setZero();
-
-    // Position rows:    H_p = [-C, 0, (C(p-r))×, C, 0, 0, 0]  (Rotella eq. 16)
-    H_accum.block<3,3>(old_rows,     ir)   = -C;
-    H_accum.block<3,3>(old_rows,     iphi) = skew(C * (p - r_));
-    H_accum.block<3,3>(old_rows,     ip)   = C;
-    // Orientation rows: H_z = [0, 0, I, 0, 0, +R_BF, 0, 0]
-    // Right perturbation z_true = z_est * exp(δθ): e_z = +R_BF * δθ
-    H_accum.block<3,3>(old_rows + 3, iphi)   = Eigen::Matrix3d::Identity();
-    H_accum.block<3,3>(old_rows + 3, itheta) = (q_ * z).toRotationMatrix();  // +R_BF
-  };
-
-  Eigen::MatrixXd H(0, NX);
-  Eigen::VectorXd e(0);
-  processFoot(model_.getFrameId("left_foot_link"),  pL_, zL_, ipL, ithetaL, left_contact,  H, e);
-  processFoot(model_.getFrameId("right_foot_link"), pR_, zR_, ipR, ithetaR, right_contact, H, e);
-
-  // ZUPT: when both feet are in contact, inject zero-velocity pseudo-measurement
-  if (left_contact && right_contact) {
-    int old_rows = e.rows();
-    e.conservativeResize(old_rows + 3);
-    e.segment<3>(old_rows) = -v_;
-
-    H.conservativeResize(old_rows + 3, NX);
-    H.block(old_rows, 0, 3, NX).setZero();
-    H.block<3,3>(old_rows, iv) = Eigen::Matrix3d::Identity();
-  }
-
-  // Flat-foot contact constraint: foot normal must align with world Z.
-  // Left perturbation on z (R_WF): H_flat = skew(n).topRows<2>()
-  {
-    const Eigen::Vector3d ez(0, 0, 1);
-    auto addFlatFoot = [&](const Eigen::Quaterniond& z, int itheta_idx, bool contact) {
-      if (!contact) return;
-      const Eigen::Vector3d n = z.toRotationMatrix() * ez;
-      int nr = e.rows();
-      e.conservativeResize(nr + 2);
-      e.segment<2>(nr) = (ez - n).head<2>();
-      H.conservativeResize(nr + 2, NX);
-      H.block(nr, 0, 2, NX).setZero();
-      H.block<2,3>(nr, itheta_idx) = skew(n).topRows<2>();
-    };
-    addFlatFoot(zL_, ithetaL, left_contact);
-    addFlatFoot(zR_, ithetaR, right_contact);
-  }
-
-  if (e.size() == 0)
-    return;
-
-  // =====================
-  // 4) EKF UPDATE
-  // =====================
-  int m = e.size();
-  const int m_flat = (left_contact ? 2 : 0) + (right_contact ? 2 : 0);
-  const int m_zupt = (left_contact && right_contact) ? 3 : 0;
-
-  Eigen::MatrixXd R = Eigen::MatrixXd::Identity(m, m) * 1e-2;
-  if (m_zupt > 0)
-    R.block(m - m_flat - m_zupt, m - m_flat - m_zupt, m_zupt, m_zupt) =
-        Eigen::MatrixXd::Identity(m_zupt, m_zupt) * 1e-3;
-  if (m_flat > 0)
-    R.block(m - m_flat, m - m_flat, m_flat, m_flat) =
-        Eigen::MatrixXd::Identity(m_flat, m_flat) * 1e-3;
-
-  Eigen::MatrixXd K = P_ * H.transpose() * (H * P_ * H.transpose() + R).inverse();
-
-  Eigen::VectorXd dx = K * e;
-
-  r_  += dx.segment<3>(ir);
-  v_  += dx.segment<3>(iv);
-  pL_ += dx.segment<3>(ipL);
-  pR_ += dx.segment<3>(ipR);
-
-  q_  = (expMap(dx.segment<3>(iphi)) * q_).normalized();
-  bw_ += dx.segment<3>(ibw);
-  zL_ = (expMap(dx.segment<3>(ithetaL)) * zL_).normalized();
-  zR_ = (expMap(dx.segment<3>(ithetaR)) * zR_).normalized();
-
-  Eigen::MatrixXd I = Eigen::MatrixXd::Identity(NX, NX);
-  auto IKH = I - K * H;
-  P_ = IKH * P_ * IKH.transpose() + K * R * K.transpose();
-}
-
-//////////////////////////
 // COM KALMAN FILTER
 //////////////////////////
 LIPState CoMKF::filter(LIPState filtered, LIPState current, const Eigen::Vector3d &input) {
@@ -675,17 +347,10 @@ RightInvariantEKF::RightInvariantEKF(
     // v column initialised to zero (already via Identity)
     X_.template block<3,1>(0,COL_P) = q_init.head<3>();  // position
 
-    // ── R_imu_to_body ──────────────────────────────────────────────────────
-    // R_WB = R_world_body; data_.oMf[imu].rotation() = R_world_imu.
-    // v_body = R_body_imu * v_imu,  con R_body_imu = R_WB^T * R_world_imu.
+    // ── Initial contact positions from FK ──────────────────────────────────
+    // IMU is mounted in the pelvis which IS the base frame: no rotation needed.
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
-
-    const int imu_pelvis_id = model_.getFrameId("imu_in_pelvis");
-    R_imu_pelvis_to_body_ = R_WB.transpose()
-                   * data_.oMf[imu_pelvis_id].rotation();
-
-    // ── Initial contact positions from FK ──────────────────────────────────
     for (int i = 0; i < N_FEET; ++i) {
         const int fid = model_.getFrameId(feet_[i].frame_name);
         X_.template block<3,1>(0, COL_D + feet_[i].contact_idx)
@@ -815,11 +480,11 @@ void RightInvariantEKF::filter(
 
     // =========================================================================
     // 0)  IMU PRE-PROCESSING
-    //     Rotate to body frame, remove bias.
+    //     IMU frame coincides with base (pelvis) frame — no rotation needed.
     // =========================================================================
 
-    const Eigen::Vector3d omega_b = R_imu_pelvis_to_body_ * gyro_meas - bg_;
-    const Eigen::Vector3d f_body  = R_imu_pelvis_to_body_ * acc_meas  - ba_;
+    const Eigen::Vector3d omega_b = gyro_meas - bg_;
+    const Eigen::Vector3d f_body  = acc_meas  - ba_;
     omega_b_ = omega_b;
 
     // Current R_WB (world ← body)
@@ -876,11 +541,22 @@ void RightInvariantEKF::filter(
     // Second-order term (from A²·Δt²/2): A²(XI_P,XI_R) = I·g×
     Phi.template block<3,3>(XI_P, XI_R)  = 0.5 * skew(g_) * dt_ * dt_;
 
-    // Bias coupling terms (paper Sec. IV)
-    // These make At time-varying (through R_WB); we use the *pre-update* R_WB.
-    Phi.template block<3,3>(XI_R, XI_BG) = -Eigen::Matrix3d::Identity() * dt_;
+    // Bias coupling terms (paper Sec. IV, At matrix — pre-propagation R_WB, v_k, p_k, dᵢ).
+    // Matches reference implementation (UMich-BipedLab/Contact-Aided-Invariant-EKF).
+    // A[XI_R,    XI_BG] = -R̂               rotation error ← gyro bias
+    // A[XI_V,    XI_BG] = -(v̂)×R̂           velocity error ← gyro bias
+    // A[XI_V,    XI_BA] = -R̂               velocity error ← accel bias
+    // A[XI_P,    XI_BG] = -(p̂)×R̂           position error ← gyro bias
+    // A[XI_D+3i, XI_BG] = -(d̂ᵢ)×R̂         contact error  ← gyro bias
+    Phi.template block<3,3>(XI_R, XI_BG) = -R_WB                        * dt_;
+    Phi.template block<3,3>(XI_V, XI_BG) = -skew(v_k) * R_WB            * dt_;
     Phi.template block<3,3>(XI_V, XI_BA) = -R_WB                        * dt_;
+    Phi.template block<3,3>(XI_P, XI_BG) = -skew(p_k) * R_WB            * dt_;
     Phi.template block<3,3>(XI_P, XI_BA) = -0.5 * R_WB                  * dt_ * dt_;
+    for (int i = 0; i < N_FEET; ++i) {
+        const Eigen::Vector3d d_i = X_.template block<3,1>(0, COL_D + i);
+        Phi.template block<3,3>(XI_D + 3*i, XI_BG) = -skew(d_i) * R_WB * dt_;
+    }
 
     // Inflate process noise for non-active contacts
     Eigen::Matrix<double,NR,NR> Qc_step = Qc_;
@@ -1232,19 +908,10 @@ DiligentKio::DiligentKio(const pinocchio::Model&              model,
     p_ = q_init.head<3>();
     v_.setZero();
 
-    // ── R_imu_to_body ──────────────────────────────────────────────────────
-    // Paper assumes S ≡ B (IMU = body). If they differ:
-    // R_body_imu = R_WB^T * R_world_imu  (rotate world→body, then world→imu^T)
+    // ── Initial foot poses from FK ─────────────────────────────────────────
+    // IMU is mounted in the pelvis which IS the base frame: R_imu_to_body = I.
     pinocchio::forwardKinematics(model_, data_, q_init);
     pinocchio::updateFramePlacements(model_, data_);
-
-    const int imu_id = model_.getFrameId("imu_in_pelvis");
-    // data_.oMf[imu_id].rotation() = R_world_imu (maps imu vectors to world)
-    // We want: v_body = R_imu_to_body * v_imu
-    // R_imu_to_body = R_world_body^T * R_world_imu = R_WB^T * R_world_imu
-    R_imu_to_body_ = R_.transpose() * data_.oMf[imu_id].rotation();
-
-    // ── Initial foot poses from FK ─────────────────────────────────────────
     for (int i = 0; i < N_FEET; ++i) {
         const int fid = model_.getFrameId(feet_[i].frame_name);
         if (i == 0) {
@@ -1377,8 +1044,8 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
     // We drop the noise terms (they go into the process noise covariance).
     // =========================================================================
 
-    omega_b_ = R_imu_to_body_ * gyro_meas  - bg_;
-    const Eigen::Vector3d f_b     = R_imu_to_body_ * accel_meas - ba_;
+    omega_b_ = gyro_meas  - bg_;
+    const Eigen::Vector3d f_b     = accel_meas - ba_;
     // BαA,B = f_b + R^T g_world (specific force + gravity rotated to body)
     const Eigen::Vector3d alpha_b = f_b + R_.transpose() * g_world_;
     // Base acceleration in world frame

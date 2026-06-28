@@ -122,7 +122,26 @@ class MujocoUI {
       scn_.ngeom++;
   }
 
-  // In MujocoUI.hpp, nella sezione public:
+  struct ForceArrow {
+      Eigen::Vector3d from;
+      Eigen::Vector3d force;
+      float rgba[4];
+  };
+
+  // Renders the scene with an arbitrary list of force arrows.
+  void renderWithForces(const std::vector<ForceArrow>& arrows, float scale = 0.05f) {
+      mjrRect viewport = {0, 0, 0, 0};
+      glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);
+      mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
+      for (const auto& a : arrows) {
+          mjtNum from[3] = {a.from.x(),  a.from.y(),  a.from.z()};
+          mjtNum f[3]    = {a.force.x(), a.force.y(), a.force.z()};
+          addForceArrow(from, f, scale, a.rgba);
+      }
+      mjr_render(viewport, &scn_, &con_);
+      glfwSwapBuffers(window_);
+      glfwPollEvents();
+  }
 
   void renderWithHandForces(
       const Eigen::Vector3d& p_lhand,
