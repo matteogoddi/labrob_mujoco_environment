@@ -13,6 +13,7 @@
 #include <JointCommand.hpp>
 #include <Logger.hpp>
 #include <RobotState.hpp>
+#include <StateEstimator.hpp>
 #include <WalkingManager.hpp>
 
 #include <globals.h>
@@ -165,6 +166,36 @@ int main(const int argc, const char* argv[]) {
     walking_manager.setVerboseCoop(verboseCoop);
     walking_manager.init(robot_state, armatures);
 
+    // Pelvis IMU sensor indices (gyro then accelerometer)
+    const int gyro_sid = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
+    const int acc_sid  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
+
+    labrob::NoiseParams ri_noise;
+    ri_noise.gyro_noise    = 0.01;
+    ri_noise.accel_noise   = 0.01;
+    ri_noise.contact_noise = 0.01;
+    ri_noise.gyro_bias_rw  = 0.001;
+    ri_noise.accel_bias_rw = 0.001;
+    ri_noise.encoder_noise = 0.001;
+
+    labrob::StateEstimator state_estimator(
+        walking_manager.get_robot_model(),
+        1.0 / walking_manager.get_controller_frequency(),
+        labrob::StateEstimator::Filter::RightInvariantEKF,
+        ri_noise
+    );
+
+    // Activate immediately so the filter warms up from t=0.
+    // Its output is only applied to robot_state after 5 s.
+    {
+        const auto& model = walking_manager.get_robot_model();
+        const int njnt = model.nv - 6;
+        Eigen::VectorXd q_joints(njnt);
+        for (int i = 0; i < njnt; ++i)
+            q_joints(i) = robot_state.joint_state.at(model.names[i + 2]).pos;
+        state_estimator.activate(robot_state, q_joints);
+    }
+
     labrob::MujocoUI* mujoco_ui_ptr = labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
     static constexpr int framerate = 60;
 
@@ -189,6 +220,49 @@ int main(const int argc, const char* argv[]) {
             for (int i = 0; i < mj_model_ptr->nu; ++i) {
                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                 joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
+            }
+
+            // Read pelvis IMU from MuJoCo sensor data.
+            // MuJoCo's accelerometer already outputs specific force (like a real IMU):
+            // at rest it reads {0, 0, 9.81} m/s² — no gravity correction needed.
+            const Eigen::Vector3d imu_gyro(mj_data_ptr->sensordata + mj_model_ptr->sensor_adr[gyro_sid]);
+            const Eigen::Vector3d imu_acc(mj_data_ptr->sensordata  + mj_model_ptr->sensor_adr[acc_sid]);
+
+            // Always run one EKF step so the filter stays warm.
+            // Before 5 s we propagate on a throw-away copy; after 5 s we update robot_state.
+            labrob::RobotState rs_ekf = robot_state;
+            if (mj_data_ptr->time > 1.0)
+                state_estimator.update(
+                    rs_ekf, imu_gyro, imu_acc,
+                    walking_manager.get_contact(),
+                    walking_manager.get_wbc_q_ddot()
+                );
+
+            // Print EKF vs GT comparison every 0.5 s (not 1 kHz)
+            {
+                static double last_print = -1.0;
+                if (mj_data_ptr->time - last_print >= 0.5) {
+                    last_print = mj_data_ptr->time;
+                    const Eigen::Vector3d pos_err = rs_ekf.position - robot_state.position;
+                    const Eigen::Vector3d rpy_ekf = rs_ekf.orientation.toRotationMatrix().eulerAngles(2,1,0);
+                    const Eigen::Vector3d rpy_gt  = robot_state.orientation.toRotationMatrix().eulerAngles(2,1,0);
+                    std::printf("[t=%.2f]  pos_err=[%.4f %.4f %.4f]  "
+                                "rpy_ekf=[%.3f %.3f %.3f]  rpy_gt=[%.3f %.3f %.3f]  "
+                                "vel_ekf=[%.4f %.4f %.4f]\n",
+                        mj_data_ptr->time,
+                        pos_err.x(), pos_err.y(), pos_err.z(),
+                        rpy_ekf.z(), rpy_ekf.y(), rpy_ekf.x(),
+                        rpy_gt.z(),  rpy_gt.y(),  rpy_gt.x(),
+                        rs_ekf.linear_velocity.x(), rs_ekf.linear_velocity.y(), rs_ekf.linear_velocity.z());
+                }
+            }
+            static bool ekf_took_over = false;
+            if (mj_data_ptr->time >= 3.0) {
+                robot_state = rs_ekf;
+                if (!ekf_took_over) {
+                    ekf_took_over = true;
+                    walking_manager.init(robot_state, armatures);
+                }
             }
 
             walking_manager.update(robot_state, joint_command);

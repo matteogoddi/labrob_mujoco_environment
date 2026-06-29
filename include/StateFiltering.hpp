@@ -514,38 +514,4 @@ private:
     std::array<bool,N_FEET> active_contact_;
 };
 
-// =======================
-// Simple EKF
-// State: [base_pos(3) | imu_rotvec(3) | joint_pos(njnt) |
-//          base_vel(3) | imu_ang_vel(3) | joint_vel(njnt)]
-// Output: [base_pos(3) | imu_rotvec(3) | joint_pos(njnt)]
-// =======================
-class SimpleEKF {
-public:
-    SimpleEKF(const pinocchio::Model& model, const Eigen::VectorXd& q_init, double dt);
-
-    void filter(const Eigen::VectorXd& y_actual, const Eigen::VectorXd& q_ddot);
-
-    RobotState getState() const;
-
-private:
-    pinocchio::Model model_;
-    pinocchio::Data  predicted_data_;
-    pinocchio::Data  estimated_data_;
-
-    int    njnt_;
-    double dt_;
-    int    n_output_;
-
-    Eigen::MatrixXd P_;
-    Eigen::MatrixXd Q_;
-    Eigen::MatrixXd R_;
-    Eigen::VectorXd x_estimate_;
-    Eigen::VectorXd y_pred_;
-    Eigen::MatrixXd Kalman_Gain_;
-    Eigen::MatrixXd J_imu_est_;
-
-    pinocchio::FrameIndex imu_idx_;
-};
-
 }

@@ -20,22 +20,18 @@ StateEstimator::StateEstimator(const pinocchio::Model& model,
 
     Eigen::VectorXd q0 = pinocchio::neutral(model_);
 
-    if (filter_ == Filter::SimpleEKF) {
-        simple_ekf_ = std::make_unique<SimpleEKF>(model_, q0, dt_);
+    if (filter_ == Filter::RightInvariantEKF) {
+        std::array<RightInvariantEKF::FootConfig, 2> feet = {{
+            {"left_foot_link",  0},
+            {"right_foot_link", 1}
+        }};
+        ri_ekf_ = std::make_unique<RightInvariantEKF>(model_, q0, dt_, feet, noise);
     } else {
-        if (filter_ == Filter::RightInvariantEKF) {
-            std::array<RightInvariantEKF::FootConfig, 2> feet = {{
-                {"left_foot_link",  0},
-                {"right_foot_link", 1}
-            }};
-            ri_ekf_ = std::make_unique<RightInvariantEKF>(model_, q0, dt_, feet, noise);
-        } else {
-            std::array<DiligentKio::FootConfig, 2> feet = {{
-                {"left_foot_link",  0},
-                {"right_foot_link", 1}
-            }};
-            diligent_kio_ = std::make_unique<DiligentKio>(model_, q0, dt_, feet, noise);
-        }
+        std::array<DiligentKio::FootConfig, 2> feet = {{
+            {"left_foot_link",  0},
+            {"right_foot_link", 1}
+        }};
+        diligent_kio_ = std::make_unique<DiligentKio>(model_, q0, dt_, feet, noise);
     }
 }
 
@@ -47,15 +43,15 @@ void StateEstimator::activate(const RobotState& robot_state,
 
     if (filter_ == Filter::RightInvariantEKF) {
         Eigen::VectorXd q_init = pinocchio::neutral(model_);
-        q_init.head<3>()   = robot_state.position;
-        q_init.tail(njnt_) = q_joints;
+        q_init.head<3>()      = robot_state.position;
+        q_init.segment<4>(3)  = robot_state.orientation.coeffs();  // pinocchio: [x,y,z,w]
+        q_init.tail(njnt_)    = q_joints;
 
         ri_ekf_->initialize(q_init, q_joints);
-    } else if (filter_ == Filter::DiligentKio) {
+    } else {
         diligent_kio_->addContact(0, q_joints);
         diligent_kio_->addContact(1, q_joints);
     }
-    // SimpleEKF: no initialisation needed
 }
 
 void StateEstimator::update(RobotState& robot_state,
@@ -65,31 +61,6 @@ void StateEstimator::update(RobotState& robot_state,
                             const Eigen::VectorXd& wbc_q_ddot)
 {
     if (!active_) return;
-
-    if (filter_ == Filter::SimpleEKF) {
-        // Build observation: [base_pos(3), imu_orientation_rotvec(3), joint_pos(njnt_)]
-        Eigen::VectorXd y_actual(6 + njnt_);
-        y_actual.head(3) = robot_state.position;
-        y_actual.segment(3, 3) = rotVecFromQuaternion(robot_state.orientation);
-        for (int i = 0; i < njnt_; ++i) {
-            const std::string& name = model_.names[i + 2];
-            y_actual(6 + i) = robot_state.joint_state.at(name).pos;
-        }
-
-        simple_ekf_->filter(y_actual, wbc_q_ddot);
-        RobotState est = simple_ekf_->getState();
-
-        robot_state.position         = est.position;
-        robot_state.orientation      = est.orientation;
-        robot_state.linear_velocity  = est.linear_velocity;
-        robot_state.angular_velocity = est.angular_velocity;
-        for (int i = 0; i < njnt_; ++i) {
-            const std::string& name = model_.names[i + 2];
-            robot_state.joint_state.at(name).pos = est.joint_state.at(name).pos;
-            robot_state.joint_state.at(name).vel = est.joint_state.at(name).vel;
-        }
-        return;
-    }
 
     Eigen::VectorXd jnt_pos(njnt_);
     Eigen::VectorXd jnt_vel(njnt_);
@@ -103,7 +74,9 @@ void StateEstimator::update(RobotState& robot_state,
         ri_ekf_->filter(gyro, acc, jnt_pos, jnt_vel, contact);
         robot_state.position         = ri_ekf_->getPosition();
         robot_state.orientation      = ri_ekf_->getQuaternion();
-        robot_state.linear_velocity  = ri_ekf_->getVelocity();
+        // EKF tracks velocity in world frame; Pinocchio free-flyer expects body frame.
+        robot_state.linear_velocity  = ri_ekf_->getQuaternion().toRotationMatrix().transpose()
+                                       * ri_ekf_->getVelocity();
         robot_state.angular_velocity = ri_ekf_->getOmegaBody();
     } else {
         diligent_kio_->filter(gyro, acc, jnt_pos, jnt_vel, contact);

@@ -117,6 +117,8 @@ bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state,
                      std::map<std::string, double> &armatures) {
 
+    walking_data_.footstep_plan.clear();
+
     //PRE-ALLOCATIONS FOR LOGS
 
     int64_t max_steps = 50000;

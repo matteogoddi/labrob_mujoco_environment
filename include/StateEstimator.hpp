@@ -13,11 +13,11 @@ namespace labrob {
 
 class StateEstimator {
 public:
-    enum class Filter { SimpleEKF, RightInvariantEKF, DiligentKio };
+    enum class Filter { RightInvariantEKF, DiligentKio };
 
     StateEstimator(const pinocchio::Model& model,
                    double dt,
-                   Filter filter = Filter::SimpleEKF,
+                   Filter filter = Filter::RightInvariantEKF,
                    const NoiseParams& noise = NoiseParams{});
 
     // Call once when ready to activate (e.g. on gamepad A press).
@@ -41,7 +41,6 @@ private:
     int              njnt_;
     Filter           filter_;
 
-    std::unique_ptr<SimpleEKF>         simple_ekf_;
     std::unique_ptr<RightInvariantEKF> ri_ekf_;
     std::unique_ptr<DiligentKio>       diligent_kio_;
 
