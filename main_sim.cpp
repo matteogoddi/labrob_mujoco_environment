@@ -46,7 +46,7 @@ struct ForceEvent {
 // Edit this list to change the disturbance scenario.
 static const std::vector<ForceEvent> force_schedule = {
     // { t_start, t_end, body,              force [N],        torque,    local offset [m] }
-    // {  5.15,  5.2,  "torso_link",           { 0,  0, -100}, {0,0,0}, {0, 0, 0.1} },
+    // {  5.15,  5.5,  "torso_link",           { 0,  0, -80}, {0,0,0}, {0, 0, 0.1} },
     // {  8.0,  18.0,  "left_wrist_yaw_link",  { 3,  0,   0}, {0,0,0}, {0, 0, 0  } },
     // {  8.0,  18.0,  "right_wrist_yaw_link", { 3,  0,   0}, {0,0,0}, {0, 0, 0  } },
 };

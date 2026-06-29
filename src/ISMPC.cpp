@@ -110,7 +110,7 @@ ISMPC::solve(
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
             : static_cast<double>(i) / n_bar;
-        s0 = s; s1 = 1.0 - s;
+        s0 = 1.0 - s; s1 = s;
       } else { // Stopping
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
@@ -161,6 +161,10 @@ ISMPC::solve(
   cost_function_f_.segment(     0, N_).noalias() = beta_x_ * P_.transpose() * (p_ * zmp_pos.x() - mc_x_);
   cost_function_f_.segment(    N_, N_).noalias() = beta_y_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y_);
   cost_function_f_.segment(2 * N_, N_).noalias() = beta_z_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z_);
+
+  const double h_des     = 9.81 / (eta_ * eta_);
+  const double height_err = com_pos.z() - h_des;
+  cost_function_f_.segment(2 * N_, N_).noalias() += alpha_z_ * height_err * p_;
 
   // Solve QP
   qp_solver_ptr_->solve(
