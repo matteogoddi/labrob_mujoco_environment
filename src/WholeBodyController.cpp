@@ -31,7 +31,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 200;
   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 30;
   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();

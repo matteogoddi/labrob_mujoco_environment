@@ -240,7 +240,7 @@ int main(const int argc, const char* argv[]) {
             // Print EKF vs GT comparison every 0.5 s (not 1 kHz)
             {
                 static double last_print = -1.0;
-                if (mj_data_ptr->time - last_print >= 0.5) {
+                if (mj_data_ptr->time - last_print >= 0.5 && false) {
                     last_print = mj_data_ptr->time;
                     const Eigen::Vector3d pos_err = rs_ekf.position - robot_state.position;
                     const Eigen::Vector3d rpy_ekf = rs_ekf.orientation.toRotationMatrix().eulerAngles(2,1,0);

@@ -16,10 +16,6 @@ def _sub(a, b):
     n = min(len(a), len(b))
     return a[:n] - b[:n]
 
-def _sub0(a):
-    """a - a[0], or None if a is None."""
-    return None if a is None else a - a[0]
-
 
 def plot_components(t, data, labels, title, ylabel, path,
                     figsize=(7, 4), loc='best', mean_last_s=5.0):
@@ -323,7 +319,7 @@ if __name__ == '__main__':
         [fr'Des CoM Acc ${l}$' for l in labels_xyz],
         'Desired CoM Acceleration', r'Acceleration [$\mathrm{m/s^2}$]',
         'images/com/references/des_com_acceleration_plot.png')
-    plot_components(t, _sub0(des_com_position),
+    plot_components(t, des_com_position,
         [fr'Des CoM Pos ${l}$' for l in labels_xyz],
         'Desired CoM Position', r'Position [$\mathrm{m}$]',
         'images/com/references/des_com_position_plot.png')
@@ -331,7 +327,7 @@ if __name__ == '__main__':
         [fr'Des CoM Vel ${l}$' for l in labels_xyz],
         'Desired CoM Velocity', r'Velocity [$\mathrm{m/s}$]',
         'images/com/references/des_com_velocity_plot.png')
-    plot_components(t, _sub0(des_zmp_position),
+    plot_components(t, des_zmp_position,
         [fr'Des ZMP Pos ${l}$' for l in labels_xyz],
         'Desired ZMP Position', r'Position [$\mathrm{m}$]',
         'images/com/references/des_zmp_position_plot.png')
@@ -349,7 +345,7 @@ if __name__ == '__main__':
         'CoM Velocity Error', r'Velocity [$\mathrm{m/s}$]',
         'images/com/errors/error_com_velocity_plot.png')
 
-    plot_comparison(t, _sub0(kf_zmp_position), _sub0(des_zmp_position),
+    plot_comparison(t, kf_zmp_position, des_zmp_position,
         [fr'${l}$' for l in labels_xyz], 'ZMP Position', r'[$\mathrm{m}$]',
         'images/com/errors/comparison_zmp_position_plot.png')
     plot_comparison(t, kf_com_position, des_com_position,

@@ -64,8 +64,8 @@ namespace labrob {
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.001, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.001, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
+                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
+                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
 
 
         

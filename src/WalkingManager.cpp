@@ -80,10 +80,15 @@ WalkingManager::com_kf_step(LIPState filtered, LIPState current,
 
     auto xe = kf_axis(com_kf_cov_x_, x_fb, xz, input.x(), x_fb);
     auto ye = kf_axis(com_kf_cov_y_, y_fb, yz, input.y(), y_fb);
-    // z-axis: add gravity term to prediction (z_pred += [0, -9.81*dt, 0])
+    // z-axis: exact 3D-LIP gravity correction.
+    // Continuous model: z'' = eta²(z - z_zmp) - g  =>  effective zmp_z = z_zmp + g/eta².
+    // Exact discrete solution adds (1-ch)*h to position and replaces -g*dt with -eta*sh*h
+    // on velocity (both equivalent to first order, but the position term is O(dt²) non-zero).
     {
+        const double h_lip = 9.81 / eta2;   // g / eta² = nominal CoM height
         Eigen::Vector3d x_pred = A * z_fb + B * input.z();
-        x_pred(1) -= 9.81 * dt;
+        x_pred(0) += (1.0 - ch) * h_lip;   // missing position gravity correction
+        x_pred(1) -= eta * sh * h_lip;      // exact velocity gravity correction
         Eigen::Matrix3d cov_pred = A * com_kf_cov_z_ * A.transpose() + Q_kf;
         Eigen::Matrix3d K = cov_pred * (cov_pred + R_kf).inverse();
         const Eigen::Vector3d& meas = nan_zmp ? z_fb : zz;
@@ -232,6 +237,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // SET JOINT DES AS INITIAL POSE
 
     q_jnt_des_ = q_init.tail(njnt);
+    q_jnt_des_(18) = 0.0;
+    q_jnt_des_(25) = 0.0;
+
 
 
     // CONTROLLER FREQUENCY
@@ -409,7 +417,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     wrist_force_estimator_ptr_ = std::make_unique<labrob::WristForceEstimator>(
         robot_model,
         armatures,
-        50.0,                      // Ki = 50
+        500.0,                      // Ki = 50
         "right_wrist_yaw_link",
         "left_wrist_yaw_link",
         "right_foot_link",
@@ -548,37 +556,42 @@ WalkingManager::update(
     const auto& a_CoM_drift = robot_data.acom[0];
     Eigen::Vector3d v_CoM = J_CoM * qdot;
 
+    if (t_msec_ == 10000 && false) {
+        double target_height = p_CoM.z() - (T_lsole.translation().z() + T_rsole.translation().z())/2 - 0.1;
+        eta2 = 9.81/target_height;
+        ismpc_ptr_->setEta(std::sqrt(eta2));
+        discrete_lip_dynamics_ptr_->setEta(std::sqrt(eta2));
+        discrete_lip_dynamics_ptr_mpc_->setEta(std::sqrt(eta2));
+
+        
+    }
+
     
 
 
     Eigen::Vector3d zmp_3d;
     zmp_3d.setZero();
-    if (t_msec_ > 10000 && false){
+    if (true){
 
 
-        if (total_force.z() > 1e-5) {
 
-            // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
+        // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
 
-            // zmp_3d.x() =
-            //     ( left_foot_force.z()  * T_lsole.translation().x() +
-            //     right_foot_force.z() * T_rsole.translation().x()+
-            //     f_right_wrist.z() * T_lwrist.translation().x() +
-            //     f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
-                
+        // zmp_3d.x() =
+        //     ( left_foot_force.z()  * T_lsole.translation().x() +
+        //     right_foot_force.z() * T_rsole.translation().x()+
+        //     f_right_wrist.z() * T_lwrist.translation().x() +
+        //     f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
+            
 
-            // zmp_3d.y() =
-            //     ( left_foot_force.z()  * T_lsole.translation().y() +
-            //     right_foot_force.z() * T_rsole.translation().y() +
-            //     f_right_wrist.z() * T_lwrist.translation().y() +
-            //     f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
-             
-            zmp_3d = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (left_foot_force + right_foot_force);
-            // ZMP Z must be at contact surface level, not derived from force estimate
-            // zmp_3d.z() = 0.5 * (T_lsole.translation().z() + T_rsole.translation().z());
-            // zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-
-        }
+        // zmp_3d.y() =
+        //     ( left_foot_force.z()  * T_lsole.translation().y() +
+        //     right_foot_force.z() * T_rsole.translation().y() +
+        //     f_right_wrist.z() * T_lwrist.translation().y() +
+        //     f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
+            
+        zmp_3d = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (whole_body_controller_ptr_->getLeftFootWrench().head<3>() + whole_body_controller_ptr_->getRightFootWrench().head<3>());
+        // std::cout << "ZMP ESTIMATED WITH FORCE ESTIMATION: " << zmp_3d.transpose() << "\n" << std::endl;
     } else {
 
         zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
@@ -1268,7 +1281,7 @@ WalkingManager::update(
     }
 
     // Compare observer forces vs WBC predicted forces (every 500ms)
-    if (t_msec_ % 500 == 0) {
+    if (t_msec_ % 500 == 0 && false) {
         const Eigen::Vector3d obs_l  = estimated_force_sole.head<3>();
         const Eigen::Vector3d obs_r  = estimated_force_sole.tail<3>();
         const Eigen::Vector3d wbc_l  = whole_body_controller_ptr_->getLeftFootWrench().head<3>();
