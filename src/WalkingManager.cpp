@@ -101,6 +101,8 @@ WalkingManager::com_kf_step(LIPState filtered, LIPState current,
 std::array<bool,2>
 WalkingManager::get_contact() const
 {
+    if (walking_data_.footstep_plan.empty())
+        return {true, true};
     bool left  = true;
     bool right = true;
     if (walking_data_.getWalkingState() == WalkingState::SingleSupport) {
@@ -162,7 +164,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
+    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf";
 
     pinocchio::Model full_robot_model;
 
@@ -207,11 +209,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     pinocchio::centerOfMass(robot_model, robot_data, q_init, false);
 
 
-    fixed_com_pos = Eigen::Vector3d::Zero();
-    fixed_com_vel = Eigen::Vector3d::Zero();
-    fixed_zmp_pos = Eigen::Vector3d::Zero();
-
-
     // GET INDICES OF INTEREST AND ARMATURES
 
     lsole_idx_ = robot_model.getFrameId("left_foot_link");
@@ -236,6 +233,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     q_jnt_des_ = q_init.tail(njnt);
 
+
     // CONTROLLER FREQUENCY
 
     // TODO: init using node handle.
@@ -250,7 +248,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(true){
+    if(false){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -555,28 +553,39 @@ WalkingManager::update(
 
     Eigen::Vector3d zmp_3d;
     zmp_3d.setZero();
+    if (t_msec_ > 10000 && false){
 
-    if (total_force.z() > 1e-5) {
 
-        // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
+        if (total_force.z() > 1e-5) {
 
-        zmp_3d.x() =
-            ( left_foot_force.z()  * T_lsole.translation().x() +
-            right_foot_force.z() * T_rsole.translation().x()+
-            f_right_wrist.z() * T_lwrist.translation().x() +
-            f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
-            
+            // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
 
-        zmp_3d.y() =
-            ( left_foot_force.z()  * T_lsole.translation().y() +
-            right_foot_force.z() * T_rsole.translation().y() +
-            f_right_wrist.z() * T_lwrist.translation().y() +
-            f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
-            
+            // zmp_3d.x() =
+            //     ( left_foot_force.z()  * T_lsole.translation().x() +
+            //     right_foot_force.z() * T_rsole.translation().x()+
+            //     f_right_wrist.z() * T_lwrist.translation().x() +
+            //     f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
+                
+
+            // zmp_3d.y() =
+            //     ( left_foot_force.z()  * T_lsole.translation().y() +
+            //     right_foot_force.z() * T_rsole.translation().y() +
+            //     f_right_wrist.z() * T_lwrist.translation().y() +
+            //     f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
+             
+            zmp_3d = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (left_foot_force + right_foot_force);
+            // ZMP Z must be at contact surface level, not derived from force estimate
+            // zmp_3d.z() = 0.5 * (T_lsole.translation().z() + T_rsole.translation().z());
+            // zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+
+        }
+    } else {
+
+        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+        // zmp_3d.z() = 0.0;
+        zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+        zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
     }
-    zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-    zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
-    zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
 
 
     walking_data_.updateWalkingState(t_msec_);
@@ -619,6 +628,7 @@ WalkingManager::update(
     auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
+    // kf_LipState = LipState;
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 
@@ -1030,6 +1040,8 @@ WalkingManager::update(
     desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
     desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
 
+    // desired_gait_configuration.qjnt.
+
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
@@ -1132,6 +1144,8 @@ WalkingManager::update(
           << " des_CoM=" << desired_gait_configuration.com.pos.transpose()
           << "\n";
     }
+
+    // desired_gait_configuration = initial_gait_configuration;
 
     auto start_wbc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
@@ -1247,10 +1261,24 @@ WalkingManager::update(
 
     
     // Print estimated wrist forces
-    if ((t_msec_ % 500 == 0) && verbose_coop_ && isObserverActive) 
+    if ((t_msec_ % 500 == 0) && verbose_coop_ && isObserverActive)
     {
         std::cout << "[WRIST FORCE] right: " << estimated_force_wrist.tail<3>().transpose() << "\n";
         std::cout << "[WRIST FORCE] left:  " << estimated_force_wrist.head<3>().transpose()  << "\n";
+    }
+
+    // Compare observer forces vs WBC predicted forces (every 500ms)
+    if (t_msec_ % 500 == 0) {
+        const Eigen::Vector3d obs_l  = estimated_force_sole.head<3>();
+        const Eigen::Vector3d obs_r  = estimated_force_sole.tail<3>();
+        const Eigen::Vector3d wbc_l  = whole_body_controller_ptr_->getLeftFootWrench().head<3>();
+        const Eigen::Vector3d wbc_r  = whole_body_controller_ptr_->getRightFootWrench().head<3>();
+        std::cout << "[FORCE CMP] obs_L=" << obs_l.transpose()
+                  << "  wbc_L=" << wbc_l.transpose()
+                  << "  diff=" << (obs_l - wbc_l).transpose() << "\n";
+        std::cout << "[FORCE CMP] obs_R=" << obs_r.transpose()
+                  << "  wbc_R=" << wbc_r.transpose()
+                  << "  diff=" << (obs_r - wbc_r).transpose() << "\n";
     }
     
     // =========================================================================

@@ -57,22 +57,22 @@ target_link_libraries(WalkingControllerLibrary
   mujoco::mujoco
 )
 
-add_executable(main
-  main.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotInterface.cpp
-)
-target_include_directories(main
-  PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    mujoco::mujoco
-)
-target_link_libraries(main
-  glfw
-  mujoco::mujoco
-  pinocchio::pinocchio
-  WalkingControllerLibrary
-  unitree_sdk2
-)
+#add_executable(main
+#  main.cpp
+#  ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotInterface.cpp
+#)
+#target_include_directories(main
+#  PUBLIC
+#    ${CMAKE_CURRENT_SOURCE_DIR}/include
+#    mujoco::mujoco
+#)
+#target_link_libraries(main
+#  glfw
+#  mujoco::mujoco
+#  pinocchio::pinocchio
+#  WalkingControllerLibrary
+#  unitree_sdk2
+#)
 
 add_executable(main_sim
   main_sim.cpp

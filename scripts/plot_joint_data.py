@@ -408,10 +408,10 @@ if __name__ == '__main__':
         'Error – Right Sole Velocity', r'Velocity [$\mathrm{m/s}$]',
         'images/soles/errors/error_right_sole_velocity_plot.png')
 
-    plot_comparison(t, _sub0(p_lsole), _sub0(p_lsole_des),
+    plot_comparison(t, p_lsole, p_lsole_des,
         [fr'${l}$' for l in labels_xyz], 'Left Sole Position', r'[$\mathrm{m}$]',
         'images/soles/errors/comparison_left_sole_position_plot.png')
-    plot_comparison(t, _sub0(p_rsole), _sub0(p_rsole_des),
+    plot_comparison(t, p_rsole, p_rsole_des,
         [fr'${l}$' for l in labels_xyz], 'Right Sole Position', r'[$\mathrm{m}$]',
         'images/soles/errors/comparison_right_sole_position_plot.png')
     plot_comparison(t, v_lsole, v_lsole_des,

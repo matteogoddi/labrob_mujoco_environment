@@ -20,15 +20,15 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 120.0;
-  params.Kd_motion = 80.0;
+  params.Kp_motion = 180.0;
+  params.Kd_motion = 90.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 100.0;
-  params.Kd_orientation = 80.0;
-  params.Kp_foot = 70.0;
-  params.Kd_foot = 40.0;
-  params.Kp_wrist = 30.0;
+  params.Kd_orientation = 20.0;
+  params.Kp_foot = 150.0;
+  params.Kd_foot = 70.0;
+  params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
@@ -36,7 +36,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 30;
   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120;
-  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 40;
+  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 20;
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;

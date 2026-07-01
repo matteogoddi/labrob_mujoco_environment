@@ -234,8 +234,7 @@ int main(const int argc, const char* argv[]) {
             if (mj_data_ptr->time > 1.0)
                 state_estimator.update(
                     rs_ekf, imu_gyro, imu_acc,
-                    walking_manager.get_contact(),
-                    walking_manager.get_wbc_q_ddot()
+                    walking_manager.get_contact()
                 );
 
             // Print EKF vs GT comparison every 0.5 s (not 1 kHz)

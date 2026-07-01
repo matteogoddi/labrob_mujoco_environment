@@ -2,6 +2,7 @@
 
 #include <array>
 #include <memory>
+#include <string>
 
 #include <Eigen/Core>
 #include <pinocchio/multibody/model.hpp>
@@ -15,6 +16,12 @@ class StateEstimator {
 public:
     enum class Filter { RightInvariantEKF, DiligentKio };
 
+    // Build pinocchio model from URDF internally.
+    StateEstimator(const std::string& urdf_path,
+                   double dt,
+                   Filter filter = Filter::RightInvariantEKF,
+                   const NoiseParams& noise = NoiseParams{});
+
     StateEstimator(const pinocchio::Model& model,
                    double dt,
                    Filter filter = Filter::RightInvariantEKF,
@@ -26,12 +33,10 @@ public:
 
     // One filter step. Updates robot_state base pose/velocity in-place.
     // contact[0]=left, contact[1]=right.
-    // wbc_q_ddot: full (6+njnt) vector from WalkingManager::get_wbc_q_ddot().
     void update(RobotState& robot_state,
                 const Eigen::Vector3d& gyro,
                 const Eigen::Vector3d& acc,
-                const std::array<bool,2>& contact,
-                const Eigen::VectorXd& wbc_q_ddot);
+                const std::array<bool,2>& contact);
 
     bool is_active() const { return active_; }
 

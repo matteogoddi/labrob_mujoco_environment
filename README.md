@@ -156,7 +156,7 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 
 3. Online and offline footstep planner both add element on the list while walking with offline footstep planner (check if true). Online footstep planner should be toggle or find better solution.
 
-4. Online and offline footstep planner seem to start with different foot, logic should work regardless, modify IS-MPC's mapping of mc's center to adapt.
+4. FIXED. Online and offline footstep planner seem to start with different foot, logic should work regardless, modify IS-MPC's mapping of mc's center to adapt.
 
 5. HAC should be turned off if not necessary.
 
@@ -170,13 +170,13 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 
 9. Ideally walking manager should be light, initialization of pointers (see HAC init) should be handled by the pointer definition inside relative .cpp.
 
-10. main.cpp may need a function to handle forces (something like addForce(link_subject_to_force, force_vector, torque_vector, start_time))
+10. FIXED. main.cpp may need a function to handle forces (something like addForce(link_subject_to_force, force_vector, torque_vector, start_time))
 
-11. No file should write on .txt directly, it may add spikes in computation time (see main.cpp).
+11. FIXED. No file should write on .txt directly, it may add spikes in computation time (see main.cpp).
 
-12. Find a working filter and remove StateFiltering file which is redundant once at least a filter is working.
+12. FIXED. Find a working filter and remove StateFiltering file which is redundant once at least a filter is working.
 
-13. It may make sense to create 2 executables, one for simulation and one for experiments.
+13. FIXED. It may make sense to create 2 executables, one for simulation and one for experiments.
 
 14. It may make sense to create 2 different set of parameters for the whole body controller for simulation and experiments.
 

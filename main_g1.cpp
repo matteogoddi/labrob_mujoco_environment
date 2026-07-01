@@ -191,7 +191,7 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 4   ||
+                std::abs(robot_state.joint_state.at(jname).vel) > 3   ||
                 std::abs(joint_command[jname]) > 100.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
@@ -233,18 +233,14 @@ int main(const int argc, const char* argv[]) {
     std::string netInterface;
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
-        if (i + 1 < argc) {
-            netInterface = argv[++i];
-        } else if (a == "--no-viz") {
-            useViz = false;
-        } else if (a == "--walk") {
-            reactiveStanding = false;
-        } else if (a == "--verbose") {
-            verboseCoop = true;
-        } else if (a == "--listen") {
-            experiment_mode = ExperimentMode::Listening;
-        }
+        if      (a == "--no-viz")  useViz = false;
+        else if (a == "--walk")    reactiveStanding = false;
+        else if (a == "--verbose") verboseCoop = true;
+        else if (a == "--listen")  experiment_mode = ExperimentMode::Listening;
+        else if (netInterface.empty()) netInterface = a;
     }
+
+    std::cout << netInterface << std::endl;
 
     if (netInterface.empty()) {
         std::cerr << "Usage: g1 <network_interface> [--no-viz] [--walk] [--verbose]" << std::endl;
@@ -342,8 +338,8 @@ int main(const int argc, const char* argv[]) {
     ri_noise.encoder_noise = 0.01;
 
     labrob::StateEstimator state_estimator(
-        walking_manager.get_robot_model(),
-        1.0 / walking_manager.get_controller_frequency(),
+        "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf",
+        G1_CONTROLLER_DT,
         labrob::StateEstimator::Filter::RightInvariantEKF,
         ri_noise
     );
@@ -443,8 +439,7 @@ int main(const int argc, const char* argv[]) {
             if (isEKFactive && state_estimator.is_active()) {
                 state_estimator.update(
                     robot_state, imu_gyro, imu_acc,
-                    walking_manager.get_contact(),
-                    walking_manager.get_wbc_q_ddot()
+                    walking_manager.get_contact()
                 );
             }
 

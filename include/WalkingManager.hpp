@@ -103,10 +103,6 @@ class WalkingManager {
 
   Eigen::Vector3d p_CoM_init;
 
-  Eigen::Vector3d fixed_com_pos;
-  Eigen::Vector3d fixed_com_vel;
-  Eigen::Vector3d fixed_zmp_pos;
-
   double eta2;
 
   Eigen::VectorXd estimated_force_sole = Eigen::VectorXd::Zero(6);

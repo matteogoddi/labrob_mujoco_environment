@@ -77,7 +77,7 @@ void SportModeStateHandler(const void* msg) {
     std::lock_guard<std::mutex> lock(stateMutex);
     odometry_data.position = Eigen::Vector3d(sportmodestate.position()[0],
         sportmodestate.position()[1],
-        sportmodestate.position()[2]
+        sportmodestate.position()[2] + 0.0338
     );
     odometry_data.velocity = Eigen::Vector3d(sportmodestate.velocity()[0],
         sportmodestate.velocity()[1],

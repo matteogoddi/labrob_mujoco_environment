@@ -72,9 +72,9 @@ class ISMPC{
   // Matrices for cost function:
   Eigen::MatrixXd cost_function_H_;
   Eigen::VectorXd cost_function_f_;
-  double beta_x_ = 1000.0;
-  double beta_y_ = 1000.0;
-  double beta_z_ = 100000.0;
+  double beta_x_ = 10000.0;
+  double beta_y_ = 10000.0;
+  double beta_z_ = 10000.0;
   double alpha_z_ = 0.0;  // CoM height regularization weight
 
 
