@@ -185,10 +185,6 @@ static void handle_gamepad(
     if (gamepad_.B.pressed) {
         if (!bPressed) {
             bPressed = true;
-            /*
-            switchWalkingState = true;
-            std::cout << "[GAMEPAD] B -> Walking state switched." << std::endl;
-            */
             isObserverActive = true;
             std::cout << "[GAMEPAD] B pressed -> Wrench observer activated." << std::endl;
         }
@@ -330,7 +326,7 @@ int main(const int argc, const char* argv[]) {
         std::cout << "Gamepad controls:\n";
         std::cout << "  A -> start EKF (optional, can be done at any time)\n";
         std::cout << "  X -> switch Regulation -> WBC\n";
-        std::cout << "  B -> activate RW-BO\n"; //switch walking state\n";
+        std::cout << "  B -> activate RW-BO\n";
         std::cout << "  Y -> exit\n";
         std::cout << "Starting in Regulation mode. Press Enter to start..." << std::endl;
         std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');

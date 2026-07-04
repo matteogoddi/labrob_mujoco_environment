@@ -42,8 +42,8 @@ namespace labrob {
         W_ext_(Eigen::VectorXd::Zero(24)),
         W_ext_filt_(Eigen::VectorXd::Zero(24)),
         filter_alpha_x_(0.00628), // 0.00628 designed basing on T_step
-        filter_alpha_y_(0.00), // 0.001 for sim
-        filter_alpha_z_(0.001), // 0.001 for sim
+        filter_alpha_y_(0.006), // 0.001 for sim
+        filter_alpha_z_(0.006), // 0.001 for sim
         alpha_matrix_(Eigen::MatrixXd::Zero(24, 24)),
         right_wrist_frame_(right_wrist_frame),
         left_wrist_frame_(left_wrist_frame),
@@ -215,15 +215,6 @@ namespace labrob {
         // Transpose of Coriolis and centrifugal matrix
         Eigen::MatrixXd C_T = C_.transpose();
 
-        
-        /*
-        // Initialize generalized momentum if at first step
-        
-        if (!initialized_) {
-            p0_ = p_;                  // catch the moment at the first step
-            initialized_ = true;
-        }
-        */
 
         // Capture p0_ only once the robot is actually still, so the reference
         // momentum is not frozen during a transient. Until then, hold the
