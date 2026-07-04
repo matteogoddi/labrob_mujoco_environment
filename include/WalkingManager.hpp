@@ -10,6 +10,7 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <DiscreteLIPDynamics.hpp>
+#include <DiscretePLIPDynamics.hpp>
 #include <ISMPC.hpp>
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
@@ -156,6 +157,7 @@ private:
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
+  std::unique_ptr<labrob::DiscretePLIPDynamics> discrete_plip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
@@ -188,7 +190,7 @@ private:
   bool joint_vel_filt_init_ = false;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
-
+  Eigen::Vector3d L_dot_;
   // Logs
   Logger logger_;
 

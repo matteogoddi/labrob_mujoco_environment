@@ -125,6 +125,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "com_position",  "com_velocity",  "zmp_position",
         "kf_com_position",  "kf_com_velocity",  "kf_zmp_position",
         "des_com_position", "des_com_velocity", "des_zmp_position", "des_com_acceleration",
+        "des_com_position_plip", "des_com_velocity_plip", "des_zmp_position_plip", "des_com_acceleration_plip",
         "ef_zmp_position",
         "p_lsole", "p_rsole", "v_lsole", "v_rsole",
         "p_lsole_des", "p_rsole_des", "v_lsole_des", "v_rsole_des",
@@ -136,7 +137,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "left_arm_tau_g", "right_arm_tau_g",
         "initial_generalized_momentum", "generalized_momentum",
         "wbc_force_lsole", "wbc_force_rsole",
-        "wbc_accelerations", "angular_momentum", "input_torque",
+        "wbc_accelerations", "angular_momentum", "input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
         "torso_orientation",     "torso_angular_velocity",
@@ -164,7 +165,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_rev_1_0.urdf";
 
     // Dex3-1 hand urdf
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_dex3.urdf";
+    // std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_dex3.urdf";
+    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf";
 
     pinocchio::Model full_robot_model;
 
@@ -252,7 +254,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(!useRobot && false){
+    if(false){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -309,6 +311,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         p_ZMP
     );
     des_LipState = kf_LipState;
+
+    /*
     ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
         mpc_prediction_horizon_msec,
         mpc_timestep_msec,
@@ -316,7 +320,16 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_length,
         foot_constraint_square_width
     );
+    */
 
+    ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
+        mpc_prediction_horizon_msec,
+        mpc_timestep_msec,
+        std::sqrt(eta2),
+        Eigen::Vector3d::Zero(),            // w = 0
+        foot_constraint_square_length,
+        foot_constraint_square_width
+    );
 
 
     // INIT HAC
@@ -341,8 +354,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     const Eigen::Vector3d r_l_bar = R_F_init.transpose() * (p_lhand_W - p_F_init);
     const Eigen::Vector3d r_r_bar = R_F_init.transpose() * (p_rhand_W - p_F_init);
 
-    // HAND DEBUG
-    // std::cout << r_l_bar << std::endl;
  
     // --- HAC: parameters (follower, no object: f_bar = 0) ---
     // M = 5 kg on all 3 axes
@@ -399,10 +410,23 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         armatures
     );
 
+    
     discrete_lip_dynamics_ptr_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
         0.001 * controller_timestep_msec_
     );
+    
+
+    // Init Perturbed LIP (PLIP) dynamics
+    L_dot_ = Eigen::Vector3d::Zero();           // angular momentum derivative
+
+    discrete_plip_dynamics_ptr_ = std::make_unique<labrob::DiscretePLIPDynamics>(
+        mass, com_target_height, 0.001 * controller_timestep_msec_,
+        Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(),
+        p_rhand_W, p_rhand_W
+    );
+
+    
 
     discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
@@ -413,7 +437,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     wrist_force_estimator_ptr_ = std::make_unique<labrob::WristForceEstimator>(
         robot_model,
         armatures,
-        50.0,                      // Ki = 50
+        500.0,                      // Ki = 500
         "right_wrist_yaw_link",
         "left_wrist_yaw_link",
         "right_foot_link",
@@ -556,29 +580,45 @@ WalkingManager::update(
 
 
     Eigen::Vector3d zmp_3d;
+    Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
     if (total_force.z() > 1e-5) {
 
-        // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
+        // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
         zmp_3d.x() =
             ( left_foot_force.z()  * T_lsole.translation().x() +
             right_foot_force.z() * T_rsole.translation().x()+
             f_right_wrist.z() * T_lwrist.translation().x() +
             f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
-            
+
 
         zmp_3d.y() =
             ( left_foot_force.z()  * T_lsole.translation().y() +
             right_foot_force.z() * T_rsole.translation().y() +
             f_right_wrist.z() * T_lwrist.translation().y() +
             f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
-            
+
+        zmp_3d.z() = zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2; //f^z_tot_wrist/m to be added
+
+        // Residual-based ZMP (from the force estimation above), kept aside since
+        // zmp_3d.x()/y() may be be overwritten by the CoM-drift-based formula below.
+        ef_zmp_3d.x() = zmp_3d.x();
+        ef_zmp_3d.y() = zmp_3d.y();
+        ef_zmp_3d.z() = zmp_3d.z();
+    } else {
+        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+        zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+        zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
     }
+    
+    /*
+    // Overwrite to compare LIP-based vs residual-based ZMP reconstruction in the plot
     zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
     zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
     zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
-
+    */
+    
     
 
     walking_data_.updateWalkingState(t_msec_);
@@ -627,26 +667,6 @@ WalkingManager::update(
     //=========================================================
     // END KF FUNCTION CALL
     //=========================================================
-
-    /*
-    // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
-
-    if (switchWalkingState){
-        double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(robot_data.oMf[imu_idx_].rotation())).z();
-        if (walking_data_.getWalkingState() == WalkingState::Standing) {
-            walking_data_.addSteps(
-                labrob::SE3(T_lsole.rotation(), Eigen::Vector3d(T_lsole.translation().x(), T_lsole.translation().y(), (T_lsole.translation().z() + T_lsole.translation().z())/2)),
-                labrob::SE3(T_rsole.rotation(), Eigen::Vector3d(T_rsole.translation().x(), T_rsole.translation().y(), (T_rsole.translation().z() + T_rsole.translation().z())/2)),
-                yaw_angle
-            );
-            switchWalkingState = false;
-        } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
-            std::cout << "Removing steps" << std::endl;
-            walking_data_.removeSteps();
-            switchWalkingState = false;
-        }
-    }
-    */
 
 
 
@@ -808,7 +828,7 @@ WalkingManager::update(
                         const auto& planned_l = last_ss.getFeetPlacement().getLeftFootConfiguration();
                         const auto& planned_r = last_ss.getFeetPlacement().getRightFootConfiguration();
 
-                        // Support foot: use planned posiition (continuity with committed plan)
+                        // Support foot: use planned position (continuity with committed plan)
                         // Swing foot: use measure (real position from which the swing starts)
                         const labrob::SE3 T_l_anchor = (curr_sf == labrob::Foot::LEFT)
                             ? labrob::SE3(planned_l.R, planned_l.p)
@@ -961,18 +981,55 @@ WalkingManager::update(
         #pragma omp section
         {
             if(isMPCLoopClosed){
-                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
+
+
+                // LIP
+                
+                /*
+                // ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
+                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, Eigen::Vector3d::Zero());
+
+                // CoM reference generation without considering external disturbance
+                
+                
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
                     ismpc_ptr_->getInput()
                 );
+                */
+                
+                
+    
+                // PLIP
+
+                
+                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, Eigen::Vector3d::Zero());
+
+                //std::cout << "w= " << discrete_plip_dynamics_ptr_->get_disturbance().transpose() << std::endl;
+
+                // CoM reference generation while considering external disturbance (overwrite)
+                des_LipState = discrete_plip_dynamics_ptr_->integrate(
+                    kf_LipState,
+                    ismpc_ptr_->getInput(),
+                    f_right_wrist, f_left_wrist,
+                    L_dot_,
+                    T_rwrist.translation(), T_lwrist.translation()
+                );
+                
+                
+                
             }
             else{
-                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
+
+                
+                // ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
+                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState, Eigen::Vector3d::Zero());
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     des_LipState,
                     ismpc_ptr_->getInput()
                 );
+                
+
             }
         }
         #pragma omp section
@@ -1169,7 +1226,7 @@ WalkingManager::update(
 
     if (isObserverActive) 
         {   
-            
+
             // Collect torques
             Eigen::VectorXd wbc_torques(njnt);
             Eigen::VectorXd motor_torques = Eigen::VectorXd::Zero(njnt);
@@ -1202,6 +1259,8 @@ WalkingManager::update(
 
                     // Save for logs
                     torques = torques_filt_;
+
+                    logger_.log("motor_torque_filt", torques_filt_);
                 }
 
             }
@@ -1242,8 +1301,10 @@ WalkingManager::update(
             // Save observations
             estimated_force_sole.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().head<3>();
             estimated_force_sole.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().head<3>();
-            estimated_force_wrist.tail<3>() = wrist_force_estimator_ptr_->getWeightedLeftWristForce();
-            estimated_force_wrist.head<3>() = wrist_force_estimator_ptr_->getWeightedRightWristForce();
+
+            estimated_force_wrist.head<3>() = wrist_force_estimator_ptr_->getWeightedLeftWristForce();
+            estimated_force_wrist.tail<3>() = wrist_force_estimator_ptr_->getWeightedRightWristForce();
+            
             residual_vector_norm = wrist_force_estimator_ptr_->getResidual().norm();
     
             // Update forces for the HAC at next step (1 step causal delay)
@@ -1278,6 +1339,11 @@ WalkingManager::update(
     // NOTE: assuming update() is actually called every controller_timestep_msec_
     //       milliseconds.
     t_msec_ += controller_timestep_msec_;
+
+    // Upadate angular momentum rate
+    L_dot_ = (angular_momentum - prev_angular_momentum_) / (0.001 * controller_timestep_msec_);
+    
+    // Store angular momentum for next iteration
     prev_angular_momentum_ = angular_momentum;
 
     // LOGS
@@ -1293,6 +1359,7 @@ WalkingManager::update(
     logger_.log("zmp_position",  zmp_3d);
     logger_.log("kf_zmp_position",  kf_LipState.zmp_pos_);
     logger_.log("des_zmp_position", des_LipState.zmp_pos_);
+    logger_.log("ef_zmp_position", ef_zmp_3d);
 
     logger_.log("des_com_acceleration", desired_gait_configuration.com.acc);
 

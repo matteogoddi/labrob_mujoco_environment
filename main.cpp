@@ -399,7 +399,7 @@ int main(const int argc, const char* argv[]) {
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::SimpleEKF // BaseEKF
+        labrob::StateEstimator::Filter::RightInvariantEKF // SimpleEKF
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -686,7 +686,6 @@ int main(const int argc, const char* argv[]) {
 
         if (useViz) {
             auto t0 = std::chrono::steady_clock::now();
-            // mujoco_ui_ptr->render();
             // ####################### //
             // Rendering with hand forces
             int lhand_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_wrist_yaw_link");

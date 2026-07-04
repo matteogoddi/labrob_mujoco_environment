@@ -42,7 +42,7 @@ namespace labrob {
         W_ext_(Eigen::VectorXd::Zero(24)),
         W_ext_filt_(Eigen::VectorXd::Zero(24)),
         filter_alpha_x_(0.00628), // 0.00628 designed basing on T_step
-        filter_alpha_y_(0.001), // 0.001 for sim
+        filter_alpha_y_(0.00), // 0.001 for sim
         filter_alpha_z_(0.001), // 0.001 for sim
         alpha_matrix_(Eigen::MatrixXd::Zero(24, 24)),
         right_wrist_frame_(right_wrist_frame),
@@ -64,8 +64,8 @@ namespace labrob {
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.001, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.001, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
+                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
+                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
 
 
         
@@ -95,7 +95,7 @@ namespace labrob {
             "right_wrist_yaw_joint"
         };
 
-        const double arm_weight = 1000.0;       // 800 good trade-off in sim
+        const double arm_weight = 1000.0;       // 1000 is needed for accurate estimation on wrist forces
         for (const auto& jname : arm_joints) {
             if (robot_model_.existJointName(jname)) {
                 pinocchio::JointIndex jid = robot_model_.getJointId(jname);

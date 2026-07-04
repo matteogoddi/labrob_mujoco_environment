@@ -65,6 +65,7 @@ if __name__ == '__main__':
     des_com_acceleration = _load('des_com_acceleration.txt', 3)
 
     input_torque = _load('input_torque.txt', 29)
+    motor_torque_filt = _load('motor_torque_filt.txt', 29)  # real-robot only (EMA-filtered motor torques)
 
     ef_zmp_position = _load('ef_zmp_position.txt', 3)
 
@@ -86,16 +87,19 @@ if __name__ == '__main__':
     estimated_force_rsole = _load('estimated_force_rsole.txt', 3)
     wbc_accelerations = _load('wbc_accelerations.txt', 35)
 
-    ekf_base_position = _load('ekf_base_position.txt', 3)
-    ekf_base_velocity = _load('ekf_base_velocity.txt', 3)
-    ekf_base_orientation = _load('ekf_base_orientation.txt', 4)
-    ekf_base_orientation_rpy = _load('ekf_base_orientation_rpy.txt', 3)
-    ekf_base_angular_velocity = _load('ekf_base_angular_velocity.txt', 3)
-    ekf_imu_orientation = _load('ekf_imu_orientation.txt', 4)
-    ekf_imu_orientation_rpy = _load('ekf_imu_orientation_rpy.txt', 3)
-    ekf_imu_angular_velocity = _load('ekf_imu_angular_velocity.txt', 3)
-    ekf_joint_position = _load('ekf_joint_position.txt', 29)
-    ekf_joint_velocity = _load('ekf_joint_velocity.txt', 29)
+    # C++ side (main.cpp / main_g1.cpp) only logs a single base-frame EKF
+    # estimate ("filtered_base_*"), not a separate IMU-frame one — reuse it
+    # for the ekf_imu_* channels too.
+    ekf_base_position = _load('filtered_base_position.txt', 3)
+    ekf_base_velocity = _load('filtered_base_velocity.txt', 3)
+    ekf_base_orientation = _load('filtered_base_quat.txt', 4)
+    ekf_base_orientation_rpy = _load('filtered_base_rpy.txt', 3)
+    ekf_base_angular_velocity = _load('filtered_base_ang_vel.txt', 3)
+    ekf_imu_orientation = _load('filtered_base_quat.txt', 4)
+    ekf_imu_orientation_rpy = _load('filtered_base_rpy.txt', 3)
+    ekf_imu_angular_velocity = _load('filtered_base_ang_vel.txt', 3)
+    ekf_joint_position = _load('filtered_joint_position.txt', 29)
+    ekf_joint_velocity = _load('filtered_joint_velocity.txt', 29)
 
     torso_orientation = _load('torso_orientation.txt', 3)
     torso_angular_velocity = _load('torso_angular_velocity.txt', 3)
@@ -111,17 +115,21 @@ if __name__ == '__main__':
     execution_time_coop_planner = _load1d('execution_time_coop_planner.txt')
     execution_time_update = _load1d('execution_time_update.txt')
 
-    odometry_base_position = _load('odometry_base_position.txt', 3)
-    odometry_base_velocity = _load('odometry_base_velocity.txt', 3)
-    odometry_imu_orientation = _load('odometry_imu_orientation.txt', 4)
-    odometry_imu_orientation_rpy = _load('odometry_imu_orientation_rpy.txt', 3)
-    measured_joint_position = _load('measured_joint_position.txt', 29)
-    measured_joint_velocity = _load('measured_joint_velocity.txt', 29)
+    odometry_base_position = _load('odom_pos.txt', 3)
+    odometry_base_velocity = _load('odom_vel.txt', 3)
+    odometry_imu_orientation = _load('odom_quat.txt', 4)
+    odometry_imu_orientation_rpy = _load('odom_rpy.txt', 3)
+    measured_joint_position = _load('joint_pos.txt', 29)
+    measured_joint_velocity = _load('joint_vel.txt', 29)
+    # Not currently logged anywhere in the C++ side — stays zero until a
+    # "measured_joint_torque" channel is added to sensor_logger.
     measured_joint_torque = _load('measured_joint_torque.txt', 29)
-    measured_imu_orientation = _load('measured_imu_orientation.txt', 4)
-    measured_imu_orientation_rpy = _load('measured_imu_orientation_rpy.txt', 3)
-    measured_imu_angular_velocity = _load('measured_imu_angular_velocity.txt', 3)
-    measured_imu_accelerometer = _load('measured_imu_accelerometer.txt', 3)
+    # Only main_g1.cpp logs pelvis_quat/pelvis_rpy (main.cpp doesn't) — will
+    # still read as zero when plotting logs produced by main.cpp.
+    measured_imu_orientation = _load('pelvis_quat.txt', 4)
+    measured_imu_orientation_rpy = _load('pelvis_rpy.txt', 3)
+    measured_imu_angular_velocity = _load('pelvis_gyro.txt', 3)
+    measured_imu_accelerometer = _load('pelvis_acc.txt', 3)
         
     # rotate relative positions depending on the actual yaw angle
     for i in range(num_samples - startPlot):

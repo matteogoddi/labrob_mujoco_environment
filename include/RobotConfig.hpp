@@ -4,22 +4,24 @@
 #include <map>
 #include <string>
 
-static constexpr int G1_NUM_MOTOR = 29;
+static constexpr int    G1_NUM_MOTOR          = 29;
+static constexpr int    G1_CONTROLLER_HZ      = 500;
+static constexpr double G1_CONTROLLER_DT      = 1.0 / G1_CONTROLLER_HZ;
 
 const std::array<float, G1_NUM_MOTOR> Kp_cl{
-    400, 400, 400, 700, 400, 300,      // legs
-    400, 400, 400, 700, 400, 300,      // legs
-    400, 400, 150,                     // waist
-    200, 200, 120, 70,  40, 40, 40,   // arms
-    200, 200, 120, 70,  40, 40, 40    // arms
+    0, 0, 0, 0, 0, 0,      // legs
+    0, 0, 0, 0, 0, 0,      // legs
+    0, 0, 0,                     // waist
+    0, 0, 0, 0, 0, 0, 0,   // arms
+    0, 0, 0, 0, 0, 0, 0    // arms
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
-    2, 2, 2, 3, 2, 2,
-    2, 2, 2, 3, 2, 2,
-    2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2
+    10, 10, 10, 15, 8, 8,
+    10, 10, 10, 15, 8, 8,
+    7, 7, 7,
+    15, 15, 15, 15, 10, 10, 10,
+    15, 15, 15, 15, 10, 10, 10
 };
 
 const std::array<float, G1_NUM_MOTOR> Kp_reg{
