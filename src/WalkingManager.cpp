@@ -150,6 +150,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "mpc_zmp_velocity", "con_zmp_velocity",
         "torso_orientation",     "torso_angular_velocity",
         "des_torso_orientation", "des_torso_angular_velocity",
+        "pelvis_orientation",     "pelvis_angular_velocity",
+        "des_pelvis_orientation", "des_pelvis_angular_velocity",
         "hac_eh", "hac_eh_dot"
     }) { logger_.reserve(name, max_steps); }
 
@@ -222,7 +224,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     rwrist_idx_ = robot_model.getFrameId("right_wrist_yaw_link");
     torso_idx_ = robot_model.getFrameId("torso_link");
     pelvis_idx_ = robot_model.getFrameId("pelvis");
-    imu_idx_ = robot_model.getFrameId("imu_in_pelvis");
     const auto& T_lsole_init = robot_data.oMf[lsole_idx_];
     const auto& T_rsole_init = robot_data.oMf[rsole_idx_];
 
@@ -237,8 +238,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // SET JOINT DES AS INITIAL POSE
 
     q_jnt_des_ = q_init.tail(njnt);
-    q_jnt_des_(18) = 0.0;
-    q_jnt_des_(25) = 0.0;
+    // q_jnt_des_(18) = 0.0;
+    // q_jnt_des_(25) = 0.0;
+    // q_jnt_des_(16) = 1.0;
+    // q_jnt_des_(23) = -1.0;
 
 
 
@@ -542,15 +545,6 @@ WalkingManager::update(
     );
     const auto& v_rwrist = J_rwrist * qdot;
 
-    Eigen::MatrixXd J_imu = Eigen::MatrixXd::Zero(6, njnt + 6);
-    pinocchio::getFrameJacobian(
-        robot_model,
-        robot_data,
-        imu_idx_,
-        pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-        J_imu
-    );
-
     const auto& p_CoM = robot_data.com[0];
     const auto& J_CoM = robot_data.Jcom;
     const auto& a_CoM_drift = robot_data.acom[0];
@@ -571,9 +565,7 @@ WalkingManager::update(
 
     Eigen::Vector3d zmp_3d;
     zmp_3d.setZero();
-    if (true){
-
-
+    if (false){
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
 
@@ -651,8 +643,8 @@ WalkingManager::update(
 
     // IF STANDING, ADD STEPS TO START WALKING AGAIN OR IF DOUBLE SUPPORT, REMOVE STEPS TO GO BACK TO STANDING
 
-    if (switchWalkingState){
-        double yaw_angle = rpyFromQuaternion(Eigen::Quaterniond(robot_data.oMf[imu_idx_].rotation())).z();
+    if (switchWalkingState && true){
+        double yaw_angle = rpyFromQuaternion(robot_state.orientation).z();
         if (walking_data_.getWalkingState() == WalkingState::Standing) {
             walking_data_.addSteps(
                 labrob::SE3(T_lsole.rotation(), Eigen::Vector3d(T_lsole.translation().x(), T_lsole.translation().y(), (T_lsole.translation().z() + T_lsole.translation().z())/2)),
@@ -678,10 +670,9 @@ WalkingManager::update(
     std::chrono::time_point<std::chrono::system_clock> end_coop_planner;
     bool coop_planner_ran = false;
 
-    if (!coop_walking_triggered_ &&
-        walking_data_.getWalkingState() == WalkingState::Standing &&
-        hac_ptr_->isEhAboveThreshold())
+    if (switchWalkingState && false)
     {
+        switchWalkingState = false;
         std::cout << "[COOP] Walking triggered at t=" << t_msec_
                 << " eh=" << hac_ptr_->getEh().transpose() << "\n";
         
@@ -1053,8 +1044,6 @@ WalkingManager::update(
     desired_gait_configuration.qjntdot = Eigen::VectorXd::Zero(njnt);
     desired_gait_configuration.qjntddot = Eigen::VectorXd::Zero(njnt);
 
-    // desired_gait_configuration.qjnt.
-
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
@@ -1099,14 +1088,19 @@ WalkingManager::update(
         desired_gait_configuration.lsole.acc << desired_lsole_acc.linear(), desired_lsole_acc.angular();
     }
 
-    // torso task
+    // torso/pelvis task
     double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
     double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
-    
-    desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    const double avg_yaw = (left_foot_yaw + right_foot_yaw) / 2.0;
+
+    // Desired RPY for torso and pelvis: yaw tracks average foot yaw, roll/pitch are offsets (rad)
+    const Eigen::Vector3d des_torso_rpy(0.0, 0.0, avg_yaw);   // roll, pitch, yaw
+    const Eigen::Vector3d des_pelvis_rpy(0.0, 0.0, avg_yaw);  // roll, pitch, yaw
+
+    desired_gait_configuration.torso.pos = Rz(des_torso_rpy.z()) * Ry(des_torso_rpy.y()) * Rx(des_torso_rpy.x());
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.pelvis.pos = Rz(des_pelvis_rpy.z()) * Ry(des_pelvis_rpy.y()) * Rx(des_pelvis_rpy.x());
     desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
@@ -1397,6 +1391,10 @@ WalkingManager::update(
     logger_.log("torso_angular_velocity",     current_gait_configuration.torso.vel.tail<3>());
     logger_.log("des_torso_orientation",      rpyFromQuaternion(Eigen::Quaterniond(desired_gait_configuration.torso.pos)));
     logger_.log("des_torso_angular_velocity", desired_gait_configuration.torso.vel.tail<3>());
+    logger_.log("pelvis_orientation",          rpyFromQuaternion(Eigen::Quaterniond(current_gait_configuration.pelvis.pos)));
+    logger_.log("pelvis_angular_velocity",     current_gait_configuration.pelvis.vel.tail<3>());
+    logger_.log("des_pelvis_orientation",      rpyFromQuaternion(Eigen::Quaterniond(desired_gait_configuration.pelvis.pos)));
+    logger_.log("des_pelvis_angular_velocity", desired_gait_configuration.pelvis.vel.tail<3>());
 
     auto end_update = std::chrono::high_resolution_clock::now();
 
@@ -1422,10 +1420,6 @@ WalkingManager::update(
 void WalkingManager::saveLogs() {
     std::filesystem::remove_all("/tmp/robot_logs");
     std::filesystem::create_directories("/tmp/robot_logs");
-
-    std::ofstream joint_names_file("/tmp/robot_logs/joint_names.txt");
-    for (pinocchio::JointIndex id = 0; id < (pinocchio::JointIndex)njnt; ++id)
-        joint_names_file << robot_model.names[id + 2] << "\n";
 
     logger_.save("/tmp/robot_logs");
 

@@ -1224,6 +1224,11 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
         // giving huge Kalman gain when the foot has any contact bounce or simulation
         // artifact. 0.05 rad (~3°) floor makes the filter robust to small foot tilts.
         Ni.block<3,3>(3,3) += (0.05*0.05) * Eigen::Matrix3d::Identity();
+        // Add translation noise floor: without it the Z (height) channel has near-zero
+        // measurement noise (encoder_noise_deg=0.1° → se2≈3e-6), so any FK height error
+        // (link-length mismatch, joint compliance, encoder offset) maps directly into the
+        // base position estimate. 0.01 m (±1 cm) floor keeps the gain bounded on real hw.
+        Ni.block<3,3>(0,0) += (0.01*0.01) * Eigen::Matrix3d::Identity();
 
         // Accumulate
         const int old = static_cast<int>(z_all.rows());

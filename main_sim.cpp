@@ -1,4 +1,5 @@
 // std
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <string>
@@ -15,6 +16,7 @@
 #include <RobotState.hpp>
 #include <StateEstimator.hpp>
 #include <WalkingManager.hpp>
+#include <utils.hpp>
 
 #include <globals.h>
 #include <RobotConfig.hpp>
@@ -122,6 +124,15 @@ labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
     return rs;
 }
 
+// Orientation of a MuJoCo site, as read from its rotation matrix (site_xmat).
+Eigen::Quaterniond site_orientation(mjData* d, int site_id) {
+    Eigen::Matrix3d R;
+    for (int r = 0; r < 3; ++r)
+        for (int c = 0; c < 3; ++c)
+            R(r, c) = d->site_xmat[9 * site_id + 3 * r + c];
+    return Eigen::Quaterniond(R);
+}
+
 int main(const int argc, const char* argv[]) {
     bool reactiveStanding = false;
     bool verboseCoop      = false;
@@ -145,7 +156,7 @@ int main(const int argc, const char* argv[]) {
 
     // Initial joint configuration
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
-    mj_data_ptr->qpos[2] = 0.728112;
+    mj_data_ptr->qpos[2] = 0.725112;
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
@@ -155,10 +166,12 @@ int main(const int argc, const char* argv[]) {
     }
 
     std::map<std::string, double> armatures;
+    std::vector<std::string> ordered_joint_names(mj_model_ptr->nu);
     for (int i = 0; i < mj_model_ptr->nu; ++i) {
         int joint_id = mj_model_ptr->actuator_trnid[i * 2];
         std::string joint_name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
         armatures[joint_name] = mj_model_ptr->dof_armature[mj_model_ptr->jnt_dofadr[joint_id]];
+        ordered_joint_names[i] = joint_name;
     }
 
     labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
@@ -166,9 +179,14 @@ int main(const int argc, const char* argv[]) {
     walking_manager.setVerboseCoop(verboseCoop);
     walking_manager.init(robot_state, armatures);
 
-    // Pelvis IMU sensor indices (gyro then accelerometer)
-    const int gyro_sid = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
-    const int acc_sid  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
+    // Pelvis + torso IMU sensor indices (gyro then accelerometer) and their
+    // sites, used to read back orientation (quat/rpy) as seen by the IMU.
+    const int gyro_sid       = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-angular-velocity");
+    const int acc_sid        = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-pelvis-linear-acceleration");
+    const int torso_gyro_sid = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-angular-velocity");
+    const int torso_acc_sid  = mj_name2id(mj_model_ptr, mjOBJ_SENSOR, "imu-torso-linear-acceleration");
+    const int pelvis_site_id = mj_name2id(mj_model_ptr, mjOBJ_SITE,   "imu_in_pelvis");
+    const int torso_site_id  = mj_name2id(mj_model_ptr, mjOBJ_SITE,   "imu_in_torso");
 
     labrob::NoiseParams ri_noise;
     ri_noise.gyro_noise    = 0.01;
@@ -210,11 +228,18 @@ int main(const int argc, const char* argv[]) {
             logger_.log("gt_left_wrist_force",  active_force_on("left_wrist_yaw_link",  mj_data_ptr->time, force_schedule));
             logger_.log("gt_right_wrist_force", active_force_on("right_wrist_yaw_link", mj_data_ptr->time, force_schedule));
 
+            Eigen::VectorXd measured_joint_position(mj_model_ptr->nu);
             for (int i = 0; i < mj_model_ptr->nu; ++i) {
                 int jid = mj_model_ptr->actuator_trnid[i * 2];
-                measured_joint_velocity[i] = robot_state.joint_state.at(
-                    mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)).vel;
+                const std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                measured_joint_position[i] = robot_state.joint_state.at(jname).pos;
+                measured_joint_velocity[i] = robot_state.joint_state.at(jname).vel;
             }
+            logger_.log("joint_pos", measured_joint_position);
+            logger_.log("joint_vel", measured_joint_velocity);
+            // The state estimator has no joint-position estimate, only the joint
+            // velocity it takes as input: log that same feedback as "filtered".
+            logger_.log("filtered_joint_velocity", measured_joint_velocity);
 
             labrob::JointCommand joint_command;
             for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -222,11 +247,34 @@ int main(const int argc, const char* argv[]) {
                 joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
             }
 
-            // Read pelvis IMU from MuJoCo sensor data.
+            // Read pelvis + torso IMU from MuJoCo sensor data.
             // MuJoCo's accelerometer already outputs specific force (like a real IMU):
             // at rest it reads {0, 0, 9.81} m/s² — no gravity correction needed.
             const Eigen::Vector3d imu_gyro(mj_data_ptr->sensordata + mj_model_ptr->sensor_adr[gyro_sid]);
             const Eigen::Vector3d imu_acc(mj_data_ptr->sensordata  + mj_model_ptr->sensor_adr[acc_sid]);
+            const Eigen::Vector3d torso_imu_gyro(mj_data_ptr->sensordata + mj_model_ptr->sensor_adr[torso_gyro_sid]);
+            const Eigen::Vector3d torso_imu_acc(mj_data_ptr->sensordata  + mj_model_ptr->sensor_adr[torso_acc_sid]);
+
+            // Odometry: ground-truth base pose/velocity from the robot state (no
+            // separate odometry estimator exists in simulation).
+            logger_.log("odom_pos",  robot_state.position);
+            logger_.log("odom_vel",  robot_state.linear_velocity);
+            logger_.log("odom_quat", Eigen::Vector4d(
+                robot_state.orientation.w(), robot_state.orientation.x(),
+                robot_state.orientation.y(), robot_state.orientation.z()));
+            logger_.log("odom_rpy",  labrob::rpyFromQuaternion(robot_state.orientation));
+
+            // IMU orientation, read from the pelvis/torso sites as seen by MuJoCo.
+            const Eigen::Quaterniond pelvis_quat = site_orientation(mj_data_ptr, pelvis_site_id);
+            const Eigen::Quaterniond torso_quat  = site_orientation(mj_data_ptr, torso_site_id);
+            logger_.log("pelvis_gyro", imu_gyro);
+            logger_.log("pelvis_acc",  imu_acc);
+            logger_.log("pelvis_quat", Eigen::Vector4d(pelvis_quat.w(), pelvis_quat.x(), pelvis_quat.y(), pelvis_quat.z()));
+            logger_.log("pelvis_rpy",  labrob::rpyFromQuaternion(pelvis_quat));
+            logger_.log("torso_gyro",  torso_imu_gyro);
+            logger_.log("torso_acc",   torso_imu_acc);
+            logger_.log("torso_quat",  Eigen::Vector4d(torso_quat.w(), torso_quat.x(), torso_quat.y(), torso_quat.z()));
+            logger_.log("torso_rpy",   labrob::rpyFromQuaternion(torso_quat));
 
             // Always run one EKF step so the filter stays warm.
             // Before 5 s we propagate on a throw-away copy; after 5 s we update robot_state.
@@ -256,7 +304,7 @@ int main(const int argc, const char* argv[]) {
                 }
             }
             static bool ekf_took_over = false;
-            if (mj_data_ptr->time >= 3.0) {
+            if (mj_data_ptr->time >= 3.0 && false) {
                 robot_state = rs_ekf;
                 if (!ekf_took_over) {
                     ekf_took_over = true;
@@ -309,6 +357,11 @@ int main(const int argc, const char* argv[]) {
         if (input == "y" || input == "Y" || input == "yes") {
             walking_manager.saveLogs();
             logger_.save("/tmp/robot_logs");
+
+            std::ofstream joint_names_file("/tmp/robot_logs/joint_names.txt");
+            for (const auto& name : ordered_joint_names)
+                joint_names_file << name << "\n";
+
             std::cout << "Logs saved." << std::endl;
         }
     }

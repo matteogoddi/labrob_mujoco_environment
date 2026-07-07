@@ -62,9 +62,14 @@ void signalHandler(int signum) {
     g_signal_received = signum;
 }
 
-static void save_experiment_logs() {
+static void save_experiment_logs(const std::vector<std::string>& ordered_joint_names) {
     walking_manager.saveLogs();
     sensor_logger.save("/tmp/robot_logs");
+
+    std::ofstream joint_names_file("/tmp/robot_logs/joint_names.txt");
+    for (const auto& name : ordered_joint_names)
+        joint_names_file << name << "\n";
+
     std::cout << "Logs saved." << std::endl;
 
     std::string experiment_folder;
@@ -191,7 +196,7 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 3   ||
+                std::abs(robot_state.joint_state.at(jname).vel) > 5   ||
                 std::abs(joint_command[jname]) > 100.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
@@ -239,8 +244,6 @@ int main(const int argc, const char* argv[]) {
         else if (a == "--listen")  experiment_mode = ExperimentMode::Listening;
         else if (netInterface.empty()) netInterface = a;
     }
-
-    std::cout << netInterface << std::endl;
 
     if (netInterface.empty()) {
         std::cerr << "Usage: g1 <network_interface> [--no-viz] [--walk] [--verbose]" << std::endl;
@@ -312,10 +315,12 @@ int main(const int argc, const char* argv[]) {
     }
 
     std::map<std::string, double> armatures;
+    std::vector<std::string> ordered_joint_names(mj_model_ptr->nu);
     for (int i = 0; i < mj_model_ptr->nu; ++i) {
         int joint_id = mj_model_ptr->actuator_trnid[i * 2];
         std::string joint_name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
         armatures[joint_name] = mj_model_ptr->dof_armature[mj_model_ptr->jnt_dofadr[joint_id]];
+        ordered_joint_names[i] = joint_name;
     }
 
     labrob::RobotState robot_state;
@@ -331,11 +336,11 @@ int main(const int argc, const char* argv[]) {
 
     labrob::NoiseParams ri_noise;
     ri_noise.gyro_noise    = 0.01;
-    ri_noise.accel_noise   = 0.1;
+    ri_noise.accel_noise   = 0.01;
     ri_noise.contact_noise = 0.01;
-    ri_noise.gyro_bias_rw  = 0.0001;
+    ri_noise.gyro_bias_rw  = 0.001;
     ri_noise.accel_bias_rw = 0.001;
-    ri_noise.encoder_noise = 0.01;
+    ri_noise.encoder_noise = 0.001;
 
     labrob::StateEstimator state_estimator(
         "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf",
@@ -450,24 +455,21 @@ int main(const int argc, const char* argv[]) {
                 isMPCLoopClosed = true;
             }
 
-            sensor_logger.log("filtered_base_position", robot_state.position);
-            sensor_logger.log("filtered_base_velocity", robot_state.linear_velocity);
-            sensor_logger.log("filtered_base_quat",
-                Eigen::Vector4d(
-                    robot_state.orientation.w(), robot_state.orientation.x(),
-                    robot_state.orientation.y(), robot_state.orientation.z()));
-            sensor_logger.log("filtered_base_rpy",     labrob::rpyFromQuaternion(robot_state.orientation));
-            sensor_logger.log("filtered_base_ang_vel", robot_state.angular_velocity);
             {
-                Eigen::VectorXd filt_jpos(mj_model_ptr->nu);
+                sensor_logger.log("filtered_base_position", robot_state.position);
+                sensor_logger.log("filtered_base_velocity", robot_state.linear_velocity);
+                sensor_logger.log("filtered_base_quat",
+                    Eigen::Vector4d(
+                        robot_state.orientation.w(), robot_state.orientation.x(),
+                        robot_state.orientation.y(), robot_state.orientation.z()));
+                sensor_logger.log("filtered_base_rpy",     labrob::rpyFromQuaternion(robot_state.orientation));
+                sensor_logger.log("filtered_base_ang_vel", robot_state.angular_velocity);
                 Eigen::VectorXd filt_jvel(mj_model_ptr->nu);
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     int jid = mj_model_ptr->actuator_trnid[i * 2];
                     std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                    filt_jpos[i] = robot_state.joint_state.at(jname).pos;
                     filt_jvel[i] = robot_state.joint_state.at(jname).vel;
                 }
-                sensor_logger.log("filtered_joint_position", filt_jpos);
                 sensor_logger.log("filtered_joint_velocity", filt_jvel);
             }
 
@@ -554,7 +556,7 @@ int main(const int argc, const char* argv[]) {
         std::string input;
         std::getline(std::cin, input);
         if (input == "y" || input == "Y" || input == "yes")
-            save_experiment_logs();
+            save_experiment_logs(ordered_joint_names);
         else
             std::cout << "Logs not saved." << std::endl;
     }

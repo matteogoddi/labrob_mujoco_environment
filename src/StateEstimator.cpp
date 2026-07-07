@@ -61,11 +61,40 @@ void StateEstimator::activate(const RobotState& robot_state,
         q_joints_pin(i) = robot_state.joint_state.at(model_.names[i + 2]).pos;
 
     if (filter_ == Filter::RightInvariantEKF) {
-        // neutral() gives position {0,0,0} and identity quaternion {0,0,0,1}.
-        // Override position to nominal standing height; keep identity orientation.
+        // Reconstruct initial base pose from FK + known contact geometry:
+        // both feet are at Z=0 with RPY=0 at t=0, so T_world_foot = I.
+        // T_world_base = T_world_foot * FK(q_joints)^{-1} = FK^{-1}
+        //   R_world_base = R_foot_in_base^T
+        //   p_world_base = -R_world_base * p_foot_in_base   (Z: foot at 0)
+        pinocchio::Data data_init(model_);
+        Eigen::VectorXd q_fk = pinocchio::neutral(model_);
+        q_fk.tail(njnt_) = q_joints_pin;
+        pinocchio::forwardKinematics(model_, data_init, q_fk);
+        pinocchio::updateFramePlacements(model_, data_init);
+
+        auto fk_foot = [&](const std::string& frame) -> std::pair<Eigen::Matrix3d, Eigen::Vector3d> {
+            const auto& T = data_init.oMf[model_.getFrameId(frame)];
+            Eigen::Matrix3d R_wb = T.rotation().transpose();
+            Eigen::Vector3d p_wb = -R_wb * T.translation();  // T_world_foot.t=0
+            return {R_wb, p_wb};
+        };
+
+        auto [R_l, p_l] = fk_foot("left_foot_link");
+        auto [R_r, p_r] = fk_foot("right_foot_link");
+
+        // Average height from both contacts; project averaged rotation to SO(3)
+        Eigen::Vector3d p_wb(0.0, 0.0, 0.5 * (p_l.z() + p_r.z()));
+        Eigen::Matrix3d R_avg = 0.5 * (R_l + R_r);
+        Eigen::JacobiSVD<Eigen::Matrix3d> svd(R_avg, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Matrix3d R_wb = svd.matrixU()
+                             * Eigen::DiagonalMatrix<double,3>(1, 1, (svd.matrixU()*svd.matrixV().transpose()).determinant())
+                             * svd.matrixV().transpose();
+
+        Eigen::Quaterniond q_wb(R_wb);
         Eigen::VectorXd q_init = pinocchio::neutral(model_);
-        q_init(2)          = 0.725112;   // nominal standing height [m]
-        q_init.tail(njnt_) = q_joints_pin;
+        q_init.head<3>()       = p_wb;
+        q_init.segment<4>(3)   = q_wb.coeffs();   // (x,y,z,w)
+        q_init.tail(njnt_)     = q_joints_pin;
 
         ri_ekf_->initialize(q_init, q_joints_pin);
     } else {
