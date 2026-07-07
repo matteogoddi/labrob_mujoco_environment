@@ -989,32 +989,51 @@ WalkingManager::update(
                 // ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, Eigen::Vector3d::Zero());
 
+                
                 // CoM reference generation without considering external disturbance
-                
-                
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
-                    ismpc_ptr_->getInput()
+                    ismpc_ptr_->getInput(),
+                    Eigen::Vector3d::Zero()
                 );
                 */
                 
                 
     
                 // PLIP
-
                 
-                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, Eigen::Vector3d::Zero());
+                
+                // Extract disturbance term from wrist forces and angular momentum derivative
+                discrete_plip_dynamics_ptr_->updateDisturbanceTerm(kf_LipState,
+                    f_right_wrist, f_left_wrist,
+                    Eigen::Vector3d::Zero(),            //L_dot_ --> should be strongly filtered
+                    T_rwrist.translation(), T_lwrist.translation()
+                );
 
-                //std::cout << "w= " << discrete_plip_dynamics_ptr_->get_disturbance().transpose() << std::endl;
+                Eigen::Vector3d current_disturbance; 
+
+                // Cut off transient
+                if (t_msec_ < 2000) {
+                    current_disturbance.x() = 0.0;
+                    current_disturbance.y() = 0.0;
+                    current_disturbance.z() = -9.81;
+                } else {
+                    current_disturbance = discrete_plip_dynamics_ptr_->get_disturbance();
+                }
+
+
+                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, current_disturbance);
+
+                // Log disturbance term right before it enters the PLIP integration
+                logger_.log("current_disturbance", current_disturbance);
 
                 // CoM reference generation while considering external disturbance (overwrite)
                 des_LipState = discrete_plip_dynamics_ptr_->integrate(
                     kf_LipState,
                     ismpc_ptr_->getInput(),
-                    f_right_wrist, f_left_wrist,
-                    L_dot_,
-                    T_rwrist.translation(), T_lwrist.translation()
+                    current_disturbance
                 );
+                
                 
                 
                 

@@ -17,13 +17,16 @@ class DiscretePLIPDynamics {
   LIPState integrate(
       const LIPState& lip_state,
       const PLIPControlInput& zmp_vel,
-      const Eigen::Vector3d& f_right, const Eigen::Vector3d& f_left,
-      const Eigen::Vector3d& L_dot,
-      const Eigen::Vector3d& p_right, const Eigen::Vector3d& p_left
+     const Eigen::Vector3d& w
   );
 
   void setEta2();
   double getEta() const { return std::sqrt(eta2_); }
+
+  void updateDisturbanceTerm(const LIPState& lip_state,
+    const Eigen::Vector3d& f_right, const Eigen::Vector3d& f_left,
+    const Eigen::Vector3d& L_dot,
+    const Eigen::Vector3d& p_right, const Eigen::Vector3d& p_left);
 
   Eigen::Vector3d& get_disturbance() { return w_;}
 
@@ -35,10 +38,7 @@ class DiscretePLIPDynamics {
       int dim
   );
   
-  Eigen::Vector3d updateDisturbanceTerm(const LIPState& lip_state,
-    const Eigen::Vector3d& f_right, const Eigen::Vector3d& f_left,
-    const Eigen::Vector3d& L_dot,
-    const Eigen::Vector3d& p_right, const Eigen::Vector3d& p_left);
+  
 
   double timestep_;
 

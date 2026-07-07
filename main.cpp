@@ -559,8 +559,8 @@ int main(const int argc, const char* argv[]) {
                 f_l_test = Eigen::Vector3d::Zero();
                 f_r_test = Eigen::Vector3d::Zero();
                 if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 18.0) {
-                    f_l_test = Eigen::Vector3d(3.0, 0.0, 0.0);  // 3 N along X
-                    f_r_test = Eigen::Vector3d(3.0, 0.0, 0.0);
+                    f_l_test = Eigen::Vector3d(7.0, 0.0, 0.0);  // 3 N along X
+                    f_r_test = Eigen::Vector3d(7.0, 0.0, 0.0);
                 }
 
                 // Apply forces physically in MuJoCo

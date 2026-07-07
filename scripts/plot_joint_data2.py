@@ -63,6 +63,7 @@ if __name__ == '__main__':
     des_com_velocity = _load('des_com_velocity.txt', 3)
     des_zmp_position = _load('des_zmp_position.txt', 3)
     des_com_acceleration = _load('des_com_acceleration.txt', 3)
+    current_disturbance = _load('current_disturbance.txt', 3)
 
     input_torque = _load('input_torque.txt', 29)
     motor_torque_filt = _load('motor_torque_filt.txt', 29)  # real-robot only (EMA-filtered motor torques)
@@ -515,6 +516,40 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig(
         "images/com/references/des_com_acceleration_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, current_disturbance[:, 0],
+        label=r'Disturbance $x$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, current_disturbance[:, 1],
+        label=r'Disturbance $y$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, current_disturbance[:, 2],
+        label=r'Disturbance $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Disturbance [$\mathrm{m/s^2}$]', fontsize=11)
+    ax.set_title('PLIP Disturbance Term (before integration)', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/com/references/current_disturbance_plot.png",
         dpi=300,
         bbox_inches='tight'
     )

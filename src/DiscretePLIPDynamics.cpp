@@ -51,14 +51,8 @@ LIPState
 DiscretePLIPDynamics::integrate(
     const LIPState& lip_state,
     const PLIPControlInput& zmp_vel,
-    const Eigen::Vector3d& f_right, const Eigen::Vector3d& f_left,
-    const Eigen::Vector3d& L_dot,
-    const Eigen::Vector3d& p_right, const Eigen::Vector3d& p_left
+    const Eigen::Vector3d& w_xyz
 ) {
-
-  // Read disturbance
-  Eigen::Vector3d w_xyz = updateDisturbanceTerm(lip_state, f_right, f_left, L_dot, p_right, p_left);
-
   // Update eta^2 and time-varying matrix A
   setEta2();
 
@@ -101,7 +95,7 @@ DiscretePLIPDynamics::updateState(
 
 
 // Update disturbance term
-Eigen::Vector3d
+void
 DiscretePLIPDynamics::updateDisturbanceTerm(const LIPState& lip_state,
   const Eigen::Vector3d& f_right, const Eigen::Vector3d& f_left,
   const Eigen::Vector3d& L_dot,
@@ -150,8 +144,6 @@ DiscretePLIPDynamics::updateDisturbanceTerm(const LIPState& lip_state,
 
   // Update member variable
   w_ = w;
-
-  return w;
 }
 
 
