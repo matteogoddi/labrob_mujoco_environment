@@ -1,17 +1,16 @@
-#include <ISMPC.hpp>
+#include <hrp4_locomotion/ISMPC.hpp>
 #include <chrono> 
 
 namespace labrob {
 
-
 ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
-    double eta,
+    double omega,
     double foot_constraint_square_length,
     double foot_constraint_square_width
 ) : mpc_timestep_msec_(mpc_timestep_msec),
-    eta_(eta),
+    omega_(omega),
     foot_constraint_square_length_(foot_constraint_square_length),
     foot_constraint_square_width_(foot_constraint_square_width),
     input_(Eigen::Vector3d::Zero()) {
@@ -23,10 +22,12 @@ ISMPC::ISMPC(
   num_inequality_constraints_ = num_variables_;
 
   N_ = prediction_horizon_msec / mpc_timestep_msec;
-  mpc_timestep_ = mpc_timestep;
 
-  qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      num_variables_, num_equality_constraints_, num_inequality_constraints_);
+  qp_solver_ptr_ = std::make_shared<labrob::qpsolvers::QPSolverEigenWrapper<double>>(
+      std::make_shared<labrob::qpsolvers::HPIPMQPSolver>(
+          num_variables_, num_equality_constraints_, num_inequality_constraints_
+      )
+  );
 
   // Setup matrices size:
   cost_function_H_ = Eigen::MatrixXd(num_variables_, num_variables_);
@@ -52,15 +53,6 @@ ISMPC::ISMPC(
   A_zmp_.block(     0,      0, N_, N_) = P_;
   A_zmp_.block(    N_,     N_, N_, N_) = P_;
   A_zmp_.block(2 * N_, 2 * N_, N_, N_) = P_;
-
-  zDotOptimalX = Eigen::VectorXd::Zero(N_);
-  zDotOptimalY = Eigen::VectorXd::Zero(N_);
-  zDotOptimalZ = Eigen::VectorXd::Zero(N_);
-
-  mc_x_    = Eigen::VectorXd::Zero(N_);
-  mc_y_    = Eigen::VectorXd::Zero(N_);
-  mc_z_    = Eigen::VectorXd::Zero(N_);
-  b_decay_ = Eigen::VectorXd::Zero(N_);
 }
 
 void
@@ -70,97 +62,120 @@ ISMPC::solve(
     const labrob::LIPState& state
 ) {
 
-  // express footstep planner inside walking data with support foot as reference frame
+  auto start_time = std::chrono::system_clock::now(); 
 
-  const Eigen::Vector3d com_pos = state.com_pos_;
-  const Eigen::Vector3d zmp_pos = state.zmp_pos_;
+  double mpc_timestep = 0.001 * static_cast<double>(mpc_timestep_msec_);
 
-  // Footstep plan → ZMP centroid reference mc_x/y/z (no allocations)
+  //const auto& feet_placement = walking_data.footstep_plan.front().getFeetPlacement();
+  //Eigen::Vector3d p_support = feet_placement.getSupportFootConfiguration().p;
+  //Eigen::Vector3d p_swing = feet_placement.getSwingFootConfiguration().p;
+
+  Eigen::VectorXd mc_x(N_);
+  Eigen::VectorXd mc_y(N_);
+  Eigen::VectorXd mc_z(N_);
+
+  // Set vector n_k to [d_0 / delta_mpc, d_1 / delta_mpc, d_2 / delta_mpc, ...],
+  // where d_k is the duration of footstep plan element f_k, n_ini is the number
+  // of MPC iterations already executed for current footstep plan element,
+  // delta_mpc is the sampling time of the MPC.
   std::vector<int> n_k;
-  n_k.reserve(walking_data.footstep_plan.size());
-  for (const auto& elem : walking_data.footstep_plan)
-    n_k.push_back(elem.getDuration() / mpc_timestep_msec_);
-
-  const int n_ini = (time - walking_data.t0) / mpc_timestep_msec_;
+  for (const auto& footstep_plan_elem : walking_data.footstep_plan) {
+    n_k.push_back(footstep_plan_elem.getDuration() / mpc_timestep_msec_);
+  }
+  int n_ini = (time - walking_data.t0) / mpc_timestep_msec_;
 
   int n = 0, k = 0;
   while (n < N_) {
-    const auto& elem         = walking_data.footstep_plan[k];
-    const auto& walking_state = elem.getWalkingState();
+    const auto& footstep_plan_elem = walking_data.footstep_plan[k];
+    const auto& walking_state = walking_data.footstep_plan[k].getWalkingState();
     int n_bar = n_k[k];
     if (k == 0) n_bar -= n_ini;
     if (n + n_bar >= N_) n_bar = N_ - n;
-
-    const Eigen::Vector3d p_sup  = elem.getFeetPlacement().getSupportFootConfiguration().p;
-    const Eigen::Vector3d p_swg  = elem.getFeetPlacement().getSwingFootConfiguration().p;
-
-    for (int i = 0; i < n_bar; ++i) {
-      double s0, s1;
-      if (walking_state == labrob::WalkingState::PostureRegulation ||
-          walking_state == labrob::WalkingState::Standing) {
-        s0 = 0.5; s1 = 0.5;
-      } else if (walking_state == labrob::WalkingState::SingleSupport) {
-        s0 = 1.0; s1 = 0.0;
-      } else if (walking_state == labrob::WalkingState::Starting) {
-        const double s = (k == 0)
-            ? static_cast<double>(n_ini + i) / n_k[0]
-            : static_cast<double>(i) / n_bar;
-        s0 = 0.5 + 0.5 * s; s1 = 0.5 - 0.5 * s;
-      } else if (walking_state == labrob::WalkingState::DoubleSupport) {
-        const double s = (k == 0)
-            ? static_cast<double>(n_ini + i) / n_k[0]
-            : static_cast<double>(i) / n_bar;
-        s0 = 1.0 - s; s1 = s;
-      } else { // Stopping
-        const double s = (k == 0)
-            ? static_cast<double>(n_ini + i) / n_k[0]
-            : static_cast<double>(i) / n_bar;
-        s0 = 1.0 - 0.5 * s; s1 = 0.5 * s;
+    Eigen::MatrixXd mapping(n_bar, 2);
+    if (walking_state == labrob::WalkingState::PostureRegulation ||
+        walking_state == labrob::WalkingState::Standing) {
+      for (int i = 0; i < mapping.rows(); ++i) {
+        mapping(i, 0) = 0.5;
+        mapping(i, 1) = 0.5;
       }
-      mc_x_(n + i) = s0 * p_sup.x() + s1 * p_swg.x();
-      mc_y_(n + i) = s0 * p_sup.y() + s1 * p_swg.y();
-      mc_z_(n + i) = s0 * p_sup.z() + s1 * p_swg.z();
+    } else if (walking_state == labrob::WalkingState::Starting) {
+      for (int i = 0; i < mapping.rows(); ++i) {
+        double s;
+        if (k == 0) s = static_cast<double>(n_ini + i) / n_k[0];
+        else s = static_cast<double>(i) / mapping.rows();
+        mapping(i, 0) = 0.5 + 0.5 * s;
+        mapping(i, 1) = 0.5 - 0.5 * s;
+      }
+    } else if (walking_state == labrob::WalkingState::SingleSupport) {
+      for (int i = 0; i < mapping.rows(); ++i) {
+        mapping(i, 0) = 1.0;
+        mapping(i, 1) = 0.0;
+      }
+    } else if (walking_state == labrob::WalkingState::DoubleSupport) {
+      for (int i = 0; i < mapping.rows(); ++i) {
+        double s;
+        if (k == 0) s = static_cast<double>(n_ini + i) / n_k[0];
+        else s = static_cast<double>(i) / mapping.rows();
+        mapping(i, 0) = (1.0 - s);
+        mapping(i, 1) = s;
+      }
+    } else if (walking_state == labrob::WalkingState::Stopping) {
+      for (int i = 0; i < mapping.rows(); ++i) {
+        double s;
+        if (k == 0) s = static_cast<double>(n_ini + i) / n_k[0];
+        else s = static_cast<double>(i) / mapping.rows();
+        mapping(i, 0) = 1.0 - 0.5 * s;
+        mapping(i, 1) = 0.5 * s;
+      }
     }
+    const auto& p_support = footstep_plan_elem.getFeetPlacement().getSupportFootConfiguration().p;
+    const auto& p_swing = footstep_plan_elem.getFeetPlacement().getSwingFootConfiguration().p;
+    Eigen::VectorXd varying_x = mapping * Eigen::Vector2d(p_support.x(), p_swing.x());
+    Eigen::VectorXd varying_y = mapping * Eigen::Vector2d(p_support.y(), p_swing.y());
+    Eigen::VectorXd varying_z = mapping * Eigen::Vector2d(p_support.z(), p_swing.z());
+    mc_x.segment(n, varying_x.rows()) = varying_x;
+    mc_y.segment(n, varying_y.rows()) = varying_y;
+    mc_z.segment(n, varying_z.rows()) = varying_z;
+
+    // // print mc_x, mc_y and mc_z
+    // std::cerr << "mc_x: " << mc_x.transpose() << std::endl;
+    // std::cerr << "mc_y: " << mc_y.transpose() << std::endl;
+    // std::cerr << "mc_z: " << mc_z.transpose() << std::endl;
+
     n += n_bar;
     ++k;
   }
 
-  const double half_len = foot_constraint_square_length_ / 2.0;
-  const double half_wid = foot_constraint_square_width_  / 2.0;
-  b_zmp_min_.head(N_) = mc_x_.array() - (half_len + zmp_pos(0));
-  b_zmp_min_.segment(N_, N_) = mc_y_.array() - (half_wid + zmp_pos(1));
-  b_zmp_min_.tail(N_) = mc_z_.array() - (half_len + zmp_pos(2));
-  b_zmp_max_.head(N_) = mc_x_.array() + (half_len - zmp_pos(0));
-  b_zmp_max_.segment(N_, N_) = mc_y_.array() + (half_wid - zmp_pos(1));
-  b_zmp_max_.tail(N_) = mc_z_.array() + (half_len - zmp_pos(2));
+  b_zmp_min_ << mc_x - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(0)),
+                mc_y - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 + state.zmp_pos_(1)),
+                mc_z - Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 + state.zmp_pos_(2));
+  b_zmp_max_ << mc_x + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(0)),
+                mc_y + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_width_ / 2.0 - state.zmp_pos_(1)),
+                mc_z + Eigen::MatrixXd::Constant(N_, 1, foot_constraint_square_length_ / 2.0 - state.zmp_pos_(2));
 
-  // Geometric decay b_decay_(i) = exp(-eta*dt)^i (no pow/exp per iteration)
+  Eigen::VectorXd b(N_);
   A_eq_.setZero();
-  {
-    double acc = 1.0;
-    const double base = std::exp(-eta_ * mpc_timestep_);
-    for (int i = 0; i < N_; ++i, acc *= base)
-      b_decay_(i) = acc;
+
+  for(int i = 0; i < N_; ++i){
+    b(i) = std::pow(std::exp(-omega_ * mpc_timestep),i);
   }
 
-  const double aeq_scale = (1.0 / eta_) * (1.0 - std::exp(-eta_ * mpc_timestep_));
-  A_eq_.block(0,      0, 1, N_) = aeq_scale * b_decay_.transpose();
-  A_eq_.block(1,     N_, 1, N_) = aeq_scale * b_decay_.transpose();
-  A_eq_.block(2, 2 * N_, 1, N_) = aeq_scale * b_decay_.transpose();
+  A_eq_.block(0,      0, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
+  A_eq_.block(1,     N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
+  A_eq_.block(2, 2 * N_, 1, N_) = (1.0 / omega_) * (1.0 - std::exp(-omega_ * mpc_timestep))*b.transpose();
 
-  b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0),
-      com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1),
-      com_pos(2) + state.com_vel_(2) / eta_ - (zmp_pos(2) + 9.81 / std::pow(eta_, 2.0));
+  b_eq_ << state.com_pos_(0) + state.com_vel_(0) / omega_ - state.zmp_pos_(0),
+      state.com_pos_(1) + state.com_vel_(1) / omega_ - state.zmp_pos_(1),
+      state.com_pos_(2) + state.com_vel_(2) / omega_ - (state.zmp_pos_(2) + 9.81 / std::pow(omega_, 2.0));
 
-  const Eigen::MatrixXd H_block = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
   cost_function_H_.setZero();
-  cost_function_H_.block(     0,      0, N_, N_) = H_block;
-  cost_function_H_.block(    N_,     N_, N_, N_) = H_block;
-  cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = H_block;
+  cost_function_H_.block(     0,      0, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
+  cost_function_H_.block(    N_,     N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
+  cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
 
-  cost_function_f_.segment(     0, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.x() - mc_x_);
-  cost_function_f_.segment(    N_, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y_);
-  cost_function_f_.segment(2 * N_, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z_);
+  cost_function_f_.block(     0, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.x() - mc_x);
+  cost_function_f_.block(    N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.y() - mc_y);
+  cost_function_f_.block(2 * N_, 0, N_, 1) = beta_ * P_.transpose() * (p_ * state.zmp_pos_.z() - mc_z);
 
   // Solve QP
   qp_solver_ptr_->solve(
@@ -175,6 +190,10 @@ ISMPC::solve(
   auto decisionVariables = qp_solver_ptr_->get_solution();
 
   // Split the QP solution in ZMP dot and footsteps
+  Eigen::VectorXd zDotOptimalX(N_);
+  Eigen::VectorXd zDotOptimalY(N_);
+  Eigen::VectorXd zDotOptimalZ(N_);
+
   zDotOptimalX = (decisionVariables.segment(     0, N_));
   zDotOptimalY = (decisionVariables.segment(    N_, N_));
   zDotOptimalZ = (decisionVariables.segment(2 * N_, N_));
@@ -182,39 +201,19 @@ ISMPC::solve(
   input_.x() = zDotOptimalX(0);
   input_.y() = zDotOptimalY(0);
   input_.z() = zDotOptimalZ(0);
+
+  auto end_time = std::chrono::system_clock::now();
+  auto elapsed_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time).count();
+  std::cerr << "ISMPC solve time: " << elapsed_time << " microsecondi" << std::endl;
 }
 
 const Eigen::Vector3d& ISMPC::getInput() const {
   return input_;
 }
 
-const Eigen::VectorXd& ISMPC::getInputSequenceX() const {
-  return zDotOptimalX;
-}
-const Eigen::VectorXd& ISMPC::getInputSequenceY() const {
-  return zDotOptimalY;
-}
-const Eigen::VectorXd& ISMPC::getInputSequenceZ() const {
-  return zDotOptimalZ;
-}
-
-//return A_eq^-1*b_eq
-Eigen::Vector3d
-ISMPC::getStabConstraintOffset() const {
-  //use ldlt
-  Eigen::VectorXd offset = A_eq_.ldlt().solve(b_eq_);
-  //return only first 3 elements (x,y,z)
-  return Eigen::Vector3d(offset(0), offset(1), offset(2));
-}
-
 double
-ISMPC::getEta() const {
-  return eta_;
-}
-
-void
-ISMPC::setEta(double eta) {
-  eta_ = eta;
+ISMPC::getOmega() const {
+  return omega_;
 }
 
 double

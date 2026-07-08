@@ -1,11 +1,10 @@
-#include <DiscreteLIPDynamics.hpp>
-#include <utils.hpp>
-#include <iostream>
+#include <hrp4_locomotion/DiscreteLIPDynamics.hpp>
+#include <hrp4_locomotion/utils.hpp>
 
 namespace labrob {
 
-DiscreteLIPDynamics::DiscreteLIPDynamics(double eta, double timestep_msec)
-  : timestep_(timestep_msec), eta_(eta) {
+DiscreteLIPDynamics::DiscreteLIPDynamics(double eta, int64_t timestep_msec)
+  : timestep_(0.001 * static_cast<double>(timestep_msec)), eta_(eta) {
   double ch = cosh(eta * timestep_);
   double sh = sinh(eta * timestep_);
   A_ << ch, sh / eta, 1.0 - ch, eta * sh, ch, -eta * sh, 0.0, 0.0, 1.0;
@@ -37,17 +36,6 @@ DiscreteLIPDynamics::updateState(const LIPState& lip_state, double zmpDot, int d
   if (dim == 2) return A_ * (currentState + Eigen::Vector3d(0.0, 0.0, com_target_height)) + B_ * zmpDot - Eigen::Vector3d(0.0, 0.0, com_target_height);
 
   return A_ * currentState + B_ * zmpDot;
-}
-
-void
-DiscreteLIPDynamics::setEta(double eta) {
-  eta_ = eta;
-  double ch = cosh(eta_ * timestep_);
-  double sh = sinh(eta_ * timestep_);
-  A_ = Eigen::Matrix3d::Zero();
-  B_ = Eigen::Vector3d::Zero();
-  A_ << ch, sh / eta_, 1.0 - ch, eta_ * sh, ch, -eta_ * sh, 0.0, 0.0, 1.0;
-  B_ << timestep_ - sh / eta_, 1.0 - ch, timestep_;
 }
 
 } // end namespace labrob
