@@ -100,7 +100,7 @@ ISMPC::solve(
           walking_state == labrob::WalkingState::Standing) {
         s0 = 0.5; s1 = 0.5;
       } else if (walking_state == labrob::WalkingState::SingleSupport) {
-        s0 = 1.0; s1 = 0.0;
+        s0 = single_support_zmp_blend_; s1 = 1.0 - single_support_zmp_blend_;
       } else if (walking_state == labrob::WalkingState::Starting) {
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]

@@ -156,7 +156,7 @@ int main(const int argc, const char* argv[]) {
 
     // Initial joint configuration
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
-    mj_data_ptr->qpos[2] = 0.725112;
+    mj_data_ptr->qpos[2] = 0.725112; //0.725112;
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
@@ -279,11 +279,17 @@ int main(const int argc, const char* argv[]) {
             // Always run one EKF step so the filter stays warm.
             // Before 5 s we propagate on a throw-away copy; after 5 s we update robot_state.
             labrob::RobotState rs_ekf = robot_state;
-            if (mj_data_ptr->time > 1.0)
+            if (mj_data_ptr->time > 1.0) {
+                const auto start_ekf = std::chrono::high_resolution_clock::now();
                 state_estimator.update(
                     rs_ekf, imu_gyro, imu_acc,
                     walking_manager.get_contact()
                 );
+                const auto end_ekf = std::chrono::high_resolution_clock::now();
+                const auto ekf_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                    end_ekf - start_ekf).count();
+                logger_.log("execution_time_ekf", static_cast<double>(ekf_duration));
+            }
 
             // Print EKF vs GT comparison every 0.5 s (not 1 kHz)
             {

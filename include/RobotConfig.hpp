@@ -9,20 +9,36 @@ static constexpr int    G1_CONTROLLER_HZ      = 500;
 static constexpr double G1_CONTROLLER_DT      = 1.0 / G1_CONTROLLER_HZ;
 
 const std::array<float, G1_NUM_MOTOR> Kp_cl{
-    0, 0, 0, 0, 0, 0,      // legs
-    0, 0, 0, 0, 0, 0,      // legs
-    0, 0, 0,                     // waist
-    0, 0, 0, 0, 0, 0, 0,   // arms
-    0, 0, 0, 0, 0, 0, 0    // arms
+    120, 120, 120, 120, 120, 120,      // legs
+    120, 120, 120, 120, 120, 120,      // legs
+    60, 60, 60,                     // waist
+    80, 80, 80, 80, 40, 40, 40,   // arms
+    80, 80, 80, 80, 40, 40, 40    // arms
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
     20, 20, 20, 25, 20, 20,
     20, 20, 20, 25, 20, 20,
     15, 15, 15,
-    15, 15, 15, 15, 10, 10, 10,
-    15, 15, 15, 15, 10, 10, 10
+    10, 10, 10, 10, 2, 2, 2,
+    10, 10, 10, 10, 2, 2, 2
 };
+
+// const std::array<float, G1_NUM_MOTOR> Kp_cl{
+//     400, 400, 400, 600, 400, 300,      // legs
+//     400, 400, 400, 600, 400, 300,      // legs
+//     250, 250, 150,                     // waist
+//     120, 120, 120, 70,  40, 40, 40,   // arms
+//     120, 120, 120, 70,  40, 40, 40    // arms
+// };
+
+// const std::array<float, G1_NUM_MOTOR> Kd_cl{
+//     2, 2, 2, 2, 2, 2,
+//     2, 2, 2, 2, 2, 2,
+//     2, 2, 2,
+//     2, 2, 2, 2, 2, 2, 2,
+//     2, 2, 2, 2, 2, 2, 2
+// };
 
 const std::array<float, G1_NUM_MOTOR> Kp_reg{
     400, 400, 400, 600, 400, 300,      // legs

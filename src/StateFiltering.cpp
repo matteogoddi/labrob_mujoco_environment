@@ -1230,7 +1230,7 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
         // base position estimate. 0.01 m (±1 cm) floor keeps the gain bounded on real hw.
         Ni.block<3,3>(0,0) += (0.01*0.01) * Eigen::Matrix3d::Identity();
 
-        // Accumulate
+        // Accumulate FK pose measurement (6D)
         const int old = static_cast<int>(z_all.rows());
         z_all.conservativeResize(old + 6);
         z_all.segment(old, 6) = z_i;
@@ -1242,6 +1242,30 @@ void DiligentKio::filter(const Eigen::Vector3d&         gyro_meas,
         N_all.block(old,  0,    6, old).setZero();
         N_all.block(0,    old, old, 6 ).setZero();
         N_all.block<6,6>(old, old) = Ni;
+
+        // Flat-ground height pseudo-measurement: d_i.z() = 0
+        // Constrains world-Z of the contact point to zero for each active foot.
+        // H_h selects the Z component of d_i in the error-state vector.
+        {
+            const int old2 = static_cast<int>(z_all.rows());
+            Eigen::Matrix<double, 1, NR> H_h;
+            H_h.setZero();
+            H_h(0, EI_DI + 2) = 1.0;
+
+            const double z_h = df.z();              // innovation: d_i.z() - 0
+            const double N_h = 0.005 * 0.005;       // 5 mm std dev on contact height
+
+            z_all.conservativeResize(old2 + 1);
+            z_all(old2) = z_h;
+
+            H_all.conservativeResize(old2 + 1, NR);
+            H_all.row(old2) = H_h;
+
+            N_all.conservativeResize(old2 + 1, old2 + 1);
+            N_all.row(old2).head(old2).setZero();
+            N_all.col(old2).head(old2).setZero();
+            N_all(old2, old2) = N_h;
+        }
     }
 
     if (z_all.size() == 0)

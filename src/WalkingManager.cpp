@@ -156,8 +156,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     }) { logger_.reserve(name, max_steps); }
 
     for (const char* name : {
-        "execution_time_wbc", "execution_time_mpc",
-        "execution_time_ekf", "execution_time_kf", "execution_time_update", 
+        "execution_time_wbc", "execution_time_mpc", 
+        "execution_time_kf", "execution_time_update", 
         "execution_time_res_obs", "execution_time_hac", "execution_time_coop_planner",
         "residual_vector_norm"
     }) { logger_.reserveScalar(name, max_steps); }
@@ -548,16 +548,14 @@ WalkingManager::update(
     const auto& p_CoM = robot_data.com[0];
     const auto& J_CoM = robot_data.Jcom;
     const auto& a_CoM_drift = robot_data.acom[0];
-    Eigen::Vector3d v_CoM = J_CoM * qdot;
+    Eigen::Vector3d v_CoM = robot_data.vcom[0];
 
     if (t_msec_ == 10000 && false) {
         double target_height = p_CoM.z() - (T_lsole.translation().z() + T_rsole.translation().z())/2 - 0.1;
         eta2 = 9.81/target_height;
         ismpc_ptr_->setEta(std::sqrt(eta2));
         discrete_lip_dynamics_ptr_->setEta(std::sqrt(eta2));
-        discrete_lip_dynamics_ptr_mpc_->setEta(std::sqrt(eta2));
-
-        
+        discrete_lip_dynamics_ptr_mpc_->setEta(std::sqrt(eta2));        
     }
 
     
@@ -565,7 +563,7 @@ WalkingManager::update(
 
     Eigen::Vector3d zmp_3d;
     zmp_3d.setZero();
-    if (false){
+    if (true){
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
 
@@ -670,7 +668,7 @@ WalkingManager::update(
     std::chrono::time_point<std::chrono::system_clock> end_coop_planner;
     bool coop_planner_ran = false;
 
-    if (switchWalkingState && false)
+    if ((switchWalkingState && false) || (false && t_msec_ ==5000 && !coop_walking_active_))
     {
         switchWalkingState = false;
         std::cout << "[COOP] Walking triggered at t=" << t_msec_
@@ -943,8 +941,8 @@ WalkingManager::update(
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
-    current_gait_configuration.com.pos = kf_LipState.com_pos_;
-    current_gait_configuration.com.vel = kf_LipState.com_vel_;
+    current_gait_configuration.com.pos = p_CoM;
+    current_gait_configuration.com.vel = v_CoM;
     current_gait_configuration.torso.pos = robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
     current_gait_configuration.pelvis.pos = robot_data.oMf[pelvis_idx_].rotation();
@@ -1046,9 +1044,12 @@ WalkingManager::update(
 
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
+    desired_gait_configuration.com.pos.z() = p_CoM_init.z();
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
+    desired_gait_configuration.com.vel.z() = 0;
     desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
+    desired_gait_configuration.com.acc.z() = 0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
@@ -1399,7 +1400,6 @@ WalkingManager::update(
     auto end_update = std::chrono::high_resolution_clock::now();
 
     auto update_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_update - start_update).count();
-    auto ekf_duration    = 0;
     auto kf_duration     = std::chrono::duration_cast<std::chrono::microseconds>(end_kf    - start_kf).count();
     auto mpc_duration    = std::chrono::duration_cast<std::chrono::microseconds>(end_mpc   - start_mpc).count();
     auto wbc_duration    = std::chrono::duration_cast<std::chrono::microseconds>(end_wbc   - start_wbc).count();
@@ -1408,7 +1408,6 @@ WalkingManager::update(
     auto coop_planner_duration    = coop_planner_ran ? std::chrono::duration_cast<std::chrono::microseconds>(end_coop_planner   - start_coop_planner).count() : 0;
 
     logger_.log("execution_time_update", static_cast<double>(update_duration));
-    logger_.log("execution_time_ekf",    static_cast<double>(ekf_duration));
     logger_.log("execution_time_kf",     static_cast<double>(kf_duration));
     logger_.log("execution_time_mpc",    static_cast<double>(mpc_duration));
     logger_.log("execution_time_wbc",    static_cast<double>(wbc_duration));

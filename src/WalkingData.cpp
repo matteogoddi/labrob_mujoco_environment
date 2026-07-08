@@ -102,7 +102,7 @@ WalkingData::addSteps(
   const double yaw_angle
 ){
     double swing_foot_trajectory_height = 0.05;
-    double step_length_x = 0.2;
+    double step_length_x = 0.0;
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     Eigen::Matrix3d R_yaw = labrob::Rz(yaw_angle);
@@ -128,7 +128,7 @@ WalkingData::addSteps(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
             labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-            labrob::Foot::RIGHT
+            labrob::Foot::LEFT
         ),
         0.0,
         double_support_duration,
@@ -139,7 +139,7 @@ WalkingData::addSteps(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
             labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-            labrob::Foot::RIGHT
+            labrob::Foot::LEFT
         ),
         swing_foot_trajectory_height,
         single_support_duration,
@@ -150,7 +150,7 @@ WalkingData::addSteps(
             labrob::DoubleSupportConfiguration(
                 labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole.rotation(), T_lsole.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
                 labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole.rotation(), T_rsole.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::LEFT
+                labrob::Foot::RIGHT
             ),
             0.0,
             double_support_duration,
@@ -160,7 +160,7 @@ WalkingData::addSteps(
             labrob::DoubleSupportConfiguration(
                 labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole.rotation(), T_lsole.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
                 labrob::SE3(labrob::Rz(n * step_rotation) * T_rsole.rotation(), T_rsole.translation() + n * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::LEFT
+                labrob::Foot::RIGHT
             ),
             swing_foot_trajectory_height,
             single_support_duration,
@@ -170,7 +170,7 @@ WalkingData::addSteps(
             labrob::DoubleSupportConfiguration(
                 labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole.rotation(), T_lsole.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
                 labrob::SE3(labrob::Rz((n + 2) * step_rotation) * T_rsole.rotation(), T_rsole.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::RIGHT
+                labrob::Foot::LEFT
             ),
             0.0,
             double_support_duration,
@@ -180,7 +180,7 @@ WalkingData::addSteps(
             labrob::DoubleSupportConfiguration(
                 labrob::SE3(labrob::Rz((n + 1) * step_rotation) * T_lsole.rotation(), T_lsole.translation() + (n + 1) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
                 labrob::SE3(labrob::Rz((n + 2) * step_rotation) * T_rsole.rotation(), T_rsole.translation() + (n + 2) * Eigen::Vector3d(step_length_x, step_length_y, 0.0)),
-                labrob::Foot::RIGHT
+                labrob::Foot::LEFT
             ),
             swing_foot_trajectory_height,
             single_support_duration,

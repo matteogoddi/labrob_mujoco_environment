@@ -72,10 +72,16 @@ class ISMPC{
   // Matrices for cost function:
   Eigen::MatrixXd cost_function_H_;
   Eigen::VectorXd cost_function_f_;
-  double beta_x_ = 10000.0;
-  double beta_y_ = 10000.0;
-  double beta_z_ = 10000.0;
+  double beta_x_ = 100000.0;
+  double beta_y_ = 100000.0;
+  double beta_z_ = 10.0;
   double alpha_z_ = 0.0;  // CoM height regularization weight
+
+  // ZMP reference blend during full single support: 1.0 pins the reference
+  // exactly at the support foot's center; a bit less keeps it inside the
+  // support polygon while reducing how far the CoM/ZMP must travel each step
+  // (tuning knob for the real-robot ankle-roll issue).
+  double single_support_zmp_blend_ = 1.0;
 
 
   // Matrices for stability constraint:

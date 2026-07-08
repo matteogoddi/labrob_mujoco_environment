@@ -12,6 +12,7 @@ ImuState       imu_torso_data;
 SportModeState odometry_data;
 Gamepad        gamepad_;
 REMOTE_DATA_RX rx_;
+std::atomic<int64_t> last_lowstate_recv_ns{0};
 
 // ── SDK callbacks ─────────────────────────────────────────────────────────────
 void LowStateHandler(const void* msg) {
@@ -24,6 +25,11 @@ void LowStateHandler(const void* msg) {
         std::cerr << "CRC32 mismatch in LowState message!" << std::endl;
         return;
     }
+
+    last_lowstate_recv_ns.store(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count(),
+        std::memory_order_relaxed);
 
     std::lock_guard<std::mutex> lock(stateMutex);
     for (int i = 0; i < G1_NUM_MOTOR; ++i) {

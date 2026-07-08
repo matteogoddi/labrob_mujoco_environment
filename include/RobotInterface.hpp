@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -110,6 +112,10 @@ extern SportModeState odometry_data;
 
 extern Gamepad       gamepad_;
 extern REMOTE_DATA_RX rx_;
+
+// Timestamp (steady_clock, nanoseconds) of the last valid LowState_ message.
+// Used to detect a dead DDS link (e.g. ethernet cable pulled) from the main loop.
+extern std::atomic<int64_t> last_lowstate_recv_ns;
 
 // ── SDK callbacks ─────────────────────────────────────────────────────────────
 void LowStateHandler(const void* msg);

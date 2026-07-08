@@ -578,6 +578,29 @@ if __name__ == '__main__':
         'Pelvis Angular Velocity Error', r'Angular Velocity [$\mathrm{rad/s}$]',
         'images/task_orientation/pelvis/pelvis_angular_velocity_error_plot.png')
 
+    # ── sole roll, left vs right (diagnostic for ankle-roll asymmetry) ────────
+    # lsole/rsole_orientation columns are (roll, pitch, yaw) via eulerAngles(0,1,2).
+    if lsole_orientation is not None and rsole_orientation is not None:
+        plot_components(t,
+            np.column_stack([lsole_orientation[:, 0], rsole_orientation[:, 0]]),
+            ['Left', 'Right'], 'Sole Roll – Measured (Left vs Right)', r'Roll [$\mathrm{rad}$]',
+            'images/task_orientation/soles/roll_measured_left_vs_right_plot.png')
+    if des_lsole_orientation is not None and des_rsole_orientation is not None:
+        plot_components(t,
+            np.column_stack([des_lsole_orientation[:, 0], des_rsole_orientation[:, 0]]),
+            ['Left', 'Right'], 'Sole Roll – Desired (Left vs Right)', r'Roll [$\mathrm{rad}$]',
+            'images/task_orientation/soles/roll_desired_left_vs_right_plot.png')
+    if all(x is not None for x in (lsole_orientation, rsole_orientation,
+                                    des_lsole_orientation, des_rsole_orientation)):
+        roll_err_l = _sub(lsole_orientation[:, 0:1], des_lsole_orientation[:, 0:1])
+        roll_err_r = _sub(rsole_orientation[:, 0:1], des_rsole_orientation[:, 0:1])
+        _n_roll = min(len(roll_err_l), len(roll_err_r))
+        plot_components(t,
+            np.column_stack([roll_err_l[:_n_roll], roll_err_r[:_n_roll]]),
+            ['Left', 'Right'], 'Sole Roll Error – Measured vs Desired (Left vs Right)',
+            r'Roll Error [$\mathrm{rad}$]',
+            'images/task_orientation/soles/roll_error_left_vs_right_plot.png')
+
     # ══════════════════════════════════════════════════════════════════════════
     #  FEEDBACK  (full sensor data – from tick 0, use t_full)
     # ══════════════════════════════════════════════════════════════════════════

@@ -50,6 +50,11 @@ Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
 using Clock = std::chrono::steady_clock;
 
+// Ethernet/DDS watchdog: if no LowState_ message arrives within this window,
+// the link is considered down and the control loop stops (same safe-stop path
+// as Ctrl+C / gamepad Y).
+constexpr auto kLowStateTimeout = std::chrono::milliseconds(100);
+
 enum class ExperimentMode { Listening, Regulation, WBC };
 ExperimentMode experiment_mode = ExperimentMode::Regulation;
 
@@ -66,9 +71,11 @@ static void save_experiment_logs(const std::vector<std::string>& ordered_joint_n
     walking_manager.saveLogs();
     sensor_logger.save("/tmp/robot_logs");
 
-    std::ofstream joint_names_file("/tmp/robot_logs/joint_names.txt");
-    for (const auto& name : ordered_joint_names)
-        joint_names_file << name << "\n";
+    {
+        std::ofstream joint_names_file("/tmp/robot_logs/joint_names.txt");
+        for (const auto& name : ordered_joint_names)
+            joint_names_file << name << "\n";
+    }  // flush + close before the directory gets copied below
 
     std::cout << "Logs saved." << std::endl;
 
@@ -196,8 +203,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 5   ||
-                std::abs(joint_command[jname]) > 100.0) {
+                std::abs(robot_state.joint_state.at(jname).vel) > 2   ||
+                std::abs(joint_command[jname]) > 60.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -303,6 +310,13 @@ int main(const int argc, const char* argv[]) {
     sportmodestate_subscriber.reset(new ChannelSubscriber<SportModeState_>(GO_STATE_TOPIC));
     sportmodestate_subscriber->InitChannel(std::bind(&SportModeStateHandler, std::placeholders::_1), 1);
 
+    // Baseline for the ethernet/DDS watchdog, so it doesn't trip before the
+    // first LowState_ message has had a chance to arrive.
+    last_lowstate_recv_ns.store(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count(),
+        std::memory_order_relaxed);
+
     // Initial MuJoCo state (used for joint name mapping only in robot mode)
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
     mj_data_ptr->qpos[2] = 0.728112;
@@ -315,13 +329,19 @@ int main(const int argc, const char* argv[]) {
     }
 
     std::map<std::string, double> armatures;
-    std::vector<std::string> ordered_joint_names(mj_model_ptr->nu);
     for (int i = 0; i < mj_model_ptr->nu; ++i) {
         int joint_id = mj_model_ptr->actuator_trnid[i * 2];
         std::string joint_name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id);
         armatures[joint_name] = mj_model_ptr->dof_armature[mj_model_ptr->jnt_dofadr[joint_id]];
-        ordered_joint_names[i] = joint_name;
     }
+
+    // joint_pos/joint_vel/etc. are logged for the G1_NUM_MOTOR real motors only
+    // (the low-level DDS interface has no hand control), regardless of how many
+    // actuators the loaded MuJoCo scene defines (e.g. a with-hand variant) — so
+    // build the name list from the fixed motor order, not from mj_model_ptr->nu.
+    std::vector<std::string> ordered_joint_names(G1_NUM_MOTOR);
+    for (const auto& [name, idx] : joint_name_to_index)
+        ordered_joint_names[idx] = name;
 
     labrob::RobotState robot_state;
     for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -374,6 +394,21 @@ int main(const int argc, const char* argv[]) {
                mj_data_ptr->time - simstart < 1.0 / framerate) {
 
             const auto tick_start = Clock::now();
+
+            // ── Ethernet/DDS watchdog ──────────────────────────────────────────
+            {
+                const auto now_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::steady_clock::now().time_since_epoch()).count();
+                const auto age = std::chrono::nanoseconds(
+                    now_ns - last_lowstate_recv_ns.load(std::memory_order_relaxed));
+                if (age > kLowStateTimeout) {
+                    std::cerr << "[WATCHDOG] No LowState_ message received for "
+                              << std::chrono::duration_cast<std::chrono::milliseconds>(age).count()
+                              << " ms (ethernet link down?) -> stopping." << std::endl;
+                    signalHandler(SIGINT);
+                    continue;
+                }
+            }
 
             Eigen::VectorXd measured_joint_pos = Eigen::VectorXd::Zero(29);
             Eigen::VectorXd measured_joint_vel = Eigen::VectorXd::Zero(29);
@@ -442,10 +477,15 @@ int main(const int argc, const char* argv[]) {
 
             // ── State estimator ───────────────────────────────────────────────
             if (isEKFactive && state_estimator.is_active()) {
+                const auto start_ekf = std::chrono::high_resolution_clock::now();
                 state_estimator.update(
                     robot_state, imu_gyro, imu_acc,
                     walking_manager.get_contact()
                 );
+                const auto end_ekf = std::chrono::high_resolution_clock::now();
+                const auto ekf_duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                    end_ekf - start_ekf).count();
+                sensor_logger.log("execution_time_ekf", static_cast<double>(ekf_duration));
             }
 
             if (pendingWBCInit) {
