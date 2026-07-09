@@ -70,7 +70,14 @@ class WholeBodyController {
       const labrob::GaitConfiguration& desired
   );
 
+  // Joint accelerations (size 6 + n_joints, base + joints) from the last QP
+  // solve, used to build position/velocity references for the low-level
+  // command (see main_g1.cpp's q_ref/dq_ref computation).
+  const Eigen::VectorXd& get_q_ddot() const { return last_q_ddot_; }
+
  private:
+  Eigen::VectorXd last_q_ddot_;
+
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
 

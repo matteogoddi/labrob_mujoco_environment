@@ -35,6 +35,8 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/JointState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotState.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SE3.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StateEstimator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/StateFiltering.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     # ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp

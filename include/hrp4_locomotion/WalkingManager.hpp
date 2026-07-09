@@ -38,7 +38,9 @@ class WalkingManager {
 
 
   void save_data();
-  
+
+  const Eigen::VectorXd& get_wbc_q_ddot() const { return whole_body_controller_ptr_->get_q_ddot(); }
+
  protected:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
