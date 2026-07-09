@@ -83,8 +83,8 @@ class WalkingManager {
 
   int64_t mpc_prediction_horizon_msec = 1000;
   int64_t mpc_timestep_msec = 50;
-  double foot_constraint_square_length = 0.22;
-  double foot_constraint_square_width = 0.08;
+  double foot_constraint_square_length = 0.20;
+  double foot_constraint_square_width = 0.045;
 
   Eigen::VectorXd q_jnt_des_;
 
@@ -122,9 +122,9 @@ private:
   Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d com_kf_cov_z_ = Eigen::Matrix3d::Identity();
   // noise parameters (same defaults as CoMKF class)
-  static constexpr double kComKfMeasPos = 1.0e1;
-  static constexpr double kComKfMeasVel = 1.0e2;
-  static constexpr double kComKfMeasZmp = 1.0e3;
+  static constexpr double kComKfMeasPos = 1.0e-2;
+  static constexpr double kComKfMeasVel = 1.0e-2;
+  static constexpr double kComKfMeasZmp = 1.0e8;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;

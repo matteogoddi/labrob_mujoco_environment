@@ -259,7 +259,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(false){
+    if(true){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -941,8 +941,16 @@ WalkingManager::update(
     else if (walking_data_.footstep_plan.front().getFeetPlacement().getSupportFoot() == Foot::RIGHT) current_gait_configuration.is_left_foot_support = false;
     }
 
+    //NO-KF-FILTER
+
     current_gait_configuration.com.pos = p_CoM;
     current_gait_configuration.com.vel = v_CoM;
+
+    //WITH KF-FILTER
+
+    // current_gait_configuration.com.pos = kf_LipState.com_pos_;
+    // current_gait_configuration.com.vel = kf_LipState.com_vel_;
+
     current_gait_configuration.torso.pos = robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
     current_gait_configuration.pelvis.pos = robot_data.oMf[pelvis_idx_].rotation();

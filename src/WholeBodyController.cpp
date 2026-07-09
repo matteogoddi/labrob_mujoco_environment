@@ -21,7 +21,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
   params.Kp_motion = 300.0;
-  params.Kd_motion = 140.0;
+  params.Kd_motion = 150.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 60.0;
@@ -58,7 +58,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.mu = 0.6;
 
   params.foot_length = 0.20;
-  params.foot_width  = 0.07;
+  params.foot_width  = 0.045;
 
   return params;
 }
