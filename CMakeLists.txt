@@ -32,7 +32,6 @@ add_library(
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HandAdmittanceController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateEstimator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/StateFiltering.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingManager.cpp

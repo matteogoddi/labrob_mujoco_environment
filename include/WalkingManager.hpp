@@ -56,7 +56,6 @@ class WalkingManager {
 
   int64_t get_controller_frequency() const;
 
-  // Exposes WBC joint+base acceleration for external filters (e.g. JointKF)
   const Eigen::VectorXd& get_wbc_q_ddot() const {
     return whole_body_controller_ptr_->get_q_ddot();
   }

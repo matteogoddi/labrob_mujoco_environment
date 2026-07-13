@@ -19,7 +19,6 @@
 #include <utils.hpp>
 
 #include <globals.h>
-#include <RobotConfig.hpp>
 #include "MujocoUI.hpp"
 
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
@@ -27,7 +26,7 @@ bool isMPCLoopClosed    = true;
 bool isObserverActive   = true;
 bool switchWalkingState = false;  // never set in sim, WalkingManager reads it
 
-Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
+Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(G1_NUM_MOTOR);
 
 using Clock = std::chrono::steady_clock;
 
@@ -199,7 +198,6 @@ int main(const int argc, const char* argv[]) {
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::RightInvariantEKF,
         ri_noise
     );
 

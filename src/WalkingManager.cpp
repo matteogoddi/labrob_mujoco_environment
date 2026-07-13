@@ -171,7 +171,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
-    std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf";
+    std::string robot_description_filename = std::string(robotUrdfPath);
 
     pinocchio::Model full_robot_model;
 

@@ -30,7 +30,6 @@
 
 #include <globals.h>
 #include "MujocoUI.hpp"
-#include <RobotConfig.hpp>
 #include <RobotInterface.hpp>
 
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
@@ -204,7 +203,7 @@ static void send_dds_command(
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
                 std::abs(robot_state.joint_state.at(jname).vel) > 2.5   ||
-                std::abs(joint_command[jname]) > 60.0) {
+                std::abs(joint_command[jname]) > 1.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -363,9 +362,8 @@ int main(const int argc, const char* argv[]) {
     ri_noise.encoder_noise = 0.001;
 
     labrob::StateEstimator state_estimator(
-        "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf",
+        std::string(robotUrdfPath),
         G1_CONTROLLER_DT,
-        labrob::StateEstimator::Filter::RightInvariantEKF,
         ri_noise
     );
 
@@ -536,7 +534,14 @@ int main(const int argc, const char* argv[]) {
                             std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                             q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                             dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                            // set to joint initial position instead
+                            q_ref_joints[i] = joint_initial_positions.at(jname);
+                            dq_ref_joints[i] = 0.0;
                         }
+                    }
+                    for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                        int jid = mj_model_ptr->actuator_trnid[i * 2];
+                        joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
                     }
                     break;
             }
