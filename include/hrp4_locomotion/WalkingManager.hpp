@@ -53,6 +53,16 @@ class WalkingManager {
       const Eigen::Vector3d& angular_velocity,
       const Eigen::Vector3d& angular_acceleration);
   void clearTorsoComplianceReference();
+  void setHandComplianceReferences(
+      const Eigen::Matrix<double, 6, 1>& left_arm_offset,
+      const Eigen::Matrix<double, 6, 1>& right_arm_offset,
+      const Eigen::Matrix<double, 6, 1>& left_arm_velocity,
+      const Eigen::Matrix<double, 6, 1>& right_arm_velocity);
+  void clearHandComplianceReferences();
+  void setInteractionWrenches(
+      const Eigen::Matrix<double, 6, 1>& left_wrench,
+      const Eigen::Matrix<double, 6, 1>& right_wrench);
+  void clearInteractionWrenches();
 
  protected:
   pinocchio::Model robot_model;
@@ -146,6 +156,19 @@ private:
   Eigen::Vector3d torso_compliance_rpy_offset_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d torso_compliance_angular_velocity_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d torso_compliance_angular_acceleration_ = Eigen::Vector3d::Zero();
+  bool use_hand_compliance_reference_ = false;
+  Eigen::Matrix<double, 6, 1> left_arm_compliance_offset_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_arm_compliance_offset_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> left_arm_compliance_velocity_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_arm_compliance_velocity_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> left_interaction_wrench_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_interaction_wrench_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
 
   Eigen::MatrixXd Kalman_Gain; 
 
@@ -192,6 +215,10 @@ private:
   std::vector<Eigen::Vector3d> torso_desired_rpy_log_;
   std::vector<Eigen::Vector3d> torso_current_rpy_log_;
   std::vector<Eigen::Vector3d> torso_tracking_error_log_;
+  std::vector<Eigen::Matrix<double, 6, 1>> left_hand_compliance_acc_ref_log_;
+  std::vector<Eigen::Matrix<double, 6, 1>> right_hand_compliance_acc_ref_log_;
+  std::vector<Eigen::Matrix<double, 6, 1>> left_hand_compliance_acc_achieved_log_;
+  std::vector<Eigen::Matrix<double, 6, 1>> right_hand_compliance_acc_achieved_log_;
   // std::vector<Eigen::VectorXd> fl_log_;
   // std::vector<Eigen::VectorXd> fr_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;

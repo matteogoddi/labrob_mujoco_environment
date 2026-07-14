@@ -4,6 +4,8 @@
 
 #include <hrp4_locomotion/WholeBodyController.hpp>
 
+#include <initializer_list>
+
 // Pinocchio
 #include <pinocchio/algorithm/centroidal.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -23,6 +25,12 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 10.0;
   params.Kp_torso_motion = Eigen::Vector3d::Constant(50.0);
   params.Kd_torso_motion = Eigen::Vector3d::Constant(10.0);
+  params.Kp_hand_compliance =
+      Eigen::Matrix<double, 6, 1>::Constant(30.0);
+  params.Kd_hand_compliance =
+      Eigen::Matrix<double, 6, 1>::Constant(10.0);
+  params.S_hand_compliance.setZero();
+  params.S_hand_compliance.topLeftCorner<3, 3>().setIdentity();
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
 
@@ -31,6 +39,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_lsole = 1;
   params.weight_rsole = 1;
   params.weight_torso = 1e-1;
+  params.weight_lhand_compliance = 2e-2;
+  params.weight_rhand_compliance = 2e-2;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
   params.weight_regulation_matrix = Eigen::MatrixXd();
@@ -68,14 +78,55 @@ WholeBodyController::WholeBodyController(
   lsole_idx_ = robot_model_.getFrameId("left_foot_link");
   rsole_idx_ = robot_model_.getFrameId("right_foot_link");
   torso_idx_ = robot_model_.getFrameId("torso_link");
+  lhand_idx_ = robot_model_.getFrameId("left_wrist_yaw_joint");
+  rhand_idx_ = robot_model_.getFrameId("right_wrist_yaw_joint");
 
   J_torso_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_lsole_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_rsole_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lhand_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rhand_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
 
   J_torso_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_lsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_rsole_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_lhand_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  J_rhand_dot_ = Eigen::MatrixXd::Zero(6, robot_model_.nv);
+
+  const auto collect_velocity_indices = [this](
+      std::initializer_list<const char*> joint_names) {
+    std::vector<int> indices;
+    indices.reserve(joint_names.size());
+    for (const char* joint_name : joint_names) {
+      if (!robot_model_.existJointName(joint_name)) {
+        continue;
+      }
+      const pinocchio::JointIndex joint_id =
+          robot_model_.getJointId(joint_name);
+      const auto& joint = robot_model_.joints[joint_id];
+      for (int k = 0; k < joint.nv(); ++k) {
+        indices.push_back(joint.idx_v() + k);
+      }
+    }
+    return indices;
+  };
+
+  left_arm_velocity_indices_ = collect_velocity_indices({
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_elbow_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_yaw_joint"});
+  right_arm_velocity_indices_ = collect_velocity_indices({
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_elbow_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_yaw_joint"});
 
   q_ddot_ = Eigen::VectorXd::Zero(robot_model.nv);
   flr = Eigen::VectorXd::Zero(2 * 3 * 4); // 2 feet, 3 forces per foot, 4 contacts
@@ -117,7 +168,9 @@ WholeBodyController::compute_inverse_dynamics(
     pinocchio::Data& robot_data,
     pinocchio::Data& fb_robot_data,
     const labrob::GaitConfiguration& current,
-    const labrob::GaitConfiguration& desired
+    const labrob::GaitConfiguration& desired,
+    const Eigen::Matrix<double, 6, 1>& left_interaction_wrench,
+    const Eigen::Matrix<double, 6, 1>& right_interaction_wrench
 ) {
 
   auto q = robot_state_to_pinocchio_joint_configuration(robot_model_, robot_state);
@@ -137,12 +190,48 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::getFrameJacobian(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, lhand_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lhand_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, rhand_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rhand_);
 
   pinocchio::centerOfMass(robot_model, robot_data, q, qdot, 0.0 * qdot); // This is to compute the drift term
   pinocchio::centerOfMass(robot_model, fb_robot_data, q_fb_filt, qdot_fb_filt, 0.0 * qdot); // This is to compute the drift term
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, torso_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_torso_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lsole_dot_);
   pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rsole_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rsole_dot_);
+  pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, lhand_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_lhand_dot_);
+  pinocchio::getFrameJacobianTimeVariation(robot_model, robot_data, rhand_idx_, pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED, J_rhand_dot_);
+
+  // Eq. (21) is a residual *arm* task. Masking the torso/base/opposite-arm
+  // columns prevents this task from cancelling the torso motion allocated by
+  // the CRG. The Jdot drift must use the same mask for the same reason.
+  Eigen::MatrixXd J_lhand_arm =
+      Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  Eigen::MatrixXd J_rhand_arm =
+      Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  Eigen::MatrixXd J_lhand_arm_dot =
+      Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  Eigen::MatrixXd J_rhand_arm_dot =
+      Eigen::MatrixXd::Zero(6, robot_model_.nv);
+  for (const int index : left_arm_velocity_indices_) {
+    if (index >= 0 && index < robot_model_.nv) {
+      J_lhand_arm.col(index) = J_lhand_.col(index);
+      J_lhand_arm_dot.col(index) = J_lhand_dot_.col(index);
+    }
+  }
+  for (const int index : right_arm_velocity_indices_) {
+    if (index >= 0 && index < robot_model_.nv) {
+      J_rhand_arm.col(index) = J_rhand_.col(index);
+      J_rhand_arm_dot.col(index) = J_rhand_dot_.col(index);
+    }
+  }
+
+  // Apply the Cartesian task selector to the complete hand-task model, not
+  // only to its reference. This removes unselected angular costs from both H
+  // and f and keeps the achieved-acceleration log in the same selected space.
+  J_lhand_arm = params_.S_hand_compliance * J_lhand_arm;
+  J_lhand_arm_dot = params_.S_hand_compliance * J_lhand_arm_dot;
+  J_rhand_arm = params_.S_hand_compliance * J_rhand_arm;
+  J_rhand_arm_dot = params_.S_hand_compliance * J_rhand_arm_dot;
 
   const auto& J_com = fb_robot_data.Jcom;
   const auto& centroidal_momentum_matrix = pinocchio::ccrba(robot_model, robot_data, q, qdot);
@@ -150,6 +239,10 @@ WholeBodyController::compute_inverse_dynamics(
   const auto a_lsole_drift = J_lsole_dot_ * qdot;
   const auto a_rsole_drift = J_rsole_dot_ * qdot;
   const auto a_torso_orientation_drift = J_torso_dot_.bottomRows<3>() * qdot;
+  const Eigen::Matrix<double, 6, 1> a_lhand_arm_drift =
+      J_lhand_arm_dot * qdot;
+  const Eigen::Matrix<double, 6, 1> a_rhand_arm_drift =
+      J_rhand_arm_dot * qdot;
 
   // Compute desired accelerations
   auto err_com = desired.com.pos - current.com.pos;
@@ -192,6 +285,40 @@ WholeBodyController::compute_inverse_dynamics(
       desired.torso.acc +
       params_.Kp_torso_motion.cwiseProduct(err_torso_orientation) +
       params_.Kd_torso_motion.cwiseProduct(err_torso_orientation_vel);
+  const Eigen::Matrix<double, 6, 1> a_lhand_compliance_correction =
+      params_.S_hand_compliance *
+      (params_.Kp_hand_compliance.cwiseProduct(
+           desired.lhand_compliance_offset) +
+       params_.Kd_hand_compliance.cwiseProduct(
+           desired.lhand_compliance_velocity));
+  const Eigen::Matrix<double, 6, 1> a_rhand_compliance_correction =
+      params_.S_hand_compliance *
+      (params_.Kp_hand_compliance.cwiseProduct(
+           desired.rhand_compliance_offset) +
+       params_.Kd_hand_compliance.cwiseProduct(
+           desired.rhand_compliance_velocity));
+  // Eq. (21) adds the compliance correction to the nominal hand
+  // acceleration. This controller has no independent nominal Cartesian hand
+  // trajectory, so use the acceleration induced by its nominal arm posture
+  // task. Omitting this term would turn a zero CRG residual into a command for
+  // zero wrist acceleration and fight the existing whole-body motion.
+  const Eigen::Matrix<double, 6, 1> a_lhand_nominal =
+      J_lhand_arm * a_jnt_total + a_lhand_arm_drift;
+  const Eigen::Matrix<double, 6, 1> a_rhand_nominal =
+      J_rhand_arm * a_jnt_total + a_rhand_arm_drift;
+  const Eigen::Matrix<double, 6, 1> a_lhand_compliance_total =
+      a_lhand_nominal + a_lhand_compliance_correction;
+  const Eigen::Matrix<double, 6, 1> a_rhand_compliance_total =
+      a_rhand_nominal + a_rhand_compliance_correction;
+  if (desired.use_hand_compliance) {
+    left_hand_compliance_acceleration_reference_ =
+        a_lhand_compliance_total;
+    right_hand_compliance_acceleration_reference_ =
+        a_rhand_compliance_total;
+  } else {
+    left_hand_compliance_acceleration_reference_.setZero();
+    right_hand_compliance_acceleration_reference_.setZero();
+  }
 
   // Build cost function
   Eigen::MatrixXd H_acc = Eigen::MatrixXd::Zero(6 + n_joints_, 6 + n_joints_);
@@ -202,6 +329,12 @@ WholeBodyController::compute_inverse_dynamics(
   H_acc += params_.weight_lsole * (J_lsole_.transpose() * J_lsole_);
   H_acc += params_.weight_rsole * (J_rsole_.transpose() * J_rsole_);
   H_acc += params_.weight_torso * (J_torso_.bottomRows<3>().transpose() * J_torso_.bottomRows<3>());
+  if (desired.use_hand_compliance) {
+    H_acc += params_.weight_lhand_compliance *
+        (J_lhand_arm.transpose() * J_lhand_arm);
+    H_acc += params_.weight_rhand_compliance *
+        (J_rhand_arm.transpose() * J_rhand_arm);
+  }
   H_acc += params_.weight_regulation_matrix * err_posture_selection_matrix;
   H_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       std::pow(sample_time_, 2.0) * cmm_selection_matrix * centroidal_momentum_matrix;
@@ -210,6 +343,14 @@ WholeBodyController::compute_inverse_dynamics(
   f_acc += params_.weight_lsole * J_lsole_.transpose() * (a_lsole_drift - a_lsole_total);
   f_acc += params_.weight_rsole * J_rsole_.transpose() * (a_rsole_drift - a_rsole_total);
   f_acc += params_.weight_torso * J_torso_.bottomRows<3>().transpose() * (a_torso_orientation_drift - a_torso_orientation_total);
+  if (desired.use_hand_compliance) {
+    f_acc += params_.weight_lhand_compliance *
+        J_lhand_arm.transpose() *
+        (a_lhand_arm_drift - a_lhand_compliance_total);
+    f_acc += params_.weight_rhand_compliance *
+        J_rhand_arm.transpose() *
+        (a_rhand_arm_drift - a_rhand_compliance_total);
+  }
   f_acc += -params_.weight_regulation_matrix * err_posture_selection_matrix * a_jnt_total;
   f_acc += params_.weight_angular_momentum * centroidal_momentum_matrix.transpose() * cmm_selection_matrix.transpose() *
       sample_time_ * cmm_selection_matrix * centroidal_momentum_matrix * qdot;
@@ -271,7 +412,13 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::MatrixXd H_force_one = 1e-9 * Eigen::MatrixXd::Identity(3 * n_contacts_, 3 * n_contacts_);
   Eigen::VectorXd f_force_one = Eigen::VectorXd::Zero(3 * n_contacts_);
 
-  Eigen::VectorXd b_dyn = -cu;
+  // Eq. (3): include the supplied wrist interaction wrenches in the
+  // floating-base dynamics. All quantities use LOCAL_WORLD_ALIGNED ordering
+  // [force; torque].
+  Eigen::VectorXd b_dyn =
+      -cu +
+      J_lhand_.leftCols(6).transpose() * left_interaction_wrench +
+      J_rhand_.leftCols(6).transpose() * right_interaction_wrench;
 
   Eigen::MatrixXd C_force_block(4, 3);
   C_force_block <<  1.0,  0.0, -params_.mu,
@@ -342,10 +489,24 @@ WholeBodyController::compute_inverse_dynamics(
   wbc_solver_ptr_->solve(H, f, A, b, C, d_min, d_max);
   Eigen::VectorXd solution = wbc_solver_ptr_->get_solution();
   q_ddot_ = solution.head(6 + n_joints_);
+  if (desired.use_hand_compliance) {
+    left_hand_compliance_acceleration_achieved_ =
+        J_lhand_arm * q_ddot_ + a_lhand_arm_drift;
+    right_hand_compliance_acceleration_achieved_ =
+        J_rhand_arm * q_ddot_ + a_rhand_arm_drift;
+  } else {
+    left_hand_compliance_acceleration_achieved_.setZero();
+    right_hand_compliance_acceleration_achieved_.setZero();
+  }
   flr = solution.segment(6 + n_joints_, 2 * 3 * n_contacts_);
   Eigen::VectorXd fl = flr.head(3 * n_contacts_);
   Eigen::VectorXd fr = flr.tail(3 * n_contacts_);
-  Eigen::VectorXd tau = Ma * q_ddot_ + ca - Jla.transpose() * T_l * fl - Jra.transpose() * T_r * fr;
+  Eigen::VectorXd tau =
+      Ma * q_ddot_ + ca -
+      Jla.transpose() * T_l * fl -
+      Jra.transpose() * T_r * fr -
+      J_lhand_.rightCols(n_joints_).transpose() * left_interaction_wrench -
+      J_rhand_.rightCols(n_joints_).transpose() * right_interaction_wrench;
 
   left_foot_wrench_ = T_l * fl;
   right_foot_wrench_ = T_r * fr;

@@ -19,7 +19,24 @@ from math import ceil, floor, sqrt
 from collections import defaultdict
 import matplotlib.cm as cm
 from scipy.spatial.transform import Rotation as R
+import argparse
 import os
+from pathlib import Path
+
+try:
+    from .crg_wbc_plotting import (
+        folder_has_compliance_logs,
+        generate_compliance_batch,
+        generate_compliance_evidence,
+        parse_formats,
+    )
+except ImportError:
+    from crg_wbc_plotting import (
+        folder_has_compliance_logs,
+        generate_compliance_batch,
+        generate_compliance_evidence,
+        parse_formats,
+    )
 
 
 def ensure_2d(data: np.ndarray, expected_cols: int) -> np.ndarray:
@@ -50,13 +67,217 @@ def load_optional_matrix(path: str):
         return None
     return np.atleast_2d(data)
 
+
+def build_argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Plot walking-controller logs and generate a timestamp-aligned "
+            "CRG/WBC compliance evidence suite."
+        )
+    )
+    parser.add_argument(
+        "--folder",
+        help=(
+            "Log directory. Without this option the original interactive "
+            "experiment-number prompt is retained."
+        ),
+    )
+    parser.add_argument(
+        "--output-dir",
+        help=(
+            "CRG/WBC figure directory. With --folder the default is "
+            "<folder>/plots/crg_wbc; legacy plots keep their existing images/ paths."
+        ),
+    )
+    parser.add_argument(
+        "--crg-wbc-only",
+        "--compliance-only",
+        dest="compliance_only",
+        action="store_true",
+        help="Generate only the CRG/WBC evidence suite; no legacy logs are required.",
+    )
+    parser.add_argument(
+        "--compare",
+        nargs="+",
+        metavar="LOG_DIR",
+        help=(
+            "Generate one evidence suite per directory plus a quantitative "
+            "multi-run comparison. Unquoted shell globs are supported."
+        ),
+    )
+    parser.add_argument(
+        "--labels",
+        nargs="+",
+        help="Optional labels for --compare directories, in the same order.",
+    )
+    parser.add_argument(
+        "--case-label",
+        help="Optional title label for a single --folder run.",
+    )
+    parser.add_argument(
+        "--formats",
+        default="png,pdf",
+        help="Comma-separated CRG/WBC figure formats: png,pdf,svg (default: png,pdf).",
+    )
+    parser.add_argument(
+        "--time-range",
+        nargs=2,
+        type=float,
+        metavar=("START", "END"),
+        help="Optional displayed time range in seconds; metrics still use full logs.",
+    )
+    parser.add_argument(
+        "--force-window",
+        nargs=2,
+        type=float,
+        metavar=("START", "END"),
+        help="Override the force-window inferred from applied-wrench enable flags.",
+    )
+    parser.add_argument(
+        "--max-points",
+        type=int,
+        default=0,
+        help=(
+            "Maximum displayed samples per line; 0 keeps every sample. Full data "
+            "are always used for metrics (default: 0)."
+        ),
+    )
+    parser.add_argument(
+        "--strict-compliance",
+        action="store_true",
+        help="Fail if any required CRG/WBC evidence log or named column is missing.",
+    )
+    return parser
+
 if __name__ == '__main__':
-    #request input from terminal
-    number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
-    if number == '0':
-        folder = '/tmp'
+    parser = build_argument_parser()
+    args = parser.parse_args()
+    if args.compare and args.folder:
+        parser.error('--compare and --folder are mutually exclusive')
+    if args.compare and args.case_label:
+        parser.error('--case-label is only valid for a single run')
+    if args.compare and args.compliance_only:
+        parser.error('--compare already selects CRG/WBC-only batch mode')
+    if args.labels and not args.compare:
+        parser.error('--labels requires --compare')
+    try:
+        compliance_formats = parse_formats(args.formats)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if args.max_points < 0:
+        parser.error('--max-points must be non-negative')
+    if args.time_range is not None and (
+        not np.all(np.isfinite(args.time_range))
+        or args.time_range[1] <= args.time_range[0]
+    ):
+        parser.error('--time-range must be finite and END must be greater than START')
+    if args.force_window is not None and (
+        not np.all(np.isfinite(args.force_window))
+        or args.force_window[1] <= args.force_window[0]
+    ):
+        parser.error('--force-window must be finite and END must be greater than START')
+
+    if args.compare:
+        comparison_output = args.output_dir or 'images/crg_wbc_comparison'
+        try:
+            generate_compliance_batch(
+                args.compare,
+                comparison_output,
+                labels=args.labels,
+                formats=compliance_formats,
+                max_points=args.max_points,
+                time_range=args.time_range,
+                force_window=args.force_window,
+                strict=args.strict_compliance,
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            parser.error(str(exc))
+        raise SystemExit(0)
+
+    explicit_folder = args.folder is not None
+    if explicit_folder:
+        folder = str(Path(args.folder).expanduser().resolve())
     else:
-        folder = 'experiments/experiment_' + number
+        # Preserve the original interactive entry point.
+        number = input("Enter 0 to plot data from the last simulation or the number of the experiment: ")
+        if number == '0':
+            folder = '/tmp'
+        else:
+            folder = 'experiments/experiment_' + number
+
+    has_crg_wbc_logs = folder_has_compliance_logs(folder)
+    if has_crg_wbc_logs:
+        if args.output_dir:
+            compliance_output = args.output_dir
+        elif explicit_folder:
+            compliance_output = str(Path(folder) / 'plots' / 'crg_wbc')
+        else:
+            compliance_output = 'images/crg_wbc'
+        try:
+            generate_compliance_evidence(
+                folder,
+                compliance_output,
+                label=args.case_label,
+                formats=compliance_formats,
+                max_points=args.max_points,
+                time_range=args.time_range,
+                force_window=args.force_window,
+                strict=args.strict_compliance,
+            )
+        except (OSError, ValueError, KeyError) as exc:
+            if args.compliance_only or args.strict_compliance:
+                parser.error(str(exc))
+            print(f'[WARN] Skip CRG/WBC evidence suite: {exc}')
+            has_crg_wbc_logs = False
+    elif args.compliance_only or args.strict_compliance:
+        parser.error(
+            f"{folder} does not contain a readable compliance_torso_state.txt"
+        )
+
+    if args.compliance_only:
+        raise SystemExit(0)
+
+    # Archived CRG/WBC snapshots intentionally contain only evidence logs.
+    # In that case --folder is useful without requiring an extra mode flag.
+    legacy_required = (
+        'joint_names.txt', 'input_torque.txt',
+        'sim_com_position.txt', 'sim_com_velocity.txt', 'sim_zmp_position.txt',
+        'fb_com_position.txt', 'fb_com_velocity.txt', 'fb_zmp_position.txt',
+        'kf_com_position.txt', 'kf_com_velocity.txt', 'kf_zmp_position.txt',
+        'des_com_position.txt', 'des_com_velocity.txt', 'des_zmp_position.txt',
+        'ef_zmp_position.txt',
+        'p_lsole_sim.txt', 'p_rsole_sim.txt', 'v_lsole_sim.txt', 'v_rsole_sim.txt',
+        'p_lsole_fb.txt', 'p_rsole_fb.txt', 'v_lsole_fb.txt', 'v_rsole_fb.txt',
+        'p_lsole_des.txt', 'p_rsole_des.txt', 'v_lsole_des.txt', 'v_rsole_des.txt',
+        'estimated_force_lsole.txt', 'estimated_force_rsole.txt',
+        'ekf_base_position.txt', 'ekf_base_velocity.txt',
+        'ekf_base_orientation.txt', 'ekf_base_angular_velocity.txt',
+        'ekf_joint_position.txt', 'ekf_joint_velocity.txt',
+        'sim_base_position.txt', 'sim_base_velocity.txt',
+        'sim_base_orientation.txt', 'sim_base_angular_velocity.txt',
+        'sim_joint_position.txt', 'sim_joint_velocity.txt',
+        'execution_time_ekf.txt', 'execution_time_kf.txt',
+        'execution_time_mpc.txt', 'execution_time_wbc.txt',
+        'execution_time_update.txt',
+        'measured_joint_position.txt', 'measured_joint_velocity.txt',
+        'measured_imu_orientation.txt', 'measured_imu_angular_velocity.txt',
+        'measured_imu_accelerometer.txt',
+    )
+    if explicit_folder:
+        missing_legacy = [
+            name for name in legacy_required
+            if not is_nonempty_file(os.path.join(folder, name))
+        ]
+        if missing_legacy and has_crg_wbc_logs:
+            print(
+                '[INFO] Legacy walking logs are incomplete; all available '
+                'CRG/WBC evidence has been generated.'
+            )
+            raise SystemExit(0)
+        if missing_legacy:
+            preview = ', '.join(missing_legacy[:6])
+            suffix = ' ...' if len(missing_legacy) > 6 else ''
+            parser.error(f'Legacy log set is incomplete; missing: {preview}{suffix}')
     
     joint_names = open(folder + '/joint_names.txt').readlines()
     input_torque: np.ndarray = np.loadtxt(folder +'/input_torque.txt')
@@ -262,7 +483,7 @@ if __name__ == '__main__':
 
 
     num_samples = sim_joint_position.shape[0] - 10
-    input_torque = sim_joint_position[:num_samples, :]
+    input_torque = input_torque[:num_samples, :]
 
     sim_com_position = sim_com_position[:num_samples, :]
     sim_com_velocity = sim_com_velocity[:num_samples, :]
@@ -539,7 +760,7 @@ if __name__ == '__main__':
             plt.close(fig)
 
     if has_applied_wrist_force_logs:
-        applied_t = t[:applied_wrist_force.shape[0]]
+        applied_t = applied_wrist_force[:, 0]
 
         fig, ax = plt.subplots()
         ax.plot(applied_t, applied_wrist_force[:, 5], label='Applied Left Wrist Fx', color='tab:blue')
@@ -645,7 +866,7 @@ if __name__ == '__main__':
         right_delta_filtered = compliance_torso_state[:, 43:49]
         delta_xb = compliance_torso_state[:, 49:55]
         delta_xb_final = compliance_torso_state[:, 61:67]
-        qp_solved = compliance_torso_state[:, 67]
+        qp_solved = compliance_torso_state[:, -1]
         angular_xb_rad = np.hstack((delta_xb[:, 3:6], delta_xb_final[:, 3:6]))
         angular_xb_limit_rad = max(1.0e-4, 1.05 * np.nanmax(np.abs(angular_xb_rad)))
 
@@ -741,17 +962,30 @@ if __name__ == '__main__':
     if has_wbc_torso_tracking_logs:
         torso_track_t = wbc_torso_tracking[:, 0]
         torso_offset_deg = np.rad2deg(wbc_torso_tracking[:, 1:4])
+        torso_nom_rad = wbc_torso_tracking[:, 4:7]
         torso_des_rad = wbc_torso_tracking[:, 7:10]
         torso_cur_rad = wbc_torso_tracking[:, 10:13]
 
-        def relative_rpy_change_deg(rpy_rad: np.ndarray) -> np.ndarray:
-            rotations = R.from_euler('ZYX', rpy_rad[:, [2, 1, 0]])
-            relative_rotations = rotations[0].inv() * rotations
+        def relative_rpy_change_deg(
+            nominal_rpy_rad: np.ndarray,
+            target_rpy_rad: np.ndarray,
+        ) -> np.ndarray:
+            nominal_rotations = R.from_euler(
+                'ZYX', nominal_rpy_rad[:, [2, 1, 0]]
+            )
+            target_rotations = R.from_euler(
+                'ZYX', target_rpy_rad[:, [2, 1, 0]]
+            )
+            relative_rotations = target_rotations * nominal_rotations.inv()
             relative_ypr_rad = relative_rotations.as_euler('ZYX')
             return np.rad2deg(relative_ypr_rad[:, [2, 1, 0]])
 
-        torso_des_delta_deg = relative_rpy_change_deg(torso_des_rad)
-        torso_cur_delta_deg = relative_rpy_change_deg(torso_cur_rad)
+        torso_des_delta_deg = relative_rpy_change_deg(
+            torso_nom_rad, torso_des_rad
+        )
+        torso_cur_delta_deg = relative_rpy_change_deg(
+            torso_nom_rad, torso_cur_rad
+        )
         torso_err_deg = np.rad2deg(wbc_torso_tracking[:, 13:16])
         angular_labels = ['roll', 'pitch', 'yaw']
 

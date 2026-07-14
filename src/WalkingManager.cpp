@@ -145,6 +145,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     torso_desired_rpy_log_.reserve(max_steps);
     torso_current_rpy_log_.reserve(max_steps);
     torso_tracking_error_log_.reserve(max_steps);
+    left_hand_compliance_acc_ref_log_.reserve(max_steps);
+    right_hand_compliance_acc_ref_log_.reserve(max_steps);
+    left_hand_compliance_acc_achieved_log_.reserve(max_steps);
+    right_hand_compliance_acc_achieved_log_.reserve(max_steps);
     mpc_predictions_log_.reserve(max_steps);
 
     measured_imu_orientation_log_.reserve(max_steps);
@@ -523,6 +527,46 @@ void WalkingManager::clearTorsoComplianceReference() {
     torso_compliance_rpy_offset_.setZero();
     torso_compliance_angular_velocity_.setZero();
     torso_compliance_angular_acceleration_.setZero();
+}
+
+void WalkingManager::setHandComplianceReferences(
+    const Eigen::Matrix<double, 6, 1>& left_arm_offset,
+    const Eigen::Matrix<double, 6, 1>& right_arm_offset,
+    const Eigen::Matrix<double, 6, 1>& left_arm_velocity,
+    const Eigen::Matrix<double, 6, 1>& right_arm_velocity) {
+    use_hand_compliance_reference_ = true;
+    left_arm_compliance_offset_ = left_arm_offset;
+    right_arm_compliance_offset_ = right_arm_offset;
+    left_arm_compliance_velocity_ = left_arm_velocity;
+    right_arm_compliance_velocity_ = right_arm_velocity;
+}
+
+void WalkingManager::clearHandComplianceReferences() {
+    use_hand_compliance_reference_ = false;
+    left_arm_compliance_offset_.setZero();
+    right_arm_compliance_offset_.setZero();
+    left_arm_compliance_velocity_.setZero();
+    right_arm_compliance_velocity_.setZero();
+}
+
+void WalkingManager::setInteractionWrenches(
+    const Eigen::Matrix<double, 6, 1>& left_wrench,
+    const Eigen::Matrix<double, 6, 1>& right_wrench) {
+    if (left_wrench.allFinite()) {
+        left_interaction_wrench_ = left_wrench;
+    } else {
+        left_interaction_wrench_.setZero();
+    }
+    if (right_wrench.allFinite()) {
+        right_interaction_wrench_ = right_wrench;
+    } else {
+        right_interaction_wrench_.setZero();
+    }
+}
+
+void WalkingManager::clearInteractionWrenches() {
+    left_interaction_wrench_.setZero();
+    right_interaction_wrench_.setZero();
 }
 
 RobotState WalkingManager::updateEKF(Eigen::VectorXd actual_output) {
@@ -1457,11 +1501,24 @@ WalkingManager::update(
     const Eigen::Matrix3d nominal_desired_torso_rotation = desired_gait_configuration.torso.pos;
 
     if (use_torso_compliance_reference_) {
+        // CRG offsets are expressed about world-aligned task axes, matching
+        // the LOCAL_WORLD_ALIGNED torso Jacobian used by the WBC.
         desired_gait_configuration.torso.pos =
-            nominal_desired_torso_rotation * rpyToRotation(torso_compliance_rpy_offset_);
+            rpyToRotation(torso_compliance_rpy_offset_) * nominal_desired_torso_rotation;
         desired_gait_configuration.torso.vel += torso_compliance_angular_velocity_;
         desired_gait_configuration.torso.acc += torso_compliance_angular_acceleration_;
     }
+
+    desired_gait_configuration.use_hand_compliance =
+        use_hand_compliance_reference_;
+    desired_gait_configuration.lhand_compliance_offset =
+        left_arm_compliance_offset_;
+    desired_gait_configuration.rhand_compliance_offset =
+        right_arm_compliance_offset_;
+    desired_gait_configuration.lhand_compliance_velocity =
+        left_arm_compliance_velocity_;
+    desired_gait_configuration.rhand_compliance_velocity =
+        right_arm_compliance_velocity_;
 
     const Eigen::Vector3d desired_torso_rpy = rotationToRpy(desired_gait_configuration.torso.pos);
     const Eigen::Vector3d current_torso_rpy = rotationToRpy(current_gait_configuration.torso.pos);
@@ -1522,7 +1579,9 @@ WalkingManager::update(
                     fb_robot_data,
                     fb_robot_data,
                     current_gait_configuration,
-                    desired_gait_configuration
+                    desired_gait_configuration,
+                    left_interaction_wrench_,
+                    right_interaction_wrench_
                 );
             }else if (t_msec_ >= startTimeCoMCL && isCoMLoopClosed && !isTotalBodyLoopClosed){
                 joint_command = whole_body_controller_ptr_->compute_inverse_dynamics(
@@ -1532,7 +1591,9 @@ WalkingManager::update(
                     sim_robot_data,
                     fb_robot_data,
                     current_gait_configuration,
-                    desired_gait_configuration
+                    desired_gait_configuration,
+                    left_interaction_wrench_,
+                    right_interaction_wrench_
                 );
             } else {
                 // Use the MPC to compute the joint command:
@@ -1543,7 +1604,9 @@ WalkingManager::update(
                     sim_robot_data,
                     sim_robot_data,
                     current_gait_configuration,
-                    desired_gait_configuration
+                    desired_gait_configuration,
+                    left_interaction_wrench_,
+                    right_interaction_wrench_
                 );
             }
         }
@@ -1552,6 +1615,15 @@ WalkingManager::update(
         }
     } // end of parallel sections
     auto end_wbc = std::chrono::system_clock::now();
+
+    left_hand_compliance_acc_ref_log_.push_back(
+        whole_body_controller_ptr_->getLeftHandComplianceAccelerationReference());
+    right_hand_compliance_acc_ref_log_.push_back(
+        whole_body_controller_ptr_->getRightHandComplianceAccelerationReference());
+    left_hand_compliance_acc_achieved_log_.push_back(
+        whole_body_controller_ptr_->getLeftHandComplianceAccelerationAchieved());
+    right_hand_compliance_acc_achieved_log_.push_back(
+        whole_body_controller_ptr_->getRightHandComplianceAccelerationAchieved());
 
     // Get measured joint torques from the joint command
     Eigen::VectorXd measured_torques(robot_model.nv - 6);  // Exclude floating base
@@ -1880,7 +1952,7 @@ void WalkingManager::saveLogs() {
         << "nom_roll nom_pitch nom_yaw "
         << "des_roll des_pitch des_yaw "
         << "cur_roll cur_pitch cur_yaw "
-        << "err_roll err_pitch err_yaw\n";
+        << "err_rotvec_x err_rotvec_y err_rotvec_z\n";
     std::size_t torso_tracking_samples = torso_tracking_time_log_.size();
     torso_tracking_samples = std::min(torso_tracking_samples, torso_compliance_rpy_offset_log_.size());
     torso_tracking_samples = std::min(torso_tracking_samples, torso_nominal_desired_rpy_log_.size());
@@ -1894,6 +1966,32 @@ void WalkingManager::saveLogs() {
                             << torso_desired_rpy_log_[i].transpose() << " "
                             << torso_current_rpy_log_[i].transpose() << " "
                             << torso_tracking_error_log_[i].transpose() << "\n";
+    }
+
+    std::ofstream hand_compliance_tracking_file(
+        "/tmp/wbc_hand_compliance_tracking.txt");
+    hand_compliance_tracking_file
+        << "time "
+        << "l_ref0 l_ref1 l_ref2 l_ref3 l_ref4 l_ref5 "
+        << "l_ach0 l_ach1 l_ach2 l_ach3 l_ach4 l_ach5 "
+        << "r_ref0 r_ref1 r_ref2 r_ref3 r_ref4 r_ref5 "
+        << "r_ach0 r_ach1 r_ach2 r_ach3 r_ach4 r_ach5\n";
+    std::size_t hand_tracking_samples = torso_tracking_time_log_.size();
+    hand_tracking_samples = std::min(
+        hand_tracking_samples, left_hand_compliance_acc_ref_log_.size());
+    hand_tracking_samples = std::min(
+        hand_tracking_samples, right_hand_compliance_acc_ref_log_.size());
+    hand_tracking_samples = std::min(
+        hand_tracking_samples, left_hand_compliance_acc_achieved_log_.size());
+    hand_tracking_samples = std::min(
+        hand_tracking_samples, right_hand_compliance_acc_achieved_log_.size());
+    for (std::size_t i = 0; i < hand_tracking_samples; ++i) {
+        hand_compliance_tracking_file
+            << torso_tracking_time_log_[i] << " "
+            << left_hand_compliance_acc_ref_log_[i].transpose() << " "
+            << left_hand_compliance_acc_achieved_log_[i].transpose() << " "
+            << right_hand_compliance_acc_ref_log_[i].transpose() << " "
+            << right_hand_compliance_acc_achieved_log_[i].transpose() << "\n";
     }
     
     std::ofstream measured_joint_position_file("/tmp/measured_joint_position.txt");

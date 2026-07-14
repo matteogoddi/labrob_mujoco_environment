@@ -12,8 +12,11 @@
 
 namespace {
 
+using Vector3d = Eigen::Matrix<double, 3, 1>;
 using Vector6d = Eigen::Matrix<double, 6, 1>;
+using Matrix3d = Eigen::Matrix<double, 3, 3>;
 using Matrix6d = Eigen::Matrix<double, 6, 6>;
+using Matrix6x3d = Eigen::Matrix<double, 6, 3>;
 
 bool isFiniteVector(const Vector6d& x) {
   for (int i = 0; i < 6; ++i) {
@@ -47,11 +50,35 @@ Vector6d makePose6dFromRotation(
   return x;
 }
 
+double clampUnitInterval(double value) {
+  if (!std::isfinite(value)) {
+    return 0.0;
+  }
+  return std::min(std::max(value, 0.0), 1.0);
+}
+
+Matrix3d skewSymmetric(const Vector3d& v) {
+  Matrix3d skew;
+  skew << 0.0, -v.z(), v.y(),
+          v.z(), 0.0, -v.x(),
+          -v.y(), v.x(), 0.0;
+  return skew;
+}
+
 double objectiveValue(
-    const Vector6d& x,
-    const Matrix6d& H,
-    const Vector6d& g) {
+    const Vector3d& x,
+    const Matrix3d& H,
+    const Vector3d& g) {
   return 0.5 * x.dot(H * x) + g.dot(x);
+}
+
+template <std::size_t N>
+void setDebugStatus(
+    std::array<char, N>& destination,
+    const std::string& status) {
+  destination.fill('\0');
+  const std::size_t count = std::min(status.size(), N - 1);
+  std::copy_n(status.data(), count, destination.data());
 }
 
 }  // anonymous namespace
@@ -68,6 +95,8 @@ ComplianceReferenceGenerator::ComplianceReferenceGenerator()
 ComplianceReferenceGenerator::ComplianceReferenceGenerator(
     const Parameters& params)
     : params_(params) {
+  params_.rho_left = clampUnitInterval(params_.rho_left);
+  params_.rho_right = clampUnitInterval(params_.rho_right);
   buildSolver();
   reset();
 }
@@ -77,7 +106,7 @@ void ComplianceReferenceGenerator::reset() {
 
   delta_xc_left_prev_.setZero();
   delta_xc_right_prev_.setZero();
-  delta_xb_prev_.setZero();
+  delta_xb_qp_prev_.setZero();
 
   delta_dxc_left_prev_.setZero();
   delta_dxc_right_prev_.setZero();
@@ -86,12 +115,21 @@ void ComplianceReferenceGenerator::reset() {
   delta_xc_right_filtered_prev_.setZero();
   delta_xb_filtered_prev_.setZero();
 
-  initialized_ = true;
+  delta_dxb_prev_.setZero();
+  delta_x_left_arm_prev_.setZero();
+  delta_x_right_arm_prev_.setZero();
+  delta_dx_left_arm_prev_.setZero();
+  delta_dx_right_arm_prev_.setZero();
+
+  torso_output_history_initialized_ = false;
+  arm_output_history_initialized_ = false;
 }
 
 void ComplianceReferenceGenerator::setParameters(
     const Parameters& params) {
   params_ = params;
+  params_.rho_left = clampUnitInterval(params_.rho_left);
+  params_.rho_right = clampUnitInterval(params_.rho_right);
   buildSolver();
 }
 
@@ -105,8 +143,17 @@ ComplianceReferenceGenerator::getDebugInfo() const {
   return debug_;
 }
 
+ComplianceReferenceGenerator::Matrix6x3d
+ComplianceReferenceGenerator::makeTorsoRotationMap(
+    const Eigen::Vector3d& r_b_hand) {
+  Matrix6x3d Ab = Matrix6x3d::Zero();
+  Ab.topRows<3>() = -skewSymmetric(r_b_hand);
+  Ab.bottomRows<3>() = Matrix3d::Identity();
+  return Ab;
+}
+
 void ComplianceReferenceGenerator::buildSolver() {
-  const int nx = 6;
+  const int nx = 3;
   const int na = 0;
 
   casadi::SpDict qp;
@@ -129,11 +176,14 @@ void ComplianceReferenceGenerator::buildSolver() {
         opts);
 
     solver_built_ = true;
-    debug_.qp_status = "CasADi qpOASES solver built successfully.";
+    setDebugStatus(
+        debug_.qp_status,
+        "CasADi qpOASES solver built successfully.");
   } catch (const std::exception& e) {
     solver_built_ = false;
-    debug_.qp_status =
-        std::string("Failed to build CasADi qpOASES solver: ") + e.what();
+    setDebugStatus(
+        debug_.qp_status,
+        std::string("Failed to build CasADi qpOASES solver: ") + e.what());
   }
 }
 
@@ -142,15 +192,46 @@ ComplianceReferenceGenerator::update(const Input& input) {
   Output output;
   debug_ = DebugInfo();
 
-  const bool hand_enabled =
-      params_.compliance_mode == ComplianceMode::HAND_ONLY ||
-      params_.compliance_mode == ComplianceMode::HAND_AND_TORSO;
+  const bool compliance_enabled =
+      params_.compliance_mode != ComplianceMode::NONE;
 
   const bool torso_enabled =
       params_.compliance_mode == ComplianceMode::TORSO_ONLY ||
       params_.compliance_mode == ComplianceMode::HAND_AND_TORSO;
 
-  const double dt = std::max(input.dt, 1e-6);
+  const bool hand_reference_enabled =
+      params_.compliance_mode == ComplianceMode::HAND_ONLY ||
+      params_.compliance_mode == ComplianceMode::HAND_AND_TORSO;
+
+  const bool input_dt_valid = std::isfinite(input.dt) && input.dt > 0.0;
+  const double dt = input_dt_valid ? std::max(input.dt, 1e-6) : 1e-6;
+  const Matrix6x3d Ab_left = input.use_explicit_Ab
+      ? input.Ab_left
+      : Matrix6x3d(input.Jb_left.rightCols<3>());
+  const Matrix6x3d Ab_right = input.use_explicit_Ab
+      ? input.Ab_right
+      : Matrix6x3d(input.Jb_right.rightCols<3>());
+
+  debug_.Ab_left = Ab_left;
+  debug_.Ab_right = Ab_right;
+  debug_.rho_left = params_.rho_left;
+  debug_.rho_right = params_.rho_right;
+
+  if (!input_dt_valid) {
+    debug_.qp_solved = false;
+    setDebugStatus(
+        debug_.qp_status,
+        "ComplianceReferenceGenerator input dt must be finite and positive.");
+    output.x_left_ref_local = input.x_left_nominal_local;
+    output.x_right_ref_local = input.x_right_nominal_local;
+    output.x_torso_ref = input.x_torso_nominal;
+    const Eigen::Isometry3d T_W_F = getSelectedReferenceTransform(input);
+    output.x_left_ref_world =
+        transformPoseToWorld(T_W_F, output.x_left_ref_local);
+    output.x_right_ref_world =
+        transformPoseToWorld(T_W_F, output.x_right_ref_local);
+    return output;
+  }
 
   // --------------------------------------------------------------------------
   // 1. Compute hand compliance.
@@ -181,7 +262,7 @@ ComplianceReferenceGenerator::update(const Input& input) {
     delta_xc_right_prev_ = output.delta_xc_right;
     delta_dxc_left_prev_ = output.delta_dxc_left;
     delta_dxc_right_prev_ = output.delta_dxc_right;
-  } else if (hand_enabled) {
+  } else if (compliance_enabled) {
     if (params_.use_admittance_dynamics) {
       output.delta_xc_left = computeArmCompliance(
           input.wrench_left,
@@ -273,15 +354,21 @@ ComplianceReferenceGenerator::update(const Input& input) {
   delta_xc_left_prev_ = output.delta_xc_left;
   delta_xc_right_prev_ = output.delta_xc_right;
 
-  output.delta_xc_left_filtered = firstOrderLowpass(
-      output.delta_xc_left,
-      delta_xc_left_filtered_prev_,
-      params_.filter_alpha);
+  if (compliance_enabled) {
+    output.delta_xc_left_filtered = firstOrderLowpass(
+        output.delta_xc_left,
+        delta_xc_left_filtered_prev_,
+        params_.filter_alpha);
 
-  output.delta_xc_right_filtered = firstOrderLowpass(
-      output.delta_xc_right,
-      delta_xc_right_filtered_prev_,
-      params_.filter_alpha);
+    output.delta_xc_right_filtered = firstOrderLowpass(
+        output.delta_xc_right,
+        delta_xc_right_filtered_prev_,
+        params_.filter_alpha);
+  } else {
+    // NONE is an immediate disable, not a slow decay through the filter.
+    output.delta_xc_left_filtered.setZero();
+    output.delta_xc_right_filtered.setZero();
+  }
 
   delta_xc_left_filtered_prev_ = output.delta_xc_left_filtered;
   delta_xc_right_filtered_prev_ = output.delta_xc_right_filtered;
@@ -290,65 +377,127 @@ ComplianceReferenceGenerator::update(const Input& input) {
   // 2. Solve torso compliance QP.
   // --------------------------------------------------------------------------
 
+  const Vector6d delta_xb_final_previous = delta_xb_filtered_prev_;
+
   if (torso_enabled) {
-    output.delta_xb = solveTorsoComplianceQP(
+    output.delta_xb.tail<3>() = solveTorsoComplianceQP(
         output.delta_xc_left_filtered,
         output.delta_xc_right_filtered,
-        input.Jb_left,
-        input.Jb_right,
-        dt);
+        Ab_left,
+        Ab_right);
 
     output.qp_solved = debug_.qp_solved;
 
-    output.delta_xb_filtered = firstOrderLowpass(
-        output.delta_xb,
-        delta_xb_filtered_prev_,
-        params_.filter_alpha);
+    if (output.qp_solved) {
+      // Eq. (10) uses the previous raw QP optimum, not the filtered output.
+      delta_xb_qp_prev_ = output.delta_xb.tail<3>();
 
-    delta_xb_filtered_prev_ = output.delta_xb_filtered;
-    output.delta_xb_final = output.delta_xb_filtered;
+      output.delta_xb_filtered = firstOrderLowpass(
+          output.delta_xb,
+          delta_xb_filtered_prev_,
+          params_.filter_alpha);
+
+      output.delta_xb_filtered.head<3>().setZero();
+      output.delta_xb_filtered.tail<3>() = applyTorsoOrientationBounds(
+          output.delta_xb_filtered.tail<3>());
+      output.delta_xb_final = output.delta_xb_filtered;
+    } else {
+      // A failed QP is not a new command. Hold the last valid torso output and
+      // leave all output histories unchanged for a consistent recovery.
+      output.delta_xb_filtered = delta_xb_filtered_prev_;
+      output.delta_xb_final = delta_xb_filtered_prev_;
+    }
   } else {
     output.delta_xb.setZero();
     output.delta_xb_filtered.setZero();
     output.delta_xb_final.setZero();
     output.qp_solved = true;
+    debug_.qp_solved = true;
+    setDebugStatus(debug_.qp_status, "torso_allocation_disabled");
+    delta_xb_qp_prev_.setZero();
   }
-
-  delta_xb_prev_ = output.delta_xb_final;
 
   // --------------------------------------------------------------------------
   // 3. Compute residual arm compliance after torso allocation.
   // --------------------------------------------------------------------------
 
-  output.delta_x_left_arm =
-      output.delta_xc_left_filtered - input.Jb_left * output.delta_xb_final;
+  output.delta_x_left_torso = Ab_left * output.delta_xb_final.tail<3>();
+  output.delta_x_right_torso = Ab_right * output.delta_xb_final.tail<3>();
 
-  output.delta_x_right_arm =
-      output.delta_xc_right_filtered - input.Jb_right * output.delta_xb_final;
+  if (compliance_enabled) {
+    output.delta_x_left_arm =
+        output.delta_xc_left_filtered - output.delta_x_left_torso;
 
-  if (params_.compliance_mode == ComplianceMode::TORSO_ONLY) {
+    output.delta_x_right_arm =
+        output.delta_xc_right_filtered - output.delta_x_right_torso;
+  } else {
     output.delta_x_left_arm.setZero();
     output.delta_x_right_arm.setZero();
+  }
+
+  // Eqs. (20)--(21) use derivatives of enabled, valid allocated outputs. The
+  // first update after reset/mode enable is initialized without an impulse.
+  if (output.qp_solved) {
+    if (torso_enabled) {
+      if (torso_output_history_initialized_) {
+        output.delta_dxb =
+            (output.delta_xb_final - delta_xb_final_previous) / dt;
+        output.delta_ddxb =
+            (output.delta_dxb - delta_dxb_prev_) / dt;
+      }
+
+      delta_xb_filtered_prev_ = output.delta_xb_final;
+      delta_dxb_prev_ = output.delta_dxb;
+      torso_output_history_initialized_ = true;
+    } else {
+      delta_xb_filtered_prev_.setZero();
+      delta_dxb_prev_.setZero();
+      torso_output_history_initialized_ = false;
+    }
+
+    if (hand_reference_enabled) {
+      if (arm_output_history_initialized_) {
+        output.delta_dx_left_arm =
+            (output.delta_x_left_arm - delta_x_left_arm_prev_) / dt;
+        output.delta_dx_right_arm =
+            (output.delta_x_right_arm - delta_x_right_arm_prev_) / dt;
+
+        output.delta_ddx_left_arm =
+            (output.delta_dx_left_arm - delta_dx_left_arm_prev_) / dt;
+        output.delta_ddx_right_arm =
+            (output.delta_dx_right_arm - delta_dx_right_arm_prev_) / dt;
+      }
+
+      delta_x_left_arm_prev_ = output.delta_x_left_arm;
+      delta_x_right_arm_prev_ = output.delta_x_right_arm;
+      delta_dx_left_arm_prev_ = output.delta_dx_left_arm;
+      delta_dx_right_arm_prev_ = output.delta_dx_right_arm;
+      arm_output_history_initialized_ = true;
+    } else {
+      delta_x_left_arm_prev_.setZero();
+      delta_x_right_arm_prev_.setZero();
+      delta_dx_left_arm_prev_.setZero();
+      delta_dx_right_arm_prev_.setZero();
+      arm_output_history_initialized_ = false;
+    }
   }
 
   // --------------------------------------------------------------------------
   // 4. Build final references.
   // --------------------------------------------------------------------------
   //
-  // Important:
-  // Here the absolute hand reference uses total hand compliance delta_xc.
-  // The residual delta_x_arm is kept for debug or torso-relative arm task usage.
+  // Per Eqs. (13)--(14), an enabled hand reference receives the residual arm
+  // displacement. TORSO_ONLY keeps the final hand references nominal.
 
-  if (params_.compliance_mode == ComplianceMode::NONE ||
-      params_.compliance_mode == ComplianceMode::TORSO_ONLY) {
+  if (!hand_reference_enabled) {
     output.x_left_ref_local = input.x_left_nominal_local;
     output.x_right_ref_local = input.x_right_nominal_local;
   } else {
     output.x_left_ref_local =
-        input.x_left_nominal_local + output.delta_xc_left_filtered;
+        input.x_left_nominal_local + output.delta_x_left_arm;
 
     output.x_right_ref_local =
-        input.x_right_nominal_local + output.delta_xc_right_filtered;
+        input.x_right_nominal_local + output.delta_x_right_arm;
   }
 
   output.x_torso_ref =
@@ -366,10 +515,23 @@ ComplianceReferenceGenerator::update(const Input& input) {
   output.valid =
       isFiniteVector(output.delta_xc_left) &&
       isFiniteVector(output.delta_xc_right) &&
+      isFiniteVector(output.delta_dxc_left) &&
+      isFiniteVector(output.delta_dxc_right) &&
+      isFiniteVector(output.delta_ddxc_left) &&
+      isFiniteVector(output.delta_ddxc_right) &&
       isFiniteVector(output.delta_xb_final) &&
+      isFiniteVector(output.delta_x_left_arm) &&
+      isFiniteVector(output.delta_x_right_arm) &&
+      isFiniteVector(output.delta_dxb) &&
+      isFiniteVector(output.delta_ddxb) &&
+      isFiniteVector(output.delta_dx_left_arm) &&
+      isFiniteVector(output.delta_dx_right_arm) &&
+      isFiniteVector(output.delta_ddx_left_arm) &&
+      isFiniteVector(output.delta_ddx_right_arm) &&
       isFiniteVector(output.x_left_ref_world) &&
       isFiniteVector(output.x_right_ref_world) &&
       isFiniteVector(output.x_torso_ref) &&
+      input_dt_valid &&
       output.qp_solved;
 
   return output;
@@ -456,6 +618,33 @@ ComplianceReferenceGenerator::applyVectorLimit(
   return y;
 }
 
+ComplianceReferenceGenerator::Vector3d
+ComplianceReferenceGenerator::applyTorsoOrientationBounds(
+    const Vector3d& x) const {
+  Vector3d bounded = x;
+
+  for (int i = 0; i < 3; ++i) {
+    double lower = params_.delta_xb_min(i + 3);
+    double upper = params_.delta_xb_max(i + 3);
+
+    if (!std::isfinite(lower)) {
+      lower = -1e9;
+    }
+    if (!std::isfinite(upper)) {
+      upper = 1e9;
+    }
+    if (lower > upper) {
+      const double midpoint = 0.5 * (lower + upper);
+      lower = midpoint;
+      upper = midpoint;
+    }
+
+    bounded(i) = std::min(std::max(bounded(i), lower), upper);
+  }
+
+  return bounded;
+}
+
 ComplianceReferenceGenerator::Vector6d
 ComplianceReferenceGenerator::firstOrderLowpass(
     const Vector6d& x,
@@ -468,40 +657,56 @@ ComplianceReferenceGenerator::firstOrderLowpass(
 void ComplianceReferenceGenerator::buildTorsoComplianceQP(
     const Vector6d& delta_xc_left,
     const Vector6d& delta_xc_right,
-    const Matrix6d& Jb_left,
-    const Matrix6d& Jb_right,
-    double /*dt*/,
-    Matrix6d& H,
-    Vector6d& g,
-    Vector6d& lbx,
-    Vector6d& ubx) const {
-  const Matrix6d Ka_left_eff =
-      params_.S_left.transpose() * params_.Ka_left * params_.S_left;
+    const Matrix6x3d& Ab_left,
+    const Matrix6x3d& Ab_right,
+    Matrix3d& H,
+    Vector3d& g,
+    Vector3d& lbx,
+    Vector3d& ubx) const {
+  // Eq. (12): E_i = S_i A_b,i and y_i = S_i delta_xc_i.
+  const Matrix6x3d E_left = params_.S_allocation_left * Ab_left;
+  const Matrix6x3d E_right = params_.S_allocation_right * Ab_right;
+  const Vector6d y_left = params_.S_allocation_left * delta_xc_left;
+  const Vector6d y_right = params_.S_allocation_right * delta_xc_right;
 
-  const Matrix6d Ka_right_eff =
-      params_.S_right.transpose() * params_.Ka_right * params_.S_right;
+  const Matrix6d W_left =
+      0.5 * (params_.W_left + params_.W_left.transpose());
+  const Matrix6d W_right =
+      0.5 * (params_.W_right + params_.W_right.transpose());
+  const Matrix3d Kb = 0.5 * (
+      params_.Kb.bottomRightCorner<3, 3>() +
+      params_.Kb.bottomRightCorner<3, 3>().transpose());
+  const Matrix3d W_smooth = 0.5 * (
+      params_.W_smooth.bottomRightCorner<3, 3>() +
+      params_.W_smooth.bottomRightCorner<3, 3>().transpose());
+  const Matrix3d W_reg = 0.5 * (
+      params_.W_reg.bottomRightCorner<3, 3>() +
+      params_.W_reg.bottomRightCorner<3, 3>().transpose());
 
-  H =
-      params_.Kb +
-      Jb_left.transpose() * Ka_left_eff * Jb_left +
-      Jb_right.transpose() * Ka_right_eff * Jb_right +
-      params_.W_smooth +
-      params_.W_reg;
+  H = Kb +
+      E_left.transpose() * W_left * E_left +
+      E_right.transpose() * W_right * E_right +
+      W_smooth +
+      W_reg;
 
   g =
-      -Jb_left.transpose() * Ka_left_eff * delta_xc_left
-      -Jb_right.transpose() * Ka_right_eff * delta_xc_right
-      -params_.W_smooth * delta_xb_prev_;
+      -params_.rho_left * E_left.transpose() * W_left * y_left
+      -params_.rho_right * E_right.transpose() * W_right * y_right
+      -W_smooth * delta_xb_qp_prev_;
 
   H = 0.5 * (H + H.transpose());
 
   // Numerical regularization for qpOASES.
-  H += 1e-10 * Matrix6d::Identity();
+  H += 1e-10 * Matrix3d::Identity();
 
-  lbx = params_.delta_xb_min;
-  ubx = params_.delta_xb_max;
+  lbx = params_.delta_xb_min.tail<3>();
+  ubx = params_.delta_xb_max.tail<3>();
 
-  for (int i = 0; i < 6; ++i) {
+  const double bound_relaxation = std::isfinite(params_.bound_relaxation)
+      ? std::max(params_.bound_relaxation, 0.0)
+      : 0.0;
+
+  for (int i = 0; i < 3; ++i) {
     if (!std::isfinite(lbx(i))) {
       lbx(i) = -1e9;
     }
@@ -516,29 +721,27 @@ void ComplianceReferenceGenerator::buildTorsoComplianceQP(
       ubx(i) = mid;
     }
 
-    lbx(i) -= params_.bound_relaxation;
-    ubx(i) += params_.bound_relaxation;
+    lbx(i) -= bound_relaxation;
+    ubx(i) += bound_relaxation;
   }
 }
 
-ComplianceReferenceGenerator::Vector6d
+ComplianceReferenceGenerator::Vector3d
 ComplianceReferenceGenerator::solveTorsoComplianceQP(
     const Vector6d& delta_xc_left,
     const Vector6d& delta_xc_right,
-    const Matrix6d& Jb_left,
-    const Matrix6d& Jb_right,
-    double dt) {
-  Matrix6d H;
-  Vector6d g;
-  Vector6d lbx;
-  Vector6d ubx;
+    const Matrix6x3d& Ab_left,
+    const Matrix6x3d& Ab_right) {
+  Matrix3d H;
+  Vector3d g;
+  Vector3d lbx;
+  Vector3d ubx;
 
   buildTorsoComplianceQP(
       delta_xc_left,
       delta_xc_right,
-      Jb_left,
-      Jb_right,
-      dt,
+      Ab_left,
+      Ab_right,
       H,
       g,
       lbx,
@@ -549,7 +752,17 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
   debug_.lbx = lbx;
   debug_.ubx = ubx;
 
-  Vector6d delta_xb = Vector6d::Zero();
+  Vector3d delta_xb = Vector3d::Zero();
+
+  if (!H.allFinite() || !g.allFinite() ||
+      !lbx.allFinite() || !ubx.allFinite()) {
+    debug_.qp_solved = false;
+    setDebugStatus(
+        debug_.qp_status,
+        "Torso compliance QP contains non-finite coefficients.");
+    debug_.objective_value = std::numeric_limits<double>::quiet_NaN();
+    return delta_xb;
+  }
 
   if (!solver_built_) {
     buildSolver();
@@ -557,8 +770,9 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
 
   if (!solver_built_) {
     debug_.qp_solved = false;
-    debug_.qp_status =
-        "CasADi qpOASES solver is not built. Returning zero delta_xb.";
+    setDebugStatus(
+        debug_.qp_status,
+        "CasADi qpOASES solver is not built. Returning zero delta_xb.");
     debug_.objective_value = computeObjective(delta_xb, H, g);
     return delta_xb;
   }
@@ -572,7 +786,7 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
     arg["g"] = eigenToDM(Eigen::VectorXd(g));
 
     // No general linear constraints.
-    arg["a"] = casadi::DM::zeros(0, 6);
+    arg["a"] = casadi::DM::zeros(0, 3);
     arg["lba"] = casadi::DM::zeros(0, 1);
     arg["uba"] = casadi::DM::zeros(0, 1);
 
@@ -580,22 +794,34 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
     arg["lbx"] = eigenToDM(Eigen::VectorXd(lbx));
     arg["ubx"] = eigenToDM(Eigen::VectorXd(ubx));
 
-    casadi::DMDict res = qp_solver_(arg); // ！！！！solve QP ！！！
+    casadi::DMDict res = qp_solver_(arg);
+
+    const casadi::Dict stats = qp_solver_.stats();
+    const auto success = stats.find("success");
+    if (success != stats.end() && !success->second.to_bool()) {
+      std::string return_status = "unknown_status";
+      const auto status = stats.find("return_status");
+      if (status != stats.end()) {
+        return_status = status->second.to_string();
+      }
+      throw std::runtime_error(
+          "CasADi qpOASES reported failure: " + return_status);
+    }
 
     if (res.find("x") == res.end()) {
       throw std::runtime_error("CasADi result does not contain key 'x'.");
     }
 
-    Eigen::VectorXd sol = dmToEigen(res.at("x")); //final QP solution
+    Eigen::VectorXd sol = dmToEigen(res.at("x"));
 
-    if (sol.size() < 6) {
-      throw std::runtime_error("CasADi solution size is smaller than 6.");
+    if (sol.size() < 3) {
+      throw std::runtime_error("CasADi solution size is smaller than 3.");
     }
 
-    delta_xb = sol.head<6>(); //transfer solution(DM) to Eigen vector
+    delta_xb = sol.head<3>();
 
     bool within_bounds = true;
-    for (int i = 0; i < 6; ++i) {
+    for (int i = 0; i < 3; ++i) {
       if (delta_xb(i) < lbx(i) - params_.bound_tolerance ||
           delta_xb(i) > ubx(i) + params_.bound_tolerance) {
         within_bounds = false;
@@ -603,27 +829,31 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
       }
     }
 
-    if (!isFiniteVector(delta_xb)) {
+    if (!delta_xb.allFinite()) {
       debug_.qp_solved = false;
-      debug_.qp_status = "CasADi qpOASES returned non-finite solution.";
+      setDebugStatus(
+          debug_.qp_status,
+          "CasADi qpOASES returned non-finite solution.");
       delta_xb.setZero();
     } else if (!within_bounds) {
       debug_.qp_solved = false;
-      debug_.qp_status =
-          "CasADi qpOASES solution violates bounds. Returning saturated solution.";
+      setDebugStatus(
+          debug_.qp_status,
+          "CasADi qpOASES solution violates bounds. Returning saturated solution.");
 
-      for (int i = 0; i < 6; ++i) {
+      for (int i = 0; i < 3; ++i) {
         delta_xb(i) = std::min(std::max(delta_xb(i), lbx(i)), ubx(i));
       }
     } else {
       debug_.qp_solved = true;
-      debug_.qp_status = "solved_by_casadi_qpoases";
+      setDebugStatus(debug_.qp_status, "solved_by_casadi_qpoases");
     }
 
   } catch (const std::exception& e) {
     debug_.qp_solved = false;
-    debug_.qp_status =
-        std::string("CasADi qpOASES exception: ") + e.what();
+    setDebugStatus(
+        debug_.qp_status,
+        std::string("CasADi qpOASES exception: ") + e.what());
     delta_xb.setZero();
   }
 
@@ -631,15 +861,15 @@ ComplianceReferenceGenerator::solveTorsoComplianceQP(
   debug_.qp_solve_time_ms =
       std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-  debug_.objective_value = computeObjective(delta_xb, H, g); //print info for debug
+  debug_.objective_value = computeObjective(delta_xb, H, g);
 
   return delta_xb;
 }
 
 double ComplianceReferenceGenerator::computeObjective(
-    const Vector6d& delta_xb,
-    const Matrix6d& H,
-    const Vector6d& g) const {
+    const Vector3d& delta_xb,
+    const Matrix3d& H,
+    const Vector3d& g) const {
   return objectiveValue(delta_xb, H, g);
 }
 

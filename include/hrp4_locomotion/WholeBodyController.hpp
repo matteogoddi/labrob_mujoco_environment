@@ -5,6 +5,8 @@
 #ifndef LABROB_WHOLE_BODY_CONTROLLER_H_
 #define LABROB_WHOLE_BODY_CONTROLLER_H_
 
+#include <vector>
+
 // Pinocchio
 #include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/centroidal.hpp>
@@ -29,6 +31,12 @@ struct WholeBodyControllerParams {
   double Kd_motion;
   Eigen::Vector3d Kp_torso_motion;
   Eigen::Vector3d Kd_torso_motion;
+  Eigen::Matrix<double, 6, 1> Kp_hand_compliance;
+  Eigen::Matrix<double, 6, 1> Kd_hand_compliance;
+  // Cartesian components used by the residual-arm task. The force
+  // experiments select translation, consistently with the CRG admittance and
+  // allocation selectors.
+  Eigen::Matrix<double, 6, 6> S_hand_compliance;
   double Kp_regulation;
   double Kd_regulation;
 
@@ -37,6 +45,8 @@ struct WholeBodyControllerParams {
   double weight_lsole;
   double weight_rsole;
   double weight_torso;
+  double weight_lhand_compliance;
+  double weight_rhand_compliance;
   double weight_regulation;
   double weight_angular_momentum;
   Eigen::MatrixXd weight_regulation_matrix;
@@ -72,13 +82,31 @@ class WholeBodyController {
       pinocchio::Data& robot_data,
       pinocchio::Data& fb_robot_data,
       const labrob::GaitConfiguration& current,
-      const labrob::GaitConfiguration& desired
+      const labrob::GaitConfiguration& desired,
+      const Eigen::Matrix<double, 6, 1>& left_interaction_wrench,
+      const Eigen::Matrix<double, 6, 1>& right_interaction_wrench
   );
 
   Eigen::VectorXd get_q_ddot() const;
   Eigen::VectorXd get_flr() const;
   const Eigen::VectorXd& getLeftFootWrench() const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
+  const Eigen::Matrix<double, 6, 1>&
+  getLeftHandComplianceAccelerationReference() const {
+    return left_hand_compliance_acceleration_reference_;
+  }
+  const Eigen::Matrix<double, 6, 1>&
+  getRightHandComplianceAccelerationReference() const {
+    return right_hand_compliance_acceleration_reference_;
+  }
+  const Eigen::Matrix<double, 6, 1>&
+  getLeftHandComplianceAccelerationAchieved() const {
+    return left_hand_compliance_acceleration_achieved_;
+  }
+  const Eigen::Matrix<double, 6, 1>&
+  getRightHandComplianceAccelerationAchieved() const {
+    return right_hand_compliance_acceleration_achieved_;
+  }
   const Eigen::MatrixXd& getLeftFootUnderactuatedJacobian() const;
   const Eigen::MatrixXd& getRightFootUnderactuatedJacobian() const;
 
@@ -89,14 +117,23 @@ class WholeBodyController {
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
   pinocchio::FrameIndex torso_idx_;
+  pinocchio::FrameIndex lhand_idx_;
+  pinocchio::FrameIndex rhand_idx_;
 
   Eigen::MatrixXd J_torso_;
   Eigen::MatrixXd J_lsole_;
   Eigen::MatrixXd J_rsole_;
+  Eigen::MatrixXd J_lhand_;
+  Eigen::MatrixXd J_rhand_;
 
   Eigen::MatrixXd J_torso_dot_;
   Eigen::MatrixXd J_lsole_dot_;
   Eigen::MatrixXd J_rsole_dot_;
+  Eigen::MatrixXd J_lhand_dot_;
+  Eigen::MatrixXd J_rhand_dot_;
+
+  std::vector<int> left_arm_velocity_indices_;
+  std::vector<int> right_arm_velocity_indices_;
 
   Eigen::VectorXd q_jnt_reg_;
 
@@ -120,6 +157,14 @@ class WholeBodyController {
 
   Eigen::VectorXd left_foot_wrench_;
   Eigen::VectorXd right_foot_wrench_;
+  Eigen::Matrix<double, 6, 1> left_hand_compliance_acceleration_reference_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_hand_compliance_acceleration_reference_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> left_hand_compliance_acceleration_achieved_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_hand_compliance_acceleration_achieved_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::MatrixXd Jlu_;
   Eigen::MatrixXd Jru_;
 

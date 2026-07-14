@@ -8,9 +8,11 @@
 #include <chrono>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
 #include <filesystem>
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <limits>
 #include <stdexcept>
 
@@ -102,6 +104,8 @@ labrob::EstimateForce estimate_force;
 
 using ComplianceVector6d = labrob::ComplianceReferenceGenerator::Vector6d;
 using ComplianceMatrix6d = labrob::ComplianceReferenceGenerator::Matrix6d;
+using ComplianceMatrix6x3d =
+    labrob::ComplianceReferenceGenerator::Matrix6x3d;
 
 std::filesystem::path resolveProjectPath(const std::filesystem::path& relative_path) {
   const std::filesystem::path source_dir = std::filesystem::path(__FILE__).parent_path();
@@ -154,10 +158,16 @@ std::vector<ComplianceVector6d> compliance_torso_delta_xc_right_filtered_log;
 std::vector<ComplianceVector6d> compliance_torso_delta_xb_log;
 std::vector<ComplianceVector6d> compliance_torso_delta_xb_filtered_log;
 std::vector<ComplianceVector6d> compliance_torso_delta_xb_final_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_dxb_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_x_left_arm_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_x_right_arm_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_dx_left_arm_log;
+std::vector<ComplianceVector6d> compliance_torso_delta_dx_right_arm_log;
 std::vector<int> compliance_torso_qp_solved_log;
-std::vector<ComplianceMatrix6d> compliance_torso_Jb_left_log;
-std::vector<ComplianceMatrix6d> compliance_torso_Jb_right_log;
-std::vector<int> compliance_torso_Jb_valid_log;
+std::vector<ComplianceMatrix6x3d> compliance_torso_Ab_left_log;
+std::vector<ComplianceMatrix6x3d> compliance_torso_Ab_right_log;
+std::vector<int> compliance_torso_Ab_valid_log;
+std::string compliance_test_metadata;
 
 std::vector<std::pair<std::string, int>> getValidJointNameIndexPairs();
 int getControlledJointIndex(const std::string& joint_name);
@@ -178,21 +188,11 @@ ComplianceVector6d computeQuasiStaticComplianceDelta(
   return delta;
 }
 
-Eigen::MatrixXd dampedPseudoInverse(
-    const Eigen::MatrixXd& A,
-    double damping = 1e-6) {
-  const Eigen::MatrixXd regularized =
-      A * A.transpose() +
-      damping * damping * Eigen::MatrixXd::Identity(A.rows(), A.rows());
-  return A.transpose() * regularized.ldlt().solve(
-      Eigen::MatrixXd::Identity(A.rows(), A.rows()));
-}
-
-bool computeTorsoToWristJacobians(
+bool computeTorsoToWristMaps(
     const pinocchio::Model& robot_model,
     const labrob::RobotState& robot_state,
-    ComplianceMatrix6d& Jb_left,
-    ComplianceMatrix6d& Jb_right) {
+    ComplianceMatrix6x3d& Ab_left,
+    ComplianceMatrix6x3d& Ab_right) {
   const pinocchio::FrameIndex torso_frame_id =
       robot_model.existFrame("torso_link")
           ? robot_model.getFrameId("torso_link")
@@ -209,8 +209,8 @@ bool computeTorsoToWristJacobians(
   if (torso_frame_id >= robot_model.nframes ||
       left_wrist_frame_id >= robot_model.nframes ||
       right_wrist_frame_id >= robot_model.nframes) {
-    Jb_left.setZero();
-    Jb_right.setZero();
+    Ab_left.setZero();
+    Ab_right.setZero();
     return false;
   }
 
@@ -218,39 +218,24 @@ bool computeTorsoToWristJacobians(
   const Eigen::VectorXd q =
       labrob::robot_state_to_pinocchio_joint_configuration(robot_model, robot_state);
 
-  pinocchio::computeJointJacobians(robot_model, robot_data, q);
   pinocchio::framesForwardKinematics(robot_model, robot_data, q);
 
-  Eigen::MatrixXd J_torso = Eigen::MatrixXd::Zero(6, robot_model.nv);
-  Eigen::MatrixXd J_left = Eigen::MatrixXd::Zero(6, robot_model.nv);
-  Eigen::MatrixXd J_right = Eigen::MatrixXd::Zero(6, robot_model.nv);
+  // Eq. (11), in the same LOCAL_WORLD_ALIGNED frame as EstimateForce and
+  // the WBC tasks: A_b,i = [-[r_bi]x; I].
+  const Eigen::Vector3d torso_position =
+      robot_data.oMf[torso_frame_id].translation();
+  const Eigen::Vector3d r_left =
+      robot_data.oMf[left_wrist_frame_id].translation() - torso_position;
+  const Eigen::Vector3d r_right =
+      robot_data.oMf[right_wrist_frame_id].translation() - torso_position;
+  Ab_left =
+      labrob::ComplianceReferenceGenerator::makeTorsoRotationMap(r_left);
+  Ab_right =
+      labrob::ComplianceReferenceGenerator::makeTorsoRotationMap(r_right);
 
-  pinocchio::getFrameJacobian(
-      robot_model,
-      robot_data,
-      torso_frame_id,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_torso);
-  pinocchio::getFrameJacobian(
-      robot_model,
-      robot_data,
-      left_wrist_frame_id,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_left);
-  pinocchio::getFrameJacobian(
-      robot_model,
-      robot_data,
-      right_wrist_frame_id,
-      pinocchio::ReferenceFrame::LOCAL_WORLD_ALIGNED,
-      J_right);
-
-  const Eigen::MatrixXd J_torso_pinv = dampedPseudoInverse(J_torso);
-  Jb_left = J_left * J_torso_pinv;
-  Jb_right = J_right * J_torso_pinv;
-
-  if (!Jb_left.allFinite() || !Jb_right.allFinite()) {
-    Jb_left.setZero();
-    Jb_right.setZero();
+  if (!Ab_left.allFinite() || !Ab_right.allFinite()) {
+    Ab_left.setZero();
+    Ab_right.setZero();
     return false;
   }
 
@@ -270,14 +255,22 @@ std::size_t torsoComplianceLogSampleCount() {
   n = std::min(n, compliance_torso_delta_xb_log.size());
   n = std::min(n, compliance_torso_delta_xb_filtered_log.size());
   n = std::min(n, compliance_torso_delta_xb_final_log.size());
+  n = std::min(n, compliance_torso_delta_dxb_log.size());
+  n = std::min(n, compliance_torso_delta_x_left_arm_log.size());
+  n = std::min(n, compliance_torso_delta_x_right_arm_log.size());
+  n = std::min(n, compliance_torso_delta_dx_left_arm_log.size());
+  n = std::min(n, compliance_torso_delta_dx_right_arm_log.size());
   n = std::min(n, compliance_torso_qp_solved_log.size());
-  n = std::min(n, compliance_torso_Jb_left_log.size());
-  n = std::min(n, compliance_torso_Jb_right_log.size());
-  n = std::min(n, compliance_torso_Jb_valid_log.size());
+  n = std::min(n, compliance_torso_Ab_left_log.size());
+  n = std::min(n, compliance_torso_Ab_right_log.size());
+  n = std::min(n, compliance_torso_Ab_valid_log.size());
   return n;
 }
 
 void saveEstimateForceLogs() {
+  std::ofstream metadata_file("/tmp/compliance_test_metadata.txt");
+  metadata_file << compliance_test_metadata;
+
   std::ofstream left_wrist_file("/tmp/estimated_force_left_wrist.txt");
   for (const auto& v : left_wrist_wrench_log) {
     left_wrist_file << v.transpose() << "\n";
@@ -344,6 +337,11 @@ void saveEstimateForceLogs() {
                         << "xb0 xb1 xb2 xb3 xb4 xb5 "
                         << "xbf0 xbf1 xbf2 xbf3 xbf4 xbf5 "
                         << "xbfinal0 xbfinal1 xbfinal2 xbfinal3 xbfinal4 xbfinal5 "
+                        << "dxb0 dxb1 dxb2 dxb3 dxb4 dxb5 "
+                        << "l_arm0 l_arm1 l_arm2 l_arm3 l_arm4 l_arm5 "
+                        << "r_arm0 r_arm1 r_arm2 r_arm3 r_arm4 r_arm5 "
+                        << "l_darm0 l_darm1 l_darm2 l_darm3 l_darm4 l_darm5 "
+                        << "r_darm0 r_darm1 r_darm2 r_darm3 r_darm4 r_darm5 "
                         << "qp_solved\n";
 
   const std::size_t n_torso_compliance = torsoComplianceLogSampleCount();
@@ -360,6 +358,11 @@ void saveEstimateForceLogs() {
                           << compliance_torso_delta_xb_log[i].transpose() << " "
                           << compliance_torso_delta_xb_filtered_log[i].transpose() << " "
                           << compliance_torso_delta_xb_final_log[i].transpose() << " "
+                          << compliance_torso_delta_dxb_log[i].transpose() << " "
+                          << compliance_torso_delta_x_left_arm_log[i].transpose() << " "
+                          << compliance_torso_delta_x_right_arm_log[i].transpose() << " "
+                          << compliance_torso_delta_dx_left_arm_log[i].transpose() << " "
+                          << compliance_torso_delta_dx_right_arm_log[i].transpose() << " "
                           << compliance_torso_qp_solved_log[i] << "\n";
   }
 
@@ -368,9 +371,9 @@ void saveEstimateForceLogs() {
   for (int side = 0; side < 2; ++side) {
     const char prefix = (side == 0) ? 'l' : 'r';
     for (int r = 0; r < 6; ++r) {
-      for (int c = 0; c < 6; ++c) {
-        torso_jacobian_file << prefix << "_Jb_" << r << "_" << c;
-        if (!(side == 1 && r == 5 && c == 5)) {
+      for (int c = 0; c < 3; ++c) {
+        torso_jacobian_file << prefix << "_Ab_" << r << "_" << c;
+        if (!(side == 1 && r == 5 && c == 2)) {
           torso_jacobian_file << " ";
         }
       }
@@ -379,16 +382,16 @@ void saveEstimateForceLogs() {
   torso_jacobian_file << "\n";
   for (std::size_t i = 0; i < n_torso_compliance; ++i) {
     torso_jacobian_file << compliance_torso_time_log[i] << " "
-                        << compliance_torso_Jb_valid_log[i] << " ";
+                        << compliance_torso_Ab_valid_log[i] << " ";
     for (int r = 0; r < 6; ++r) {
-      for (int c = 0; c < 6; ++c) {
-        torso_jacobian_file << compliance_torso_Jb_left_log[i](r, c) << " ";
+      for (int c = 0; c < 3; ++c) {
+        torso_jacobian_file << compliance_torso_Ab_left_log[i](r, c) << " ";
       }
     }
     for (int r = 0; r < 6; ++r) {
-      for (int c = 0; c < 6; ++c) {
-        torso_jacobian_file << compliance_torso_Jb_right_log[i](r, c);
-        if (!(r == 5 && c == 5)) {
+      for (int c = 0; c < 3; ++c) {
+        torso_jacobian_file << compliance_torso_Ab_right_log[i](r, c);
+        if (!(r == 5 && c == 2)) {
           torso_jacobian_file << " ";
         }
       }
@@ -1343,6 +1346,8 @@ int main(const int argc, const char* argv[]) {
   bool enable_torso_compliance_numeric_test = false;
   bool enable_torso_compliance_zero_input_test = false;
   bool enable_torso_compliance_wbc_test = false;
+  bool wbc_use_interaction_wrench = true;
+  double crg_rho = 1.0;
   bool waist_yaw_compliance_kp_user_set = false;
   bool waist_yaw_compliance_kd_user_set = false;
   bool waist_roll_compliance_kp_user_set = false;
@@ -1476,7 +1481,17 @@ int main(const int argc, const char* argv[]) {
     } else if (a == "--auto-save-logs") {
       auto_save_logs = true;
     } else if (a == "--stop-time" && i + 1 < argc) {
-      stop_time_sec = std::atof(argv[++i]);
+      const char* stop_text = argv[++i];
+      char* stop_end = nullptr;
+      errno = 0;
+      const double parsed_stop = std::strtod(stop_text, &stop_end);
+      if (stop_text == stop_end || stop_end == nullptr || *stop_end != '\0' ||
+          errno == ERANGE || !std::isfinite(parsed_stop)) {
+        std::cerr << "Invalid finite numeric value for --stop-time: "
+                  << stop_text << std::endl;
+        return -1;
+      }
+      stop_time_sec = parsed_stop;
     } else if (a == "--torso-compliance-numeric-test") {
       enable_torso_compliance_numeric_test = true;
     } else if (a == "--torso-compliance-zero-input-test") {
@@ -1485,6 +1500,23 @@ int main(const int argc, const char* argv[]) {
     } else if (a == "--torso-compliance-wbc-test") {
       enable_torso_compliance_numeric_test = true;
       enable_torso_compliance_wbc_test = true;
+    } else if (a == "--wbc-use-interaction-wrench") {
+      wbc_use_interaction_wrench = true;
+    } else if (a == "--no-wbc-interaction-wrench") {
+      wbc_use_interaction_wrench = false;
+    } else if ((a == "--crg-rho" || a == "--crg-rou" || a == "--rho") &&
+               i + 1 < argc) {
+      const char* rho_text = argv[++i];
+      char* rho_end = nullptr;
+      errno = 0;
+      const double parsed_rho = std::strtod(rho_text, &rho_end);
+      if (rho_text == rho_end || rho_end == nullptr || *rho_end != '\0' ||
+          errno == ERANGE || !std::isfinite(parsed_rho)) {
+        std::cerr << "Invalid finite numeric value for " << a << ": "
+                  << rho_text << std::endl;
+        return -1;
+      }
+      crg_rho = parsed_rho;
     } else if (a == "--joint-pd-hold-test") {
       enable_joint_pd_hold_test = true;
       disable_feedback_loops = true;
@@ -1540,12 +1572,18 @@ int main(const int argc, const char* argv[]) {
             << "  --waist-yaw-test-max-tau <N*m>\n"
             << "Torso compliance tests:\n"
             << "  --torso-compliance-numeric-test\n"
-            << "    Uses existing --external-left/right-* inputs, EstimateForce filtered wrist wrench,\n"
-            << "    and current Pinocchio torso-to-wrist Jacobians.\n"
+            << "    Uses existing --external-left/right-* inputs and Eq. (11) lever-arm maps.\n"
+            << "    CRG allocation selects hand translation; torque-only input does not create a CRG offset.\n"
+            << "    The WBC test uses the applied MuJoCo wrench as an ideal simulated measurement;\n"
+            << "    the log-only diagnostic uses the filtered EstimateForce output.\n"
             << "  --torso-compliance-zero-input-test\n"
-            << "    Uses zero torso generator input with current Pinocchio torso-to-wrist Jacobians.\n"
+            << "    Uses zero torso generator input with current Eq. (11) lever-arm maps.\n"
             << "  --torso-compliance-wbc-test\n"
-            << "    Applies torso QP angular output as WBC torso orientation reference offset.\n"
+            << "    Applies CRG torso and residual-arm outputs to the WBC.\n"
+            << "  --no-wbc-interaction-wrench\n"
+            << "    Diagnostic only: disables the Eq. (3) known-wrench feedforward in the WBC test.\n"
+            << "  --crg-rho <0..1> (default 1; --crg-rou and --rho are aliases)\n"
+            << "    0 = hand-only allocation, 1 = torso-dominant allocation.\n"
             << "Other:\n"
             << "  --joint-pd-hold-test\n"
             << "    Bypasses WBC and holds the initial joint pose with bounded joint PD torques.\n"
@@ -1559,16 +1597,20 @@ int main(const int argc, const char* argv[]) {
             << "  --enable-feedback-loops\n"
             << "  --auto-save-logs\n"
             << "  --stop-time <sec>\n"
-            << "  --use-mujoco-step\n";
+            << "  --use-mujoco-step (headless, no real-time sleep)\n";
       return 0;
+    } else {
+      std::cerr << "Unknown or incomplete option: " << a << std::endl;
+      return -1;
     }
   }
 
-        if ((enable_external_left_force_test || enable_external_right_force_test ||
-          enable_external_left_torque_test || enable_external_right_torque_test) && !useSim) {
-    std::cerr << "External-force test requires simulation mode (--sim)." << std::endl;
+  if ((enable_external_left_force_test || enable_external_right_force_test ||
+       enable_external_left_torque_test || enable_external_right_torque_test) &&
+      (!useSim || useRobot)) {
+    std::cerr << "External-force test is MuJoCo-only; use --sim without --robot." << std::endl;
     return -1;
-    }
+  }
 
   if(!useRobot && !useSim) {
     std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
@@ -1628,16 +1670,16 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
-  if (enable_waist_yaw_sine_test && !useSim) {
-    std::cerr << "Waist yaw sine test requires simulation mode (--sim)." << std::endl;
+  if (enable_waist_yaw_sine_test && (!useSim || useRobot)) {
+    std::cerr << "Waist yaw sine test is MuJoCo-only; use --sim without --robot." << std::endl;
     return -1;
   }
   if (waist_yaw_test_freq_hz < 0.0 || waist_yaw_test_duration_sec < 0.0 || waist_yaw_test_max_tau_nm < 0.0) {
     std::cerr << "Waist yaw sine test frequency, duration and max tau must be non-negative." << std::endl;
     return -1;
   }
-  if (enable_torso_compliance_numeric_test && !useSim) {
-    std::cerr << "Torso compliance numeric test requires simulation mode (--sim)." << std::endl;
+  if (enable_torso_compliance_numeric_test && (!useSim || useRobot)) {
+    std::cerr << "Torso compliance numeric test is MuJoCo-only; use --sim without --robot." << std::endl;
     return -1;
   }
   if (enable_joint_pd_hold_test && (!useSim || useRobot)) {
@@ -1651,8 +1693,19 @@ int main(const int argc, const char* argv[]) {
     std::cerr << "Torso compliance numeric test requires at least one existing --external-left/right-* wrench input." << std::endl;
     return -1;
   }
-  if (stop_time_sec == 0.0 || stop_time_sec < -1.0) {
+  if (!std::isfinite(crg_rho) || crg_rho < 0.0 || crg_rho > 1.0) {
+    std::cerr << "CRG rho must be finite and in [0, 1]." << std::endl;
+    return -1;
+  }
+  if (!std::isfinite(stop_time_sec) ||
+      stop_time_sec == 0.0 || stop_time_sec < -1.0) {
     std::cerr << "Stop time must be positive, or negative to disable it." << std::endl;
+    return -1;
+  }
+  if (use_mujoco_step && (useRobot || stop_time_sec <= 0.0)) {
+    std::cerr << "--use-mujoco-step is a bounded MuJoCo-only mode; use --sim "
+              << "without --robot and provide a positive --stop-time."
+              << std::endl;
     return -1;
   }
   if (mujoco_torque_limit_scale == 0.0 || mujoco_torque_limit_scale < -1.0) {
@@ -1663,6 +1716,27 @@ int main(const int argc, const char* argv[]) {
     std::cerr << "Initial foot clearance must be non-negative." << std::endl;
     return -1;
   }
+
+  std::ostringstream metadata_stream;
+  metadata_stream << "crg_rho=" << crg_rho << "\n"
+                  << "torso_compliance_wbc_test="
+                  << (enable_torso_compliance_wbc_test ? 1 : 0) << "\n"
+                  << "wbc_use_interaction_wrench="
+                  << (wbc_use_interaction_wrench ? 1 : 0) << "\n"
+                  << "external_force_start_sec="
+                  << external_force_start_sec << "\n"
+                  << "external_force_duration_sec="
+                  << external_force_duration_sec << "\n"
+                  << "expected_stop_sec=" << stop_time_sec << "\n"
+                  << "command=";
+  for (int i = 0; i < argc; ++i) {
+    if (i > 0) {
+      metadata_stream << " ";
+    }
+    metadata_stream << argv[i];
+  }
+  metadata_stream << "\n";
+  compliance_test_metadata = metadata_stream.str();
 
   std::cout << "Torso spring (WBC): kp(r,p,y)=("
             << torso_spring_roll_kp << ", "
@@ -1696,19 +1770,26 @@ int main(const int argc, const char* argv[]) {
   }
   if (enable_torso_compliance_numeric_test) {
     if (enable_torso_compliance_wbc_test) {
-      std::cout << "Torso compliance WBC test enabled. Output is logged and angular delta_xb is applied to WBC." << std::endl;
+      std::cout << "CRG/WBC compliance test enabled with rho=" << crg_rho
+                << ". Torso and residual-arm outputs are applied to WBC."
+                << std::endl;
     } else {
       std::cout << "Torso compliance numeric test enabled. Output is logged only and is not applied to WBC." << std::endl;
     }
     if (enable_torso_compliance_zero_input_test) {
       std::cout << "  Source wrench: zero input injected only at the torso generator input." << std::endl;
+    } else if (enable_torso_compliance_wbc_test) {
+      std::cout << "  Source wrench: applied MuJoCo wrist wrench (ideal simulated measurement)." << std::endl;
     } else {
       std::cout << "  Source wrench: EstimateForce filtered wrist wrench after applying existing external-force test inputs." << std::endl;
     }
-    std::cout << "  Jb source: current Pinocchio wrist Jacobian times damped pseudoinverse of torso Jacobian." << std::endl;
+    std::cout << "  Ab source: Eq. (11) from current Pinocchio torso-to-wrist lever arms in world/LWA frame." << std::endl;
     if (enable_torso_compliance_wbc_test) {
-      std::cout << "  WBC coupling: delta_xb_final angular part is applied to the WBC torso orientation reference." << std::endl;
-      std::cout << "  WBC coupling: delta_xb_final linear part is logged but not applied by the current orientation-only torso task." << std::endl;
+      std::cout << "  WBC coupling: Eq. (20) uses delta_xb and delta_dxb; Eq. (21) uses residual arm offsets and velocities." << std::endl;
+      std::cout << "  WBC Eq. (3) known-wrench feedforward: "
+                << (wbc_use_interaction_wrench ? "enabled" : "disabled")
+                << "." << std::endl;
+      std::cout << "  EstimateForce remains logged but is not fed back, avoiding an algebraic estimator/controller loop in simulation." << std::endl;
       if (disable_feedback_loops) {
         std::cout << "  Feedback isolation: TotalBody/CoM/EKF feedback loops are disabled for this run." << std::endl;
       }
@@ -1929,12 +2010,18 @@ int main(const int argc, const char* argv[]) {
 
   labrob::ComplianceReferenceGenerator compliance_reference_generator;
   labrob::ComplianceReferenceGenerator::Parameters compliance_params;
-  compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::TORSO_ONLY;
-  compliance_params.use_admittance_dynamics = false;
+  compliance_params.compliance_mode =
+      labrob::ComplianceReferenceGenerator::ComplianceMode::HAND_ONLY;
+  compliance_params.use_admittance_dynamics = true;
+  compliance_params.rho_left = crg_rho;
+  compliance_params.rho_right = crg_rho;
 
   compliance_params.S_left.setZero();
   compliance_params.S_right.setZero();
-  // compliance_params.S_left(5, 5) = 1.0; // enable left hand pitch compliance
+  compliance_params.S_allocation_left.setZero();
+  compliance_params.S_allocation_right.setZero();
+  compliance_params.S_allocation_left.topLeftCorner<3, 3>().setIdentity();
+  compliance_params.S_allocation_right.topLeftCorner<3, 3>().setIdentity();
 
   compliance_params.Ma_left.setZero();
   compliance_params.Da_left.setZero();
@@ -1943,46 +2030,64 @@ int main(const int argc, const char* argv[]) {
   compliance_params.Da_right.setZero();
   compliance_params.Ka_right.setZero();
 
-  // left hand: only z channel really matters, but keep all diagonals positive
+  // Eq. (6) arm admittance. The translational stiffness preserves the 6 N :
+  // 2 N yaw-test ratio inside the 3 cm safety limit.
   compliance_params.Ma_left.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_left.diagonal() << 10.0, 10.0, 10.0, 0.5, 0.5, 0.5;
-
-  // critical damping: D = 2 * sqrt(M*K)
-  // for M=5, K=100, D≈44.7
-  compliance_params.Da_left.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
-
-  // right hand disabled by S_right=0, but still give positive matrices
+  compliance_params.Ka_left.diagonal() << 200.0, 200.0, 200.0, 10.0, 10.0, 10.0;
+  compliance_params.Da_left.diagonal() << 63.25, 63.25, 63.25, 2.0, 2.0, 2.0;
   compliance_params.Ma_right.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_right.diagonal() << 10.0, 10.0, 10.0, 0.5, 0.5, 0.5;
-  compliance_params.Da_right.diagonal() << 45.0, 45.0, 45.0, 1.0, 1.0, 1.0;
+  compliance_params.Ka_right.diagonal() << 200.0, 200.0, 200.0, 10.0, 10.0, 10.0;
+  compliance_params.Da_right.diagonal() << 63.25, 63.25, 63.25, 2.0, 2.0, 2.0;
 
   compliance_params.Kb.diagonal() << 100.0, 100.0, 100.0, 0.001, 0.001, 0.001;
-  std::cout << "Torso compliance QP params: Kb_diag=("
-            << compliance_params.Kb.diagonal().transpose()
-            << "), Ka_left_diag=("
-            << compliance_params.Ka_left.diagonal().transpose()
-            << "), Ka_right_diag=("
-            << compliance_params.Ka_right.diagonal().transpose()
-            << ")" << std::endl;
+  compliance_params.W_smooth.bottomRightCorner<3, 3>() =
+      0.02 * Eigen::Matrix3d::Identity();
 
   // safety limit: do not comment this out
   compliance_params.delta_xc_left_limit  << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
   compliance_params.delta_xc_right_limit << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
+  compliance_params.delta_xb_min.tail<3>() << -0.15, -0.15, -0.20;
+  compliance_params.delta_xb_max.tail<3>() <<  0.15,  0.15,  0.20;
 
   compliance_params.filter_alpha = 0.98;
 
   if (enable_torso_compliance_numeric_test) {
-    compliance_params.compliance_mode = labrob::ComplianceReferenceGenerator::ComplianceMode::TORSO_ONLY;
-    compliance_params.use_admittance_dynamics = false;
-    compliance_params.S_left.setIdentity();
-    compliance_params.S_right.setIdentity();
-    compliance_params.delta_xc_left_limit = ComplianceVector6d::Constant(1e9);
-    compliance_params.delta_xc_right_limit = ComplianceVector6d::Constant(1e9);
+    // Both rho endpoints need the hand residual and torso branches enabled.
+    compliance_params.compliance_mode =
+        labrob::ComplianceReferenceGenerator::ComplianceMode::HAND_AND_TORSO;
+    compliance_params.S_left.topLeftCorner<3, 3>().setIdentity();
+    compliance_params.S_right.topLeftCorner<3, 3>().setIdentity();
+    if (!enable_torso_compliance_wbc_test) {
+      // Preserve the legacy log-only quasi-static diagnostic. The actual WBC
+      // experiment above uses Eq. (6) dynamics and finite safety limits.
+      compliance_params.use_admittance_dynamics = false;
+      compliance_params.delta_xc_left_limit = ComplianceVector6d::Constant(1e9);
+      compliance_params.delta_xc_right_limit = ComplianceVector6d::Constant(1e9);
+    }
   }
+
+  std::cout << "CRG params: rho=" << crg_rho
+            << ", mode="
+            << (enable_torso_compliance_wbc_test ? "HAND_AND_TORSO" : "diagnostic")
+            << ", Kb_rpy=("
+            << compliance_params.Kb.diagonal().tail<3>().transpose()
+            << "), Ka_translation=("
+            << compliance_params.Ka_left.diagonal().head<3>().transpose()
+            << "), xb_bounds_min=("
+            << compliance_params.delta_xb_min.tail<3>().transpose()
+            << "), xb_bounds_max=("
+            << compliance_params.delta_xb_max.tail<3>().transpose()
+            << ")" << std::endl;
 
   compliance_reference_generator.setParameters(compliance_params);
   compliance_reference_generator.reset();   // clear workspace shift and velocity history
   double previous_compliance_time = -1.0;
+  ComplianceVector6d compliance_wrench_reference_left =
+      ComplianceVector6d::Zero();
+  ComplianceVector6d compliance_wrench_reference_right =
+      ComplianceVector6d::Zero();
+  bool compliance_wrench_reference_initialized = false;
+  bool compliance_wrench_reference_frozen = false;
   
   walking_manager.init(robot_state, armatures);
   const int wbc_num_joints = walking_manager.getRobotModel().nv - 6;
@@ -2026,7 +2131,10 @@ int main(const int argc, const char* argv[]) {
     std::cout << "External force ramp: " << external_force_ramp_sec << " s" << std::endl;
   }
 
-  auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
+  labrob::MujocoUI* mujoco_ui = nullptr;
+  if (!use_mujoco_step) {
+    mujoco_ui = labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
+  }
 
   static int framerate = 60.0;
 
@@ -2084,9 +2192,11 @@ int main(const int argc, const char* argv[]) {
   // StandStillInfinete(robot_state, mj_model_ptr, mj_data_ptr);
 
   bool stop_requested = false;
+  bool experiment_failed = false;
 
   // Simulation loop:
-  while (!mujoco_ui.windowShouldClose() && !stop_requested) {
+  while ((mujoco_ui == nullptr || !mujoco_ui->windowShouldClose()) &&
+         !stop_requested) {
 
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate && !stop_requested ) {
@@ -2341,9 +2451,9 @@ int main(const int argc, const char* argv[]) {
       mjtNum left_torque_world[3] = {0.0, 0.0, 0.0};
       bool left_force_enabled = false;
       if ((enable_external_left_force_test || enable_external_left_torque_test) && left_wrist_body_id >= 0 && external_force_active) {
-        left_force_point_world[0] = mj_data_ptr->xpos[3 * left_wrist_body_id + 0];
-        left_force_point_world[1] = mj_data_ptr->xpos[3 * left_wrist_body_id + 1];
-        left_force_point_world[2] = mj_data_ptr->xpos[3 * left_wrist_body_id + 2];
+        left_force_point_world[0] = mj_data_ptr->xipos[3 * left_wrist_body_id + 0];
+        left_force_point_world[1] = mj_data_ptr->xipos[3 * left_wrist_body_id + 1];
+        left_force_point_world[2] = mj_data_ptr->xipos[3 * left_wrist_body_id + 2];
         left_force_world[0] = static_cast<mjtNum>(external_left_fx_newton * external_force_scale);
         left_force_world[1] = static_cast<mjtNum>(external_left_fy_newton * external_force_scale);
         left_force_world[2] = static_cast<mjtNum>(external_left_fz_newton * external_force_scale);
@@ -2358,9 +2468,9 @@ int main(const int argc, const char* argv[]) {
       mjtNum right_torque_world[3] = {0.0, 0.0, 0.0};
       bool right_force_enabled = false;
       if ((enable_external_right_force_test || enable_external_right_torque_test) && right_wrist_body_id >= 0 && external_force_active) {
-        right_force_point_world[0] = mj_data_ptr->xpos[3 * right_wrist_body_id + 0];
-        right_force_point_world[1] = mj_data_ptr->xpos[3 * right_wrist_body_id + 1];
-        right_force_point_world[2] = mj_data_ptr->xpos[3 * right_wrist_body_id + 2];
+        right_force_point_world[0] = mj_data_ptr->xipos[3 * right_wrist_body_id + 0];
+        right_force_point_world[1] = mj_data_ptr->xipos[3 * right_wrist_body_id + 1];
+        right_force_point_world[2] = mj_data_ptr->xipos[3 * right_wrist_body_id + 2];
         right_force_world[0] = static_cast<mjtNum>(external_right_fx_newton * external_force_scale);
         right_force_world[1] = static_cast<mjtNum>(external_right_fy_newton * external_force_scale);
         right_force_world[2] = static_cast<mjtNum>(external_right_fz_newton * external_force_scale);
@@ -2370,16 +2480,18 @@ int main(const int argc, const char* argv[]) {
         right_force_enabled = true;
       }
 
-      mujoco_ui.setExternalWristWrenches(
-          left_force_point_world,
-          left_force_world,
-          left_torque_world,
-          left_force_enabled,
-          right_force_point_world,
-          right_force_world,
-          right_torque_world,
-          right_force_enabled
-      );
+      if (mujoco_ui != nullptr) {
+        mujoco_ui->setExternalWristWrenches(
+            left_force_point_world,
+            left_force_world,
+            left_torque_world,
+            left_force_enabled,
+            right_force_point_world,
+            right_force_world,
+            right_torque_world,
+            right_force_enabled
+        );
+      }
 
 
 
@@ -2407,6 +2519,31 @@ int main(const int argc, const char* argv[]) {
           right_torque_gt.x() = external_right_tx_newton_meter * external_force_scale;
           right_torque_gt.y() = external_right_ty_newton_meter * external_force_scale;
           right_torque_gt.z() = external_right_tz_newton_meter * external_force_scale;
+        }
+        // MuJoCo applies xfrc_applied at the body COM (xipos). Convert its
+        // torque to the wrist body-frame origin used by the Pinocchio force
+        // estimator before logging the ground-truth wrench.
+        if (left_wrist_body_id >= 0) {
+          const Eigen::Vector3d p_com(
+              mj_data_ptr->xipos[3 * left_wrist_body_id + 0],
+              mj_data_ptr->xipos[3 * left_wrist_body_id + 1],
+              mj_data_ptr->xipos[3 * left_wrist_body_id + 2]);
+          const Eigen::Vector3d p_origin(
+              mj_data_ptr->xpos[3 * left_wrist_body_id + 0],
+              mj_data_ptr->xpos[3 * left_wrist_body_id + 1],
+              mj_data_ptr->xpos[3 * left_wrist_body_id + 2]);
+          left_torque_gt += (p_com - p_origin).cross(left_force_gt);
+        }
+        if (right_wrist_body_id >= 0) {
+          const Eigen::Vector3d p_com(
+              mj_data_ptr->xipos[3 * right_wrist_body_id + 0],
+              mj_data_ptr->xipos[3 * right_wrist_body_id + 1],
+              mj_data_ptr->xipos[3 * right_wrist_body_id + 2]);
+          const Eigen::Vector3d p_origin(
+              mj_data_ptr->xpos[3 * right_wrist_body_id + 0],
+              mj_data_ptr->xpos[3 * right_wrist_body_id + 1],
+              mj_data_ptr->xpos[3 * right_wrist_body_id + 2]);
+          right_torque_gt += (p_com - p_origin).cross(right_force_gt);
         }
       }
       wrist_force_time_log.push_back(mj_data_ptr->time);
@@ -2532,6 +2669,29 @@ int main(const int argc, const char* argv[]) {
         }
   
         mj_step2(mj_model_ptr, mj_data_ptr);
+
+        // MuJoCo does not necessarily advance time after reporting a bad
+        // acceleration. Stop the headless experiment explicitly so that an
+        // unstable run cannot spin forever and --auto-save-logs still works.
+        bool invalid_simulation_state = !std::isfinite(mj_data_ptr->time);
+        for (int i = 0; i < mj_model_ptr->nq && !invalid_simulation_state; ++i) {
+          invalid_simulation_state = !std::isfinite(mj_data_ptr->qpos[i]);
+        }
+        for (int i = 0; i < mj_model_ptr->nv && !invalid_simulation_state; ++i) {
+          invalid_simulation_state =
+              !std::isfinite(mj_data_ptr->qvel[i]) ||
+              !std::isfinite(mj_data_ptr->qacc[i]) ||
+              std::abs(mj_data_ptr->qvel[i]) > 1.0e6 ||
+              std::abs(mj_data_ptr->qacc[i]) > 1.0e8;
+        }
+        if (invalid_simulation_state) {
+          std::cerr << "Stopping simulation because MuJoCo produced a "
+                    << "non-finite or unbounded state at t="
+                    << mj_data_ptr->time << " s." << std::endl;
+          stop_requested = true;
+          experiment_failed = true;
+          break;
+        }
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
@@ -2659,21 +2819,34 @@ int main(const int argc, const char* argv[]) {
 	        ComplianceVector6d torso_numeric_wrench_right = ComplianceVector6d::Zero();
 	        ComplianceVector6d torso_numeric_manual_delta_left = ComplianceVector6d::Zero();
 	        ComplianceVector6d torso_numeric_manual_delta_right = ComplianceVector6d::Zero();
-	        ComplianceMatrix6d torso_numeric_Jb_left = ComplianceMatrix6d::Zero();
-	        ComplianceMatrix6d torso_numeric_Jb_right = ComplianceMatrix6d::Zero();
-	        bool torso_numeric_Jb_valid = false;
+	        ComplianceMatrix6x3d torso_numeric_Ab_left =
+	            ComplianceMatrix6x3d::Zero();
+	        ComplianceMatrix6x3d torso_numeric_Ab_right =
+	            ComplianceMatrix6x3d::Zero();
+	        bool torso_numeric_Ab_valid = false;
 
 	        if (enable_torso_compliance_numeric_test) {
 	          if (!enable_torso_compliance_zero_input_test) {
-	            const Eigen::VectorXd& left_wrench_filtered =
-	                estimate_force.getLeftWristWrenchFiltered();
-	            const Eigen::VectorXd& right_wrench_filtered =
-	                estimate_force.getRightWristWrenchFiltered();
-	            if (left_wrench_filtered.size() >= 6) {
-	              torso_numeric_wrench_left = left_wrench_filtered.head<6>();
-	            }
-	            if (right_wrench_filtered.size() >= 6) {
-	              torso_numeric_wrench_right = right_wrench_filtered.head<6>();
+	            if (enable_torso_compliance_wbc_test) {
+	              // In this controlled MuJoCo experiment xfrc_applied is the
+	              // ideal interaction-wrench measurement. Keeping the inverse-
+	              // dynamics estimate outside this feedback loop isolates the
+	              // CRG/WBC behavior requested by the experiment.
+	              torso_numeric_wrench_left.head<3>() = left_force_gt;
+	              torso_numeric_wrench_left.tail<3>() = left_torque_gt;
+	              torso_numeric_wrench_right.head<3>() = right_force_gt;
+	              torso_numeric_wrench_right.tail<3>() = right_torque_gt;
+	            } else {
+	              const Eigen::VectorXd& left_wrench_filtered =
+	                  estimate_force.getLeftWristWrenchFiltered();
+	              const Eigen::VectorXd& right_wrench_filtered =
+	                  estimate_force.getRightWristWrenchFiltered();
+	              if (left_wrench_filtered.size() >= 6) {
+	                torso_numeric_wrench_left = left_wrench_filtered.head<6>();
+	              }
+	              if (right_wrench_filtered.size() >= 6) {
+	                torso_numeric_wrench_right = right_wrench_filtered.head<6>();
+	              }
 	            }
 
 	            torso_numeric_manual_delta_left = computeQuasiStaticComplianceDelta(
@@ -2686,22 +2859,29 @@ int main(const int argc, const char* argv[]) {
 	                compliance_params.S_right);
 	          }
 
-	          compliance_input.use_manual_delta_xc = true;
+	          // The log-only numeric diagnostic retains the quasi-static manual
+	          // input. The actual WBC test runs Eq. (6) admittance dynamics.
+	          compliance_input.use_manual_delta_xc =
+	              !enable_torso_compliance_wbc_test;
 	          compliance_input.manual_delta_xc_left = torso_numeric_manual_delta_left;
 	          compliance_input.manual_delta_xc_right = torso_numeric_manual_delta_right;
-	          torso_numeric_Jb_valid = computeTorsoToWristJacobians(
+	          torso_numeric_Ab_valid = computeTorsoToWristMaps(
 	              walking_manager.getRobotModel(),
 	              robot_state,
-	              torso_numeric_Jb_left,
-	              torso_numeric_Jb_right);
-	          compliance_input.Jb_left = torso_numeric_Jb_left;
-	          compliance_input.Jb_right = torso_numeric_Jb_right;
-	          if (!torso_numeric_Jb_valid) {
-	            static bool warned_jacobian_failure = false;
-	            if (!warned_jacobian_failure) {
-	              warned_jacobian_failure = true;
-	              std::cout << "Warning: failed to compute torso-to-wrist Jacobians; using zero Jb for torso compliance numeric test." << std::endl;
-	            }
+	              torso_numeric_Ab_left,
+	              torso_numeric_Ab_right);
+	          compliance_input.use_explicit_Ab = torso_numeric_Ab_valid;
+	          compliance_input.Ab_left = torso_numeric_Ab_left;
+	          compliance_input.Ab_right = torso_numeric_Ab_right;
+	          if (!torso_numeric_Ab_valid) {
+	            std::cerr << "Stopping torso-compliance experiment: failed to "
+	                      << "compute the Eq. (11) torso-to-wrist maps."
+	                      << std::endl;
+	            walking_manager.clearTorsoComplianceReference();
+	            walking_manager.clearHandComplianceReferences();
+	            walking_manager.clearInteractionWrenches();
+	            experiment_failed = true;
+	            stop_requested = true;
 	          }
 	          compliance_input.wrench_left = torso_numeric_wrench_left;
 	          compliance_input.wrench_right = torso_numeric_wrench_right;
@@ -2709,8 +2889,48 @@ int main(const int argc, const char* argv[]) {
 	          compliance_input.wrench_left = estimate_force.getLeftWristWrenchFiltered();
 	          compliance_input.wrench_right = estimate_force.getRightWristWrenchFiltered();
 	        }
-	        compliance_input.wrench_left_ref.setZero();
-	        compliance_input.wrench_right_ref.setZero();
+
+	        bool wbc_compliance_active = true;
+	        if (enable_torso_compliance_wbc_test) {
+	          wbc_compliance_active =
+	              torso_numeric_Ab_valid &&
+	              current_time >= external_force_start_sec;
+	          if (!wbc_compliance_active) {
+	            // Track the no-contact estimator offset before the prescribed
+	            // force window, then freeze it as w_ref from Eq. (4).
+	            constexpr double reference_update_gain = 0.01;
+	            if (!compliance_wrench_reference_initialized) {
+	              compliance_wrench_reference_left = torso_numeric_wrench_left;
+	              compliance_wrench_reference_right = torso_numeric_wrench_right;
+	              compliance_wrench_reference_initialized = true;
+	            } else {
+	              compliance_wrench_reference_left =
+	                  (1.0 - reference_update_gain) *
+	                      compliance_wrench_reference_left +
+	                  reference_update_gain * torso_numeric_wrench_left;
+	              compliance_wrench_reference_right =
+	                  (1.0 - reference_update_gain) *
+	                      compliance_wrench_reference_right +
+	                  reference_update_gain * torso_numeric_wrench_right;
+	            }
+	          } else if (!compliance_wrench_reference_frozen) {
+	            compliance_wrench_reference_frozen = true;
+	            compliance_reference_generator.reset();
+	            std::cout << "CRG wrench reference frozen at t=" << current_time
+	                      << " s: left=["
+	                      << compliance_wrench_reference_left.transpose()
+	                      << "], right=["
+	                      << compliance_wrench_reference_right.transpose()
+	                      << "]" << std::endl;
+	          }
+	          compliance_input.wrench_left_ref =
+	              compliance_wrench_reference_left;
+	          compliance_input.wrench_right_ref =
+	              compliance_wrench_reference_right;
+	        } else {
+	          compliance_input.wrench_left_ref.setZero();
+	          compliance_input.wrench_right_ref.setZero();
+	        }
 
 	        const auto compliance_output = compliance_reference_generator.update(compliance_input);
 
@@ -2735,20 +2955,64 @@ int main(const int argc, const char* argv[]) {
 	          compliance_torso_delta_xb_log.push_back(compliance_output.delta_xb);
 	          compliance_torso_delta_xb_filtered_log.push_back(compliance_output.delta_xb_filtered);
 	          compliance_torso_delta_xb_final_log.push_back(compliance_output.delta_xb_final);
+	          compliance_torso_delta_dxb_log.push_back(compliance_output.delta_dxb);
+	          compliance_torso_delta_x_left_arm_log.push_back(compliance_output.delta_x_left_arm);
+	          compliance_torso_delta_x_right_arm_log.push_back(compliance_output.delta_x_right_arm);
+	          compliance_torso_delta_dx_left_arm_log.push_back(compliance_output.delta_dx_left_arm);
+	          compliance_torso_delta_dx_right_arm_log.push_back(compliance_output.delta_dx_right_arm);
 	          compliance_torso_qp_solved_log.push_back(compliance_output.qp_solved ? 1 : 0);
-	          compliance_torso_Jb_left_log.push_back(torso_numeric_Jb_left);
-	          compliance_torso_Jb_right_log.push_back(torso_numeric_Jb_right);
-	          compliance_torso_Jb_valid_log.push_back(torso_numeric_Jb_valid ? 1 : 0);
+	          compliance_torso_Ab_left_log.push_back(torso_numeric_Ab_left);
+	          compliance_torso_Ab_right_log.push_back(torso_numeric_Ab_right);
+	          compliance_torso_Ab_valid_log.push_back(torso_numeric_Ab_valid ? 1 : 0);
 
 	          if (enable_torso_compliance_wbc_test) {
-	            Eigen::Vector3d torso_rpy_offset = Eigen::Vector3d::Zero();
-	            if (compliance_output.qp_solved) {
-	              torso_rpy_offset = compliance_output.delta_xb_final.tail<3>();
+	            if (!wbc_compliance_active) {
+	              walking_manager.clearTorsoComplianceReference();
+	              walking_manager.clearHandComplianceReferences();
+	              walking_manager.clearInteractionWrenches();
+	            } else if (wbc_use_interaction_wrench) {
+	              // Eq. (3) needs the external wrench acting on the robot. In
+	              // simulation this quantity is known exactly. Feeding the
+	              // inverse-dynamics EstimateForce output back into the same
+	              // WBC creates a non-physical algebraic loop (and amplifies
+	              // model/acceleration error), so reserve that estimate for the
+	              // CRG input and use the applied MuJoCo wrench here.
+	              ComplianceVector6d left_wbc_interaction_wrench =
+	                  ComplianceVector6d::Zero();
+	              ComplianceVector6d right_wbc_interaction_wrench =
+	                  ComplianceVector6d::Zero();
+	              left_wbc_interaction_wrench.head<3>() = left_force_gt;
+	              left_wbc_interaction_wrench.tail<3>() = left_torque_gt;
+	              right_wbc_interaction_wrench.head<3>() = right_force_gt;
+	              right_wbc_interaction_wrench.tail<3>() = right_torque_gt;
+	              walking_manager.setInteractionWrenches(
+	                  left_wbc_interaction_wrench,
+	                  right_wbc_interaction_wrench);
+	            } else {
+	              walking_manager.clearInteractionWrenches();
 	            }
-	            walking_manager.setTorsoComplianceReference(
-	                torso_rpy_offset,
-	                Eigen::Vector3d::Zero(),
-	                Eigen::Vector3d::Zero());
+	            if (wbc_compliance_active && compliance_output.valid) {
+	              walking_manager.setTorsoComplianceReference(
+	                  compliance_output.delta_xb_final.tail<3>(),
+	                  compliance_output.delta_dxb.tail<3>(),
+	                  Eigen::Vector3d::Zero());
+	              // Eq. (13)/(21): pass the spatial arm residual; the WBC
+	              // applies S_h and tracks only its selected 3D translation.
+	              const double hand_reference_norm =
+	                  compliance_output.delta_x_left_arm.head<3>().norm() +
+	                  compliance_output.delta_x_right_arm.head<3>().norm() +
+	                  compliance_output.delta_dx_left_arm.head<3>().norm() +
+	                  compliance_output.delta_dx_right_arm.head<3>().norm();
+	              if (hand_reference_norm > 1.0e-10) {
+	                walking_manager.setHandComplianceReferences(
+	                    compliance_output.delta_x_left_arm,
+	                    compliance_output.delta_x_right_arm,
+	                    compliance_output.delta_dx_left_arm,
+	                    compliance_output.delta_dx_right_arm);
+	              } else {
+	                walking_manager.clearHandComplianceReferences();
+	              }
+	            }
 	          }
 	        }
 	      }
@@ -2770,9 +3034,9 @@ int main(const int argc, const char* argv[]) {
             mj_data_ptr->xfrc_applied[6 * body_id + 5]
           };
           const mjtNum point_world[3] = {
-            mj_data_ptr->xpos[3 * body_id + 0],
-            mj_data_ptr->xpos[3 * body_id + 1],
-            mj_data_ptr->xpos[3 * body_id + 2]
+            mj_data_ptr->xipos[3 * body_id + 0],
+            mj_data_ptr->xipos[3 * body_id + 1],
+            mj_data_ptr->xipos[3 * body_id + 2]
           };
           mj_applyFT(
             mj_model_ptr,
@@ -2912,9 +3176,10 @@ int main(const int argc, const char* argv[]) {
 
       // Calcola quanto dormire
       auto end_sleep = std::chrono::steady_clock::now();
-      if ( end_sleep - start_sleep < std::chrono::milliseconds(2)) {
-          std::this_thread::sleep_until(next_tick);
-      }
+	      if (!use_mujoco_step &&
+	          end_sleep - start_sleep < std::chrono::milliseconds(2)) {
+	          std::this_thread::sleep_until(next_tick);
+	      }
 	      else {
 	          // std::cout << "Warning: walking manager update took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(end_sleep - start_sleep).count() << " us" << std::endl;
 	          next_tick = end_sleep;
@@ -2929,14 +3194,14 @@ int main(const int argc, const char* argv[]) {
 	      break;
 	    }
 
-	    auto start_render =  std::chrono::steady_clock::now();
-
-    mujoco_ui.render();
-
-    auto end_render =  std::chrono::steady_clock::now();
-    auto render_duration = end_render - start_render;
-    if(render_duration > std::chrono::milliseconds(5))
-      std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;
+	    if (mujoco_ui != nullptr) {
+	      auto start_render =  std::chrono::steady_clock::now();
+	      mujoco_ui->render();
+	      auto end_render =  std::chrono::steady_clock::now();
+	      auto render_duration = end_render - start_render;
+	      if(render_duration > std::chrono::milliseconds(5))
+	        std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;
+	    }
 
 	  }
 
@@ -2951,5 +3216,5 @@ int main(const int argc, const char* argv[]) {
 	  mj_deleteData(mj_data_ptr);
   mj_deleteModel(mj_model_ptr);
 
-  return 0;
+  return experiment_failed ? -1 : 0;
 }
