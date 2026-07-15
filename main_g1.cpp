@@ -39,6 +39,7 @@ bool isObserverActive = false;
 bool isEKFactive      = false;
 bool switchWalkingState = false;
 bool switchCoopState  = false;
+int  ZMP_TYPE         = 1;
 
 bool pendingWBCInit   = false;   // set on X press, consumed after EKF update
 bool useViz           = true;
@@ -213,6 +214,11 @@ static void send_dds_command(
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
             motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
             motor_command.tau_ff[i]    = joint_command[jname];
+            // motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
+            // motor_command.dq_target[i] = 0.0f;
+            // motor_command.tau_ff[i] = 0.0f;
+            // if (i == 25)
+            //     motor_command.tau_ff[i]    = joint_command[jname];
         } else if (experiment_mode == ExperimentMode::Regulation){
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
         }
@@ -225,6 +231,7 @@ static void send_dds_command(
         int jid   = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         int ridx  = joint_name_to_index.at(jname);
+        if (!g1_motor_active(ridx)) continue;
         auto& cmd = dds_cmd.motor_cmd().at(ridx);
         cmd.mode() = 1;
         cmd.q()    = motor_command.q_target[i];

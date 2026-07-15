@@ -816,7 +816,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_thumb_0_joint" type="revolute">
+  <joint name="left_hand_thumb_0_joint" type="fixed">
     <origin xyz="0.0255 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <parent link="left_hand_palm_link"/>
@@ -843,7 +843,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_thumb_1_joint" type="revolute">
+  <joint name="left_hand_thumb_1_joint" type="fixed">
     <origin xyz="-0.0025 -0.0193 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_thumb_0_link"/>
@@ -870,7 +870,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_thumb_2_joint" type="revolute">
+  <joint name="left_hand_thumb_2_joint" type="fixed">
     <origin xyz="0 -0.0458 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_thumb_1_link"/>
@@ -897,7 +897,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_middle_0_joint" type="revolute">
+  <joint name="left_hand_middle_0_joint" type="fixed">
     <origin xyz="0.0777 0.0016 -0.0285" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_palm_link"/>
@@ -924,7 +924,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_middle_1_joint" type="revolute">
+  <joint name="left_hand_middle_1_joint" type="fixed">
     <origin xyz="0.0458 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_middle_0_link"/>
@@ -951,7 +951,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_index_0_joint" type="revolute">
+  <joint name="left_hand_index_0_joint" type="fixed">
     <origin xyz="0.0777 0.0016 0.0285" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_palm_link"/>
@@ -978,7 +978,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="left_hand_index_1_joint" type="revolute">
+  <joint name="left_hand_index_1_joint" type="fixed">
     <origin xyz="0.0458 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="left_hand_index_0_link"/>
@@ -1219,7 +1219,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_thumb_0_joint" type="revolute">
+  <joint name="right_hand_thumb_0_joint" type="fixed">
     <origin xyz="0.0255 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <parent link="right_hand_palm_link"/>
@@ -1246,7 +1246,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_thumb_1_joint" type="revolute">
+  <joint name="right_hand_thumb_1_joint" type="fixed">
     <origin xyz="-0.0025 0.0193 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_thumb_0_link"/>
@@ -1273,7 +1273,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_thumb_2_joint" type="revolute">
+  <joint name="right_hand_thumb_2_joint" type="fixed">
     <origin xyz="0 0.0458 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_thumb_1_link"/>
@@ -1300,7 +1300,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_middle_0_joint" type="revolute">
+  <joint name="right_hand_middle_0_joint" type="fixed">
     <origin xyz="0.0777 -0.0016 -0.0285" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_palm_link"/>
@@ -1327,7 +1327,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_middle_1_joint" type="revolute">
+  <joint name="right_hand_middle_1_joint" type="fixed">
     <origin xyz="0.0458 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_middle_0_link"/>
@@ -1354,7 +1354,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_index_0_joint" type="revolute">
+  <joint name="right_hand_index_0_joint" type="fixed">
     <origin xyz="0.0777 -0.0016 0.0285" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_palm_link"/>
@@ -1381,7 +1381,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="right_hand_index_1_joint" type="revolute">
+  <joint name="right_hand_index_1_joint" type="fixed">
     <origin xyz="0.0458 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
     <parent link="right_hand_index_0_link"/>

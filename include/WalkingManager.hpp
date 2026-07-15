@@ -10,7 +10,12 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <DiscreteLIPDynamics.hpp>
+#include <globals.h>
+#ifdef ISMPC_USE_2D
+#include <ISMPC2D.hpp>
+#else
 #include <ISMPC.hpp>
+#endif
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
 #include <WalkingData.hpp>
@@ -92,7 +97,11 @@ class WalkingManager {
   double controller_timestep_msec_;
 
   labrob::WalkingData walking_data_;
+#ifdef ISMPC_USE_2D
+  std::unique_ptr<labrob::ISMPC2D> ismpc_ptr_;
+#else
   std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
+#endif
 
   Eigen::VectorXd M_armature_;
 
@@ -103,6 +112,9 @@ class WalkingManager {
   Eigen::Vector3d p_CoM_init;
 
   double eta2;
+
+  Eigen::Vector3d zmp_3d_meas = Eigen::Vector3d::Zero();
+  Eigen::Vector3d zmp_3d_est  = Eigen::Vector3d::Zero();
 
   Eigen::VectorXd estimated_force_sole = Eigen::VectorXd::Zero(6);
   Eigen::VectorXd estimated_force_wrist = Eigen::VectorXd::Zero(6);

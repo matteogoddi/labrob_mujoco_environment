@@ -31,12 +31,12 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 60;
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 12;
-  params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
-  params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
-  params.Kp_joint_matrix.block(12, 12, 3, 3).setZero();
-  params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 60;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 12;
+  // params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
+  // params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
+  // params.Kp_joint_matrix.block(12, 12, 3, 3).setZero();
+  // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;
@@ -485,6 +485,10 @@ WholeBodyController::compute_inverse_dynamics(
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     joint_command[robot_model.names[jid + 2]] = tau[jid];
+
+  // set joint command to gravity compensation only
+  // for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
+  //   joint_command[robot_model.names[jid + 2]] = ca_[jid];
 
   return joint_command;
 }

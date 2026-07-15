@@ -22,9 +22,10 @@
 #include "MujocoUI.hpp"
 
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
-bool isMPCLoopClosed    = true;
+bool isMPCLoopClosed    = false;
 bool isObserverActive   = true;
 bool switchWalkingState = false;  // never set in sim, WalkingManager reads it
+int  ZMP_TYPE           = 1;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(G1_NUM_MOTOR);
 

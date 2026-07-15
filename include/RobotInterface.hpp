@@ -103,28 +103,28 @@ inline uint32_t Crc32Core(uint32_t* ptr, uint32_t len) {
 }
 
 // ── Low-level gains (body joints, in MuJoCo actuator order: legs, waist, arms) ─
-inline constexpr std::array<float, G1_NUM_MOTOR> Kp_cl{
+inline constexpr std::array<float, 29> Kp_cl{
     400, 400, 400, 600, 400, 300,      // left leg
     400, 400, 400, 600, 400, 300,      // right leg
-    250,  60,  60,                     // waist yaw/roll/pitch
+    250,  250,  250,                     // waist yaw/roll/pitch
     120, 120, 120, 70,  40, 40, 40,   // left arm
     120, 120, 120, 70,  40, 40, 40    // right arm
 };
-inline constexpr std::array<float, G1_NUM_MOTOR> Kd_cl{
+inline constexpr std::array<float, 29> Kd_cl{
     2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2,
     2, 2, 2,
     2, 2, 2, 2, 2, 2, 2,
     2, 2, 2, 2, 2, 2, 2
 };
-inline constexpr std::array<float, G1_NUM_MOTOR> Kp_reg{
+inline constexpr std::array<float, 29> Kp_reg{
     400, 400, 400, 600, 400, 300,
     400, 400, 400, 600, 400, 300,
-    250,  60,  60,
-    120, 120, 120, 70,  40, 40, 40,
-    120, 120, 120, 70,  40, 40, 40
+    250,  250,  250,
+    120, 120, 120, 20,  40, 40, 40,
+    120, 120, 120, 20,  40, 40, 40
 };
-inline constexpr std::array<float, G1_NUM_MOTOR> Kd_reg{
+inline constexpr std::array<float, 29> Kd_reg{
     2, 2, 2, 3, 2, 2,
     2, 2, 2, 3, 2, 2,
     2, 2, 2,

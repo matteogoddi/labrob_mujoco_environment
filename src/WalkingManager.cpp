@@ -27,6 +27,18 @@
 #include <TimingLaw.hpp>
 #include <utils.hpp>
 
+namespace {
+#ifdef ISMPC_USE_2D
+inline Eigen::Vector3d ismpc_input_3d(const labrob::ISMPC2D& m) {
+    const auto& v = m.getInput(); return {v.x(), v.y(), 0.0};
+}
+#else
+inline const Eigen::Vector3d& ismpc_input_3d(const labrob::ISMPC& m) {
+    return m.getInput();
+}
+#endif
+} // namespace
+
 
 namespace labrob {
 
@@ -259,7 +271,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(true){
+    if(false){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -316,7 +328,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         p_ZMP
     );
     des_LipState = kf_LipState;
+#ifdef ISMPC_USE_2D
+    ismpc_ptr_ = std::make_unique<labrob::ISMPC2D>(
+#else
     ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
+#endif
         mpc_prediction_horizon_msec,
         mpc_timestep_msec,
         std::sqrt(eta2),
@@ -559,37 +575,37 @@ WalkingManager::update(
     }
 
     
+    zmp_3d_est = zmp_3d_meas + controller_timestep_msec_ * 0.001 * ismpc_input_3d(*ismpc_ptr_);
 
+    zmp_3d_meas.setZero();
+    if (ZMP_TYPE == 1){
 
-    Eigen::Vector3d zmp_3d;
-    zmp_3d.setZero();
-    if (true){
-
-        // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT 
-
-        // zmp_3d.x() =
-        //     ( left_foot_force.z()  * T_lsole.translation().x() +
-        //     right_foot_force.z() * T_rsole.translation().x()+
-        //     f_right_wrist.z() * T_lwrist.translation().x() +
-        //     f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
+        zmp_3d_meas.x() =
+            ( left_foot_force.z()  * T_lsole.translation().x() +
+            right_foot_force.z() * T_rsole.translation().x()+
+            f_right_wrist.z() * T_lwrist.translation().x() +
+            f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
             
 
-        // zmp_3d.y() =
-        //     ( left_foot_force.z()  * T_lsole.translation().y() +
-        //     right_foot_force.z() * T_rsole.translation().y() +
-        //     f_right_wrist.z() * T_lwrist.translation().y() +
-        //     f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
-            
-        zmp_3d = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (whole_body_controller_ptr_->getLeftFootWrench().head<3>() + whole_body_controller_ptr_->getRightFootWrench().head<3>());
-        // std::cout << "ZMP ESTIMATED WITH FORCE ESTIMATION: " << zmp_3d.transpose() << "\n" << std::endl;
-    } else {
+        zmp_3d_meas.y() =
+            ( left_foot_force.z()  * T_lsole.translation().y() +
+            right_foot_force.z() * T_rsole.translation().y() +
+            f_right_wrist.z() * T_lwrist.translation().y() +
+            f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
 
-        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-        // zmp_3d.z() = 0.0;
-        zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
-        zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
+        zmp_3d_meas.z() = 0.0;
+
+    } else if (ZMP_TYPE == 2) {
+        zmp_3d_meas = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (whole_body_controller_ptr_->getLeftFootWrench().head<3>() + whole_body_controller_ptr_->getRightFootWrench().head<3>());
+    } else if (ZMP_TYPE == 3) {
+
+        zmp_3d_meas.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+        zmp_3d_meas.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+        zmp_3d_meas.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
     }
 
+    Eigen::Vector3d zmp_3d = (ZMP_TYPE > 0) ? zmp_3d_meas : zmp_3d_est;
+    zmp_3d = zmp_3d_meas;
 
     walking_data_.updateWalkingState(t_msec_);
 
@@ -630,8 +646,8 @@ WalkingManager::update(
 
     auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
-    kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
-    // kf_LipState = LipState;
+    kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_input_3d(*ismpc_ptr_));
+    kf_LipState = LipState;
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 
@@ -978,16 +994,20 @@ WalkingManager::update(
         {
             if(isMPCLoopClosed){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
+                Eigen::Vector3d ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
-                    ismpc_ptr_->getInput()
+                    ismpc_input
                 );
             }
             else{
                 ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
+                Eigen::Vector3d ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     des_LipState,
-                    ismpc_ptr_->getInput()
+                    ismpc_input
                 );
             }
         }
@@ -996,16 +1016,20 @@ WalkingManager::update(
         }
     }
 
-    logger_.log("mpc_zmp_velocity", ismpc_ptr_->getInput());
+    logger_.log("mpc_zmp_velocity", ismpc_input_3d(*ismpc_ptr_));
 
         // LOG MPC PREDICTIONS FOR GIF FILES
         Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
         Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
+#ifdef ISMPC_USE_2D
+        Eigen::VectorXd inputSequenceZ = Eigen::VectorXd::Zero(inputSequenceX.size());
+#else
         Eigen::VectorXd inputSequenceZ = ismpc_ptr_->getInputSequenceZ();
+#endif
         LIPState LipState_mpc = mpc_LipState_prec;
 
         // Buffer per-solve MPC snapshot in memory; written to disk in saveLogs().
-        constexpr int64_t kMpcSnapshotPeriodMs = 100;
+        constexpr int64_t kMpcSnapshotPeriodMs = 10;
         if (t_msec_ % kMpcSnapshotPeriodMs == 0) {
             const int N_log = static_cast<int>(inputSequenceX.size());
 
@@ -1058,6 +1082,11 @@ WalkingManager::update(
     desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
     desired_gait_configuration.com.acc.z() = 0;
+
+
+    desired_gait_configuration.com.pos = p_CoM_init;
+    desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
+    desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
@@ -1431,11 +1460,11 @@ void WalkingManager::saveLogs() {
     logger_.save("/tmp/robot_logs");
 
     // MPC per-solve snapshots: nested structure, written to individual subdirectories.
-    constexpr const char* mpc_data_dir = "/tmp/mpc_data";
-    std::filesystem::remove_all(mpc_data_dir);
-    std::filesystem::create_directories(mpc_data_dir);
+    constexpr const char* mpc_logs_dir = "/tmp/mpc_logs";
+    std::filesystem::remove_all(mpc_logs_dir);
+    std::filesystem::create_directories(mpc_logs_dir);
     for (std::size_t k = 0; k < mpc_snapshot_t_log_.size(); ++k) {
-        const std::string subdir = std::string(mpc_data_dir) + "/" + std::to_string(mpc_snapshot_t_log_[k]);
+        const std::string subdir = std::string(mpc_logs_dir) + "/" + std::to_string(mpc_snapshot_t_log_[k]);
         std::filesystem::create_directories(subdir);
         {
             std::ofstream fx(subdir + "/x.txt");
