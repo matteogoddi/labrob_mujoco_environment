@@ -42,8 +42,8 @@ namespace labrob {
         W_ext_(Eigen::VectorXd::Zero(24)),
         W_ext_filt_(Eigen::VectorXd::Zero(24)),
         filter_alpha_x_(0.00628), // 0.00628 designed basing on T_step
-        filter_alpha_y_(0.006), // 0.001 for sim
-        filter_alpha_z_(0.006), // 0.001 for sim
+        filter_alpha_y_(0.006),
+        filter_alpha_z_(0.006),
         alpha_matrix_(Eigen::MatrixXd::Zero(24, 24)),
         right_wrist_frame_(right_wrist_frame),
         left_wrist_frame_(left_wrist_frame),
@@ -64,8 +64,8 @@ namespace labrob {
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
+                                    0.001, 0.001, 0.1, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
+                                    0.001, 0.001, 0.1, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
 
 
         
