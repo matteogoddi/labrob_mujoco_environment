@@ -90,6 +90,8 @@ class WalkingManager {
   double foot_constraint_square_length = 0.20;
   double foot_constraint_square_width = 0.045;
 
+  Eigen::Vector3d ismpc_input = Eigen::Vector3d::Zero();
+
   Eigen::VectorXd q_jnt_des_;
 
   labrob::GaitConfiguration initial_gait_configuration;

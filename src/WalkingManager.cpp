@@ -271,7 +271,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(false){
+    if(true){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -330,17 +330,25 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     des_LipState = kf_LipState;
 #ifdef ISMPC_USE_2D
     ismpc_ptr_ = std::make_unique<labrob::ISMPC2D>(
-#else
-    ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
-#endif
         mpc_prediction_horizon_msec,
         mpc_timestep_msec,
         std::sqrt(eta2),
         foot_constraint_square_length,
         foot_constraint_square_width
     );
+#else
+    ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
+        mpc_prediction_horizon_msec,
+        mpc_timestep_msec,
+        std::sqrt(eta2),
+        foot_constraint_square_length,
+        foot_constraint_square_width
+    );
+#endif
 
-
+    zmp_3d_meas.x() = p_CoM_init.x();
+    zmp_3d_meas.y() = p_CoM_init.y();
+    zmp_3d_meas.z() = 0;
 
     // INIT HAC
 
@@ -464,15 +472,31 @@ WalkingManager::update(
     // SET FORCE ESTIMATION (1 step causal delay)
 
     double residual_vector_norm = 0;
-    
-    Eigen::Vector3d f_left_wrist  = estimated_force_wrist.head(3);
-    Eigen::Vector3d f_right_wrist = estimated_force_wrist.tail(3);
-    
 
-    Eigen::Vector3d left_foot_force = estimated_force_sole.head(3);
-    Eigen::Vector3d right_foot_force = estimated_force_sole.tail(3);
+     Eigen::Vector3d total_force = Eigen::Vector3d::Zero();
+     Eigen::Vector3d left_foot_force = Eigen::Vector3d::Zero();
+     Eigen::Vector3d right_foot_force = Eigen::Vector3d::Zero();
+     Eigen::Vector3d f_left_wrist = Eigen::Vector3d::Zero();
+     Eigen::Vector3d f_right_wrist = Eigen::Vector3d::Zero();
 
-    Eigen::Vector3d total_force = left_foot_force + right_foot_force + f_left_wrist + f_right_wrist;
+     if(isObserverActive){
+        left_foot_force = estimated_force_sole.head(3);
+        right_foot_force = estimated_force_sole.tail(3);
+
+        f_left_wrist  = estimated_force_wrist.head(3);
+        f_right_wrist = estimated_force_wrist.tail(3);
+
+        total_force = left_foot_force + right_foot_force + f_left_wrist + f_right_wrist;
+    }
+    else{
+        
+        left_foot_force = whole_body_controller_ptr_->getLeftFootWrench().head(3);
+        right_foot_force = whole_body_controller_ptr_->getRightFootWrench().head(3);
+
+        total_force = left_foot_force + right_foot_force;
+    }
+    
+    
 
     // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
 
@@ -575,29 +599,41 @@ WalkingManager::update(
     }
 
     
-    zmp_3d_est = zmp_3d_meas + controller_timestep_msec_ * 0.001 * ismpc_input_3d(*ismpc_ptr_);
+    zmp_3d_est = zmp_3d_meas + controller_timestep_msec_ * 0.001 * ismpc_input;
 
     zmp_3d_meas.setZero();
     if (ZMP_TYPE == 1){
 
-        zmp_3d_meas.x() =
-            ( left_foot_force.z()  * T_lsole.translation().x() +
-            right_foot_force.z() * T_rsole.translation().x()+
-            f_right_wrist.z() * T_lwrist.translation().x() +
-            f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
+        if (std::abs(total_force.z()) < 1e-3) {
+            zmp_3d_meas = zmp_3d_est;
+        }
+        else{
+            zmp_3d_meas.x() =
+                ( left_foot_force.z()  * T_lsole.translation().x() +
+                right_foot_force.z() * T_rsole.translation().x() ) / total_force.z();
             
 
-        zmp_3d_meas.y() =
-            ( left_foot_force.z()  * T_lsole.translation().y() +
-            right_foot_force.z() * T_rsole.translation().y() +
-            f_right_wrist.z() * T_lwrist.translation().y() +
-            f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
+            zmp_3d_meas.y() =
+                ( left_foot_force.z()  * T_lsole.translation().y() +
+                right_foot_force.z() * T_rsole.translation().y() ) / total_force.z();
 
-        zmp_3d_meas.z() = 0.0;
+            zmp_3d_meas.z() = 0.0;
+
+        }
+        
 
     } else if (ZMP_TYPE == 2) {
         zmp_3d_meas = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (whole_body_controller_ptr_->getLeftFootWrench().head<3>() + whole_body_controller_ptr_->getRightFootWrench().head<3>());
+    
     } else if (ZMP_TYPE == 3) {
+        Eigen::Vector3d com_acc = a_CoM_drift + J_CoM * whole_body_controller_ptr_->get_q_ddot();
+        
+        zmp_3d_meas.x() = p_CoM.x() - (com_acc.x()) / eta2;
+        zmp_3d_meas.y() = p_CoM.y() - (com_acc.y()) / eta2;
+
+        zmp_3d_meas.z() = 0.0;
+
+    } else if (ZMP_TYPE == 4) {
 
         zmp_3d_meas.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
         zmp_3d_meas.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
@@ -994,7 +1030,7 @@ WalkingManager::update(
         {
             if(isMPCLoopClosed){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
-                Eigen::Vector3d ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
@@ -1003,7 +1039,7 @@ WalkingManager::update(
             }
             else{
                 ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
-                Eigen::Vector3d ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     des_LipState,
