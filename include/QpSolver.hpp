@@ -22,10 +22,19 @@ namespace labrob {
 
 class QpSolver {
  public:
+  // Only rows [0, num_soft_constraints) of C (as passed to solve()) get a
+  // slack variable, with quadratic penalty `soft_weight` (>0, so violating
+  // them costs something and the slack stays ~0 unless truly needed). Rows
+  // [num_soft_constraints, num_inequality_constraints) stay strictly hard.
+  // Callers must order C so constraints that must NEVER be relaxed (e.g.
+  // friction-cone / contact-unilaterality rows, which are the only thing
+  // enforcing Fz >= 0) come after the softenable rows (e.g. joint limits).
   QpSolver(int num_variables,
            int num_equality_constraints,
            int num_inequality_constraints,
-           enum hpipm_mode solver_mode = SPEED_ABS,
+           int num_soft_constraints = 0,
+           double soft_weight = 1e-3,
+           enum hpipm_mode solver_mode = ROBUST,
            int iter_max = 50)
       : n_vars_(num_variables),
         solution_(Eigen::VectorXd::Zero(num_variables)) {
@@ -39,12 +48,11 @@ class QpSolver {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = calloc(1, dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
-    
-    d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-                           num_inequality_constraints, 0, num_inequality_constraints, &dim_);
 
-    // d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-    //                        num_inequality_constraints, num_inequality_constraints, &dim_);
+    num_soft_constraints = num_inequality_constraints;
+
+    d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
+                           num_inequality_constraints, 0, num_soft_constraints, &dim_);
 
 
     int qp_size = d_dense_qp_memsize(&dim_);
@@ -66,12 +74,16 @@ class QpSolver {
     ipm_mem_ = calloc(1, ipm_size);
     d_dense_qp_ipm_ws_create(&dim_, &arg_, &workspace_, ipm_mem_);
 
-    idxs_sg_.resize(num_inequality_constraints);
-    std::iota(idxs_sg_.begin(), idxs_sg_.end(), 0);
-    Zl_ = std::vector<double>(num_inequality_constraints, 1e-6);
-    Zu_ = std::vector<double>(num_inequality_constraints, 1e-6);
-    zl_ = std::vector<double>(num_inequality_constraints, 0.0);
-    zu_ = std::vector<double>(num_inequality_constraints, 0.0);
+    // idxs_rev has one entry per row of C (nb+ng, nb=0 here): -1 means the
+    // row is hard; a value in [0, num_soft_constraints) binds it to that
+    // slack variable. Only the leading rows are softened.
+    idxs_sg_.assign(num_inequality_constraints, -1);
+    for (int i = 0; i < num_soft_constraints; ++i)
+      idxs_sg_[i] = i;
+    Zl_ = std::vector<double>(num_soft_constraints, soft_weight);
+    Zu_ = std::vector<double>(num_soft_constraints, soft_weight);
+    zl_ = std::vector<double>(num_soft_constraints, 0.0);
+    zu_ = std::vector<double>(num_soft_constraints, 0.0);
 
     sol_buf_ = (double*) calloc(num_variables, sizeof(double));
   }

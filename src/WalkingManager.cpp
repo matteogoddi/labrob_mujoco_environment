@@ -259,7 +259,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
     );
 
-    if(false){
+    if(true){
         walking_data_.addSteps(
             labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
             labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
@@ -1046,9 +1046,12 @@ WalkingManager::update(
 
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
+    desired_gait_configuration.com.pos.z() = p_CoM_init.z();  
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
+    desired_gait_configuration.com.vel.z() = 0.0;
     desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
+    desired_gait_configuration.com.acc.z() = 0.0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;

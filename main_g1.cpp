@@ -184,6 +184,10 @@ static void send_dds_command(
             motor_command.kd[i] = Kd_reg[i];
         }
     } else if (experiment_mode == ExperimentMode::WBC) {
+        // for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+        //     motor_command.kp[i] = 0.0f;
+        //     motor_command.kd[i] = 0.0f;
+        // }
         motor_command.kp = Kp_cl;
         motor_command.kd = Kd_cl;
     } else if (experiment_mode == ExperimentMode::Regulation) {
@@ -196,8 +200,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 5   ||
-                std::abs(joint_command[jname]) > 100.0) {
+                std::abs(robot_state.joint_state.at(jname).vel) > 0.5   ||
+                std::abs(joint_command[jname]) > 60.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -206,6 +210,8 @@ static void send_dds_command(
             }
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
             motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
+            // motor_command.tau_ff[i]    = joint_command[jname] + Kp_cl[i] * (q_ref[i] - robot_state.joint_state.at(jname).pos) +
+            //                             Kd_cl[i] * (dq_ref[i] - robot_state.joint_state.at(jname).vel);
             motor_command.tau_ff[i]    = joint_command[jname];
         } else if (experiment_mode == ExperimentMode::Regulation){
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));

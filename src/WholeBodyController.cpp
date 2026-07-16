@@ -24,10 +24,10 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 110.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 200.0;
+  params.Kp_orientation = 0.0;
   params.Kd_orientation = 30.0;
-  params.Kp_foot = 400.0;
-  params.Kd_foot = 100.0;
+  params.Kp_foot = 30.0;
+  params.Kd_foot = 5.0;
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
@@ -39,9 +39,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 20;
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 10;
-  params.weight_lsole            = 5;
-  params.weight_rsole            = 5;
+  params.weight_com              = 1;
+  params.weight_lsole            = 1;
+  params.weight_rsole            = 1;
   params.weight_lwrist            = 0.0;
   params.weight_rwrist            = 0.0;
   params.weight_torso            = 1e-3;
@@ -54,11 +54,11 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.cmm_selection_matrix_z = 1;
 
   params.beta = 0;
-  params.gamma = 30;
-  params.mu = 0.8;
+  params.gamma = 0;
+  params.mu = 0.6;
 
   params.foot_length = 0.20;
-  params.foot_width  = 0.07;
+  params.foot_width  = 0.06;
 
   return params;
 }
@@ -113,8 +113,12 @@ WholeBodyController::WholeBodyController(
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
+  // Only the joint-limit rows (the first 2*nj rows of C_wbc_, see below) are
+  // softened; the friction-cone rows that follow stay hard so Fz >= 0 is
+  // always enforced exactly, never traded away for free via slack.
   wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_);
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_,
+      2 * n_joints_, /*soft_weight=*/1e4);
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
   right_foot_wrench_ = Eigen::VectorXd::Zero(6);
@@ -413,18 +417,18 @@ WholeBodyController::compute_inverse_dynamics(
 
   // A_wbc
   A_acc_wbc_.setZero(); b_acc_wbc_.setZero();
-  if (current.is_left_foot_support) {
-    A_acc_wbc_.topRows(6) = J_lsole_;
-    b_acc_wbc_.head(6)    = -J_lsole_dot_*qdot
-                            - params_.gamma * J_lsole_*qdot
-                            + params_.beta  * err_lsole;
-  }
-  if (current.is_right_foot_support) {
-    A_acc_wbc_.bottomRows(6) = J_rsole_;
-    b_acc_wbc_.tail(6)       = -J_rsole_dot_*qdot
-                               - params_.gamma * J_rsole_*qdot
-                               + params_.beta  * err_rsole;
-  }
+  // if (current.is_left_foot_support) {
+  //   A_acc_wbc_.topRows(6) = J_lsole_;
+  //   b_acc_wbc_.head(6)    = -J_lsole_dot_*qdot
+  //                           - params_.gamma * J_lsole_*qdot
+  //                           + params_.beta  * err_lsole;
+  // }
+  // if (current.is_right_foot_support) {
+  //   A_acc_wbc_.bottomRows(6) = J_rsole_;
+  //   b_acc_wbc_.tail(6)       = -J_rsole_dot_*qdot
+  //                              - params_.gamma * J_rsole_*qdot
+  //                              + params_.beta  * err_rsole;
+  // }
 
   A_no_contact_.setZero();
   if (!current.is_left_foot_support)
@@ -477,6 +481,13 @@ WholeBodyController::compute_inverse_dynamics(
   const auto& fr = flr_.tail(3 * nc);
   left_foot_wrench_  = T_l_ * fl;
   right_foot_wrench_ = T_r_ * fr;
+
+  //print contact forces if z is < 0
+  if (flr_[2] < 0.0 || flr_[5] < 0.0 || flr_[8] < 0.0 || flr_[11] < 0.0 ||
+      flr_[14] < 0.0 || flr_[17] < 0.0 || flr_[20] < 0.0 || flr_[23] < 0.0) {
+    std::cout << "left foot contact forces: " << fl.transpose() << std::endl;
+    std::cout << "right foot contact forces: " << fr.transpose() << std::endl;
+  }
 
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_

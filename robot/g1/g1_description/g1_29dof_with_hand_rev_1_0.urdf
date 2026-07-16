@@ -220,25 +220,25 @@
       <inertia ixx="1E-07" ixy="0" ixz="0" iyy="3E-07" iyz="0" izz="3E-07"/>
     </inertial>
     <collision>
-      <origin xyz="-0.085 0.025 0" rpy="0 0 0"/>
+      <origin xyz="-0.080 0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="-0.085 -0.025 0" rpy="0 0 0"/>
+      <origin xyz="-0.080 -0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.085 0.025 0" rpy="0 0 0"/>
+      <origin xyz="0.080 0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.085 -0.025 0" rpy="0 0 0"/>
+      <origin xyz="0.080 -0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
@@ -413,25 +413,25 @@
       <inertia ixx="1E-07" ixy="0" ixz="0" iyy="3E-07" iyz="0" izz="3E-07"/>
     </inertial>
     <collision>
-      <origin xyz="-0.085 0.025 0" rpy="0 0 0"/>
+      <origin xyz="-0.080 0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="-0.085 -0.025 0" rpy="0 0 0"/>
+      <origin xyz="-0.080 -0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.085 0.025 0" rpy="0 0 0"/>
+      <origin xyz="0.080 0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>
     </collision>
     <collision>
-      <origin xyz="0.085 -0.025 0" rpy="0 0 0"/>
+      <origin xyz="0.080 -0.022 0" rpy="0 0 0"/>
       <geometry>
         <sphere radius="0.005"/>
       </geometry>

@@ -17,11 +17,11 @@ const std::array<float, G1_NUM_MOTOR> Kp_cl{
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
-    20, 20, 20, 25, 20, 20,
-    20, 20, 20, 25, 20, 20,
-    15, 15, 15,
-    15, 15, 15, 15, 10, 10, 10,
-    15, 15, 15, 15, 10, 10, 10
+    8, 8, 8, 10, 8, 8,
+    8, 8, 8, 10, 8, 8,
+    2, 2, 2,
+    0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0
 };
 
 const std::array<float, G1_NUM_MOTOR> Kp_reg{
