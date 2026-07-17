@@ -278,7 +278,7 @@ int main(const int argc, const char* argv[]) {
             // Always run one EKF step so the filter stays warm.
             // Before 5 s we propagate on a throw-away copy; after 5 s we update robot_state.
             labrob::RobotState rs_ekf = robot_state;
-            if (mj_data_ptr->time > 1.0) {
+            if (mj_data_ptr->time >= 0.0) {
                 const auto start_ekf = std::chrono::high_resolution_clock::now();
                 state_estimator.update(
                     rs_ekf, imu_gyro, imu_acc,

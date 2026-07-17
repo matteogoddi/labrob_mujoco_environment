@@ -638,6 +638,25 @@ WalkingManager::update(
         zmp_3d_meas.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
         zmp_3d_meas.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
         zmp_3d_meas.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
+    } else if (ZMP_TYPE == 5) {
+
+        if (std::abs(total_force.z()) < 1e-3) {
+            zmp_3d_meas = zmp_3d_est;
+        }
+        else{
+            zmp_3d_meas.z() = p_CoM.z() - (total_force.z() / (mass * eta2));
+            zmp_3d_meas.x() =
+                ( left_foot_force.z()  * T_lsole.translation().x() +
+                right_foot_force.z() * T_rsole.translation().x() ) / total_force.z() + 
+                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.x()  / total_force.z()) + 
+                (zmp_3d_meas.z() - T_rsole.translation().z()) * (right_foot_force.x()  / total_force.z());
+            
+            zmp_3d_meas.y() =
+                ( left_foot_force.z()  * T_lsole.translation().y() +
+                right_foot_force.z() * T_rsole.translation().y() ) / total_force.z() + 
+                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.y()  / total_force.z()) + 
+                (zmp_3d_meas.z() - T_rsole.translation().z()) * (right_foot_force.y()  / total_force.z());
+        }
     }
 
     Eigen::Vector3d zmp_3d = (ZMP_TYPE > 0) ? zmp_3d_meas : zmp_3d_est;
@@ -683,7 +702,7 @@ WalkingManager::update(
     auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_input_3d(*ismpc_ptr_));
-    kf_LipState = LipState;
+    // kf_LipState = LipState;
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 
@@ -1120,9 +1139,9 @@ WalkingManager::update(
     desired_gait_configuration.com.acc.z() = 0;
 
 
-    desired_gait_configuration.com.pos = p_CoM_init;
-    desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
-    desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.pos = p_CoM_init;
+    // desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;

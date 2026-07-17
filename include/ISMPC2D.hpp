@@ -61,8 +61,8 @@ class ISMPC2D {
 
   Eigen::MatrixXd cost_function_H_;
   Eigen::VectorXd cost_function_f_;
-  double beta_x_ = 100000.0;
-  double beta_y_ = 100000.0;
+  double beta_x_ = 10000.0;
+  double beta_y_ = 10000.0;
 
   double single_support_zmp_blend_ = 1.0;
 
