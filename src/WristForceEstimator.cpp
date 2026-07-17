@@ -60,6 +60,19 @@ namespace labrob {
             }
         }
 
+        // Initialize parameters for QP
+        n_wrench_qp_variables_ = 24;            // 6 for each contact point (left foot, right foot, left wrist, right wrist)
+        n_wrench_qp_equalities_ = 0;
+        n_wrench_qp_inequalities_ = 2;         // non-negativity of vertical forces for each foot
+        wrench_solver_ptr_ = std::make_unique<labrob::QpSolver>(n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_);
+        A_qp_.resize(0, n_wrench_qp_variables_);
+        b_qp_.resize(0);
+        C_qp_ = Eigen::MatrixXd::Zero(n_wrench_qp_inequalities_, n_wrench_qp_variables_);
+        C_qp_(0, 14)  = -1.0;                 // -Fz right foot
+        C_qp_(1, 20)  = -1.0;                  // -Fz left foot
+        ug_qp_ = Eigen::VectorXd::Zero(n_wrench_qp_inequalities_);
+        lg_qp_ = Eigen::VectorXd::Constant(n_wrench_qp_inequalities_, -1e10);
+
 
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
@@ -121,8 +134,9 @@ namespace labrob {
         updateDynamicTerms(robot_state, robot_data, measured_torques);
         updateForceJacobians(robot_data);
         computeFullResidual(robot_state, dt);
-        estimateWrenches();                         // unweighted, for feet/ZMP
-        estimateWrenchesWeighted();                 // arm-weighted, for HAC wrists
+        //estimateWrenches();                         // unweighted, for feet/ZMP
+        estimateWrenchesQP();                         // QP, for feet/ZMP
+        estimateWrenchesWeighted();                   // arm-weighted, for HAC wrists
         lowPassFilter();
     }
 
@@ -255,6 +269,27 @@ namespace labrob {
     {
         Eigen::MatrixXd J_ext_T_pinv = J_ext_.transpose().completeOrthogonalDecomposition().pseudoInverse();
         W_ext_ = J_ext_T_pinv * r_;
+
+    }
+
+    void WristForceEstimator::estimateWrenchesQP() {
+        
+        // Solve the QP problem: min_W 0.5 * W^T H W + f^T W
+        // subject to A W = b (equality constraints)
+        // and C W <= d (inequality constraints)
+
+        // H = J_ext^T J_ext
+        H_qp_ = J_ext_ * J_ext_.transpose();
+
+        // f = -J_ext^T r
+        f_qp_ = - J_ext_ * r_;
+
+
+        // Solve the QP problem using the QpSolver
+        wrench_solver_ptr_->solve(H_qp_, f_qp_, A_qp_, b_qp_, C_qp_, lg_qp_, ug_qp_);
+
+        // Get the solution
+        W_ext_ = wrench_solver_ptr_->get_solution();
 
     }
 
