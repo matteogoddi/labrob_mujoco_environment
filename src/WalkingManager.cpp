@@ -578,46 +578,51 @@ WalkingManager::update(
 
     
 
+    // =========================================================
+    // ZMP RECONSTRUCTION
+    // =========================================================
 
+    // From LIP
     Eigen::Vector3d zmp_3d;
+
+
+    zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+    zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+    zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
+    
+
+    // From RW-BO    
     Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
     if (total_force.z() > 1e-5) {
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
-        zmp_3d.x() =
+        ef_zmp_3d.x() =
             ( left_foot_force.z()  * T_lsole.translation().x() +
             right_foot_force.z() * T_rsole.translation().x()+
             f_right_wrist.z() * T_lwrist.translation().x() +
             f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
 
 
-        zmp_3d.y() =
+        ef_zmp_3d.y() =
             ( left_foot_force.z()  * T_lsole.translation().y() +
             right_foot_force.z() * T_rsole.translation().y() +
             f_right_wrist.z() * T_lwrist.translation().y() +
             f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
 
-        zmp_3d.z() = zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2; //f^z_tot_wrist/m to be added
+        ef_zmp_3d.z() = zmp_3d.z() + (f_right_wrist.z() + f_left_wrist.z() ) / (robot_data.mass[0] * eta2);
 
-        // Residual-based ZMP (from the force estimation above), kept aside since
-        // zmp_3d.x()/y() may be be overwritten by the CoM-drift-based formula below.
+        
+    } else {
+        ef_zmp_3d.z() = zmp_3d.z();
         ef_zmp_3d.x() = zmp_3d.x();
         ef_zmp_3d.y() = zmp_3d.y();
-        ef_zmp_3d.z() = zmp_3d.z();
-    } else {
-        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-        zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
-        zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
     }
     
-    /*
-    // Overwrite to compare LIP-based vs residual-based ZMP reconstruction in the plot
-    zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-    zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
-    zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
-    */
+    // =========================================================
+    // END ZMP RECONSTRUCTION
+    // =========================================================
     
     
 
@@ -659,8 +664,15 @@ WalkingManager::update(
     //=========================================================
 
     auto start_kf = std::chrono::high_resolution_clock::now();
-    LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
+
+    if (t_msec_ < 2000)
+        LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
+    else
+        LipState = LIPState(p_CoM, J_CoM * qdot, ef_zmp_3d);
+
+    // kf_LipState = LipState; // --> use this to disable the CoM KF
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
+
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 

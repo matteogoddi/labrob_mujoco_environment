@@ -213,8 +213,7 @@ static void send_dds_command(
     labrob::JointCommand&           joint_command,
     Clock::duration                 elapsed,
     const Eigen::VectorXd&          q_ref,
-    const Eigen::VectorXd&          dq_ref,
-    bool                             external_pd_active = false)
+    const Eigen::VectorXd&          dq_ref)
 {
     MotorCommand motor_command;
     motor_command.tau_ff.fill(0.0f);
@@ -230,11 +229,6 @@ static void send_dds_command(
             motor_command.kp[i] = Kp_reg[i] * (t_s / 5.0f);
             motor_command.kd[i] = Kd_reg[i];
         }
-    } else if (wbc_active && external_pd_active) {
-        // PD already computed in software against the EKF estimate and folded
-        // into joint_command (tau_ff below); keep the onboard PD out of the loop.
-        motor_command.kp.fill(0.0f);
-        motor_command.kd.fill(0.0f);
     } else if (wbc_active) {
         motor_command.kp = Kp_cl;
         motor_command.kd = Kd_cl;
@@ -401,7 +395,7 @@ int main(const int argc, const char* argv[]) {
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
         1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::SimpleEKF//RightInvariantEKF
+        labrob::StateEstimator::Filter::RightInvariantEKF // SimpleEKF
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -622,11 +616,6 @@ int main(const int argc, const char* argv[]) {
 
             } else {
                 // ── Experiment ────────────────────────────────────────────────
-                // True once the EKF is active: robot_state.joint_state then holds
-                // Kalman-filtered joint positions/velocities (see StateEstimator::update
-                // above), instead of the raw SDK-published encoder readings.
-                const bool external_pd_active = isEKFactive && state_estimator.is_active();
-
                 switch (experiment_mode) {
                     case ExperimentMode::Regulation:
                         // joint_command stays zero; PD holds measured position
@@ -641,22 +630,8 @@ int main(const int argc, const char* argv[]) {
                             for (int i = 0; i < mj_model_ptr->nu; ++i) {
                                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                                const double q_meas  = robot_state.joint_state.at(jname).pos;
-                                const double dq_meas = robot_state.joint_state.at(jname).vel;
-                                q_ref_joints[i]  = q_meas  + dq_meas * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                dq_ref_joints[i] = dq_meas + jddot_joints[i] * cmd_dt;
-
-                                // ── External PD (overrides the onboard PD) ───────
-                                // Computed against the EKF estimate (q_meas/dq_meas)
-                                // rather than the firmware's raw encoder feedback,
-                                // and folded into tau_ff. send_dds_command zeroes the
-                                // onboard kp/kd whenever external_pd_active is true,
-                                // so the firmware does not also close this loop.
-                                if (external_pd_active) {
-                                    joint_command[jname] +=
-                                        Kp_cl[i] * (q_ref_joints[i]  - q_meas) +
-                                        Kd_cl[i] * (dq_ref_joints[i] - dq_meas);
-                                }
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
                             }
                         }
                         break;
@@ -700,7 +675,7 @@ int main(const int argc, const char* argv[]) {
                 // ── Send motor commands via DDS ───────────────────────────────
                 send_dds_command(lowcmd_publisher, mj_model_ptr, robot_state,
                                  joint_command, Clock::now() - t_start,
-                                 q_ref_joints, dq_ref_joints, external_pd_active);
+                                 q_ref_joints, dq_ref_joints);
             }
 
         }
