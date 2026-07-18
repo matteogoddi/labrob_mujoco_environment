@@ -64,7 +64,11 @@ namespace labrob {
         n_wrench_qp_variables_ = 24;            // 6 for each contact point (left foot, right foot, left wrist, right wrist)
         n_wrench_qp_equalities_ = 0;
         n_wrench_qp_inequalities_ = 2;         // non-negativity of vertical forces for each foot
-        wrench_solver_ptr_ = std::make_unique<labrob::QpSolver>(n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_);
+        // Large slack weight makes the Fz >= 0 inequality effectively rigid, unlike the
+        // default (1e-6) soft-constraint weight used by WBC/ISMPC/FootstepPlannerCoop.
+        wrench_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+            n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_,
+            SPEED_ABS, 50, 1e6);
         A_qp_.resize(0, n_wrench_qp_variables_);
         b_qp_.resize(0);
         C_qp_ = Eigen::MatrixXd::Zero(n_wrench_qp_inequalities_, n_wrench_qp_variables_);

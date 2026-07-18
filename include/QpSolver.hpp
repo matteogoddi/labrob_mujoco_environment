@@ -26,7 +26,8 @@ class QpSolver {
            int num_equality_constraints,
            int num_inequality_constraints,
            enum hpipm_mode solver_mode = SPEED_ABS,
-           int iter_max = 50)
+           int iter_max = 50,
+           double inequality_slack_weight = 1e-6)
       : n_vars_(num_variables),
         solution_(Eigen::VectorXd::Zero(num_variables)) {
 
@@ -70,8 +71,12 @@ class QpSolver {
 
     idxs_sg_.resize(num_inequality_constraints);
     std::iota(idxs_sg_.begin(), idxs_sg_.end(), 0);
-    Zl_ = std::vector<double>(num_inequality_constraints, 1e-6);
-    Zu_ = std::vector<double>(num_inequality_constraints, 1e-6);
+    // Quadratic penalty on inequality-constraint violation (soft-constraint slack).
+    // Small (default 1e-6) lets constraints be nearly-hard-but-always-feasible for
+    // solvers that need robustness to infeasibility (WBC, ISMPC, FootstepPlannerCoop);
+    // pass a large value to make a constraint effectively rigid (e.g. WristForceEstimator).
+    Zl_ = std::vector<double>(num_inequality_constraints, inequality_slack_weight);
+    Zu_ = std::vector<double>(num_inequality_constraints, inequality_slack_weight);
     zl_ = std::vector<double>(num_inequality_constraints, 0.0);
     zu_ = std::vector<double>(num_inequality_constraints, 0.0);
 
