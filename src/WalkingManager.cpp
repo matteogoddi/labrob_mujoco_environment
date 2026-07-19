@@ -387,7 +387,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
-    coop_fp.kp_x = 0.8;  coop_fp.kp_y = 0.8;
+    //coop_fp.kp_x = 0.8;  coop_fp.kp_y = 0.8;
+    coop_fp.kp_x = 0.5;  coop_fp.kp_y = 0.5;
     coop_fp.kd_x = 0.1;  coop_fp.kd_y = 0.1;
     coop_fp.ki_x = 0.05; coop_fp.ki_y = 0.05;
     coop_fp.da_x = 0.20; coop_fp.da_y = 0.10;
@@ -1238,6 +1239,7 @@ WalkingManager::update(
                 desired_gait_configuration
             );
         }
+
         #pragma omp section
         {
         }

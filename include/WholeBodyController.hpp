@@ -94,6 +94,11 @@ class WholeBodyController {
   const Eigen::VectorXd& getLeftFootWrench()  const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
 
+  // INFO
+  int  wbc_solver_status()      const { return wbc_solver_ptr_->get_status(); }
+  
+  
+
  private:
   pinocchio::Model robot_model_;
   pinocchio::Data  robot_data_;
@@ -116,6 +121,7 @@ class WholeBodyController {
   std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
   Eigen::VectorXd left_foot_wrench_, right_foot_wrench_;
 
+  
   // ── pre-allocated buffers — no malloc in the 1kHz hot path ──────────────
 
   // Constant: computed once in constructor, never change:
