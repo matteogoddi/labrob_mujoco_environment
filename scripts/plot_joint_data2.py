@@ -64,6 +64,8 @@ if __name__ == '__main__':
     des_zmp_position = _load('des_zmp_position.txt', 3)
     des_com_acceleration = _load('des_com_acceleration.txt', 3)
     current_disturbance = _load('current_disturbance.txt', 3)
+    angular_momentum = _load('angular_momentum.txt', 3)
+    angular_momentum_rate = _load('angular_momentum_rate.txt', 3)
 
     input_torque = _load('input_torque.txt', 29)
     motor_torque_filt = _load('motor_torque_filt.txt', 29)  # real-robot only (EMA-filtered motor torques)
@@ -87,6 +89,8 @@ if __name__ == '__main__':
     estimated_force_lsole = _load('estimated_force_lsole.txt', 3)
     estimated_force_rsole = _load('estimated_force_rsole.txt', 3)
     wbc_accelerations = _load('wbc_accelerations.txt', 35)
+    wbc_force_lsole = _load('wbc_force_lsole.txt', 6)
+    wbc_force_rsole = _load('wbc_force_rsole.txt', 6)
 
     # C++ side (main.cpp / main_g1.cpp) only logs a single base-frame EKF
     # estimate ("filtered_base_*"), not a separate IMU-frame one — reuse it
@@ -210,8 +214,16 @@ if __name__ == '__main__':
         os.makedirs('images/com/references')
     if not os.path.exists('images/com/errors'):
         os.makedirs('images/com/errors')
-    if not os.path.exists('images/forces_torques/joints'):
-        os.makedirs('images/forces_torques/joints')
+    if not os.path.exists('images/wbc_solutions/wbc_joint_accelerations'):
+        os.makedirs('images/wbc_solutions/wbc_joint_accelerations')
+    if not os.path.exists('images/wbc_solutions/wbc_base_accelerations'):
+        os.makedirs('images/wbc_solutions/wbc_base_accelerations')
+    if not os.path.exists('images/wbc_solutions/wbc_joint_torques_ffw'):
+        os.makedirs('images/wbc_solutions/wbc_joint_torques_ffw')
+    if not os.path.exists('images/wbc_solutions/wbc_sole_forces'):
+        os.makedirs('images/wbc_solutions/wbc_sole_forces')
+    if not os.path.exists('images/wrench_estimations/sole_wrenches'):
+        os.makedirs('images/wrench_estimations/sole_wrenches')
     if not os.path.exists('images/soles/references'):
         os.makedirs('images/soles/references')
     if not os.path.exists('images/soles/errors'):
@@ -407,7 +419,7 @@ if __name__ == '__main__':
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
-        fig.savefig(f"images/forces_torques/joints/{group_name}_input_joint_torques.png")
+        fig.savefig(f"images/wbc_solutions/wbc_joint_torques_ffw/{group_name}_input_joint_torques.png")
         plt.close(fig)
         figs.append(fig)
 
@@ -421,7 +433,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/forces_torques/wbc_base_linear_acceleration.png")
+    fig.savefig("images/wbc_solutions/wbc_base_accelerations/linear_acceleration.png")
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -434,7 +446,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/forces_torques/wbc_base_angular_acceleration.png")
+    fig.savefig("images/wbc_solutions/wbc_base_accelerations/angular_acceleration.png")
     plt.close(fig)
 
     figs = []
@@ -448,9 +460,35 @@ if __name__ == '__main__':
         ax.grid(True)
         ax.legend()
         fig.tight_layout()
-        fig.savefig(f"images/forces_torques/joints/{group_name}_acceleration.png")
+        fig.savefig(f"images/wbc_solutions/wbc_joint_accelerations/{group_name}_acceleration.png")
         plt.close(fig)
         figs.append(fig)
+
+    wbc_wrench_labels = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
+
+    fig, ax = plt.subplots()
+    for i, label in enumerate(wbc_wrench_labels):
+        ax.plot(t, wbc_force_lsole[:, i], label=label)
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Force [N] / Torque [Nm]')
+    ax.set_title('WBC Optimal Left Foot Wrench')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/wbc_sole_forces/wbc_force_left_sole.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    for i, label in enumerate(wbc_wrench_labels):
+        ax.plot(t, wbc_force_rsole[:, i], label=label)
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Force [N] / Torque [Nm]')
+    ax.set_title('WBC Optimal Right Foot Wrench')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/wbc_sole_forces/wbc_force_right_sole.png")
+    plt.close(fig)
 
     fig, ax = plt.subplots()
     ax.plot(t, estimated_force_lsole[:, 0], label='Estimated Force Left Sole X', color='blue')
@@ -462,7 +500,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/forces_torques/estimated_force_left_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_left_sole.png")
     plt.close(fig)
 
     #plot estimated forces on right sole
@@ -476,7 +514,7 @@ if __name__ == '__main__':
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
-    fig.savefig("images/forces_torques/estimated_force_right_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_right_sole.png")
     plt.close(fig)
     
 
@@ -1012,6 +1050,36 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/zmp_lip_vs_residual_plot.png")
+
+    fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+    axis_labels = ['x', 'y', 'z']
+    for i, ax in enumerate(axes):
+        ax_rate = ax.twinx()
+        l1, = ax.plot(
+            t, angular_momentum[:, i],
+            label=r'Angular Momentum $%s$' % axis_labels[i],
+            color='blue', linewidth=2.0
+        )
+        l2, = ax_rate.plot(
+            t, angular_momentum_rate[:, i],
+            label=r'Angular Momentum Rate $%s$' % axis_labels[i],
+            color='orange', linewidth=2.0, linestyle='--'
+        )
+        ax.set_ylabel(r'$L_%s$ [$\mathrm{kg\,m^2/s}$]' % axis_labels[i], fontsize=10)
+        ax_rate.set_ylabel(r'$\dot{L}_%s$ [$\mathrm{kg\,m^2/s^2}$]' % axis_labels[i], fontsize=10)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(handles=[l1, l2], loc='best', frameon=True, fontsize=9)
+        ax.tick_params(axis='both', labelsize=9)
+        ax_rate.tick_params(axis='both', labelsize=9)
+    axes[-1].set_xlabel('Time [s]', fontsize=11)
+    fig.suptitle('Centroidal Angular Momentum and its Rate of Change', fontsize=12)
+    fig.tight_layout()
+    fig.savefig(
+        "images/com/angular_momentum_plot.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
 
 
     ##########################
@@ -2956,11 +3024,11 @@ if __name__ == '__main__':
     # -----------------------------------------------------------------------
     # Wrist force estimation — replicates plot_wrist_force.py
     # (the initial-transient skipping is removed: the whole signal is plotted)
-    # Data read from `folder`; output saved in images/wrist_force/ and
-    # images/residuals/, consistently with the other plots of this script.
+    # Data read from `folder`; output saved in images/wrench_estimations/wrist_force/
+    # and images/residuals/, consistently with the other plots of this script.
     # -----------------------------------------------------------------------
-    if not os.path.exists('images/wrist_force'):
-        os.makedirs('images/wrist_force')
+    if not os.path.exists('images/wrench_estimations/wrist_force'):
+        os.makedirs('images/wrench_estimations/wrist_force')
     if not os.path.exists('images/residuals'):
         os.makedirs('images/residuals')
 
@@ -2985,7 +3053,7 @@ if __name__ == '__main__':
         n = min(len(a), len(b))
         return a[:n], b[:n]
 
-    def _wf_save(fig, name, outdir='images/wrist_force'):
+    def _wf_save(fig, name, outdir='images/wrench_estimations/wrist_force'):
         out = os.path.join(outdir, name)
         fig.savefig(out, dpi=300, bbox_inches='tight')
         plt.close(fig)

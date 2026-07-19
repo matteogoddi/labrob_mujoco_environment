@@ -137,7 +137,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "left_arm_tau_g", "right_arm_tau_g",
         "initial_generalized_momentum", "generalized_momentum",
         "wbc_force_lsole", "wbc_force_rsole",
-        "wbc_accelerations", "angular_momentum", "input_torque", "motor_torque_filt",
+        "wbc_accelerations", "angular_momentum", "angular_momentum_rate","input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
         "torso_orientation",     "torso_angular_velocity",
@@ -487,6 +487,8 @@ WalkingManager::update(
     pinocchio::computeJointJacobiansTimeVariation(robot_model, robot_data, q, qdot);
     pinocchio::framesForwardKinematics(robot_model, robot_data, q);
     pinocchio::centerOfMass(robot_model, robot_data, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+    
+    // Compute centroidal momentum matrix and angular momentum
     const auto& centroidal_momentum_matrix = pinocchio::ccrba(
         robot_model,
         robot_data,
@@ -495,6 +497,17 @@ WalkingManager::update(
     );
 
     auto angular_momentum = (centroidal_momentum_matrix * qdot).tail<3>();
+
+    // Compute angular momentum derivative
+    pinocchio::computeCentroidalMomentumTimeVariation(
+        robot_model,
+        robot_data,
+        q,
+        qdot,
+        whole_body_controller_ptr_->get_q_ddot()        // APPROX: acceleration from WBC, not from state
+    );
+    
+    L_dot_ = robot_data.dhg.angular();
 
     const auto& T_torso = robot_data.oMf[torso_idx_];
     auto torso_orientation = T_torso.rotation();
@@ -1019,7 +1032,7 @@ WalkingManager::update(
                 // Extract disturbance term from wrist forces and angular momentum derivative
                 discrete_plip_dynamics_ptr_->updateDisturbanceTerm(kf_LipState,
                     f_right_wrist, f_left_wrist,
-                    Eigen::Vector3d::Zero(),            //L_dot_ --> should be strongly filtered
+                    L_dot_,//Eigen::Vector3d::Zero(),
                     T_rwrist.translation(), T_lwrist.translation()
                 );
 
@@ -1372,9 +1385,6 @@ WalkingManager::update(
     // NOTE: assuming update() is actually called every controller_timestep_msec_
     //       milliseconds.
     t_msec_ += controller_timestep_msec_;
-
-    // Upadate angular momentum rate
-    L_dot_ = (angular_momentum - prev_angular_momentum_) / (0.001 * controller_timestep_msec_);
     
     // Store angular momentum for next iteration
     prev_angular_momentum_ = angular_momentum;
@@ -1460,6 +1470,7 @@ WalkingManager::update(
     logger_.log("wbc_force_rsole",       whole_body_controller_ptr_->getRightFootWrench());
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("angular_momentum",      angular_momentum);
+    logger_.log("angular_momentum_rate", L_dot_);
 
     {
         Eigen::VectorXd tau(njnt);
