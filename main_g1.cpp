@@ -184,8 +184,12 @@ static void send_dds_command(
             motor_command.kd[i] = Kd_reg[i];
         }
     } else if (experiment_mode == ExperimentMode::WBC) {
-        motor_command.kp = Kp_cl;
-        motor_command.kd = Kd_cl;
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            motor_command.kp[i] = Kp_cl[i];
+            motor_command.kd[i] = Kd_cl[i];
+        }
+        // motor_command.kp = Kp_cl;
+        // motor_command.kd = Kd_cl;
     } else if (experiment_mode == ExperimentMode::Regulation) {
         motor_command.kp = Kp_reg;
         motor_command.kd = Kd_reg;
@@ -196,8 +200,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 5   ||
-                std::abs(joint_command[jname]) > 100.0) {
+                std::abs(robot_state.joint_state.at(jname).vel) > 3   ||
+                std::abs(joint_command[jname]) > 80.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -453,6 +457,13 @@ int main(const int argc, const char* argv[]) {
                 walking_manager.init(robot_state, armatures);
                 isWBCLoopClosed = true;
                 isMPCLoopClosed = true;
+                //initialize q_ref and dq_ref to current joint positions and velocities
+                for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                    int jid = mj_model_ptr->actuator_trnid[i * 2];
+                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                    q_ref_joints[i]  = robot_state.joint_state.at(jname).pos;
+                    dq_ref_joints[i] = robot_state.joint_state.at(jname).vel;
+                }
             }
 
             {
@@ -494,8 +505,13 @@ int main(const int argc, const char* argv[]) {
                         for (int i = 0; i < mj_model_ptr->nu; ++i) {
                             int jid = mj_model_ptr->actuator_trnid[i * 2];
                             std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                            q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                            dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                            // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                            // dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i] - cmd_dt * 10 * (dq_ref_joints[i] - robot_state.joint_state.at(jname).vel);
+                            // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + cmd_dt * jddot_joints[i];
+                            q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt;
+                            dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i] - cmd_dt * 10 * (dq_ref_joints[i] - robot_state.joint_state.at(jname).vel)
+                                - cmd_dt * 20 * (q_ref_joints[i] - robot_state.joint_state.at(jname).pos);
+                            // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + cmd_dt * jddot_joints[i];
                         }
                     }
                     break;

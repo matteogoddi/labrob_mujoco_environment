@@ -279,7 +279,7 @@ int main(const int argc, const char* argv[]) {
             // Always run one EKF step so the filter stays warm.
             // Before 5 s we propagate on a throw-away copy; after 5 s we update robot_state.
             labrob::RobotState rs_ekf = robot_state;
-            if (mj_data_ptr->time > 1.0)
+            if (mj_data_ptr->time >= 0.0)
                 state_estimator.update(
                     rs_ekf, imu_gyro, imu_acc,
                     walking_manager.get_contact()
@@ -304,7 +304,7 @@ int main(const int argc, const char* argv[]) {
                 }
             }
             static bool ekf_took_over = false;
-            if (mj_data_ptr->time >= 3.0 && false) {
+            if (mj_data_ptr->time >= 3.0 && true) {
                 robot_state = rs_ekf;
                 if (!ekf_took_over) {
                     ekf_took_over = true;

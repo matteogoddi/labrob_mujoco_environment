@@ -9,19 +9,19 @@ static constexpr int    G1_CONTROLLER_HZ      = 500;
 static constexpr double G1_CONTROLLER_DT      = 1.0 / G1_CONTROLLER_HZ;
 
 const std::array<float, G1_NUM_MOTOR> Kp_cl{
-    0, 0, 0, 0, 0, 0,      // legs
-    0, 0, 0, 0, 0, 0,      // legs
-    0, 0, 0,                     // waist
-    0, 0, 0, 0, 0, 0, 0,   // arms
-    0, 0, 0, 0, 0, 0, 0    // arms
+    80, 80, 80, 80, 80, 80,      // legs
+    80, 80, 80, 80, 80, 80,      // legs
+    40, 40, 40,                     // waist
+    40, 40, 40, 40, 25, 25, 25,   // arms
+    40, 40, 40, 40, 25, 25, 25    // arms
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
-    20, 20, 20, 25, 20, 20,
-    20, 20, 20, 25, 20, 20,
-    15, 15, 15,
-    15, 15, 15, 15, 10, 10, 10,
-    15, 15, 15, 15, 10, 10, 10
+    15, 15, 15, 15, 15, 15,
+    15, 15, 15, 15, 15, 15,
+    8, 8, 8,
+    8, 8, 8, 8, 2, 2, 2,
+    8, 8, 8, 8, 2, 2, 2
 };
 
 const std::array<float, G1_NUM_MOTOR> Kp_reg{

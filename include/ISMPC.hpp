@@ -9,6 +9,7 @@
 #include <LIPState.hpp>
 #include <WalkingData.hpp>
 
+#include <QpSolverMPC.hpp>
 #include <QpSolver.hpp>
 
 // Eigen
