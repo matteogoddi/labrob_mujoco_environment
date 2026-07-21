@@ -39,6 +39,14 @@ class ISMPC2D {
   double getEta() const;
   void setEta(double eta);
 
+  // How much the ZMP/CoM reference during single support commits to the
+  // support foot's (x,y) vs the swing foot's: 1.0 = fully over the support
+  // foot (max lateral CoM excursion each step); lower values blend toward
+  // the midline between the feet, reducing the lateral sway amplitude (and
+  // therefore how much stance-ankle roll is needed to keep the foot flat).
+  double getSingleSupportZmpBlend() const { return single_support_zmp_blend_; }
+  void setSingleSupportZmpBlend(double blend) { single_support_zmp_blend_ = blend; }
+
   // Current-step ZMP box constraint (for logging/diagnostics): the box is
   // [center - half_size, center + half_size] on each axis, where center is
   // the support/swing-foot-interpolated centroid used at n=0 of the horizon.
@@ -72,7 +80,7 @@ class ISMPC2D {
   double beta_x_ = 10000.0;
   double beta_y_ = 10000.0;
 
-  double single_support_zmp_blend_ = 1.0;
+  double single_support_zmp_blend_ = 0.95;
 
   Eigen::MatrixXd A_eq_;
   Eigen::VectorXd b_eq_;

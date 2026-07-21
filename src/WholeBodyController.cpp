@@ -20,26 +20,26 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 100.0;
+  params.Kp_motion = 150.0;
   params.Kd_motion = 50.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 60.0;
-  params.Kd_orientation = 10.0;
+  params.Kp_orientation = 80.0;
+  params.Kd_orientation = 40.0;
   params.Kp_foot = 200.0;
   params.Kd_foot = 80.0;
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 60;
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 12;
-  // params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
-  // params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 40;
+  params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
+  params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
   // params.Kp_joint_matrix.block(12, 12, 3, 3).setZero();
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 0.5;
+  params.weight_com              = 10;
   params.weight_lsole            = 5;
   params.weight_rsole            = 5;
   params.weight_lwrist            = 0.0;
@@ -58,7 +58,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.mu = 0.6;
 
   params.foot_length = 0.20;
-  params.foot_width  = 0.045;
+  params.foot_width  = 0.05;
 
   return params;
 }
@@ -191,8 +191,8 @@ WholeBodyController::WholeBodyController(
 
   // H_wbc: force-regularization blocks are constant
   H_wbc_ = Eigen::MatrixXd::Zero(n_wbc_variables_, n_wbc_variables_);
-  H_wbc_.block(nv,       nv,       3*nc, 3*nc).diagonal().setConstant(1e-9);
-  H_wbc_.block(nv+3*nc, nv+3*nc,   3*nc, 3*nc).diagonal().setConstant(1e-9);
+  H_wbc_.block(nv,       nv,       3*nc, 3*nc).diagonal().setConstant(1e-6);
+  H_wbc_.block(nv+3*nc, nv+3*nc,   3*nc, 3*nc).diagonal().setConstant(1e-6);
 
   // f_wbc: force part is always zero
   f_wbc_ = Eigen::VectorXd::Zero(n_wbc_variables_);

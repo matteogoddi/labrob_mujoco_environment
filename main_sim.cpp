@@ -156,7 +156,12 @@ int main(const int argc, const char* argv[]) {
 
     // Initial joint configuration
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
-    mj_data_ptr->qpos[2] = 0.725112; //0.725112;
+    mj_data_ptr->qpos[2] = 0.725112;  // deeper-squat pose (see globals.h)
+    // More upright pose: legs are ~6.29cm taller hip-to-ankle (computed from
+    // the URDF leg chain for knee 0.95->0.30, hip/ankle pitch -0.44/-0.50->
+    // -0.15/-0.15), so the pelvis must start that much higher to keep the
+    // feet on the ground.
+    // mj_data_ptr->qpos[2] = 0.789039;
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);

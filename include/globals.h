@@ -37,6 +37,7 @@ constexpr std::string_view robotScenePath = G1_29DOF
     ? "../robot/g1/g1_mj_description/stair_steps.xml"
     : "../robot/g1/g1_mj_description/stair_steps_lock_waist.xml";
 
+// Deeper-squat standing pose (kept for reference / easy revert):
 inline const std::map<std::string, double> joint_initial_positions = {
     {"left_hip_pitch_joint",       -0.44},
     {"left_hip_roll_joint",         0.04},
@@ -68,6 +69,40 @@ inline const std::map<std::string, double> joint_initial_positions = {
     {"right_wrist_pitch_joint",     0.0},
     {"right_wrist_yaw_joint",       0.0},
 };
+
+// More upright standing pose: same hip/ankle-pitch ≈ -knee/2 ratio (keeps the
+// foot flat and torso vertical) as above, just with a much shallower knee bend.
+// inline const std::map<std::string, double> joint_initial_positions = {
+//     {"left_hip_pitch_joint",       -0.15},
+//     {"left_hip_roll_joint",         0.04},
+//     {"left_hip_yaw_joint",          0.0},
+//     {"left_knee_joint",             0.30},
+//     {"left_ankle_pitch_joint",     -0.15},
+//     {"left_ankle_roll_joint",       0.0},
+//     {"right_hip_pitch_joint",      -0.15},
+//     {"right_hip_roll_joint",       -0.04},
+//     {"right_hip_yaw_joint",         0.0},
+//     {"right_knee_joint",            0.30},
+//     {"right_ankle_pitch_joint",    -0.15},
+//     {"right_ankle_roll_joint",      0.0},
+//     {"waist_yaw_joint",             0.0},
+//     {"waist_roll_joint",            0.0},
+//     {"waist_pitch_joint",           0.0},
+//     {"left_shoulder_pitch_joint",   0.07},
+//     {"left_shoulder_roll_joint",    0.25},
+//     {"left_shoulder_yaw_joint",     0.0},
+//     {"left_elbow_joint",            1.13},
+//     {"left_wrist_roll_joint",       0.0},
+//     {"left_wrist_pitch_joint",      0.0},
+//     {"left_wrist_yaw_joint",        0.0},
+//     {"right_shoulder_pitch_joint",  0.07},
+//     {"right_shoulder_roll_joint",  -0.25},
+//     {"right_shoulder_yaw_joint",    0.0},
+//     {"right_elbow_joint",           1.13},
+//     {"right_wrist_roll_joint",      0.0},
+//     {"right_wrist_pitch_joint",     0.0},
+//     {"right_wrist_yaw_joint",       0.0},
+// };
 
 extern bool isMPCLoopClosed;
 extern bool isObserverActive;

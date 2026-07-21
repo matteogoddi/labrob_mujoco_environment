@@ -25,7 +25,8 @@ ISMPC2D::ISMPC2D(
 
   qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
       num_variables_, num_equality_constraints_, num_inequality_constraints_
-      , num_inequality_constraints_, 1e5);
+     , num_inequality_constraints_, 1e1
+    );
 
   cost_function_H_ = Eigen::MatrixXd(num_variables_, num_variables_);
   cost_function_f_ = Eigen::VectorXd(num_variables_);
@@ -95,20 +96,32 @@ ISMPC2D::solve(
       } else if (walking_state == labrob::WalkingState::SingleSupport) {
         s0 = single_support_zmp_blend_; s1 = 1.0 - single_support_zmp_blend_;
       } else if (walking_state == labrob::WalkingState::Starting) {
+        // Ramp from Standing (0.5) toward the same blend value SingleSupport
+        // locks onto, so there is no discontinuity at the Starting->SingleSupport
+        // boundary.
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
             : static_cast<double>(i) / n_bar;
-        s0 = 0.5 + 0.5 * s; s1 = 0.5 - 0.5 * s;
+        s0 = 0.5 + (single_support_zmp_blend_ - 0.5) * s; s1 = 1.0 - s0;
       } else if (walking_state == labrob::WalkingState::DoubleSupport) {
+        // Ramp from the previous step's committed blend (1 - blend, since
+        // p_sup/p_swg swap identity) to this step's committed blend, so
+        // there is no discontinuity at either boundary with SingleSupport.
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
             : static_cast<double>(i) / n_bar;
-        s0 = s; s1 = 1.0 - s;
+        s0 = (1.0 - single_support_zmp_blend_)
+             + (2.0 * single_support_zmp_blend_ - 1.0) * s;
+        s1 = 1.0 - s0;
       } else { // Stopping
+        // Ramp from the committed blend (end of the last SingleSupport) back
+        // down to Standing (0.5), no discontinuity at the SingleSupport->
+        // Stopping boundary.
         const double s = (k == 0)
             ? static_cast<double>(n_ini + i) / n_k[0]
             : static_cast<double>(i) / n_bar;
-        s0 = 1.0 - 0.5 * s; s1 = 0.5 * s;
+        s0 = single_support_zmp_blend_ - (single_support_zmp_blend_ - 0.5) * s;
+        s1 = 1.0 - s0;
       }
       mc_x_(n + i) = s0 * p_sup.x() + s1 * p_swg.x();
       mc_y_(n + i) = s0 * p_sup.y() + s1 * p_swg.y();

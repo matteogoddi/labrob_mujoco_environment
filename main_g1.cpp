@@ -440,18 +440,18 @@ int main(const int argc, const char* argv[]) {
                     odometry_data.position[1],
                     odometry_data.position[2]
                 );
-                robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
-                    Eigen::Vector3d(
-                        odometry_data.velocity[0],
-                        odometry_data.velocity[1],
-                        odometry_data.velocity[2]
-                    );
                 robot_state.orientation = Eigen::Quaterniond(
                     odometry_data.quaternion[0],
                     odometry_data.quaternion[1],
                     odometry_data.quaternion[2],
                     odometry_data.quaternion[3]
                 );
+                robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+                    Eigen::Vector3d(
+                        odometry_data.velocity[0],
+                        odometry_data.velocity[1],
+                        odometry_data.velocity[2]
+                    );
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     int jid = mj_model_ptr->actuator_trnid[i * 2];
                     std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
@@ -542,14 +542,14 @@ int main(const int argc, const char* argv[]) {
                             q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                             dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
                             // set to joint initial position instead
-                            q_ref_joints[i] = joint_initial_positions.at(jname);
-                            dq_ref_joints[i] = 0.0;
+                            // q_ref_joints[i] = joint_initial_positions.at(jname);
+                            // dq_ref_joints[i] = 0.0;
                         }
                     }
-                    for (int i = 0; i < mj_model_ptr->nu; ++i) {
-                        int jid = mj_model_ptr->actuator_trnid[i * 2];
-                        joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
-                    }
+                    // for (int i = 0; i < mj_model_ptr->nu; ++i) {
+                    //     int jid = mj_model_ptr->actuator_trnid[i * 2];
+                    //     joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
+                    // }
                     break;
             }
 
