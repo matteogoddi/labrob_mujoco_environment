@@ -20,8 +20,8 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 300.0;
-  params.Kd_motion = 150.0;
+  params.Kp_motion = 200.0;
+  params.Kd_motion = 100.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 60.0;
@@ -39,7 +39,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 1;
+  params.weight_com              = 0.1;
   params.weight_lsole            = 1;
   params.weight_rsole            = 1;
   params.weight_lwrist            = 0.0;
@@ -55,7 +55,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.beta = 0;
   params.gamma = 30;
-  params.mu = 0.6;
+  params.mu = 0.8;
 
   params.foot_length = 0.20;
   params.foot_width  = 0.045;

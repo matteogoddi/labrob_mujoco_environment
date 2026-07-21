@@ -647,7 +647,7 @@ WalkingManager::update(
     auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_input_3d(*ismpc_ptr_));
-    kf_LipState = LipState;
+    // kf_LipState = LipState;
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 
@@ -961,12 +961,6 @@ WalkingManager::update(
 
     current_gait_configuration.com.pos = p_CoM;
     current_gait_configuration.com.vel = v_CoM;
-
-    //WITH KF-FILTER
-
-    // current_gait_configuration.com.pos = kf_LipState.com_pos_;
-    // current_gait_configuration.com.vel = kf_LipState.com_vel_;
-
     current_gait_configuration.torso.pos = robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
     current_gait_configuration.pelvis.pos = robot_data.oMf[pelvis_idx_].rotation();
@@ -1084,9 +1078,9 @@ WalkingManager::update(
     desired_gait_configuration.com.acc.z() = 0;
 
 
-    desired_gait_configuration.com.pos = p_CoM_init;
-    desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
-    desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.pos = p_CoM_init;
+    // desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
