@@ -149,9 +149,14 @@ private:
   pinocchio::SE3 T_rsole_;
   void updateHACLocalFrame();
 
-  // DEBUG HELPERS //
+  // HELPERS //
   void showPlan(const labrob::FootstepPlannerCoop::QP2DResult res);
   void showDeque(const labrob::WalkingData wd);
+  void frictionConeRatios(
+    const Eigen::VectorXd& flr,
+    double mu,
+    int nc
+  );
 
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
@@ -191,6 +196,13 @@ private:
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
   Eigen::Vector3d L_dot_;
+
+  // Private members WBC
+  std::vector<double> friction_cone_ratios_left_x_;
+  std::vector<double> friction_cone_ratios_left_y_;
+  std::vector<double> friction_cone_ratios_right_x_;
+  std::vector<double> friction_cone_ratios_right_y_;
+
   // Logs
   Logger logger_;
 

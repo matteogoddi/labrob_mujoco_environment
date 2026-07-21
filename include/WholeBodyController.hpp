@@ -94,6 +94,9 @@ class WholeBodyController {
   const Eigen::VectorXd& getLeftFootWrench()  const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
 
+  int get_n_contacts() const { return n_contacts_; }
+  double get_mu() const { return params_.mu; }
+
   // INFO
   int  wbc_solver_status()      const { return wbc_solver_ptr_->get_status(); }
   

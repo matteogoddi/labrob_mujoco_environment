@@ -136,8 +136,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "left_arm_residual", "right_arm_residual",
         "left_arm_tau_g", "right_arm_tau_g",
         "initial_generalized_momentum", "generalized_momentum",
-        "wbc_force_lsole", "wbc_force_rsole",
-        "wbc_accelerations", "angular_momentum", "angular_momentum_rate","input_torque", "motor_torque_filt",
+        "wbc_force_lsole", "wbc_force_rsole", "wbc_corner_forces_left", "wbc_corner_forces_right", "wbc_accelerations",
+        "angular_momentum", "angular_momentum_rate",
+        "input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
         "torso_orientation",     "torso_angular_velocity",
@@ -149,7 +150,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "execution_time_wbc", "execution_time_mpc",
         "execution_time_ekf", "execution_time_kf", "execution_time_update", 
         "execution_time_res_obs", "execution_time_hac", "execution_time_coop_planner",
-        "residual_vector_norm"
+        "residual_vector_norm", "wbc_friction_coefficient",
+        "friction_cone_ratio_left_x_fl", "friction_cone_ratio_left_x_fr", "friction_cone_ratio_left_x_bl", "friction_cone_ratio_left_x_br",
+        "friction_cone_ratio_left_y_fl", "friction_cone_ratio_left_y_fr", "friction_cone_ratio_left_y_bl", "friction_cone_ratio_left_y_br",
+        "friction_cone_ratio_right_x_fl", "friction_cone_ratio_right_x_fr", "friction_cone_ratio_right_x_bl", "friction_cone_ratio_right_x_br",
+        "friction_cone_ratio_right_y_fl", "friction_cone_ratio_right_y_fr", "friction_cone_ratio_right_y_bl", "friction_cone_ratio_right_y_br"
     }) { logger_.reserveScalar(name, max_steps); }
 
     // MPC per-solve snapshots saved at fixed 10 Hz (every 100 ms), independent of horizon.
@@ -402,6 +407,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     prev_support_foot_ = labrob::Foot::LEFT;
 
+
+    // WBC INIT
     auto params = WholeBodyControllerParams::getDefaultParams();
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
@@ -410,15 +417,18 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         0.001 * controller_timestep_msec_,
         armatures
     );
-
     
+    friction_cone_ratios_left_x_.resize(whole_body_controller_ptr_->get_n_contacts());
+    friction_cone_ratios_left_y_.resize(whole_body_controller_ptr_->get_n_contacts());
+    friction_cone_ratios_right_x_.resize(whole_body_controller_ptr_->get_n_contacts());
+    friction_cone_ratios_right_y_.resize(whole_body_controller_ptr_->get_n_contacts());
+
+    // Init Perturbed LIP (PLIP) dynamics
     discrete_lip_dynamics_ptr_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
         0.001 * controller_timestep_msec_
     );
     
-
-    // Init Perturbed LIP (PLIP) dynamics
     L_dot_ = Eigen::Vector3d::Zero();           // angular momentum derivative
 
     discrete_plip_dynamics_ptr_ = std::make_unique<labrob::DiscretePLIPDynamics>(
@@ -1032,7 +1042,7 @@ WalkingManager::update(
                 // Extract disturbance term from wrist forces and angular momentum derivative
                 discrete_plip_dynamics_ptr_->updateDisturbanceTerm(kf_LipState,
                     f_right_wrist, f_left_wrist,
-                    L_dot_,//Eigen::Vector3d::Zero(),
+                    L_dot_, // Eigen::Vector3d::Zero(),
                     T_rwrist.translation(), T_lwrist.translation()
                 );
 
@@ -1251,6 +1261,12 @@ WalkingManager::update(
                 current_gait_configuration,
                 desired_gait_configuration
             );
+
+            frictionConeRatios(
+                whole_body_controller_ptr_->get_flr(),
+                whole_body_controller_ptr_->get_mu(),
+                whole_body_controller_ptr_->get_n_contacts()
+            );
         }
 
         #pragma omp section
@@ -1468,6 +1484,25 @@ WalkingManager::update(
 
     logger_.log("wbc_force_lsole",       whole_body_controller_ptr_->getLeftFootWrench());
     logger_.log("wbc_force_rsole",       whole_body_controller_ptr_->getRightFootWrench());
+    logger_.log("wbc_corner_forces_left", whole_body_controller_ptr_->get_flr().head(3 * whole_body_controller_ptr_->get_n_contacts()));
+    logger_.log("wbc_corner_forces_right", whole_body_controller_ptr_->get_flr().tail(3 * whole_body_controller_ptr_->get_n_contacts()));
+    logger_.log("wbc_friction_coefficient", whole_body_controller_ptr_->get_mu());
+    logger_.log("friction_cone_ratio_left_x_fl", friction_cone_ratios_left_x_[0]);
+    logger_.log("friction_cone_ratio_left_x_fr", friction_cone_ratios_left_x_[1]);
+    logger_.log("friction_cone_ratio_left_x_bl", friction_cone_ratios_left_x_[2]);
+    logger_.log("friction_cone_ratio_left_x_br", friction_cone_ratios_left_x_[3]);
+    logger_.log("friction_cone_ratio_left_y_fl", friction_cone_ratios_left_y_[0]);
+    logger_.log("friction_cone_ratio_left_y_fr", friction_cone_ratios_left_y_[1]);
+    logger_.log("friction_cone_ratio_left_y_bl", friction_cone_ratios_left_y_[2]);
+    logger_.log("friction_cone_ratio_left_y_br", friction_cone_ratios_left_y_[3]);
+    logger_.log("friction_cone_ratio_right_x_fl", friction_cone_ratios_right_x_[0]);
+    logger_.log("friction_cone_ratio_right_x_fr", friction_cone_ratios_right_x_[1]);
+    logger_.log("friction_cone_ratio_right_x_bl", friction_cone_ratios_right_x_[2]);
+    logger_.log("friction_cone_ratio_right_x_br", friction_cone_ratios_right_x_[3]);
+    logger_.log("friction_cone_ratio_right_y_fl", friction_cone_ratios_right_y_[0]);
+    logger_.log("friction_cone_ratio_right_y_fr", friction_cone_ratios_right_y_[1]);
+    logger_.log("friction_cone_ratio_right_y_bl", friction_cone_ratios_right_y_[2]);
+    logger_.log("friction_cone_ratio_right_y_br", friction_cone_ratios_right_y_[3]);
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("angular_momentum",      angular_momentum);
     logger_.log("angular_momentum_rate", L_dot_);
@@ -1684,6 +1719,33 @@ void WalkingManager::showDeque(const labrob::WalkingData wd) {
                     << "\n";
     }
     
+}
+
+// Compute friction cone ratios for each of the corner of both soles
+void WalkingManager::frictionConeRatios(const Eigen::VectorXd& flr, double mu, int nc)
+{
+    Eigen::VectorXd fl = flr.head(3 * nc);
+    Eigen::VectorXd fr = flr.tail(3 * nc);
+
+    for (int i = 0; i < nc; ++i) {
+
+        // Left sole
+        double f_lx = fl(3 * i + 0);
+        double f_ly = fl(3 * i + 1);
+        double f_lz = fl(3 * i + 2);
+
+        friction_cone_ratios_left_x_[i] = std::abs(f_lx) / f_lz;
+        friction_cone_ratios_left_y_[i] = std::abs(f_ly) / f_lz; 
+
+        // Right sole
+        double f_rx = fr(3 * i + 0);
+        double f_ry = fr(3 * i + 1);
+        double f_rz = fr(3 * i + 2);
+
+        friction_cone_ratios_right_x_[i] = std::abs(f_rx) / f_rz;
+        friction_cone_ratios_right_y_[i] = std::abs(f_ry) / f_rz;
+
+    }
 }
 
 } // end namespace labrob

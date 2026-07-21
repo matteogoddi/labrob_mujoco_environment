@@ -114,7 +114,7 @@ WholeBodyController::WholeBodyController(
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
   wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_);
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_, SPEED_ABS, 50, 1e-6);
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
   right_foot_wrench_ = Eigen::VectorXd::Zero(6);

@@ -91,6 +91,24 @@ if __name__ == '__main__':
     wbc_accelerations = _load('wbc_accelerations.txt', 35)
     wbc_force_lsole = _load('wbc_force_lsole.txt', 6)
     wbc_force_rsole = _load('wbc_force_rsole.txt', 6)
+    wbc_corner_forces_left = _load('wbc_corner_forces_left.txt', 12)
+    wbc_corner_forces_right = _load('wbc_corner_forces_right.txt', 12)
+    wbc_friction_coefficient = _load1d('wbc_friction_coefficient.txt')
+    # Friction cone ratios (|fx|/fz, |fy|/fz) computed and logged by the WBC itself,
+    # one scalar channel per foot/axis/corner (fl, fr, bl, br).
+    friction_cone_ratio_left_x = np.stack([
+        _load1d(f'friction_cone_ratio_left_x_{c}.txt') for c in ('fl', 'fr', 'bl', 'br')
+    ], axis=1)
+    friction_cone_ratio_left_y = np.stack([
+        _load1d(f'friction_cone_ratio_left_y_{c}.txt') for c in ('fl', 'fr', 'bl', 'br')
+    ], axis=1)
+    friction_cone_ratio_right_x = np.stack([
+        _load1d(f'friction_cone_ratio_right_x_{c}.txt') for c in ('fl', 'fr', 'bl', 'br')
+    ], axis=1)
+    friction_cone_ratio_right_y = np.stack([
+        _load1d(f'friction_cone_ratio_right_y_{c}.txt') for c in ('fl', 'fr', 'bl', 'br')
+    ], axis=1)
+    wbc_friction_coefficient = _load1d('wbc_friction_coefficient.txt')
 
     # C++ side (main.cpp / main_g1.cpp) only logs a single base-frame EKF
     # estimate ("filtered_base_*"), not a separate IMU-frame one — reuse it
@@ -222,6 +240,8 @@ if __name__ == '__main__':
         os.makedirs('images/wbc_solutions/wbc_joint_torques_ffw')
     if not os.path.exists('images/wbc_solutions/wbc_sole_forces'):
         os.makedirs('images/wbc_solutions/wbc_sole_forces')
+    if not os.path.exists('images/wbc_solutions/friction_cone'):
+        os.makedirs('images/wbc_solutions/friction_cone')
     if not os.path.exists('images/wrench_estimations/sole_wrenches'):
         os.makedirs('images/wrench_estimations/sole_wrenches')
     if not os.path.exists('images/soles/references'):
@@ -489,6 +509,56 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/wbc_solutions/wbc_sole_forces/wbc_force_right_sole.png")
     plt.close(fig)
+
+    # WBC corner (contact-point) forces, one figure per foot, one subplot per force component
+    corner_labels = ['Front-Left', 'Front-Right', 'Back-Left', 'Back-Right']
+    corner_components = ['Fx', 'Fy', 'Fz']
+    n_corners = len(corner_labels)
+
+    def _plot_corner_wrenches(data, foot_name, filename):
+        fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
+        for comp_idx, ax in enumerate(axes):
+            for corner_idx, corner_label in enumerate(corner_labels):
+                ax.plot(
+                    t, data[:, 3 * corner_idx + comp_idx],
+                    label=corner_label, linewidth=2.0
+                )
+            ax.set_ylabel(f'{corner_components[comp_idx]} [N]', fontsize=10)
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.legend(loc='best', frameon=True, fontsize=9)
+            ax.tick_params(axis='both', labelsize=9)
+        axes[-1].set_xlabel('Time [s]', fontsize=11)
+        fig.suptitle(f'WBC Corner Forces - {foot_name} Sole', fontsize=12)
+        fig.tight_layout()
+        fig.savefig(f"images/wbc_solutions/wbc_sole_forces/{filename}.png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    _plot_corner_wrenches(wbc_corner_forces_left, 'Left', 'wbc_corner_forces_left')
+    _plot_corner_wrenches(wbc_corner_forces_right, 'Right', 'wbc_corner_forces_right')
+
+    # Friction cone check: |fx|/fz and |fy|/fz ratios vs +-mu for each of the 4 corners.
+    # The linearized friction pyramid used in the WBC enforces |fx| <= mu*fz and
+    # |fy| <= mu*fz, so the ratios must stay within the +-mu band. Ratios are computed
+    # and logged directly by the WBC (WalkingManager::frictionConeRatios).
+    def _plot_friction_cone(ratio_x, ratio_y, foot_name, filename):
+        fig, axes = plt.subplots(2, 1, figsize=(7, 7), sharex=True)
+        for corner_idx, corner_label in enumerate(corner_labels):
+            axes[0].plot(t, ratio_x[:, corner_idx], label=corner_label, linewidth=1.5)
+            axes[1].plot(t, ratio_y[:, corner_idx], label=corner_label, linewidth=1.5)
+        for ax, ratio_name in zip(axes, ['|fx| / fz', '|fy| / fz']):
+            ax.plot(t, wbc_friction_coefficient, color='red', linestyle='--', linewidth=1.5, label=r'$\mu$')
+            ax.set_ylabel(ratio_name, fontsize=10)
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.legend(loc='best', frameon=True, fontsize=9)
+            ax.tick_params(axis='both', labelsize=9)
+        axes[-1].set_xlabel('Time [s]', fontsize=11)
+        fig.suptitle(f'Friction Cone Constraint - {foot_name} Sole', fontsize=12)
+        fig.tight_layout()
+        fig.savefig(f"images/wbc_solutions/friction_cone/{filename}.png", dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+    _plot_friction_cone(friction_cone_ratio_left_x, friction_cone_ratio_left_y, 'Left', 'friction_cone_left')
+    _plot_friction_cone(friction_cone_ratio_right_x, friction_cone_ratio_right_y, 'Right', 'friction_cone_right')
 
     fig, ax = plt.subplots()
     ax.plot(t, estimated_force_lsole[:, 0], label='Estimated Force Left Sole X', color='blue')
