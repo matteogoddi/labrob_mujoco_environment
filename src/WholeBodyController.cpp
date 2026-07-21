@@ -24,7 +24,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 110.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 200.0;
+  params.Kp_orientation = 0.0;
   params.Kd_orientation = 30.0;
   params.Kp_foot = 400.0;
   params.Kd_foot = 100.0;
@@ -39,7 +39,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 20;
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 10;
+  params.weight_com              = 0.1;
   params.weight_lsole            = 5;
   params.weight_rsole            = 5;
   params.weight_lwrist            = 0.0;

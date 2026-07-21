@@ -200,8 +200,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 3   ||
-                std::abs(joint_command[jname]) > 80.0) {
+                std::abs(robot_state.joint_state.at(jname).vel) > 1.3   ||
+                std::abs(joint_command[jname]) > 60.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -463,6 +463,9 @@ int main(const int argc, const char* argv[]) {
                     std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                     q_ref_joints[i]  = robot_state.joint_state.at(jname).pos;
                     dq_ref_joints[i] = robot_state.joint_state.at(jname).vel;
+                    //initialize from initial robot state instead
+                    q_ref_joints[i]  = joint_initial_positions.at(jname);
+                    dq_ref_joints[i] = 0.0;
                 }
             }
 
@@ -508,10 +511,12 @@ int main(const int argc, const char* argv[]) {
                             // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                             // dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i] - cmd_dt * 10 * (dq_ref_joints[i] - robot_state.joint_state.at(jname).vel);
                             // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + cmd_dt * jddot_joints[i];
-                            q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt;
-                            dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i] - cmd_dt * 10 * (dq_ref_joints[i] - robot_state.joint_state.at(jname).vel)
-                                - cmd_dt * 20 * (q_ref_joints[i] - robot_state.joint_state.at(jname).pos);
+                            // q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt;
+                            // dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i] - cmd_dt * 10 * (dq_ref_joints[i] - robot_state.joint_state.at(jname).vel)
+                            //     - cmd_dt * 20 * (q_ref_joints[i] - robot_state.joint_state.at(jname).pos);
                             // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + cmd_dt * jddot_joints[i];
+                            q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                            dq_ref_joints[i] = dq_ref_joints[i] + cmd_dt * jddot_joints[i];
                         }
                     }
                     break;

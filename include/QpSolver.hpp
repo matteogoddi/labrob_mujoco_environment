@@ -40,11 +40,11 @@ class QpSolver {
     dim_mem_ = calloc(1, dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
     
-    d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-                           num_inequality_constraints, 0, num_inequality_constraints, &dim_);
-
     // d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-    //                        num_inequality_constraints, num_inequality_constraints, &dim_);
+    //                        num_inequality_constraints, 0, num_inequality_constraints, &dim_);
+
+    d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
+                           num_inequality_constraints, num_inequality_constraints, &dim_);
 
 
     int qp_size = d_dense_qp_memsize(&dim_);
@@ -68,10 +68,10 @@ class QpSolver {
 
     idxs_sg_.resize(num_inequality_constraints);
     std::iota(idxs_sg_.begin(), idxs_sg_.end(), 0);
-    Zl_ = std::vector<double>(num_inequality_constraints, 1e-6);
-    Zu_ = std::vector<double>(num_inequality_constraints, 1e-6);
-    zl_ = std::vector<double>(num_inequality_constraints, 0.0);
-    zu_ = std::vector<double>(num_inequality_constraints, 0.0);
+    Zl_ = std::vector<double>(num_inequality_constraints, 1);
+    Zu_ = std::vector<double>(num_inequality_constraints, 1);
+    zl_ = std::vector<double>(num_inequality_constraints, 1);
+    zu_ = std::vector<double>(num_inequality_constraints, 1);
 
     sol_buf_ = (double*) calloc(num_variables, sizeof(double));
   }

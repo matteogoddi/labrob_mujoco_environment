@@ -181,3 +181,14 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
 14. It may make sense to create 2 different set of parameters for the whole body controller for simulation and experiments.
 
 15. To decide together: use one common version for hpipm, blasfeo, mujoco and pinocchio. Then fix CMakeLists.txt to work for everyone.
+
+### TO SOLVE
+1. Mostrare tabella con zmp non funzionanti e filtro piccolo vs. stabiizer
+
+2. Paper leaky integrator
+
+3. Paper yiannis su framework simile al nostro
+
+4. 
+
+

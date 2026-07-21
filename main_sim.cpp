@@ -304,7 +304,7 @@ int main(const int argc, const char* argv[]) {
                 }
             }
             static bool ekf_took_over = false;
-            if (mj_data_ptr->time >= 3.0 && true) {
+            if (mj_data_ptr->time >= 3.0 && false) {
                 robot_state = rs_ekf;
                 if (!ekf_took_over) {
                     ekf_took_over = true;
