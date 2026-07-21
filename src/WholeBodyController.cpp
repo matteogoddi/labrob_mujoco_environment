@@ -20,8 +20,8 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 30.0;
-  params.Kd_motion = 10.0;
+  params.Kp_motion = 100.0;
+  params.Kd_motion = 50.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 60.0;
@@ -39,9 +39,9 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 1;
-  params.weight_lsole            = 1;
-  params.weight_rsole            = 1;
+  params.weight_com              = 0.5;
+  params.weight_lsole            = 5;
+  params.weight_rsole            = 5;
   params.weight_lwrist            = 0.0;
   params.weight_rwrist            = 0.0;
   params.weight_torso            = 1e-3;
@@ -114,7 +114,9 @@ WholeBodyController::WholeBodyController(
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
   wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_);
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
+      , n_wbc_inequalities_, 1e1
+    );
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
   right_foot_wrench_ = Eigen::VectorXd::Zero(6);
@@ -471,6 +473,42 @@ WholeBodyController::compute_inverse_dynamics(
     const auto& solution = wbc_solver_ptr_->get_solution();
     q_ddot_ = solution.head(nv);
     flr_    = solution.segment(nv, 2 * 3 * nc);
+  }
+
+  // Worst-case margin (>=0 means satisfied) across the joint velocity-limit
+  // and position-limit rows, kept separate (different units), for
+  // diagnosing whether these (rather than the friction cone) are the source
+  // of QP infeasibility at gait transitions.
+  {
+    const Eigen::VectorXd Cx          = C_acc_ * q_ddot_;
+    const Eigen::VectorXd margin_low  = Cx - d_min_acc_;
+    const Eigen::VectorXd margin_high = d_max_acc_ - Cx;
+
+    Eigen::Index vel_low_idx, vel_high_idx, pos_low_idx, pos_high_idx;
+    const double vel_low_min  = margin_low.head(nj).minCoeff(&vel_low_idx);
+    const double vel_high_min = margin_high.head(nj).minCoeff(&vel_high_idx);
+    const double pos_low_min  = margin_low.tail(nj).minCoeff(&pos_low_idx);
+    const double pos_high_min = margin_high.tail(nj).minCoeff(&pos_high_idx);
+
+    if (vel_low_min <= vel_high_min) {
+      joint_vel_limit_margin_    = vel_low_min;
+      worst_vel_limit_joint_     = static_cast<int>(vel_low_idx);
+      worst_vel_limit_is_upper_  = false;
+    } else {
+      joint_vel_limit_margin_    = vel_high_min;
+      worst_vel_limit_joint_     = static_cast<int>(vel_high_idx);
+      worst_vel_limit_is_upper_  = true;
+    }
+
+    if (pos_low_min <= pos_high_min) {
+      joint_pos_limit_margin_    = pos_low_min;
+      worst_pos_limit_joint_     = static_cast<int>(pos_low_idx);
+      worst_pos_limit_is_upper_  = false;
+    } else {
+      joint_pos_limit_margin_    = pos_high_min;
+      worst_pos_limit_joint_     = static_cast<int>(pos_high_idx);
+      worst_pos_limit_is_upper_  = true;
+    }
   }
 
   const auto& fl = flr_.head(3 * nc);

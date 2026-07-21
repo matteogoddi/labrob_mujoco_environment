@@ -1073,6 +1073,14 @@ WalkingManager::update(
 
     logger_.log("mpc_zmp_velocity", ismpc_input_3d(*ismpc_ptr_));
 
+    // Current-step ZMP box constraint (center + half-size of the foot square
+    // the MPC is trying to keep the ZMP inside), for offline feasibility
+    // diagnostics against the logged "zmp_position"/"kf_zmp_position".
+    logger_.log("mpc_zmp_box_center",
+        Eigen::Vector2d(ismpc_ptr_->getZmpBoxCenterX(), ismpc_ptr_->getZmpBoxCenterY()));
+    logger_.log("mpc_foot_constraint_size",
+        Eigen::Vector2d(ismpc_ptr_->getFootConstraintLength(), ismpc_ptr_->getFootConstraintWidth()));
+
         // LOG MPC PREDICTIONS FOR GIF FILES
         Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
         Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
@@ -1472,6 +1480,22 @@ WalkingManager::update(
     logger_.log("wbc_force_rsole",       whole_body_controller_ptr_->getRightFootWrench());
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("angular_momentum",      angular_momentum);
+
+    // Per-corner contact forces (4 corners x Fx,Fy,Fz for left, then right —
+    // 24 values total) and the friction coefficient used, for offline
+    // friction-cone violation diagnostics.
+    logger_.log("wbc_contact_forces", whole_body_controller_ptr_->get_flr());
+    logger_.log("wbc_mu", whole_body_controller_ptr_->get_mu());
+    logger_.log("wbc_joint_vel_limit_margin", whole_body_controller_ptr_->get_joint_vel_limit_margin());
+    logger_.log("wbc_joint_pos_limit_margin", whole_body_controller_ptr_->get_joint_pos_limit_margin());
+    logger_.log("wbc_worst_vel_limit_joint",
+        static_cast<double>(whole_body_controller_ptr_->get_worst_vel_limit_joint()));
+    logger_.log("wbc_worst_vel_limit_is_upper",
+        whole_body_controller_ptr_->get_worst_vel_limit_is_upper() ? 1.0 : 0.0);
+    logger_.log("wbc_worst_pos_limit_joint",
+        static_cast<double>(whole_body_controller_ptr_->get_worst_pos_limit_joint()));
+    logger_.log("wbc_worst_pos_limit_is_upper",
+        whole_body_controller_ptr_->get_worst_pos_limit_is_upper() ? 1.0 : 0.0);
 
     {
         Eigen::VectorXd tau(njnt);

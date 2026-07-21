@@ -93,6 +93,20 @@ class WholeBodyController {
   const Eigen::VectorXd& get_flr()    const { return flr_; }
   const Eigen::VectorXd& getLeftFootWrench()  const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
+  double get_mu() const { return params_.mu; }
+  // Worst-case margin (>=0 means satisfied) across the joint velocity-limit
+  // rows [rad/s] and position-limit rows [rad] of C_acc_, respectively, for
+  // the currently applied q_ddot_. Kept separate since the two have
+  // different units.
+  double get_joint_vel_limit_margin() const { return joint_vel_limit_margin_; }
+  double get_joint_pos_limit_margin() const { return joint_pos_limit_margin_; }
+  // Which joint (Pinocchio tail(nj) index, matches wbc_accelerations/joint
+  // order — see main_sim.cpp's "wbc_joint_names.txt" dump) realizes the
+  // worst-case margin above, and whether it's the upper or lower bound row.
+  int  get_worst_vel_limit_joint()    const { return worst_vel_limit_joint_; }
+  bool get_worst_vel_limit_is_upper() const { return worst_vel_limit_is_upper_; }
+  int  get_worst_pos_limit_joint()    const { return worst_pos_limit_joint_; }
+  bool get_worst_pos_limit_is_upper() const { return worst_pos_limit_is_upper_; }
 
  private:
   pinocchio::Model robot_model_;
@@ -106,6 +120,12 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
   Eigen::VectorXd q_ddot_;
   Eigen::VectorXd flr_;
+  double joint_vel_limit_margin_ = 0.0;
+  double joint_pos_limit_margin_ = 0.0;
+  int  worst_vel_limit_joint_    = -1;
+  bool worst_vel_limit_is_upper_ = false;
+  int  worst_pos_limit_joint_    = -1;
+  bool worst_pos_limit_is_upper_ = false;
 
   double sample_time_;
   WholeBodyControllerParams params_;

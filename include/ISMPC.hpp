@@ -45,6 +45,14 @@ class ISMPC{
 
   void setEta(double eta);
 
+  // Current-step ZMP box constraint (for logging/diagnostics): the box is
+  // [center - half_size, center + half_size] on each axis, where center is
+  // the support/swing-foot-interpolated centroid used at n=0 of the horizon.
+  double getZmpBoxCenterX() const { return mc_x_(0); }
+  double getZmpBoxCenterY() const { return mc_y_(0); }
+  double getFootConstraintLength() const { return foot_constraint_square_length_; }
+  double getFootConstraintWidth()  const { return foot_constraint_square_width_; }
+
   void resetInput(){
       input_ = Eigen::Vector3d::Zero();
   }

@@ -168,6 +168,16 @@ if __name__ == '__main__':
     estimated_force_rsole    = L('estimated_force_rsole')
     wbc_force_lsole          = L('wbc_force_lsole')
     wbc_force_rsole          = L('wbc_force_rsole')
+    wbc_contact_forces      = L('wbc_contact_forces')
+    wbc_mu                  = L('wbc_mu')
+    wbc_joint_vel_limit_margin = L('wbc_joint_vel_limit_margin')
+    wbc_joint_pos_limit_margin = L('wbc_joint_pos_limit_margin')
+    wbc_worst_vel_limit_joint    = L('wbc_worst_vel_limit_joint')
+    wbc_worst_vel_limit_is_upper = L('wbc_worst_vel_limit_is_upper')
+    wbc_worst_pos_limit_joint    = L('wbc_worst_pos_limit_joint')
+    wbc_worst_pos_limit_is_upper = L('wbc_worst_pos_limit_is_upper')
+    mpc_zmp_box_center       = L('mpc_zmp_box_center')
+    mpc_foot_constraint_size = L('mpc_foot_constraint_size')
     p_lsole                  = L('p_lsole')
     p_rsole                  = L('p_rsole')
     v_lsole                  = L('v_lsole')
@@ -322,6 +332,230 @@ if __name__ == '__main__':
         'images/task_soles/forces/estimated_force_right_sole.png')
 
     # ══════════════════════════════════════════════════════════════════════════
+    #  WBC PER-CORNER CONTACT FORCES + FRICTION CONE
+    # ══════════════════════════════════════════════════════════════════════════
+    # wbc_contact_forces layout: [left(4 corners x Fx,Fy,Fz); right(4 corners x Fx,Fy,Fz)]
+    # corner order per WholeBodyController.cpp pcis_[0..3]:
+    _corner_labels = ['front-left', 'front-right', 'back-left', 'back-right']
+
+    if wbc_contact_forces is not None:
+        n_rows = len(wbc_contact_forces)
+        t_wbc = t[:n_rows]
+        mu = float(np.mean(wbc_mu)) if wbc_mu is not None else 0.6
+
+        # Zoom window half-width around each swing/stance transition.
+        _zoom_half_s = 0.2
+        _zoom_half_n = max(1, int(round(_zoom_half_s * CTRL_HZ)))
+        # A corner-force sum below this is treated as "swing" (no contact).
+        _stance_threshold_n = 2.0
+        # Debounce: ignore re-crossings within this long of an accepted
+        # transition (avoids counting contact-bounce chatter as separate
+        # liftoff/touchdown events).
+        _min_transition_gap_n = max(1, int(round(0.1 * CTRL_HZ)))
+
+        transitions_by_foot = {}
+
+        for foot_idx, foot_name in enumerate(('left', 'right')):
+            base = foot_idx * 12
+            fz_cols = np.column_stack([
+                wbc_contact_forces[:, base + 3 * c + 2] for c in range(4)
+            ])
+            plot_components(t_wbc, fz_cols,
+                [f'{lbl} Fz' for lbl in _corner_labels],
+                f'WBC {foot_name.capitalize()} Foot — Per-Corner Normal Force',
+                'Force [N]',
+                f'images/wbc_solutions/forces/{foot_name}_corner_fz.png')
+
+            # Friction-cone margin per corner: mu*Fz - sqrt(Fx^2+Fy^2).
+            # Negative => the corner is outside the friction pyramid.
+            margins = np.zeros((n_rows, 4))
+            for c in range(4):
+                fx = wbc_contact_forces[:, base + 3 * c + 0]
+                fy = wbc_contact_forces[:, base + 3 * c + 1]
+                fz = wbc_contact_forces[:, base + 3 * c + 2]
+                margins[:, c] = mu * fz - np.sqrt(fx**2 + fy**2)
+
+            def _plot_margin(ax, i0, i1):
+                for c in range(4):
+                    ax.plot(t_wbc[i0:i1], margins[i0:i1, c], linewidth=1.8,
+                            label=_corner_labels[c])
+                ax.axhline(y=0.0, color='k', linestyle='--', linewidth=1.5,
+                           label='Friction cone boundary (margin = 0)')
+                ax.set_xlabel('Time [s]', fontsize=11)
+                ax.set_ylabel(r'$\mu F_z - \sqrt{F_x^2+F_y^2}$  [N]', fontsize=11)
+                ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+
+            fig, ax = plt.subplots(figsize=(7, 4))
+            _plot_margin(ax, 0, n_rows)
+            ax.set_title(f'WBC {foot_name.capitalize()} Foot — Friction Cone Margin '
+                         f'(mu={mu:.2f})', fontsize=12)
+            ax.legend(loc='best', frameon=True, fontsize=9)
+            fig.tight_layout()
+            os.makedirs('images/wbc_solutions/forces', exist_ok=True)
+            fig.savefig(f'images/wbc_solutions/forces/{foot_name}_friction_cone_margin.png',
+                        dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+            # ── Zoom on every swing/stance transition ─────────────────────────
+            in_stance = fz_cols.sum(axis=1) > _stance_threshold_n
+            raw_edges = np.flatnonzero(np.diff(in_stance.astype(int)))
+            edges = []
+            for idx in raw_edges:
+                if not edges or (idx - edges[-1]) > _min_transition_gap_n:
+                    edges.append(idx)
+            transitions = [(idx, 'touchdown' if in_stance[idx + 1] else 'liftoff')
+                           for idx in edges]
+            transitions_by_foot[foot_name] = transitions
+
+            zoom_dir = f'images/wbc_solutions/forces/transitions'
+            os.makedirs(zoom_dir, exist_ok=True)
+            summary_lines = [
+                f'{"#":>3}  {"type":<10}  {"t [s]":>8}  {"min margin [N]":>15}  '
+                f'{"worst corner":<12}  {"violation dur [ms]":>18}'
+            ]
+            for k, (idx, kind) in enumerate(transitions):
+                i0 = max(0, idx - _zoom_half_n)
+                i1 = min(n_rows, idx + _zoom_half_n)
+                window = margins[i0:i1]
+                worst_c = int(np.argmin(window.min(axis=0)))
+                min_margin = float(window[:, worst_c].min())
+                violation_dur_ms = float((window < 0).any(axis=1).sum() * DT * 1000.0)
+
+                fig, ax = plt.subplots(figsize=(6, 3.5))
+                _plot_margin(ax, i0, i1)
+                ax.axvline(t_wbc[idx], color='gray', linestyle=':', linewidth=1.5,
+                           label=f'{kind}')
+                ax.set_title(
+                    f'{foot_name.capitalize()} foot — {kind} @ t={t_wbc[idx]:.2f}s  '
+                    f'(min margin {min_margin:+.1f} N, {_corner_labels[worst_c]})',
+                    fontsize=10)
+                ax.legend(loc='best', frameon=True, fontsize=8)
+                fig.tight_layout()
+                fig.savefig(f'{zoom_dir}/{foot_name}_{k:02d}_{kind}.png',
+                            dpi=300, bbox_inches='tight')
+                plt.close(fig)
+
+                summary_lines.append(
+                    f'{k:>3}  {kind:<10}  {t_wbc[idx]:>8.2f}  {min_margin:>15.2f}  '
+                    f'{_corner_labels[worst_c]:<12}  {violation_dur_ms:>18.1f}'
+                )
+
+            with open(f'images/wbc_solutions/forces/{foot_name}_friction_violations_summary.txt',
+                      'w') as f:
+                f.write('\n'.join(summary_lines) + '\n')
+
+        # ── WBC joint rate-limit margins (reuse the same transition instants) ──
+        # margin >= 0 means the joint vel/pos rate limits (C_acc_) are
+        # satisfied; negative means the WBC solution is violating them. Kept
+        # separate from the friction-cone diagnostics above since these are a
+        # different constraint block, checked to see whether *these* (rather
+        # than the cone) are what makes the hard QP infeasible at transitions.
+        def _jname(idx):
+            idx = int(idx)
+            return _jnames_stripped[idx] if 0 <= idx < len(_jnames_stripped) else f'joint_{idx}'
+
+        _jl_series = [
+            ('vel', wbc_joint_vel_limit_margin, 'Worst joint velocity-limit margin [rad/s]',
+             wbc_worst_vel_limit_joint, wbc_worst_vel_limit_is_upper),
+            ('pos', wbc_joint_pos_limit_margin, 'Worst joint position-limit margin [rad]',
+             wbc_worst_pos_limit_joint, wbc_worst_pos_limit_is_upper),
+        ]
+        for kind_name, series, ylabel, worst_joint_s, worst_upper_s in _jl_series:
+            if series is None:
+                continue
+            jlm = series.reshape(-1)
+            n_jlm = len(jlm)
+            t_jlm = t[:n_jlm]
+            worst_joint = (worst_joint_s.reshape(-1).astype(int) if worst_joint_s is not None else None)
+            worst_upper = (worst_upper_s.reshape(-1).astype(bool) if worst_upper_s is not None else None)
+
+            fig, ax = plt.subplots(figsize=(9, 4))
+            ax.plot(t_jlm, jlm, linewidth=1.2, color='tab:purple')
+            ax.axhline(y=0.0, color='k', linestyle='--', linewidth=1.5,
+                       label='Constraint boundary (margin = 0)')
+            ax.set_xlabel('Time [s]', fontsize=11)
+            ax.set_ylabel(ylabel, fontsize=10)
+            ax.set_title(f'WBC Joint {kind_name.capitalize()}-Limit Margin '
+                         '(min over all joints)', fontsize=12)
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.legend(loc='best', frameon=True, fontsize=9)
+            fig.tight_layout()
+            os.makedirs('images/wbc_solutions/joint_limits', exist_ok=True)
+            fig.savefig(f'images/wbc_solutions/joint_limits/{kind_name}_margin_plot.png',
+                        dpi=300, bbox_inches='tight')
+            plt.close(fig)
+
+            # Which joint is the bottleneck most often, over the whole run?
+            if worst_joint is not None:
+                n_wj = min(len(worst_joint), n_jlm)
+                uniq, counts = np.unique(worst_joint[:n_wj], return_counts=True)
+                order = np.argsort(counts)[::-1]
+                fig, ax = plt.subplots(figsize=(7, max(3, 0.3 * len(uniq))))
+                ax.barh([_jname(uniq[i]) for i in order],
+                        [counts[i] / n_wj * 100.0 for i in order],
+                        color='tab:purple')
+                ax.invert_yaxis()
+                ax.set_xlabel('Fraction of ticks as worst joint [%]', fontsize=10)
+                ax.set_title(f'Which Joint Drives the {kind_name.capitalize()}-Limit '
+                             'Margin, Overall', fontsize=12)
+                ax.grid(True, axis='x', linestyle='--', linewidth=0.5, alpha=0.7)
+                fig.tight_layout()
+                fig.savefig(f'images/wbc_solutions/joint_limits/{kind_name}_worst_joint_histogram.png',
+                            dpi=300, bbox_inches='tight')
+                plt.close(fig)
+
+            zoom_dir = f'images/wbc_solutions/joint_limits/transitions'
+            os.makedirs(zoom_dir, exist_ok=True)
+            for foot_name, transitions in transitions_by_foot.items():
+                summary_lines = [
+                    f'{"#":>3}  {"type":<10}  {"t [s]":>8}  {"min margin":>12}  '
+                    f'{"joint":<20}  {"bound":<5}  {"violation dur [ms]":>18}'
+                ]
+                for k, (idx, kw) in enumerate(transitions):
+                    if idx >= n_jlm:
+                        continue
+                    i0 = max(0, idx - _zoom_half_n)
+                    i1 = min(n_jlm, idx + _zoom_half_n)
+                    window = jlm[i0:i1]
+                    local_argmin = int(np.argmin(window))
+                    min_margin = float(window[local_argmin])
+                    violation_dur_ms = float((window < 0).sum() * DT * 1000.0)
+
+                    if worst_joint is not None:
+                        wj = int(worst_joint[i0 + local_argmin])
+                        jname = _jname(wj)
+                        bound = ('upper' if worst_upper is not None
+                                 and worst_upper[i0 + local_argmin] else 'lower')
+                    else:
+                        jname, bound = 'n/a', 'n/a'
+
+                    fig, ax = plt.subplots(figsize=(6, 3.5))
+                    ax.plot(t_jlm[i0:i1], window, linewidth=1.8, color='tab:purple')
+                    ax.axhline(y=0.0, color='k', linestyle='--', linewidth=1.5)
+                    ax.axvline(t_jlm[idx], color='gray', linestyle=':', linewidth=1.5,
+                               label=kw)
+                    ax.set_xlabel('Time [s]', fontsize=11)
+                    ax.set_ylabel(ylabel, fontsize=9)
+                    ax.set_title(
+                        f'{foot_name.capitalize()} foot — {kw} @ t={t_jlm[idx]:.2f}s  '
+                        f'(min margin {min_margin:+.3f}, {jname} [{bound}])', fontsize=9)
+                    ax.legend(loc='best', frameon=True, fontsize=8)
+                    fig.tight_layout()
+                    fig.savefig(f'{zoom_dir}/{foot_name}_{kind_name}_{k:02d}_{kw}.png',
+                                dpi=300, bbox_inches='tight')
+                    plt.close(fig)
+
+                    summary_lines.append(
+                        f'{k:>3}  {kw:<10}  {t_jlm[idx]:>8.2f}  {min_margin:>12.3f}  '
+                        f'{jname:<20}  {bound:<5}  {violation_dur_ms:>18.1f}'
+                    )
+
+                with open(
+                    f'images/wbc_solutions/joint_limits/{foot_name}_{kind_name}_limit_violations_summary.txt',
+                    'w') as f:
+                    f.write('\n'.join(summary_lines) + '\n')
+
+    # ══════════════════════════════════════════════════════════════════════════
     #  CoM AND ZMP
     # ══════════════════════════════════════════════════════════════════════════
 
@@ -341,6 +575,43 @@ if __name__ == '__main__':
         [fr'Des ZMP Pos ${l}$' for l in labels_xyz],
         'Desired ZMP Position', r'Position [$\mathrm{m}$]',
         'images/task_com/references/des_zmp_position_plot.png')
+
+    # ── MPC ZMP-in-foot-box feasibility (x, y) ────────────────────────────────
+    # mpc_zmp_box_center/size describe the box the ISMPC ZMP constraint keeps
+    # the ZMP inside: [center - size/2, center + size/2] per axis. Compare
+    # against the measured/estimated ZMP to see if/where the MPC is being
+    # asked to place the ZMP outside the reachable foot polygon.
+    if mpc_zmp_box_center is not None and mpc_foot_constraint_size is not None:
+        n_box = min(len(mpc_zmp_box_center), len(mpc_foot_constraint_size))
+        t_box = t[:n_box]
+        center = mpc_zmp_box_center[:n_box]
+        size   = mpc_foot_constraint_size[:n_box]
+        axis_labels = ['x', 'y']
+        fig, axs = plt.subplots(2, 1, figsize=(7, 6), sharex=True)
+        for i, lbl in enumerate(axis_labels):
+            half = size[:, i] / 2.0
+            box_min = center[:, i] - half
+            box_max = center[:, i] + half
+            axs[i].fill_between(t_box, box_min, box_max, color='wheat', alpha=0.5,
+                                 label='ZMP box (feasible)')
+            if zmp_position is not None:
+                n = min(n_box, len(zmp_position))
+                axs[i].plot(t_box[:n], zmp_position[:n, i], linewidth=1.8,
+                            label='Actual ZMP')
+            if kf_zmp_position is not None:
+                n = min(n_box, len(kf_zmp_position))
+                axs[i].plot(t_box[:n], kf_zmp_position[:n, i], linewidth=1.5,
+                            linestyle='--', label='Estimated ZMP (MPC input)')
+            axs[i].set_ylabel(f'ZMP {lbl} [m]', fontsize=10)
+            axs[i].set_title(f'ZMP vs Foot Box — {lbl}', fontsize=11)
+            axs[i].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
+            axs[i].legend(fontsize=9, loc='best')
+        axs[-1].set_xlabel('Time [s]', fontsize=11)
+        fig.tight_layout()
+        os.makedirs('images/task_com', exist_ok=True)
+        fig.savefig('images/task_com/mpc_zmp_box_feasibility_plot.png',
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
 
     plot_components(t, _sub(des_zmp_position, kf_zmp_position),
         [fr'ZMP Error ${l}$' for l in labels_xyz],

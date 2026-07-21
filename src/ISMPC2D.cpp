@@ -24,7 +24,8 @@ ISMPC2D::ISMPC2D(
   num_inequality_constraints_ = 2 * N_;
 
   qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      num_variables_, num_equality_constraints_, num_inequality_constraints_);
+      num_variables_, num_equality_constraints_, num_inequality_constraints_
+      , num_inequality_constraints_, 1e5);
 
   cost_function_H_ = Eigen::MatrixXd(num_variables_, num_variables_);
   cost_function_f_ = Eigen::VectorXd(num_variables_);
@@ -70,13 +71,18 @@ ISMPC2D::solve(
 
   const int n_ini = (time - walking_data.t0) / mpc_timestep_msec_;
 
+  const int n_elems = static_cast<int>(walking_data.footstep_plan.size());
   int n = 0, k = 0;
   while (n < N_) {
-    const auto& elem          = walking_data.footstep_plan[k];
+    // Once the plan is exhausted (e.g. collapsed to the single perpetual
+    // "Standing" tail element), keep reusing the last element for the rest
+    // of the horizon instead of indexing past the end of the deque.
+    const int kk = std::min(k, n_elems - 1);
+    const auto& elem          = walking_data.footstep_plan[kk];
     const auto& walking_state = elem.getWalkingState();
-    int n_bar = n_k[k];
+    int n_bar = n_k[kk];
     if (k == 0) n_bar -= n_ini;
-    if (n + n_bar >= N_) n_bar = N_ - n;
+    if (n + n_bar >= N_ || kk == n_elems - 1) n_bar = N_ - n;
 
     const Eigen::Vector3d p_sup = elem.getFeetPlacement().getSupportFootConfiguration().p;
     const Eigen::Vector3d p_swg = elem.getFeetPlacement().getSwingFootConfiguration().p;

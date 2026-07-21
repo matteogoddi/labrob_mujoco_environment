@@ -85,8 +85,8 @@ class WalkingManager {
   pinocchio::FrameIndex pelvis_idx_;
   pinocchio::FrameIndex imu_idx_;
 
-  int64_t mpc_prediction_horizon_msec = 1000;
-  int64_t mpc_timestep_msec = 50;
+  int64_t mpc_prediction_horizon_msec = 2000;
+  int64_t mpc_timestep_msec = 100;
   double foot_constraint_square_length = 0.20;
   double foot_constraint_square_width = 0.045;
 
