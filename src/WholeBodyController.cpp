@@ -39,14 +39,24 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
 
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 10;
+  params.weight_com              = 1;
   params.weight_lsole            = 5;
   params.weight_rsole            = 5;
   params.weight_lwrist            = 0.0;
   params.weight_rwrist            = 0.0;
-  params.weight_torso            = 1e-3;
-  params.weight_pelvis           = 1e-1;
+  // Raised from 1e-3/1e-1 (50x/10x): con la correzione DCM attiva sul CoM
+  // (weight_com=10) il busto veniva inclinato per assorbire a basso costo la
+  // correzione invece di usare le gambe — pesi troppo bassi rispetto al CoM
+  // per dare al WBC un motivo a tenere busto/bacino verticali.
+  params.weight_torso            = 5e-2;
+  params.weight_pelvis           = 1.0;
   params.weight_angular_momentum = 1e-4;
+  // Raised from 1e-4 (100x): le gambe hanno gia' il guadagno di regolazione
+  // azzerato (Kp/Kd_joint_matrix.block(6,6,15,15), gambe+bacino), quindi
+  // questo peso conta quasi solo per le braccia (Kp=200/Kd=40 non azzerato).
+  // A 1e-4 era troppo basso per dare loro un vero incentivo a restare vicino
+  // alla postura nominale, e col peso torso/pelvis appena alzato il WBC ha
+  // spostato lo sfogo della correzione DCM proprio sulle braccia.
   params.weight_regulation       = 1e-4;
 
   params.cmm_selection_matrix_x = 1e-1;

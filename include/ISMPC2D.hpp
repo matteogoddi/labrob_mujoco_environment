@@ -80,7 +80,7 @@ class ISMPC2D {
   double beta_x_ = 10000.0;
   double beta_y_ = 10000.0;
 
-  double single_support_zmp_blend_ = 0.95;
+  double single_support_zmp_blend_ = 1;
 
   Eigen::MatrixXd A_eq_;
   Eigen::VectorXd b_eq_;

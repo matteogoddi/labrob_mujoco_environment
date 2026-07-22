@@ -162,6 +162,14 @@ if __name__ == '__main__':
     des_com_velocity         = L('des_com_velocity')
     des_zmp_position         = L('des_zmp_position')
     des_com_acceleration     = L('des_com_acceleration')
+    nominal_com_position     = L('nominal_com_position')
+    nominal_com_velocity     = L('nominal_com_velocity')
+    nominal_zmp_position     = L('nominal_zmp_position')
+    dcm_nominal              = L('dcm_nominal')
+    dcm_measured             = L('dcm_measured')
+    dcm_error                = L('dcm_error')
+    dcm_integral_state       = L('dcm_integral_state')
+    zmp_command              = L('zmp_command')
     input_torque             = L('input_torque')
     wbc_accelerations        = L('wbc_accelerations')
     estimated_force_lsole    = L('estimated_force_lsole')
@@ -635,6 +643,34 @@ if __name__ == '__main__':
     plot_comparison(t, kf_com_velocity, des_com_velocity,
         [fr'${l}$' for l in labels_xyz], 'CoM Velocity', r'[$\mathrm{m/s}$]',
         'images/task_com/errors/comparison_com_velocity_plot.png')
+
+    # ── DCM feedback stabilizer diagnostics (x, y only) ───────────────────────
+    labels_xy = ['x', 'y']
+
+    plot_components(t, nominal_com_position,
+        [fr'Nominal CoM Pos ${l}$' for l in labels_xyz],
+        'Nominal (open-loop) CoM Position', r'Position [$\mathrm{m}$]',
+        'images/task_com/references/nominal_com_position_plot.png')
+    plot_components(t, nominal_zmp_position,
+        [fr'Nominal ZMP Pos ${l}$' for l in labels_xyz],
+        'Nominal (open-loop) ZMP Position', r'Position [$\mathrm{m}$]',
+        'images/task_com/references/nominal_zmp_position_plot.png')
+
+    plot_comparison(t, dcm_measured, dcm_nominal,
+        [fr'${l}$' for l in labels_xy], 'DCM', r'[$\mathrm{m}$]',
+        'images/task_com/references/dcm_comparison_plot.png')
+    plot_components(t, dcm_error,
+        [fr'DCM Error ${l}$' for l in labels_xy],
+        'DCM Feedback Error', r'Error [$\mathrm{m}$]',
+        'images/task_com/errors/dcm_error_plot.png')
+    plot_components(t, dcm_integral_state,
+        [fr'Integral State ${l}$' for l in labels_xy],
+        'DCM Feedback Leaky Integral State', r'State [$\mathrm{m}$]',
+        'images/task_com/errors/dcm_integral_state_plot.png')
+    plot_comparison(
+        t, kf_zmp_position[:, :2] if kf_zmp_position is not None else None, zmp_command,
+        [fr'${l}$' for l in labels_xy], 'ZMP: measured vs DCM-commanded', r'[$\mathrm{m}$]',
+        'images/task_com/references/zmp_command_comparison_plot.png')
 
     if kf_com_position is not None and kf_zmp_position is not None and \
             p_lsole is not None and p_rsole is not None:

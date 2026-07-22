@@ -146,6 +146,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "com_position",  "com_velocity",  "zmp_position",
         "kf_com_position",  "kf_com_velocity",  "kf_zmp_position",
         "des_com_position", "des_com_velocity", "des_zmp_position", "des_com_acceleration",
+        "nominal_com_position", "nominal_com_velocity", "nominal_zmp_position",
+        "dcm_nominal", "dcm_measured", "dcm_error", "dcm_integral_state", "zmp_command",
         "ef_zmp_position",
         "p_lsole", "p_rsole", "v_lsole", "v_rsole",
         "p_lsole_des", "p_rsole_des", "v_lsole_des", "v_rsole_des",
@@ -328,6 +330,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         p_ZMP
     );
     des_LipState = kf_LipState;
+    nominal_LipState_ = kf_LipState;
 #ifdef ISMPC_USE_2D
     ismpc_ptr_ = std::make_unique<labrob::ISMPC2D>(
         mpc_prediction_horizon_msec,
@@ -438,6 +441,32 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
         0.001 * mpc_timestep_msec
+    );
+
+    // DCM feedback stabilizer: disabled by default (true no-op, see
+    // DcmFeedbackController::Params) — abilitare e ritarare gradualmente
+    // seguendo il piano di taratura incrementale.
+    // Fase 1-3 (piano DCM feedback), guadagni confermati con isMPCLoopClosed
+    // =false: kp/eta=1 (Fase 1); kz=0.4*kp (Fase 2, rapporto del paper);
+    // ki=4*kp con Ti=20s default (Fase 3, rapporto del paper) — l'integratore
+    // ora resta delimitato invece di crescere senza freno come con ki=0.
+    // Fase 4 in corso: isMPCLoopClosed=true (main_sim.cpp) — l'MPC richiude
+    // di nuovo il loop sullo stato misurato insieme a questo feedback
+    // esplicito; se emergono oscillazioni da doppio anello, ridurre questi
+    // guadagni (probabile prima kp, poi ki) prima di tornare a isolare
+    // l'anello con isMPCLoopClosed=false.
+    // Nota aperta (tuning WBC, non DCM): torso/pelvis ora oscillano meno
+    // (weight_torso/weight_pelvis alzati) ma le braccia si muovono molto
+    // durante il cammino laterale — ancora da risolvere.
+    labrob::DcmFeedbackController::Params dcm_params =
+        labrob::DcmFeedbackController::Params::getDefaultParams();
+    dcm_params.enabled = true;
+    dcm_params.kp = std::sqrt(eta2);
+    dcm_params.kz = 0.4 * dcm_params.kp;
+    dcm_params.ki = 4.0 * dcm_params.kp;
+    dcm_feedback_ptr_ = std::make_unique<labrob::DcmFeedbackController>(
+        std::sqrt(eta2),
+        dcm_params
     );
 
     // WRIST FORCE ESTIMATOR BASED ON FULL MODEL AND ALL EXTERNAL WRENCHES
@@ -608,19 +637,26 @@ WalkingManager::update(
             zmp_3d_meas = zmp_3d_est;
         }
         else{
+            // Foot-moment-corrected ZMP: cop_x = p_x - tau_y/Fz, cop_y = p_y + tau_x/Fz,
+            // combined into a single division by total_force.z() (already guarded above)
+            // instead of dividing by each foot's own Fz individually — a per-foot Fz can
+            // pass through ~0 at every touchdown/liftoff even while total_force.z() is
+            // safely away from zero, so dividing by it there would blow up numerically.
+            const Eigen::VectorXd& left_foot_wrench  = whole_body_controller_ptr_->getLeftFootWrench();
+            const Eigen::VectorXd& right_foot_wrench = whole_body_controller_ptr_->getRightFootWrench();
+
             zmp_3d_meas.x() =
-                ( left_foot_force.z()  * T_lsole.translation().x() +
-                right_foot_force.z() * T_rsole.translation().x() ) / total_force.z();
-            
+                ( left_foot_force.z()  * T_lsole.translation().x() - left_foot_wrench(4) +
+                right_foot_force.z() * T_rsole.translation().x() - right_foot_wrench(4) ) / total_force.z();
 
             zmp_3d_meas.y() =
-                ( left_foot_force.z()  * T_lsole.translation().y() +
-                right_foot_force.z() * T_rsole.translation().y() ) / total_force.z();
+                ( left_foot_force.z()  * T_lsole.translation().y() + left_foot_wrench(3) +
+                right_foot_force.z() * T_rsole.translation().y() + right_foot_wrench(3) ) / total_force.z();
 
             zmp_3d_meas.z() = 0.0;
 
         }
-        
+
 
     } else if (ZMP_TYPE == 2) {
         zmp_3d_meas = p_CoM - 1/(ismpc_ptr_->getEta() * ismpc_ptr_->getEta()*mass) * (whole_body_controller_ptr_->getLeftFootWrench().head<3>() + whole_body_controller_ptr_->getRightFootWrench().head<3>());
@@ -644,17 +680,25 @@ WalkingManager::update(
             zmp_3d_meas = zmp_3d_est;
         }
         else{
+            // Foot-moment-corrected ZMP: cop_x = p_x - tau_y/Fz, cop_y = p_y + tau_x/Fz,
+            // combined into a single division by total_force.z() (already guarded above)
+            // instead of dividing by each foot's own Fz individually — a per-foot Fz can
+            // pass through ~0 at every touchdown/liftoff even while total_force.z() is
+            // safely away from zero, so dividing by it there would blow up numerically.
+            const Eigen::VectorXd& left_foot_wrench  = whole_body_controller_ptr_->getLeftFootWrench();
+            const Eigen::VectorXd& right_foot_wrench = whole_body_controller_ptr_->getRightFootWrench();
+
             zmp_3d_meas.z() = p_CoM.z() - (total_force.z() / (mass * eta2));
             zmp_3d_meas.x() =
-                ( left_foot_force.z()  * T_lsole.translation().x() +
-                right_foot_force.z() * T_rsole.translation().x() ) / total_force.z() + 
-                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.x()  / total_force.z()) + 
+                ( left_foot_force.z()  * T_lsole.translation().x() - left_foot_wrench(4) +
+                right_foot_force.z() * T_rsole.translation().x() - right_foot_wrench(4) ) / total_force.z() +
+                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.x()  / total_force.z()) +
                 (zmp_3d_meas.z() - T_rsole.translation().z()) * (right_foot_force.x()  / total_force.z());
-            
+
             zmp_3d_meas.y() =
-                ( left_foot_force.z()  * T_lsole.translation().y() +
-                right_foot_force.z() * T_rsole.translation().y() ) / total_force.z() + 
-                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.y()  / total_force.z()) + 
+                ( left_foot_force.z()  * T_lsole.translation().y() + left_foot_wrench(3) +
+                right_foot_force.z() * T_rsole.translation().y() + right_foot_wrench(3) ) / total_force.z() +
+                (zmp_3d_meas.z() - T_lsole.translation().z()) * (left_foot_force.y()  / total_force.z()) +
                 (zmp_3d_meas.z() - T_rsole.translation().z()) * (right_foot_force.y()  / total_force.z());
         }
     }
@@ -756,6 +800,8 @@ WalkingManager::update(
 
         // Reset LIP state at current measured value
         des_LipState = kf_LipState;
+        nominal_LipState_ = kf_LipState;
+        dcm_feedback_ptr_->reset();
 
          // Standing --> Walking transition: remove infinite standing step, reset t0, pre-fill deque
         if (reactive_standing_) {
@@ -1039,7 +1085,11 @@ WalkingManager::update(
     // MPC FUNCTION CALL
     /////////////////////////////////////
 
-    LIPState mpc_LipState_prec = des_LipState;
+    // NOTE: mpc_LipState_prec must reflect whichever state was actually passed
+    // to ismpc_ptr_->solve() below (kf_LipState if the loop is closed on the
+    // measured state, nominal_LipState_ otherwise) — used only to reconstruct
+    // the MPC's predicted trajectory for logging/GIF purposes.
+    LIPState mpc_LipState_prec = isMPCLoopClosed ? kf_LipState : nominal_LipState_;
 
     auto start_mpc = std::chrono::system_clock::now();
 
@@ -1049,19 +1099,17 @@ WalkingManager::update(
         {
             if(isMPCLoopClosed){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
-                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
-                des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                    kf_LipState,
+                nominal_LipState_ = discrete_lip_dynamics_ptr_->integrate(
+                    nominal_LipState_,
                     ismpc_input
                 );
             }
             else{
-                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
-                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                ismpc_ptr_->solve(t_msec_, walking_data_, nominal_LipState_);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
-                des_LipState = discrete_lip_dynamics_ptr_->integrate(
-                    des_LipState,
+                nominal_LipState_ = discrete_lip_dynamics_ptr_->integrate(
+                    nominal_LipState_,
                     ismpc_input
                 );
             }
@@ -1070,6 +1118,46 @@ WalkingManager::update(
         {
         }
     }
+
+    // DCM feedback stabilizer: corrects the ZMP command (x,y) based on the
+    // error between the nominal (open-loop) DCM and the estimated DCM, while
+    // leaving the nominal CoM pos/vel untouched — so the WBC's CoM PD task
+    // keeps a genuine tracking error, and the correction enters only as a
+    // feedforward acceleration term (see desired_gait_configuration.com.acc
+    // below). Disabled (and re-synced) outside active walking states.
+    const bool dcm_feedback_active =
+        (walking_data_.getWalkingState() != labrob::WalkingState::Init &&
+         walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation &&
+         walking_data_.getWalkingState() != labrob::WalkingState::Standing);
+
+    if (!dcm_feedback_active) {
+        nominal_LipState_ = kf_LipState;
+        dcm_feedback_ptr_->reset();
+    }
+
+    const double eta_dcm = std::sqrt(eta2);
+    const Eigen::Vector2d dcm_nominal =
+        nominal_LipState_.com_pos_.head<2>() + nominal_LipState_.com_vel_.head<2>() / eta_dcm;
+    const Eigen::Vector2d dcm_measured =
+        kf_LipState.com_pos_.head<2>() + kf_LipState.com_vel_.head<2>() / eta_dcm;
+
+    const Eigen::Vector2d zmp_cmd_xy = dcm_feedback_ptr_->computeCorrectedZmp(
+        dcm_nominal, dcm_measured,
+        nominal_LipState_.zmp_pos_.head<2>(), kf_LipState.zmp_pos_.head<2>(),
+        controller_timestep_msec_ * 0.001
+    );
+
+    des_LipState = nominal_LipState_;
+    des_LipState.zmp_pos_.head<2>() = zmp_cmd_xy;
+
+    logger_.log("nominal_com_position", nominal_LipState_.com_pos_);
+    logger_.log("nominal_com_velocity", nominal_LipState_.com_vel_);
+    logger_.log("nominal_zmp_position", nominal_LipState_.zmp_pos_);
+    logger_.log("dcm_nominal", dcm_nominal);
+    logger_.log("dcm_measured", dcm_measured);
+    logger_.log("dcm_error", dcm_feedback_ptr_->getLastDcmError());
+    logger_.log("dcm_integral_state", dcm_feedback_ptr_->getIntegralState());
+    logger_.log("zmp_command", zmp_cmd_xy);
 
     logger_.log("mpc_zmp_velocity", ismpc_input_3d(*ismpc_ptr_));
 

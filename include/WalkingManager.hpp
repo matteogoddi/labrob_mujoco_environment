@@ -9,6 +9,7 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
+#include <DcmFeedbackController.hpp>
 #include <DiscreteLIPDynamics.hpp>
 #include <globals.h>
 #ifdef ISMPC_USE_2D
@@ -88,7 +89,7 @@ class WalkingManager {
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
   double foot_constraint_square_length = 0.20;
-  double foot_constraint_square_width = 0.045;
+  double foot_constraint_square_width = 0.05;
 
   Eigen::Vector3d ismpc_input = Eigen::Vector3d::Zero();
 
@@ -110,6 +111,9 @@ class WalkingManager {
   LIPState LipState;
   LIPState kf_LipState;
   LIPState des_LipState;
+  // Self-integrating open-loop nominal LIP trajectory (decoupled from the
+  // estimated state), used as xi_d/z_d reference by the DCM feedback below.
+  LIPState nominal_LipState_;
 
   Eigen::Vector3d p_CoM_init;
 
@@ -135,9 +139,9 @@ private:
   Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d com_kf_cov_z_ = Eigen::Matrix3d::Identity();
   // noise parameters (same defaults as CoMKF class)
-  static constexpr double kComKfMeasPos = 1.0e-2;
-  static constexpr double kComKfMeasVel = 1.0e-2;
-  static constexpr double kComKfMeasZmp = 1.0e8;
+  static constexpr double kComKfMeasPos = 1.0e1;
+  static constexpr double kComKfMeasVel = 1.0e2;
+  static constexpr double kComKfMeasZmp = 1.0e2;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;
@@ -166,6 +170,7 @@ private:
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
+  std::unique_ptr<labrob::DcmFeedbackController> dcm_feedback_ptr_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
     // Private members online planner

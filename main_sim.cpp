@@ -22,10 +22,14 @@
 #include "MujocoUI.hpp"
 
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
+// Fase 4 (piano DcmFeedbackController): riattivato — l'MPC richiude di nuovo
+// il loop sullo stato misurato (kf_LipState) insieme al DCM feedback esplicito.
+// Se emergono oscillazioni da doppio anello, tornare a false e ridurre i
+// guadagni DCM (kp/ki/kz in WalkingManager::init()).
 bool isMPCLoopClosed    = true;
 bool isObserverActive   = false;
 bool switchWalkingState = false;  // never set in sim, WalkingManager reads it
-int  ZMP_TYPE           = 3;
+int  ZMP_TYPE           = 1;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(G1_NUM_MOTOR);
 
