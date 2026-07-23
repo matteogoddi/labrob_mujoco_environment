@@ -68,6 +68,7 @@ LOG_FILENAMES = {
     "jacobian": "compliance_torso_jacobian.txt",
     "wbc_torso": "wbc_torso_orientation_tracking.txt",
     "wbc_hand": "wbc_hand_compliance_tracking.txt",
+    "wbc_hand_position": "wbc_hand_compliance_position_tracking.txt",
     "wrist_validation": "wrist_force_validation.txt",
 }
 
@@ -77,6 +78,8 @@ COMPLETE_EVIDENCE_LOGS = (
     "jacobian",
     "wbc_torso",
     "wbc_hand",
+    "wbc_hand_position",
+    "wrist_validation",
 )
 
 REQUIRED_COLUMNS = {
@@ -119,6 +122,20 @@ REQUIRED_COLUMNS = {
         *(f"r_ref{index}" for index in range(3)),
         *(f"r_ach{index}" for index in range(3)),
     ),
+    "wbc_hand_position": (
+        *(f"{side}_{kind}_{axis}"
+          for side in ("l", "r")
+          for kind in ("ref", "ach")
+          for axis in ("x", "y", "z")),
+    ),
+    "wrist_validation": (
+        *(
+            f"{side}_{kind}_{axis}"
+            for side in ("l", "r")
+            for kind in ("gt", "est", "estf")
+            for axis in ("fx", "fy", "fz")
+        ),
+    ),
 }
 
 APPLIED_WRENCH_COLUMNS = (
@@ -127,6 +144,20 @@ APPLIED_WRENCH_COLUMNS = (
 )
 
 SINGLE_FIGURE_STEMS = (
+    "01_mujoco_applied_external_force",
+    "02_crg_total_torso_hand_allocation",
+    "03_wbc_torso_orientation_tracking",
+    "04_wbc_hand_position_tracking",
+    "05_wbc_hand_acceleration_tracking",
+    "06_estimated_external_force",
+)
+
+# Remove files produced by the previous seven-figure layout when committing a
+# new run, otherwise an existing output directory would misleadingly contain
+# both the old and the new evidence sets.
+LEGACY_SINGLE_FIGURE_STEMS = (
+    "04_wbc_hand_acceleration_tracking",
+    "05_estimated_external_force",
     "01_external_wrench_to_crg",
     "02_crg_allocation_decomposition",
     "03_crg_torso_reference",
@@ -134,6 +165,10 @@ SINGLE_FIGURE_STEMS = (
     "05_wbc_hand_acceleration_tracking",
     "06_end_to_end_compliance_summary",
     "07_wrist_force_estimator_diagnostic",
+)
+
+SINGLE_CLEANUP_FIGURE_STEMS = tuple(
+    dict.fromkeys((*SINGLE_FIGURE_STEMS, *LEGACY_SINGLE_FIGURE_STEMS))
 )
 
 BATCH_FIGURE_STEMS = (
@@ -550,15 +585,38 @@ def _ab_contribution(
 
 def _relative_torso_offsets(log: NamedLog) -> Tuple[np.ndarray, np.ndarray]:
     nominal = log.columns(("nom_roll", "nom_pitch", "nom_yaw"))
-    desired = log.columns(("des_roll", "des_pitch", "des_yaw"))
-    current = log.columns(("cur_roll", "cur_pitch", "cur_yaw"))
 
     def rotations(rpy: np.ndarray) -> Rotation:
         return Rotation.from_euler("ZYX", rpy[:, [2, 1, 0]])
 
     nominal_rotation = rotations(nominal)
-    desired_relative = rotations(desired) * nominal_rotation.inv()
-    current_relative = rotations(current) * nominal_rotation.inv()
+    if log.has(
+        "offset_roll", "offset_pitch", "offset_yaw",
+        "err_rotvec_x", "err_rotvec_y", "err_rotvec_z",
+    ):
+        # WalkingManager::err_rotation(desired, current) logs
+        #   e = angle * R_desired * axis,
+        # where Exp(angle * axis) = R_current^T * R_desired. Reconstruct the
+        # measured rotation from this small, high-resolution SO(3) error
+        # instead of subtracting quantized absolute Euler angles near +/-pi.
+        # The latter produces artificial 1e-5-rad stair steps in old logs.
+        desired_relative = rotations(
+            log.columns(("offset_roll", "offset_pitch", "offset_yaw"))
+        )
+        desired_rotation = desired_relative * nominal_rotation
+        error_world = log.columns(
+            ("err_rotvec_x", "err_rotvec_y", "err_rotvec_z")
+        )
+        error_desired = desired_rotation.inv().apply(error_world)
+        desired_from_current = Rotation.from_rotvec(error_desired)
+        current_rotation = desired_rotation * desired_from_current.inv()
+        current_relative = current_rotation * nominal_rotation.inv()
+    else:
+        desired = log.columns(("des_roll", "des_pitch", "des_yaw"))
+        current = log.columns(("cur_roll", "cur_pitch", "cur_yaw"))
+        desired_relative = rotations(desired) * nominal_rotation.inv()
+        current_relative = rotations(current) * nominal_rotation.inv()
+
     desired_ypr = desired_relative.as_euler("ZYX")
     current_ypr = current_relative.as_euler("ZYX")
     return desired_ypr[:, [2, 1, 0]], current_ypr[:, [2, 1, 0]]
@@ -570,10 +628,35 @@ def compute_compliance_metrics(run: ComplianceRun) -> Dict[str, object]:
         if math.isfinite(rho):
             break
         rho = _metadata_float(run.metadata, alias)
+    admittance_scale = _metadata_float(
+        run.metadata, "crg_admittance_scale"
+    )
     metrics: Dict[str, object] = {
         "label": run.label,
         "folder": str(run.folder),
         "rho": rho,
+        "crg_admittance_scale": admittance_scale,
+        "crg_arm_ma_translation_kg": _metadata_float(
+            run.metadata, "crg_arm_ma_translation_kg"
+        ),
+        "crg_arm_da_translation_n_s_per_m": _metadata_float(
+            run.metadata, "crg_arm_da_translation_n_s_per_m"
+        ),
+        "crg_arm_ka_translation_n_per_m": _metadata_float(
+            run.metadata, "crg_arm_ka_translation_n_per_m"
+        ),
+        "crg_admittance_translation_limit_enabled": _metadata_float(
+            run.metadata, "crg_admittance_translation_limit_enabled"
+        ),
+        "crg_admittance_translation_limit_m": _metadata_float(
+            run.metadata, "crg_admittance_translation_limit_m"
+        ),
+        "crg_admittance_translation_limit_effective_m": _metadata_float(
+            run.metadata, "crg_admittance_translation_limit_effective_m"
+        ),
+        "crg_arm_force_at_translation_limit_n": _metadata_float(
+            run.metadata, "crg_arm_force_at_translation_limit_n"
+        ),
         "run_status": run.metadata.get("status", "unknown"),
         "applied_to_crg_causal_delay_s": run.causal_delay_s,
     }
@@ -643,9 +726,50 @@ def compute_compliance_metrics(run: ComplianceRun) -> Dict[str, object]:
     for side in ("l", "r"):
         residual_names = tuple(f"{side}_arm{idx}" for idx in range(3))
         target_names = tuple(f"{side}_dxf{idx}" for idx in range(3))
+        raw_admittance_names = tuple(f"{side}_dx{idx}" for idx in range(3))
+        prefix = "left" if side == "l" else "right"
+        if torso.has(*target_names) and np.any(torso_mask):
+            target = torso.columns(target_names)
+            target_window = target[torso_mask]
+            metrics[f"{prefix}_admittance_target_peak_mm"] = (
+                1000.0 * _vector_peak(target, torso_mask)
+            )
+            metrics[f"{prefix}_admittance_target_max_abs_component_mm"] = (
+                1000.0 * float(np.max(np.abs(target_window)))
+            )
+            limit_enabled = _metric_float(
+                metrics, "crg_admittance_translation_limit_enabled"
+            )
+            limit_m = _metric_float(
+                metrics, "crg_admittance_translation_limit_m"
+            )
+            limit_signal = (
+                torso.columns(raw_admittance_names)
+                if torso.has(*raw_admittance_names)
+                else target
+            )
+            limit_window = limit_signal[torso_mask]
+            metrics[f"{prefix}_admittance_raw_max_abs_component_mm"] = (
+                1000.0 * float(np.max(np.abs(limit_window)))
+            )
+            if (
+                math.isfinite(limit_enabled)
+                and limit_enabled > 0.5
+                and math.isfinite(limit_m)
+                and limit_m > 0.0
+            ):
+                metrics[f"{prefix}_admittance_limit_utilization_percent"] = (
+                    100.0 * float(np.max(np.abs(limit_window))) / limit_m
+                )
+                near_limit = np.any(
+                    np.abs(limit_window) >= 0.999 * limit_m,
+                    axis=1,
+                )
+                metrics[f"{prefix}_admittance_near_limit_samples_percent"] = (
+                    100.0 * float(np.mean(near_limit))
+                )
         if torso.has(*residual_names):
             residual = torso.columns(residual_names)
-            prefix = "left" if side == "l" else "right"
             metrics[f"{prefix}_arm_residual_peak_mm"] = 1000.0 * _vector_peak(
                 residual, torso_mask
             )
@@ -665,13 +789,33 @@ def compute_compliance_metrics(run: ComplianceRun) -> Dict[str, object]:
             )
             if contribution is not None:
                 reconstruction_error = target - (contribution[:, :3] + residual)
-                prefix = "left" if side == "l" else "right"
                 metrics[f"{prefix}_allocation_reconstruction_rmse_mm"] = (
                     1000.0 * _vector_rmse(reconstruction_error, torso_mask)
                 )
                 metrics[f"{prefix}_allocation_reconstruction_max_mm"] = (
                     1000.0 * _vector_peak(reconstruction_error, torso_mask)
                 )
+                target_energy = np.sum(target * target, axis=1)
+                projection_mask = torso_mask & (target_energy > 1.0e-12)
+                if np.any(projection_mask):
+                    torso_projection = (
+                        np.sum(target * contribution[:, :3], axis=1)
+                        / np.where(target_energy > 1.0e-12, target_energy, 1.0)
+                    )
+                    hand_projection = (
+                        np.sum(target * residual, axis=1)
+                        / np.where(target_energy > 1.0e-12, target_energy, 1.0)
+                    )
+                    metrics[
+                        f"{prefix}_torso_allocation_projection_percent"
+                    ] = 100.0 * float(
+                        np.mean(torso_projection[projection_mask])
+                    )
+                    metrics[
+                        f"{prefix}_hand_allocation_projection_percent"
+                    ] = 100.0 * float(
+                        np.mean(hand_projection[projection_mask])
+                    )
 
     jacobian = run.logs.get("jacobian")
     if jacobian is not None and jacobian.has("valid"):
@@ -783,6 +927,96 @@ def compute_compliance_metrics(run: ComplianceRun) -> Dict[str, object]:
             metrics[f"wbc_{prefix}_hand_3d_acc_max_error_mps2"] = _vector_peak(
                 error, hand_mask
             )
+
+    wbc_hand_position = run.logs.get("wbc_hand_position")
+    if wbc_hand_position is not None:
+        position_window_mask = _window_mask(
+            wbc_hand_position.time, run, causal=True
+        )
+        for side, prefix in (("l", "left"), ("r", "right")):
+            reference_names = tuple(
+                f"{side}_ref_{axis}" for axis in ("x", "y", "z")
+            )
+            achieved_names = tuple(
+                f"{side}_ach_{axis}" for axis in ("x", "y", "z")
+            )
+            if not wbc_hand_position.has(
+                *reference_names, *achieved_names
+            ):
+                continue
+            reference = wbc_hand_position.columns(reference_names)
+            achieved = wbc_hand_position.columns(achieved_names)
+            error_mm = 1000.0 * (achieved - reference)
+            reference_mm = 1000.0 * reference
+            hand_mask = position_window_mask & (
+                np.linalg.norm(reference, axis=1) > 1.0e-9
+            )
+            metrics[
+                f"wbc_{prefix}_hand_position_active_samples"
+            ] = int(np.count_nonzero(hand_mask))
+            axis_rmse = _axis_rmse(error_mm, hand_mask)
+            for axis, value in zip(("x", "y", "z"), axis_rmse):
+                metrics[
+                    f"wbc_{prefix}_hand_{axis}_position_rmse_mm"
+                ] = float(value)
+            reference_rms = _vector_rmse(reference_mm, hand_mask)
+            error_rmse = _vector_rmse(error_mm, hand_mask)
+            metrics[
+                f"wbc_{prefix}_hand_3d_position_reference_rms_mm"
+            ] = reference_rms
+            metrics[
+                f"wbc_{prefix}_hand_3d_position_rmse_mm"
+            ] = error_rmse
+            if math.isfinite(reference_rms) and reference_rms > 1.0e-9:
+                metrics[
+                    f"wbc_{prefix}_hand_3d_position_nrmse_percent"
+                ] = 100.0 * error_rmse / reference_rms
+            metrics[
+                f"wbc_{prefix}_hand_3d_position_max_error_mm"
+            ] = _vector_peak(error_mm, hand_mask)
+
+    wrist_validation = run.logs.get("wrist_validation")
+    if wrist_validation is not None:
+        estimator_window_mask = _window_mask(wrist_validation.time, run)
+        for side, prefix in (("l", "left"), ("r", "right")):
+            ground_truth_names = tuple(
+                f"{side}_gt_f{axis}" for axis in ("x", "y", "z")
+            )
+            raw_names = tuple(
+                f"{side}_est_f{axis}" for axis in ("x", "y", "z")
+            )
+            filtered_names = tuple(
+                f"{side}_estf_f{axis}" for axis in ("x", "y", "z")
+            )
+            if not wrist_validation.has(
+                *ground_truth_names, *raw_names, *filtered_names
+            ):
+                continue
+            ground_truth = wrist_validation.columns(ground_truth_names)
+            raw = wrist_validation.columns(raw_names)
+            filtered = wrist_validation.columns(filtered_names)
+            active_mask = estimator_window_mask & (
+                np.linalg.norm(ground_truth, axis=1) > 1.0e-9
+            )
+            metrics[f"{prefix}_force_estimator_active_samples"] = int(
+                np.count_nonzero(active_mask)
+            )
+            for estimate_name, estimate in (
+                ("raw", raw),
+                ("filtered", filtered),
+            ):
+                error = estimate - ground_truth
+                axis_rmse = _axis_rmse(error, active_mask)
+                for axis, value in zip(("x", "y", "z"), axis_rmse):
+                    metrics[
+                        f"{prefix}_force_estimator_{estimate_name}_{axis}_rmse_N"
+                    ] = float(value)
+                metrics[
+                    f"{prefix}_force_estimator_{estimate_name}_3d_rmse_N"
+                ] = _vector_rmse(error, active_mask)
+                metrics[
+                    f"{prefix}_force_estimator_{estimate_name}_3d_max_error_N"
+                ] = _vector_peak(error, active_mask)
 
     return metrics
 
@@ -913,6 +1147,55 @@ def _qa_lines(
         value = _metric_float(metrics, key)
         status = "PASS" if math.isfinite(value) and value <= 1.0e-3 else "FAIL"
         lines.append(f"{status} {key}={value:.9g}")
+        torso_projection = _metric_float(
+            metrics, f"{side}_torso_allocation_projection_percent"
+        )
+        hand_projection = _metric_float(
+            metrics, f"{side}_hand_allocation_projection_percent"
+        )
+        rho = _metric_float(metrics, "rho")
+        target_percent = 100.0 * rho
+        projection_pass = (
+            math.isfinite(target_percent)
+            and math.isfinite(torso_projection)
+            and math.isfinite(hand_projection)
+            and abs(torso_projection - target_percent) <= 5.0
+            and abs(hand_projection - (100.0 - target_percent)) <= 5.0
+        )
+        lines.append(
+            f"{'PASS' if projection_pass else 'FAIL'} "
+            f"{side}_allocation_projection_percent "
+            f"torso={torso_projection:.9g} hand={hand_projection:.9g} "
+            f"rho_target={target_percent:.9g}"
+        )
+
+    limit_enabled = _metric_float(
+        metrics, "crg_admittance_translation_limit_enabled"
+    )
+    if math.isfinite(limit_enabled) and limit_enabled > 0.5:
+        for side in ("left", "right"):
+            key = f"{side}_admittance_limit_utilization_percent"
+            value = _metric_float(metrics, key)
+            if not math.isfinite(value) or value > 100.001:
+                status = "FAIL"
+            elif value >= 99.9:
+                status = "WARN"
+            else:
+                status = "PASS"
+            lines.append(f"{status} {key}={value:.9g}")
+            near_limit_key = (
+                f"{side}_admittance_near_limit_samples_percent"
+            )
+            near_limit_value = _metric_float(metrics, near_limit_key)
+            near_limit_status = (
+                "WARN"
+                if math.isfinite(near_limit_value) and near_limit_value > 0.0
+                else "PASS"
+            )
+            lines.append(
+                f"{near_limit_status} {near_limit_key}="
+                f"{near_limit_value:.9g}"
+            )
 
     force_match = _metric_float(metrics, "applied_to_crg_force_rmse_N")
     torque_match = _metric_float(metrics, "applied_to_crg_torque_rmse_Nm")
@@ -937,10 +1220,26 @@ def _qa_lines(
     )
 
     lines.append(
-        "INFO hand_tracking_scope=selected_xyz_operational_space_acceleration_"
-        "reference_vs_qp_achieved_not_hand_pose"
+        "INFO hand_tracking_scope=arm_relative_cartesian_position_and_selected_"
+        "xyz_operational_space_acceleration"
     )
     for side in ("left", "right"):
+        position_samples = _metric_float(
+            metrics, f"wbc_{side}_hand_position_active_samples"
+        )
+        position_rmse = _metric_float(
+            metrics, f"wbc_{side}_hand_3d_position_rmse_mm"
+        )
+        position_nrmse = _metric_float(
+            metrics, f"wbc_{side}_hand_3d_position_nrmse_percent"
+        )
+        lines.append(
+            f"{'PASS' if math.isfinite(position_rmse) and position_rmse <= 2.0 else 'FAIL'} "
+            f"wbc_{side}_hand_position_tracking "
+            f"active_samples={position_samples:.9g} "
+            f"rmse_mm={position_rmse:.9g} "
+            f"nrmse_percent={position_nrmse:.9g}"
+        )
         active_samples = _metric_float(
             metrics, f"wbc_{side}_hand_active_task_samples"
         )
@@ -954,6 +1253,27 @@ def _qa_lines(
             f"INFO wbc_{side}_hand_acceleration_tracking "
             f"active_samples={active_samples:.9g} "
             f"rmse_mps2={rmse:.9g} nrmse_percent={nrmse:.9g}"
+        )
+
+    lines.append(
+        "INFO force_estimator_scope=logged_sample_ground_truth_vs_raw_and_"
+        "filtered_estimates_physical_estimator_update_is_one_step_later"
+    )
+    for side in ("left", "right"):
+        active_samples = _metric_float(
+            metrics, f"{side}_force_estimator_active_samples"
+        )
+        raw_rmse = _metric_float(
+            metrics, f"{side}_force_estimator_raw_3d_rmse_N"
+        )
+        filtered_rmse = _metric_float(
+            metrics, f"{side}_force_estimator_filtered_3d_rmse_N"
+        )
+        lines.append(
+            f"INFO {side}_force_estimator_tracking "
+            f"active_samples={active_samples:.9g} "
+            f"raw_3d_rmse_N={raw_rmse:.9g} "
+            f"filtered_3d_rmse_N={filtered_rmse:.9g}"
         )
 
     recovery_metrics = (
@@ -981,7 +1301,11 @@ def _qa_lines(
             log = run.logs.get(key)
             if log is None:
                 continue
-            delay = 0.0 if key == "applied" else run.causal_delay_s
+            delay = (
+                run.causal_delay_s
+                if key in ("torso", "jacobian", "wbc_torso", "wbc_hand")
+                else 0.0
+            )
             expected_start = run.force_window[0] + delay
             expected_end = run.force_window[1] + delay
             covers = log.time[0] <= expected_start and log.time[-1] >= expected_end
@@ -1000,6 +1324,41 @@ def _metric_float(metrics: Mapping[str, object], key: str) -> float:
     except (TypeError, ValueError):
         return float("nan")
     return result
+
+
+def _admittance_config_text(metrics: Mapping[str, object]) -> str:
+    scale = _metric_float(metrics, "crg_admittance_scale")
+    stiffness = _metric_float(
+        metrics, "crg_arm_ka_translation_n_per_m"
+    )
+    limit_enabled = _metric_float(
+        metrics, "crg_admittance_translation_limit_enabled"
+    )
+    limit_m = _metric_float(
+        metrics, "crg_admittance_translation_limit_m"
+    )
+    force_at_limit = _metric_float(
+        metrics, "crg_arm_force_at_translation_limit_n"
+    )
+    parts: List[str] = []
+    if math.isfinite(scale):
+        parts.append(f"admittance scale={scale:g}")
+    if math.isfinite(stiffness):
+        parts.append(f"Ka,xyz={stiffness:g} N/m")
+    if math.isfinite(limit_enabled) and limit_enabled > 0.5:
+        if math.isfinite(limit_m):
+            parts.append(f"pre-allocation |delta_xc,xyz|≤{1000.0 * limit_m:g} mm")
+        else:
+            parts.append("pre-allocation delta_xc xyz limit enabled")
+    elif math.isfinite(limit_enabled):
+        parts.append("pre-allocation delta_xc xyz limit disabled")
+    if (
+        math.isfinite(limit_enabled)
+        and limit_enabled > 0.5
+        and math.isfinite(force_at_limit)
+    ):
+        parts.append(f"steady per-axis F_limit={force_at_limit:g} N")
+    return "; ".join(parts)
 
 
 def _display_label(value: str) -> str:
@@ -1066,7 +1425,7 @@ def _save_figure(
     return written
 
 
-def _plot_external_wrench(
+def _plot_mujoco_applied_force(
     run: ComplianceRun,
     output_dir: Path,
     formats: Sequence[str],
@@ -1075,99 +1434,62 @@ def _plot_external_wrench(
     metrics: Mapping[str, object],
 ) -> List[Path]:
     applied = run.logs.get("applied")
-    torso = run.logs.get("torso")
-    source = applied or torso
-    if source is None:
+    required = (
+        "l_fx", "l_fy", "l_fz",
+        "r_fx", "r_fy", "r_fz",
+    )
+    if applied is None or not applied.has(*required):
         return []
-    time = source.time
-    indices = _plot_indices(time, max_points, time_range)
-
-    figure, axes = plt.subplots(2, 2, figsize=(14, 8.5), sharex=True)
-    component_labels = ("x", "y", "z")
-    applied_names = {
-        ("l", "force"): ("l_fx", "l_fy", "l_fz"),
-        ("r", "force"): ("r_fx", "r_fy", "r_fz"),
-        ("l", "torque"): ("l_tx", "l_ty", "l_tz"),
-        ("r", "torque"): ("r_tx", "r_ty", "r_tz"),
-    }
-    torso_names = {
-        ("l", "force"): ("l_w0", "l_w1", "l_w2"),
-        ("r", "force"): ("r_w0", "r_w1", "r_w2"),
-        ("l", "torque"): ("l_w3", "l_w4", "l_w5"),
-        ("r", "torque"): ("r_w3", "r_w4", "r_w5"),
-    }
-
-    for row, side in enumerate(("l", "r")):
-        for column, kind in enumerate(("force", "torque")):
+    indices = _plot_indices(applied.time, max_points, time_range)
+    figure, axes = plt.subplots(
+        2, 3, figsize=(16, 8), sharex=True, sharey=True
+    )
+    for row, (side, side_name) in enumerate((("l", "Left"), ("r", "Right"))):
+        force = applied.columns(
+            tuple(f"{side}_f{axis}" for axis in ("x", "y", "z"))
+        )
+        for column, (axis_name, color) in enumerate(
+            zip(("Fx", "Fy", "Fz"), AXIS_COLORS)
+        ):
             axis = axes[row, column]
-            if applied is not None and applied.has(*applied_names[(side, kind)]):
-                values = _interp_columns(
-                    applied, applied_names[(side, kind)], time
-                )
-                for component, color, label in zip(
-                    range(3), AXIS_COLORS, component_labels
-                ):
-                    axis.plot(
-                        time[indices],
-                        values[indices, component],
-                        color=color,
-                        linewidth=1.6,
-                        label=f"applied {label}",
-                    )
-            if torso is not None and torso.has(*torso_names[(side, kind)]):
-                values = _interp_columns(torso, torso_names[(side, kind)], time)
-                for component, color, label in zip(
-                    range(3), AXIS_COLORS, component_labels
-                ):
-                    axis.plot(
-                        time[indices],
-                        values[indices, component],
-                        color=color,
-                        linewidth=1.0,
-                        linestyle="--",
-                        alpha=0.85,
-                        label=f"CRG input {label}",
-                    )
-            side_name = "Left wrist" if side == "l" else "Right wrist"
-            axis.set_title(f"{side_name} {kind}")
-            axis.set_ylabel("Force [N]" if kind == "force" else "Torque [N·m]")
+            axis.plot(
+                applied.time[indices],
+                force[indices, column],
+                color=color,
+                linewidth=1.8,
+            )
+            axis.axhline(0.0, color="#777777", linewidth=0.7, zorder=-5)
+            axis.set_title(f"{side_name} wrist — {axis_name}")
+            if column == 0:
+                axis.set_ylabel("Force [N]")
             if row == 1:
                 axis.set_xlabel("Time [s]")
             _shade_force_window(axis, run)
             _style_axis(axis)
-    handles, labels = axes[0, 0].get_legend_handles_labels()
-    if handles:
-        figure.legend(
-            handles,
-            labels,
-            loc="upper center",
-            bbox_to_anchor=(0.5, 0.925),
-            ncol=6,
-            fontsize=8,
-        )
 
-    force_match_rmse = _metric_float(metrics, "applied_to_crg_force_rmse_N")
-    torque_match_rmse = _metric_float(
-        metrics, "applied_to_crg_torque_rmse_Nm"
-    )
-    causal_delay_ms = 1000.0 * _metric_float(
-        metrics, "applied_to_crg_causal_delay_s"
-    )
-    match_text = (
-        "causally aligned applied→CRG RMSE force/torque = "
-        f"{force_match_rmse:.3g} N/{torque_match_rmse:.3g} N·m "
-        f"(delay {causal_delay_ms:.3g} ms)"
-        if math.isfinite(force_match_rmse) and math.isfinite(torque_match_rmse)
-        else "applied→CRG match unavailable"
+    plotted_force = applied.columns(required)[indices]
+    force_limit = max(1.0e-6, 1.05 * float(np.max(np.abs(plotted_force))))
+    for axis in axes.flat:
+        axis.set_ylim(-force_limit, force_limit)
+
+    left_peak = _metric_float(metrics, "left_force_peak_N")
+    right_peak = _metric_float(metrics, "right_force_peak_N")
+    peak_text = (
+        f"force-window 3D peak L/R = {left_peak:.4g}/{right_peak:.4g} N"
+        if math.isfinite(left_peak) and math.isfinite(right_peak)
+        else "force-window peak unavailable"
     )
     _figure_header(
         figure,
-        f"Applied external wrench and CRG input — {_display_label(run.label)}",
-        "World/LWA components; wrist-origin equivalent torque includes the "
-        f"COM→body-origin shift; solid: applied, dashed: CRG; {match_text}",
-        top=0.855,
+        "MuJoCo applied external force (ground truth) — "
+        f"{_display_label(run.label)}",
+        "Known force written through xfrc_applied; world/LWA xyz components; "
+        f"{peak_text}",
+        top=0.89,
     )
-    return _save_figure(figure, output_dir, "01_external_wrench_to_crg", formats)
+    return _save_figure(
+        figure, output_dir, "01_mujoco_applied_external_force", formats
+    )
 
 
 def _plot_crg_allocation(
@@ -1211,7 +1533,7 @@ def _plot_crg_allocation(
                 1000.0 * target[indices, column],
                 color=REFERENCE_COLOR,
                 linewidth=1.8,
-                label="CRG total target",
+                label="total target δx_c",
             )
             axis.plot(
                 torso.time[indices],
@@ -1219,7 +1541,7 @@ def _plot_crg_allocation(
                 color=TORSO_COLOR,
                 linestyle="--",
                 linewidth=1.4,
-                label="torso contribution",
+                label="torso contribution A_b δx_b",
             )
             axis.plot(
                 torso.time[indices],
@@ -1227,7 +1549,7 @@ def _plot_crg_allocation(
                 color=ARM_COLOR,
                 linestyle="-.",
                 linewidth=1.4,
-                label="arm residual",
+                label="hand contribution δx_a",
             )
             axis.plot(
                 torso.time[indices],
@@ -1235,7 +1557,7 @@ def _plot_crg_allocation(
                 color=RECONSTRUCTION_COLOR,
                 linestyle=":",
                 linewidth=1.2,
-                label="reconstructed",
+                label="torso + hand",
             )
             axis.set_title(
                 f"{'Left' if side == 'l' else 'Right'} hand — {axis_name}"
@@ -1272,14 +1594,16 @@ def _plot_crg_allocation(
     source_text = "logged kinematic A_b" if independent_ab else "inferred contribution"
     _figure_header(
         figure,
-        f"CRG allocation decomposition — {_display_label(run.label)}",
-        "Selected translational Eq. (13): δx_c = A_b δx_b + δx_a; "
+        "CRG total compliance allocation: torso + hand — "
+        f"{_display_label(run.label)}",
+        "Selected translational allocation: total δx_c = torso A_bδx_b + "
+        "hand δx_a; "
         f"{source_text}; max reconstruction error L/R = "
         f"{left_error:.3g}/{right_error:.3g} mm",
         top=0.865,
     )
     return _save_figure(
-        figure, output_dir, "02_crg_allocation_decomposition", formats
+        figure, output_dir, "02_crg_total_torso_hand_allocation", formats
     )
 
 
@@ -1333,10 +1657,17 @@ def _plot_crg_torso_reference(
     qp = _metric_float(metrics, "qp_success_percent")
     rho = _metric_float(metrics, "rho")
     rho_text = f"ρ={rho:g}" if math.isfinite(rho) else "ρ unavailable"
+    config_text = _admittance_config_text(metrics)
+    subtitle_parts = [rho_text]
+    if config_text:
+        subtitle_parts.append(config_text)
+    subtitle_parts.append(
+        f"QP success during causal nonzero-wrench window = {qp:.5g}%"
+    )
     _figure_header(
         figure,
         f"CRG torso orientation reference — {_display_label(run.label)}",
-        f"{rho_text}; QP success during causal nonzero-wrench window = {qp:.5g}%",
+        "; ".join(subtitle_parts),
         top=0.865,
     )
     return _save_figure(
@@ -1438,12 +1769,120 @@ def _plot_wbc_torso_tracking(
         figure,
         f"WBC torso orientation tracking — {_display_label(run.label)}",
         "Orientation is shown relative to the time-varying nominal torso; "
+        "measured attitude is reconstructed from the logged SO(3) error; "
         f"causal-window 3D RMSE/max = {rmse:.4g}/{maximum:.4g} deg; "
         f"CRG→WBC reference RMSE = {reference_rmse:.3g} deg",
         top=0.865,
     )
     return _save_figure(
-        figure, output_dir, "04_wbc_torso_orientation_tracking", formats
+        figure, output_dir, "03_wbc_torso_orientation_tracking", formats
+    )
+
+
+def _plot_wbc_hand_position_tracking(
+    run: ComplianceRun,
+    output_dir: Path,
+    formats: Sequence[str],
+    max_points: int,
+    time_range: Optional[Sequence[float]],
+    metrics: Mapping[str, object],
+) -> List[Path]:
+    log = run.logs.get("wbc_hand_position")
+    required = tuple(
+        f"{side}_{kind}_{axis}"
+        for side in ("l", "r")
+        for kind in ("ref", "ach")
+        for axis in ("x", "y", "z")
+    )
+    if log is None or not log.has(*required):
+        return []
+    indices = _plot_indices(log.time, max_points, time_range)
+    figure, axes = plt.subplots(
+        3, 2, figsize=(14, 10), sharex=True, sharey="row"
+    )
+    row_values: List[List[np.ndarray]] = [[], [], []]
+    for column, (side, side_name) in enumerate(
+        (("l", "Left"), ("r", "Right"))
+    ):
+        reference = 1000.0 * log.columns(
+            tuple(f"{side}_ref_{axis}" for axis in ("x", "y", "z"))
+        )
+        achieved = 1000.0 * log.columns(
+            tuple(f"{side}_ach_{axis}" for axis in ("x", "y", "z"))
+        )
+        for row, (axis_name, color) in enumerate(
+            zip(("x", "y", "z"), AXIS_COLORS)
+        ):
+            row_values[row].extend(
+                (reference[indices, row], achieved[indices, row])
+            )
+            axis = axes[row, column]
+            axis.plot(
+                log.time[indices],
+                reference[indices, row],
+                color=REFERENCE_COLOR,
+                linestyle="--",
+                linewidth=1.5,
+                label="CRG arm residual",
+            )
+            axis.plot(
+                log.time[indices],
+                achieved[indices, row],
+                color=color,
+                linewidth=1.5,
+                label="measured arm displacement",
+            )
+            axis.set_title(f"{side_name} hand — {axis_name}")
+            if column == 0:
+                axis.set_ylabel("Arm-relative displacement [mm]")
+            if row == 2:
+                axis.set_xlabel("Time [s]")
+            _shade_force_window(axis, run)
+            _style_axis(axis)
+
+    for row, values_for_row in enumerate(row_values):
+        if not values_for_row:
+            continue
+        maximum = max(
+            float(np.max(np.abs(values))) for values in values_for_row
+        )
+        limit = max(1.0e-3, 1.05 * maximum)
+        for axis in axes[row, :]:
+            axis.set_ylim(-limit, limit)
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    if handles:
+        figure.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.925),
+            ncol=2,
+            fontsize=8,
+        )
+    left_rmse = _metric_float(
+        metrics, "wbc_left_hand_3d_position_rmse_mm"
+    )
+    right_rmse = _metric_float(
+        metrics, "wbc_right_hand_3d_position_rmse_mm"
+    )
+    left_nrmse = _metric_float(
+        metrics, "wbc_left_hand_3d_position_nrmse_percent"
+    )
+    right_nrmse = _metric_float(
+        metrics, "wbc_right_hand_3d_position_nrmse_percent"
+    )
+    _figure_header(
+        figure,
+        "WBC residual-hand Cartesian position tracking — "
+        f"{_display_label(run.label)}",
+        "CRG residual reference vs measured arm-only wrist displacement; "
+        f"causal-window 3D RMSE L/R = {left_rmse:.4g}/{right_rmse:.4g} mm; "
+        f"normalized = {left_nrmse:.3g}%/{right_nrmse:.3g}%",
+        top=0.865,
+    )
+    return _save_figure(
+        figure, output_dir, "04_wbc_hand_position_tracking", formats
     )
 
 
@@ -1531,7 +1970,8 @@ def _plot_wbc_hand_tracking(
         figure,
         "WBC hand operational-space acceleration tracking — "
         f"{_display_label(run.label)}",
-        "Selected xyz WBC task: reference vs QP-achieved acceleration (not hand pose); "
+        "Selected xyz WBC task: reference vs QP-achieved acceleration; "
+        "measured Cartesian displacement is shown separately; "
         "causal-window 3D RMSE "
         f"L/R = {left_rmse:.4g}/{right_rmse:.4g} m/s²; "
         f"normalized = {left_nrmse:.3g}%/{right_nrmse:.3g}%",
@@ -1710,12 +2150,18 @@ def _plot_end_to_end_overview(
     qp = _metric_float(metrics, "qp_success_percent")
     ab_valid = _metric_float(metrics, "Ab_valid_percent")
     rho_text = f"ρ={rho:g}" if math.isfinite(rho) else "ρ unavailable"
+    config_text = _admittance_config_text(metrics)
+    subtitle_parts = [rho_text]
+    if config_text:
+        subtitle_parts.append(config_text)
+    subtitle_parts.append(
+        f"nonzero-wrench-window QP/Ab valid = {qp:.5g}%/{ab_valid:.5g}%"
+    )
     _figure_header(
         figure,
         "External wrench → CRG allocation → WBC tracking — "
         f"{_display_label(run.label)}",
-        f"{rho_text}; nonzero-wrench-window QP/Ab valid = "
-        f"{qp:.5g}%/{ab_valid:.5g}%",
+        "; ".join(subtitle_parts),
         top=0.92,
     )
     return _save_figure(
@@ -1729,6 +2175,7 @@ def _plot_wrist_force_validation(
     formats: Sequence[str],
     max_points: int,
     time_range: Optional[Sequence[float]],
+    metrics: Mapping[str, object],
 ) -> List[Path]:
     log = run.logs.get("wrist_validation")
     if log is None:
@@ -1743,22 +2190,37 @@ def _plot_wrist_force_validation(
         return []
     indices = _plot_indices(log.time, max_points, time_range)
     figure, axes = plt.subplots(2, 3, figsize=(16, 8), sharex=True, sharey=True)
+    plotted_values: List[np.ndarray] = []
     for row, (side, side_name) in enumerate((("l", "Left"), ("r", "Right"))):
-        for column, (axis_name, color) in enumerate(zip(("fx", "fy", "fz"), AXIS_COLORS)):
+        prefix = "left" if side == "l" else "right"
+        for column, (axis_name, color) in enumerate(
+            zip(("fx", "fy", "fz"), AXIS_COLORS)
+        ):
             axis = axes[row, column]
+            ground_truth = log.column(f"{side}_gt_{axis_name}")
+            raw_estimate = log.column(f"{side}_est_{axis_name}")
+            filtered_estimate = log.column(f"{side}_estf_{axis_name}")
+            plotted_values.extend(
+                (
+                    ground_truth[indices],
+                    raw_estimate[indices],
+                    filtered_estimate[indices],
+                )
+            )
             axis.plot(
-                log.time[indices], log.column(f"{side}_gt_{axis_name}")[indices],
+                log.time[indices], ground_truth[indices],
                 color=REFERENCE_COLOR, linewidth=1.7, label="ground truth",
             )
             axis.plot(
-                log.time[indices], log.column(f"{side}_est_{axis_name}")[indices],
+                log.time[indices], raw_estimate[indices],
                 color=color, linewidth=0.9, alpha=0.5, label="raw estimate",
             )
             axis.plot(
-                log.time[indices], log.column(f"{side}_estf_{axis_name}")[indices],
+                log.time[indices], filtered_estimate[indices],
                 color=color, linestyle="--", linewidth=1.4,
                 label="filtered estimate",
             )
+            axis.axhline(0.0, color="#777777", linewidth=0.7, zorder=-5)
             axis.set_title(f"{side_name} wrist — {axis_name.upper()}")
             if column == 0:
                 axis.set_ylabel("Force [N]")
@@ -1766,16 +2228,78 @@ def _plot_wrist_force_validation(
                 axis.set_xlabel("Time [s]")
             _shade_force_window(axis, run)
             _style_axis(axis)
-            if row == 0 and column == 0:
-                axis.legend(loc="upper right", fontsize=8)
+            filtered_axis_rmse = _metric_float(
+                metrics,
+                f"{prefix}_force_estimator_filtered_{axis_name[1]}_rmse_N",
+            )
+            if math.isfinite(filtered_axis_rmse):
+                annotation_at_top = float(np.mean(ground_truth[indices])) < 0.0
+                axis.text(
+                    0.02,
+                    0.95 if annotation_at_top else 0.05,
+                    f"filtered RMSE = {filtered_axis_rmse:.3g} N",
+                    transform=axis.transAxes,
+                    ha="left",
+                    va="top" if annotation_at_top else "bottom",
+                    fontsize=8,
+                    color="#55585E",
+                    bbox={
+                        "facecolor": "white",
+                        "edgecolor": "none",
+                        "alpha": 0.75,
+                        "pad": 1.5,
+                    },
+                )
+
+    estimator_limit = max(
+        1.0e-6,
+        1.05 * max(float(np.max(np.abs(values))) for values in plotted_values),
+    )
+    for axis in axes.flat:
+        axis.set_ylim(-estimator_limit, estimator_limit)
+
+    handles, labels = axes[0, 0].get_legend_handles_labels()
+    if handles:
+        figure.legend(
+            handles,
+            labels,
+            loc="upper center",
+            bbox_to_anchor=(0.5, 0.925),
+            ncol=3,
+            fontsize=8,
+        )
+
+    left_raw = _metric_float(
+        metrics, "left_force_estimator_raw_3d_rmse_N"
+    )
+    left_filtered = _metric_float(
+        metrics, "left_force_estimator_filtered_3d_rmse_N"
+    )
+    right_raw = _metric_float(
+        metrics, "right_force_estimator_raw_3d_rmse_N"
+    )
+    right_filtered = _metric_float(
+        metrics, "right_force_estimator_filtered_3d_rmse_N"
+    )
+    rmse_values = (left_raw, left_filtered, right_raw, right_filtered)
+    rmse_text = (
+        "logged-sample 3D RMSE raw→filtered L/R = "
+        f"{left_raw:.3g}→{left_filtered:.3g} / "
+        f"{right_raw:.3g}→{right_filtered:.3g} N"
+        if all(math.isfinite(value) for value in rmse_values)
+        else "logged-sample estimator RMSE unavailable"
+    )
     _figure_header(
         figure,
-        f"Wrist-force estimator diagnostic — {_display_label(run.label)}",
-        "Diagnostic only: the controlled MuJoCo CRG/WBC experiment uses the known applied wrench",
-        top=0.91,
+        "Estimated external force vs MuJoCo ground truth — "
+        f"{_display_label(run.label)}",
+        "World/LWA xyz; "
+        f"{rmse_text}; estimator update physically follows the applied sample "
+        "by one control step",
+        top=0.855,
     )
     return _save_figure(
-        figure, output_dir, "07_wrist_force_estimator_diagnostic", formats
+        figure, output_dir, "06_estimated_external_force", formats
     )
 
 
@@ -1822,7 +2346,7 @@ def generate_compliance_evidence(
         staged_written: List[Path] = []
         with plt.rc_context(PLOT_STYLE):
             staged_written.extend(
-                _plot_external_wrench(
+                _plot_mujoco_applied_force(
                     run, staging_path, formats, max_points, time_range, metrics
                 )
             )
@@ -1832,12 +2356,12 @@ def generate_compliance_evidence(
                 )
             )
             staged_written.extend(
-                _plot_crg_torso_reference(
+                _plot_wbc_torso_tracking(
                     run, staging_path, formats, max_points, time_range, metrics
                 )
             )
             staged_written.extend(
-                _plot_wbc_torso_tracking(
+                _plot_wbc_hand_position_tracking(
                     run, staging_path, formats, max_points, time_range, metrics
                 )
             )
@@ -1847,19 +2371,14 @@ def generate_compliance_evidence(
                 )
             )
             staged_written.extend(
-                _plot_end_to_end_overview(
-                    run, staging_path, formats, max_points, time_range, metrics
-                )
-            )
-            staged_written.extend(
                 _plot_wrist_force_validation(
-                    run, staging_path, formats, max_points, time_range
+                    run, staging_path, formats, max_points, time_range, metrics
                 )
             )
         _commit_known_artifacts(
             staging_path,
             output_path,
-            SINGLE_FIGURE_STEMS,
+            SINGLE_CLEANUP_FIGURE_STEMS,
             ("crg_wbc_metrics.csv", "crg_wbc_metrics.json", "crg_wbc_qa.txt"),
         )
         written = [output_path / path.name for path in staged_written]

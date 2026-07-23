@@ -5,6 +5,7 @@
 #ifndef LABROB_WHOLE_BODY_CONTROLLER_H_
 #define LABROB_WHOLE_BODY_CONTROLLER_H_
 
+#include <array>
 #include <vector>
 
 // Pinocchio
@@ -107,12 +108,32 @@ class WholeBodyController {
   getRightHandComplianceAccelerationAchieved() const {
     return right_hand_compliance_acceleration_achieved_;
   }
+  const Eigen::Vector3d& getLeftHandCompliancePositionReference() const {
+    return left_hand_compliance_position_reference_;
+  }
+  const Eigen::Vector3d& getRightHandCompliancePositionReference() const {
+    return right_hand_compliance_position_reference_;
+  }
+  const Eigen::Vector3d& getLeftHandCompliancePositionAchieved() const {
+    return left_hand_compliance_position_achieved_;
+  }
+  const Eigen::Vector3d& getRightHandCompliancePositionAchieved() const {
+    return right_hand_compliance_position_achieved_;
+  }
+  int getSolverStatus() const { return solver_status_; }
+  double getEqualityResidualInfinityNorm() const {
+    return equality_residual_infinity_norm_;
+  }
+  double getInequalityViolationInfinityNorm() const {
+    return inequality_violation_infinity_norm_;
+  }
   const Eigen::MatrixXd& getLeftFootUnderactuatedJacobian() const;
   const Eigen::MatrixXd& getRightFootUnderactuatedJacobian() const;
 
  private:
   pinocchio::Model robot_model_;
   pinocchio::Data robot_data_;
+  pinocchio::Data hand_nominal_data_;
 
   pinocchio::FrameIndex lsole_idx_;
   pinocchio::FrameIndex rsole_idx_;
@@ -134,6 +155,8 @@ class WholeBodyController {
 
   std::vector<int> left_arm_velocity_indices_;
   std::vector<int> right_arm_velocity_indices_;
+  std::vector<int> left_arm_configuration_indices_;
+  std::vector<int> right_arm_configuration_indices_;
 
   Eigen::VectorXd q_jnt_reg_;
 
@@ -149,11 +172,15 @@ class WholeBodyController {
   int n_joints_;
   int n_contacts_;
   int n_wbc_variables_;
-  int n_wbc_equalities_;
   int n_wbc_inequalities_;
   int n_slack_;
 
-  std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>> wbc_solver_ptr_;
+  // One fixed-dimension HPIPM instance per support count. This keeps every
+  // equality row meaningful: double support has 18 rows, single support 24,
+  // and flight 30.
+  std::array<
+      std::unique_ptr<qpsolvers::QPSolverEigenWrapper<double>>, 3>
+      wbc_solver_by_support_count_;
 
   Eigen::VectorXd left_foot_wrench_;
   Eigen::VectorXd right_foot_wrench_;
@@ -165,6 +192,18 @@ class WholeBodyController {
       Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::Matrix<double, 6, 1> right_hand_compliance_acceleration_achieved_ =
       Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Vector3d left_hand_compliance_position_reference_ =
+      Eigen::Vector3d::Zero();
+  Eigen::Vector3d right_hand_compliance_position_reference_ =
+      Eigen::Vector3d::Zero();
+  Eigen::Vector3d left_hand_compliance_position_achieved_ =
+      Eigen::Vector3d::Zero();
+  Eigen::Vector3d right_hand_compliance_position_achieved_ =
+      Eigen::Vector3d::Zero();
+  int solver_status_ = -1;
+  double equality_residual_infinity_norm_ = 0.0;
+  double inequality_violation_infinity_norm_ = 0.0;
+  std::size_t solver_failure_count_ = 0;
   Eigen::MatrixXd Jlu_;
   Eigen::MatrixXd Jru_;
 

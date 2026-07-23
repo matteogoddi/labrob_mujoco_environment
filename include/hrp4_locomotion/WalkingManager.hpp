@@ -57,7 +57,9 @@ class WalkingManager {
       const Eigen::Matrix<double, 6, 1>& left_arm_offset,
       const Eigen::Matrix<double, 6, 1>& right_arm_offset,
       const Eigen::Matrix<double, 6, 1>& left_arm_velocity,
-      const Eigen::Matrix<double, 6, 1>& right_arm_velocity);
+      const Eigen::Matrix<double, 6, 1>& right_arm_velocity,
+      const Eigen::Matrix<double, 6, 1>& left_arm_acceleration,
+      const Eigen::Matrix<double, 6, 1>& right_arm_acceleration);
   void clearHandComplianceReferences();
   void setInteractionWrenches(
       const Eigen::Matrix<double, 6, 1>& left_wrench,
@@ -165,6 +167,10 @@ private:
       Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::Matrix<double, 6, 1> right_arm_compliance_velocity_ =
       Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> left_arm_compliance_acceleration_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
+  Eigen::Matrix<double, 6, 1> right_arm_compliance_acceleration_ =
+      Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::Matrix<double, 6, 1> left_interaction_wrench_ =
       Eigen::Matrix<double, 6, 1>::Zero();
   Eigen::Matrix<double, 6, 1> right_interaction_wrench_ =
@@ -219,6 +225,13 @@ private:
   std::vector<Eigen::Matrix<double, 6, 1>> right_hand_compliance_acc_ref_log_;
   std::vector<Eigen::Matrix<double, 6, 1>> left_hand_compliance_acc_achieved_log_;
   std::vector<Eigen::Matrix<double, 6, 1>> right_hand_compliance_acc_achieved_log_;
+  std::vector<Eigen::Vector3d> left_hand_compliance_position_ref_log_;
+  std::vector<Eigen::Vector3d> right_hand_compliance_position_ref_log_;
+  std::vector<Eigen::Vector3d> left_hand_compliance_position_achieved_log_;
+  std::vector<Eigen::Vector3d> right_hand_compliance_position_achieved_log_;
+  std::vector<int> wbc_solver_status_log_;
+  std::vector<double> wbc_equality_residual_log_;
+  std::vector<double> wbc_inequality_violation_log_;
   // std::vector<Eigen::VectorXd> fl_log_;
   // std::vector<Eigen::VectorXd> fr_log_;
   std::vector<Eigen::VectorXd> mpc_predictions_log_;

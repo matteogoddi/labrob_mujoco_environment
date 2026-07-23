@@ -48,6 +48,10 @@ struct GaitConfiguration {
       Eigen::Vector<double, 6>::Zero();
   Eigen::Vector<double, 6> rhand_compliance_velocity =
       Eigen::Vector<double, 6>::Zero();
+  Eigen::Vector<double, 6> lhand_compliance_acceleration =
+      Eigen::Vector<double, 6>::Zero();
+  Eigen::Vector<double, 6> rhand_compliance_acceleration =
+      Eigen::Vector<double, 6>::Zero();
 
   bool is_left_foot_support, is_right_foot_support;
 };

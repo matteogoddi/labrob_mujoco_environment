@@ -55,6 +55,10 @@ class QPSolverEigenWrapper {
     return solution;
   }
 
+  int get_status() const {
+    return qp_solver_ptr_->get_status();
+  }
+
  private:
   std::shared_ptr<QPSolver<Scalar>> qp_solver_ptr_;
 }; // end class QPSolverEigenWrapper

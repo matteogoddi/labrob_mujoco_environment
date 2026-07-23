@@ -1,0 +1,650 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "图 05：手部加速度任务失配诊断",
+    "description": "区分 QP 内部手部加速度任务残差、实际手部位姿跟踪，以及已确认和待验证的根因。",
+    "generatedAt": "2026-07-22T12:19:46Z",
+    "cards": [
+      {
+        "id": "left_nrmse",
+        "description": "左手 3D 加速度误差 RMSE / reference RMS",
+        "dataset": "metric_summary",
+        "sourceId": "hand_metrics",
+        "metrics": [
+          {
+            "label": "左手 NRMSE",
+            "field": "left_nrmse",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "right_nrmse",
+        "description": "右手 3D 加速度误差 RMSE / reference RMS",
+        "dataset": "metric_summary",
+        "sourceId": "hand_metrics",
+        "metrics": [
+          {
+            "label": "右手 NRMSE",
+            "field": "right_nrmse",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "left_x_share",
+        "description": "x 轴误差平方占左手三轴误差平方之和",
+        "dataset": "metric_summary",
+        "sourceId": "hand_metrics",
+        "metrics": [
+          {
+            "label": "左手 x 误差占比",
+            "field": "left_x_share",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "right_x_share",
+        "description": "x 轴误差平方占右手三轴误差平方之和",
+        "dataset": "metric_summary",
+        "sourceId": "hand_metrics",
+        "metrics": [
+          {
+            "label": "右手 x 误差占比",
+            "field": "right_x_share",
+            "format": "percent"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "axis_rmse_chart",
+        "title": "各手各轴加速度 RMSE",
+        "subtitle": "因果对齐后的手部任务活动窗口；单位 m/s²",
+        "showDescription": true,
+        "intent": "comparison",
+        "question": "图 05 的误差主要集中在哪只手、哪个轴？",
+        "rationale": "六个轴组成一个小规模排序问题，零基线柱状图可直接比较绝对误差量级。",
+        "type": "bar",
+        "dataset": "axis_rmse",
+        "sourceId": "hand_metrics",
+        "encodings": {
+          "x": {
+            "field": "label",
+            "type": "ordinal",
+            "label": "手与轴"
+          },
+          "y": {
+            "field": "rmse",
+            "type": "quantitative",
+            "label": "RMSE",
+            "unit": "m/s²",
+            "format": "number"
+          },
+          "tooltip": [
+            {
+              "field": "hand",
+              "type": "text",
+              "label": "手"
+            },
+            {
+              "field": "axis",
+              "type": "text",
+              "label": "轴"
+            },
+            {
+              "field": "rmse",
+              "type": "quantitative",
+              "label": "RMSE",
+              "unit": "m/s²",
+              "format": "number"
+            },
+            {
+              "field": "error_share",
+              "type": "quantitative",
+              "label": "本手误差平方占比",
+              "format": "percent"
+            },
+            {
+              "field": "active_samples",
+              "type": "quantitative",
+              "label": "活动样本",
+              "format": "number"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "unit": "m/s²",
+        "layout": "full",
+        "maxRows": 6,
+        "settings": {
+          "orientation": "vertical",
+          "showValues": true,
+          "sort": "none"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "metric_detail_table",
+        "title": "图 05 指标明细",
+        "subtitle": "NRMSE 的分母是 3D reference RMS，不是峰值或量程。",
+        "dataset": "metric_detail",
+        "density": "dense",
+        "sourceId": "hand_metrics",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "hand",
+            "label": "手",
+            "type": "text"
+          },
+          {
+            "field": "samples",
+            "label": "活动样本",
+            "format": "number"
+          },
+          {
+            "field": "reference_rms",
+            "label": "Reference RMS (m/s²)",
+            "format": "number"
+          },
+          {
+            "field": "error_rmse",
+            "label": "3D Error RMSE (m/s²)",
+            "format": "number"
+          },
+          {
+            "field": "nrmse",
+            "label": "NRMSE",
+            "format": "percent"
+          },
+          {
+            "field": "max_error",
+            "label": "最大 3D 误差 (m/s²)",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "task_structure_table",
+        "title": "WBC 中与手部任务竞争或限制它的项",
+        "subtitle": "标量权重不是严格优先级；手任务的实际曲率为 w·JᵀJ。",
+        "dataset": "task_structure",
+        "density": "spacious",
+        "sourceId": "code_trace",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "item",
+            "label": "项",
+            "type": "text"
+          },
+          {
+            "field": "kind",
+            "label": "QP 形式",
+            "type": "text"
+          },
+          {
+            "field": "coefficient",
+            "label": "代码参数",
+            "type": "text"
+          },
+          {
+            "field": "authority",
+            "label": "作用自由度/空间",
+            "type": "text"
+          },
+          {
+            "field": "implication",
+            "label": "对图 05 的含义",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "hypothesis_table",
+        "title": "根因证据分级",
+        "subtitle": "把代码已确认的机制与仍需运行时日志验证的假设分开。",
+        "dataset": "hypotheses",
+        "density": "spacious",
+        "sourceId": "code_trace",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "status",
+            "label": "证据级别",
+            "type": "text"
+          },
+          {
+            "field": "driver",
+            "label": "候选原因",
+            "type": "text"
+          },
+          {
+            "field": "evidence",
+            "label": "现有证据",
+            "type": "text"
+          },
+          {
+            "field": "interpretation",
+            "label": "目前可下的结论",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "hand_metrics",
+        "label": "CRG/WBC retained metrics",
+        "path": "images/crg_wbc_last/crg_wbc_metrics.csv",
+        "query": {
+          "engine": "retained CSV metrics",
+          "description": "图 05 轴向 RMSE、3D reference RMS、3D error RMSE、NRMSE、活动样本，以及 CRG 限幅和残差指标。",
+          "executed_at": "2026-07-22T12:19:46Z",
+          "language": "CSV",
+          "filters": [
+            "force_window=10–20 s",
+            "causal_delay=0.002 s",
+            "nonzero reference norm"
+          ],
+          "metric_definitions": [
+            "axis RMSE = sqrt(mean((achieved-reference)^2))",
+            "3D error RMSE = sqrt(mean(ex^2+ey^2+ez^2))",
+            "NRMSE = 3D error RMSE / 3D reference RMS",
+            "axis error share = axis RMSE^2 / sum(all three axis RMSE^2)"
+          ]
+        }
+      },
+      {
+        "id": "hand_figure",
+        "label": "Figure 05 retained plot",
+        "path": "images/crg_wbc_last/05_wbc_hand_acceleration_tracking.png",
+        "query": {
+          "engine": "visual inspection",
+          "description": "同周期 QP reference 与 achieved 的六轴时序图；用于判断误差是平台期持续偏差还是仅边沿瞬态。"
+        }
+      },
+      {
+        "id": "code_trace",
+        "label": "WBC hand-task and QP implementation",
+        "path": "src/WholeBodyController.cpp",
+        "query": {
+          "engine": "static code trace",
+          "description": "从 CRG residual reference 追踪到 WBC reference、软代价、自由度掩码、QP achieved 日志及 HPIPM wrapper。",
+          "language": "C++",
+          "tables_used": [
+            "src/WholeBodyController.cpp",
+            "src/ComplianceReferenceGenerator.cpp",
+            "src/WalkingManager.cpp",
+            "include/hrp4_locomotion/GaitConfiguration.hpp",
+            "include/labrob_qpsolvers/HPIPMQPSolver.hpp",
+            "main.cpp"
+          ]
+        }
+      },
+      {
+        "id": "geometry_check",
+        "label": "Initial-pose arm Jacobian scale check",
+        "path": "g1_description/g1_29dof_with_hand.urdf",
+        "query": {
+          "engine": "deterministic URDF kinematic calculation",
+          "description": "在 main.cpp 初始手臂姿态，用 wrist_yaw_joint 原点和 WBC 选定的 7 个同侧臂关节构造 3×7 平移 Jacobian，并计算奇异值。该值仅用于量级校验，不代表 10–20 s 运行时构型。",
+          "language": "URDF + numerical linear algebra",
+          "tables_used": [
+            "g1_description/g1_29dof_with_hand.urdf",
+            "main.cpp",
+            "src/WholeBodyController.cpp"
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 技术结论\n\n图 05 已经证明：**WBC/QP 内部的手臂 xyz 加速度软任务被明显牺牲了**。但它还不能直接证明实际手部位姿跟踪同样差，因为图中实线不是 MuJoCo 测得的手加速度，虚线也不是手位姿闭环误差生成的命令。\n\n最直接的代码原因是：手任务只是权重 0.02 的加权最小二乘项，只允许同侧 7 个手臂关节参与，并要和关节姿态、q̈ 正则、CoM、躯干以及支撑脚/动力学等式一起折中。reference 还包含 nominal-posture 加速度，因此姿态弹簧与 compliance correction 可以形成持续的静态平衡。\n\n现有证据支持的稳妥表述是：**问题首先发生在 QP 任务层，而不是低层执行器层；低有效权重与 arm-only Jacobian 是高概率主因，但运行时 Jacobian、QP 状态和各项代价没有日志，暂时不能把比例精确归因到某一项。**"
+      },
+      {
+        "id": "metric_strip",
+        "type": "metric-strip",
+        "layout": "full",
+        "cardIds": [
+          "left_nrmse",
+          "right_nrmse",
+          "left_x_share",
+          "right_x_share"
+        ],
+        "sourceId": "hand_metrics"
+      },
+      {
+        "id": "observed_pattern",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "hand_figure",
+        "body": "## 失配主要在 x 轴，而且不是只有边沿尖峰\n\n10–20 s 平台期内，双侧 x 轴 reference 与 achieved 长时间保持明显间隔；右手 y 轴还出现持续异号。双侧 x 轴分别贡献约 70.37% 和 68.23% 的三轴误差平方，因此应先排查 x 方向的任务权衡和 Jacobian 几何。2 ms 的因果延迟以及有限差分产生的加载边沿尖峰，无法解释这种平台期偏差。"
+      },
+      {
+        "id": "axis_rmse_block",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "axis_rmse_chart",
+        "sourceId": "hand_metrics"
+      },
+      {
+        "id": "direct_mechanism",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "code_trace",
+        "body": "## 直接机制：这是受限自由度上的软目标\n\n代码中的 achieved 为 `J_arm · q̈_QP + J̇_arm · q̇`，reference 为 `J_arm · a_posture + J̇_arm · q̇ + Kp · Δx_arm + Kd · Δẋ_arm`。两者使用同一个已掩码、仅保留 xyz 的 Jacobian，所以没有发现图中两条曲线计算在不同任务空间的错误。\n\n关键在于 reference 没有作为等式施加，而只是通过 `0.02 · JᵀJ` 进入代价。base、躯干、腿和对侧手臂列被刻意清零，以避免残差手臂任务抵消 CRG 已分配给躯干的运动，但这也减少了手任务可用的控制权。任务点还是 `wrist_yaw_joint` 原点；末端 yaw 对该点的平移 Jacobian 列为零，部分腕部列的平移杠杆也很短。"
+      },
+      {
+        "id": "task_structure_block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "task_structure_table",
+        "sourceId": "code_trace"
+      },
+      {
+        "id": "effective_weight",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "geometry_check",
+        "body": "## 为什么 `0.02` 仍然可能不够\n\n不能把 hand weight 0.02 与 q̈ 正则 1e-4 直接相除后就说手任务强 200 倍。手任务在某个 Jacobian 奇异方向上的曲率约为 `w_hand · σ²`。\n\n基于仓库 URDF 和程序初始手臂姿态的量级校验得到左右臂平移 Jacobian 奇异值约为 `[0.3263, 0.2764, 0.1148] m`，条件数约 2.84。最弱方向的手任务曲率约为 `0.02 × 0.1148² = 2.64e-4`，已经只与 q̈ 正则和姿态正则两个 `1e-4` 项的合计量级相当，还没有计入 CoM、躯干和其他耦合。\n\n这不是对实验 10–20 s 构型的直接测量，只能说明“初始姿态并不完全奇异，但弱方向的有效权重确实不大”。最终仍需逐周期记录三个奇异值。"
+      },
+      {
+        "id": "not_pose_tracking",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "code_trace",
+        "body": "## 更深一层：图 05 不是闭环手位姿跟踪\n\n当前手部修正直接使用 CRG 的残差位移和残差速度：`Kp · Δx_arm + Kd · Δẋ_arm`。代码没有构造 `(x_nominal + Δx_arm) − x_actual` 或相应速度误差。因此，即使手臂已经移动到一个新的柔顺平衡点，只要 CRG residual 仍非零，reference 就可以持续非零。\n\n同时，reference 中还加了 nominal posture 诱导的手加速度。本次活动窗口内手臂 residual 3D RMS 为左/右 37.91/30.29 mm，仅 `Kp=30` 的位置项量级就约为 1.14/0.91 m/s²；而图 05 的 total-reference RMS 仅为 0.255/0.137 m/s²。这是 nominal 项（以及边沿处 Kd 项）与 compliance correction 大幅相消的强佐证。平台期 residual 速度接近零时，主要相消者应是 nominal-posture 项。\n\n所以右手 NRMSE 104.8% 并不等价于“位姿跟踪为负”或“只完成了 −4.8%”。它表示 error RMS 略高于 total-reference RMS；当 reference 本身因项间相消而变小时，该归一化会显得尤其差。"
+      },
+      {
+        "id": "hypothesis_block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "hypothesis_table",
+        "sourceId": "code_trace"
+      },
+      {
+        "id": "scope_definition",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "hand_metrics",
+        "body": "## 指标口径与数据范围\n\n误差定义为 `achieved − reference`；三轴 RMSE 为 `sqrt(mean(ex² + ey² + ez²))`；NRMSE 为该误差除以 3D reference RMS。统计使用 10–20 s 外力窗口、2 ms 因果延迟以及非零 reference 掩码，每只手 4,999 个活动样本。\n\n这些量足以确认 QP 内部手任务残差很大，但 retained artifacts 没有原始 q/q̇/q̈、任务分项、QP residual 或实际手腕状态，因此不能重新切分稳态/瞬态，也不能把误差逐周期对齐到构型和约束。"
+      },
+      {
+        "id": "metric_detail_block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "metric_detail_table",
+        "sourceId": "hand_metrics"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 诊断方法\n\n本诊断先核对图 05 的指标公式和窗口，再沿代码追踪 `CRG residual → GaitConfiguration → WBC reference → QP cost → achieved log`，并检查自由度掩码、等式/不等式形式、求解器状态处理和任务点。最后用仓库 URDF 对初始姿态的 arm-only 平移 Jacobian 做量级校验，以判断标量权重能否直接代表任务强度。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 限制与不确定性\n\n- 当前图和 CSV 是派生存档，原始 `/tmp` 日志已不存在；`run_status` 也为 unknown。\n- `qp_success_percent=100%` 属于 CRG 躯干分配 QP，不是 WBC 的 HPIPM 状态。WBC wrapper 的 status 输出被注释，调用方也未检查。\n- 关节位置/速度与摩擦约束虽然写入一般不等式，但 HPIPM wrapper 为所有一般不等式配置了 slack，且二次惩罚仅 1e-6；因此不能把它们直接当成阻塞手任务的硬约束，也必须记录实际 slack/margin。\n- QP 内没有关节力矩上下限，力矩在求解后才计算；执行器饱和可影响之后的真实运动，但不能解释同周期 `reference − QP achieved` 的内部残差。\n- 初始姿态 Jacobian 校验不代表加载期间构型；坐标系和单位链未发现明显错误，但没有原始日志可做逐样本独立复核。"
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 最小验证实验\n\n1. 同周期记录 `a_nominal`、`a_compliance_correction`、`a_reference`、`a_achieved`，并计算每个分项的 3D RMS 与相位。\n2. 记录实际 wrist pose/velocity、目标 pose `x_nominal + Δx_arm` 及误差；这一步才真正回答“手有没有跟到柔顺位移”。\n3. 每周期记录 `J_hand_xyz` 三个奇异值、WBC HPIPM status/迭代数/primal-dual residual，以及所有一般不等式的 slack 与 margin。\n4. 做受控 A/B：hand weight 从 0.02 提到 0.05、0.1，或暂时降低手臂 posture 正则；同时守护足底等式 residual、CoM/躯干误差和关节状态。若图 05 显著改善，便能确认任务权衡是主因。\n5. 再做一次 6–8 N、不过 50 mm admittance 限幅的试验。当前 12 N 输入使限幅利用率达 100%，约 80.5% 的窗口接近限幅，减小输入有助于把“CRG 饱和”与“WBC 任务折中”分开。\n6. 如果最终目标确实是手位姿跟踪，应评估改为基于实际手状态的笛卡尔闭环形式，并保留合适的前馈；这属于控制律设计变更，需要在上述日志完备后再验证。"
+      },
+      {
+        "id": "open_questions",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 仍需回答的问题\n\n- 加载平台期实际 wrist 位移是否达到 CRG 分配后的 residual 目标？\n- 双侧 x 方向在运行时是否对应较小奇异值，或 reference 是否主要投影到弱方向？\n- WBC HPIPM 在整段窗口内是否始终正常收敛？\n- 提高 hand weight 后，误差下降的代价主要落在 posture、CoM 还是躯干任务上？"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-22T12:19:46Z",
+    "status": "ready",
+    "datasets": {
+      "metric_summary": [
+        {
+          "left_nrmse": 0.8283962918935758,
+          "right_nrmse": 1.0479912647367506,
+          "left_x_share": 0.70373422,
+          "right_x_share": 0.68227571
+        }
+      ],
+      "axis_rmse": [
+        {
+          "label": "左手 x",
+          "hand": "左手",
+          "axis": "x",
+          "rmse": 0.1773076976367616,
+          "error_share": 0.70373422,
+          "active_samples": 4999
+        },
+        {
+          "label": "右手 x",
+          "hand": "右手",
+          "axis": "x",
+          "rmse": 0.11825204010264798,
+          "error_share": 0.68227571,
+          "active_samples": 4999
+        },
+        {
+          "label": "左手 z",
+          "hand": "左手",
+          "axis": "z",
+          "rmse": 0.09661036617962963,
+          "error_share": 0.20893007,
+          "active_samples": 4999
+        },
+        {
+          "label": "左手 y",
+          "hand": "左手",
+          "axis": "y",
+          "rmse": 0.062462475780264703,
+          "error_share": 0.08733571,
+          "active_samples": 4999
+        },
+        {
+          "label": "右手 z",
+          "hand": "右手",
+          "axis": "z",
+          "rmse": 0.05917650618085368,
+          "error_share": 0.17086034,
+          "active_samples": 4999
+        },
+        {
+          "label": "右手 y",
+          "hand": "右手",
+          "axis": "y",
+          "rmse": 0.05486385014078017,
+          "error_share": 0.14686395,
+          "active_samples": 4999
+        }
+      ],
+      "metric_detail": [
+        {
+          "hand": "左手",
+          "samples": 4999,
+          "reference_rms": 0.2551438531362806,
+          "error_rmse": 0.21136022183753395,
+          "nrmse": 0.8283962918935758,
+          "max_error": 0.2810187965797662
+        },
+        {
+          "hand": "右手",
+          "samples": 4999,
+          "reference_rms": 0.13660639267239136,
+          "error_rmse": 0.1431623062278646,
+          "nrmse": 1.0479912647367506,
+          "max_error": 0.1922968418115516
+        }
+      ],
+      "task_structure": [
+        {
+          "item": "手部 xyz 加速度",
+          "kind": "软最小二乘代价",
+          "coefficient": "左右各 0.02",
+          "authority": "同侧 7 个臂关节；仅 xyz",
+          "implication": "允许持续非零 residual；有效强度还乘 JᵀJ"
+        },
+        {
+          "item": "关节姿态调节",
+          "kind": "软最小二乘代价",
+          "coefficient": "1e-4·I",
+          "authority": "全 q̈；目标 a_posture",
+          "implication": "与 compliance correction 形成直接折中"
+        },
+        {
+          "item": "q̈ 正则",
+          "kind": "软二次代价",
+          "coefficient": "1e-4·I",
+          "authority": "全 q̈；目标 0",
+          "implication": "尤其衰减 Jacobian 弱方向"
+        },
+        {
+          "item": "CoM",
+          "kind": "软最小二乘代价",
+          "coefficient": "0.1",
+          "authority": "全身",
+          "implication": "通过共享关节/浮动基与手任务耦合"
+        },
+        {
+          "item": "躯干方向",
+          "kind": "软最小二乘代价",
+          "coefficient": "程序默认 0.05；运行参数未归档",
+          "authority": "全身角运动",
+          "implication": "可能影响姿态折中，但不能确认本次精确值"
+        },
+        {
+          "item": "支撑脚加速度与浮动基动力学",
+          "kind": "等式约束",
+          "coefficient": "不适用",
+          "authority": "支撑接触与动力学一致性",
+          "implication": "优先于手部软目标满足"
+        },
+        {
+          "item": "关节一步预测边界与摩擦锥",
+          "kind": "一般不等式，但 wrapper 配置 slack",
+          "coefficient": "slack 二次惩罚 1e-6",
+          "authority": "q̈ 与接触力",
+          "implication": "不能无日志地称为硬阻塞；需检查 slack/margin"
+        }
+      ],
+      "hypotheses": [
+        {
+          "status": "已确认",
+          "driver": "手任务是软目标，不保证精确跟踪",
+          "evidence": "reference 通过 0.02·JᵀJ/Jᵀb 加入 H、f，而非加入 A·x=b",
+          "interpretation": "这是内部持续 residual 得以存在的直接机制"
+        },
+        {
+          "status": "已确认",
+          "driver": "任务只使用同侧 arm-only xyz Jacobian",
+          "evidence": "base、torso、腿和对侧臂列被清零，任务点为 wrist_yaw_joint 原点",
+          "interpretation": "可用控制权和某些腕关节的平移杠杆有限"
+        },
+        {
+          "status": "高概率",
+          "driver": "有效权重不足与 posture/q̈/CoM 折中",
+          "evidence": "初始最弱方向 0.02·σ²≈2.64e-4，与两个 1e-4 正则同量级；图中为平台期衰减",
+          "interpretation": "最符合代码结构与观测，但需逐项 cost/KKT 日志定量归因"
+        },
+        {
+          "status": "强佐证",
+          "driver": "nominal posture 与 compliance correction 相消",
+          "evidence": "Kp·residual 的量级约 1.14/0.91 m/s²，而 total reference RMS 仅 0.255/0.137 m/s²",
+          "interpretation": "图 05 虚线本身已是折中前的合成量，不是纯 CRG 命令"
+        },
+        {
+          "status": "不能解释主平台偏差",
+          "driver": "2 ms 延迟、滤波或加载边沿有限差分",
+          "evidence": "reference 与 achieved 同周期记录；平台期仍长时间分离",
+          "interpretation": "可能解释边沿尖峰，不能解释稳态残差"
+        },
+        {
+          "status": "不能解释同周期内部残差",
+          "driver": "MuJoCo/执行器力矩饱和",
+          "evidence": "achieved 是 QP 解的模型内计算，tau 在 QP 后生成，QP 中无 torque bounds",
+          "interpretation": "可影响之后真实运动，但不是图 05 两线差的直接来源"
+        },
+        {
+          "status": "待验证",
+          "driver": "运行时 Jacobian 弱方向或近奇异",
+          "evidence": "仅有初始姿态校验；缺少 10–20 s q 和 singular-value 日志",
+          "interpretation": "可能放大 x 轴误差，当前不能确认"
+        },
+        {
+          "status": "待验证",
+          "driver": "WBC HPIPM 数值状态异常",
+          "evidence": "status 未检查/未记录；现有 100% success 属于另一个 CRG QP",
+          "interpretation": "没有异常的正证据，但目前也不能排除"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "hand_metrics",
+      "label": "CRG/WBC retained metrics",
+      "path": "images/crg_wbc_last/crg_wbc_metrics.csv",
+      "query": {
+        "engine": "retained CSV metrics",
+        "description": "图 05 轴向与 3D 指标，以及 CRG 限幅和 residual 指标。"
+      }
+    },
+    {
+      "id": "hand_figure",
+      "label": "Figure 05 retained plot",
+      "path": "images/crg_wbc_last/05_wbc_hand_acceleration_tracking.png",
+      "query": {
+        "engine": "visual inspection",
+        "description": "reference 与 QP achieved 的六轴时序。"
+      }
+    },
+    {
+      "id": "code_trace",
+      "label": "WBC hand-task and QP implementation",
+      "path": "src/WholeBodyController.cpp",
+      "query": {
+        "engine": "static code trace",
+        "description": "手部 reference、软代价、自由度掩码、QP achieved 与 solver wrapper。",
+        "tables_used": [
+          "src/WholeBodyController.cpp",
+          "src/ComplianceReferenceGenerator.cpp",
+          "src/WalkingManager.cpp",
+          "include/hrp4_locomotion/GaitConfiguration.hpp",
+          "include/labrob_qpsolvers/HPIPMQPSolver.hpp",
+          "main.cpp"
+        ]
+      }
+    },
+    {
+      "id": "geometry_check",
+      "label": "Initial-pose arm Jacobian scale check",
+      "path": "g1_description/g1_29dof_with_hand.urdf",
+      "query": {
+        "engine": "deterministic URDF kinematic calculation",
+        "description": "初始姿态 3×7 arm-only 平移 Jacobian 奇异值量级校验。",
+        "tables_used": [
+          "g1_description/g1_29dof_with_hand.urdf",
+          "main.cpp",
+          "src/WholeBodyController.cpp"
+        ]
+      }
+    }
+  ]
+}

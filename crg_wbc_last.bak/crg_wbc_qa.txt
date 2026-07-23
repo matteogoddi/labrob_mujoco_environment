@@ -1,0 +1,42 @@
+CRG/WBC plot QA: tmp
+source=/tmp
+PASS required_log_schema applied_external_wrist_force.txt
+PASS required_log_schema compliance_torso_state.txt
+PASS required_log_schema compliance_torso_jacobian.txt
+PASS required_log_schema wbc_torso_orientation_tracking.txt
+PASS required_log_schema wbc_hand_compliance_tracking.txt
+PASS applied_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS applied_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS torso_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS torso_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS jacobian_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS jacobian_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wbc_torso_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wbc_torso_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wbc_hand_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wbc_hand_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wrist_validation_finite_monotonic samples=13177 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS wrist_validation_500Hz_timing expected_dt_s=0.002 median_dt_s=0.002 max_dt_jitter_s=2.66453526e-15
+PASS nonzero_wrench_implies_enabled violations=0
+PASS qp_success_percent=100
+PASS Ab_valid_percent=100
+PASS left_allocation_reconstruction_max_mm=0.000296071329
+PASS right_allocation_reconstruction_max_mm=0.000229166841
+WARN left_admittance_limit_utilization_percent=100
+WARN left_admittance_near_limit_samples_percent=80.5361072
+WARN right_admittance_limit_utilization_percent=100
+WARN right_admittance_near_limit_samples_percent=80.5361072
+PASS applied_to_crg_causal_match force_rmse_N=1.25905044e-14 torque_rmse_Nm=1.75282609e-16 delay_s=0.002
+PASS crg_to_wbc_torso_reference_rmse_deg=0
+INFO hand_tracking_scope=selected_xyz_operational_space_acceleration_reference_vs_qp_achieved_not_hand_pose
+INFO wbc_left_hand_acceleration_tracking active_samples=4999 rmse_mps2=0.211360222 nrmse_percent=82.8396292
+INFO wbc_right_hand_acceleration_tracking active_samples=4999 rmse_mps2=0.143162306 nrmse_percent=104.799126
+PASS post_force_final_1s_torso_reference_rms_deg=7.65009278e-13 threshold=0.01
+PASS post_force_final_1s_left_arm_residual_rms_mm=2.43058173e-12 threshold=0.01
+PASS post_force_final_1s_right_arm_residual_rms_mm=2.42125628e-12 threshold=0.01
+PASS force_window_s=10,20
+PASS applied_covers_force_window=0,26.352 required=10,20
+PASS torso_covers_force_window=0.002,26.354 required=10.002,20.002
+PASS jacobian_covers_force_window=0.002,26.354 required=10.002,20.002
+PASS wbc_torso_covers_force_window=0,26.352 required=10.002,20.002
+PASS wbc_hand_covers_force_window=0,26.352 required=10.002,20.002

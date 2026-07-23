@@ -1,0 +1,356 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "CRG/WBC Torso Roll 突变诊断",
+    "description": "确认第三张 Torso Tracking 图中的 Roll 台阶是否为真实控制突变，并记录修复与剩余误差。",
+    "generatedAt": "2026-07-23T14:06:44Z",
+    "cards": [
+      {
+        "id": "old_step",
+        "description": "旧图由低精度绝对 RPY 重建得到的最大相邻 Roll 台阶",
+        "dataset": "metric_summary",
+        "sourceId": "roll_metrics",
+        "metrics": [
+          {
+            "label": "旧图最大台阶",
+            "field": "old_step_microdeg",
+            "format": "number",
+            "unit": "µdeg"
+          }
+        ]
+      },
+      {
+        "id": "step_reduction",
+        "description": "旧图台阶除以 SO(3) 重建后的最大相邻变化",
+        "dataset": "metric_summary",
+        "sourceId": "roll_metrics",
+        "metrics": [
+          {
+            "label": "伪台阶缩小",
+            "field": "step_reduction_ratio",
+            "format": "number",
+            "unit": "×"
+          }
+        ]
+      },
+      {
+        "id": "tracking_max",
+        "description": "直接记录的 SO(3) 三维姿态跟踪误差最大值",
+        "dataset": "metric_summary",
+        "sourceId": "roll_metrics",
+        "metrics": [
+          {
+            "label": "真实 3D 最大误差",
+            "field": "tracking_max_deg",
+            "format": "number",
+            "unit": "deg"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "roll_step_comparison",
+        "title": "Roll 相邻样本最大变化",
+        "subtitle": "8–22 s；单位 µdeg；旧绝对 RPY 重建与 SO(3) 信号对比",
+        "showDescription": true,
+        "intent": "comparison",
+        "question": "旧图的离散台阶是否也出现在高分辨率 SO(3) 信号中？",
+        "rationale": "三种同单位诊断量适合用零基线柱状图比较，数量级差异直接显示旧图台阶来自量化。",
+        "type": "bar",
+        "dataset": "step_comparison",
+        "sourceId": "roll_metrics",
+        "encodings": {
+          "x": {
+            "field": "signal",
+            "type": "ordinal",
+            "label": "姿态信号"
+          },
+          "y": {
+            "field": "max_step_microdeg",
+            "type": "quantitative",
+            "label": "最大相邻变化",
+            "unit": "µdeg",
+            "format": "number"
+          },
+          "tooltip": [
+            {
+              "field": "signal",
+              "type": "text",
+              "label": "信号"
+            },
+            {
+              "field": "max_step_microdeg",
+              "type": "quantitative",
+              "label": "最大相邻变化",
+              "unit": "µdeg",
+              "format": "number"
+            },
+            {
+              "field": "method",
+              "type": "text",
+              "label": "计算方式"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "unit": "µdeg",
+        "layout": "full",
+        "maxRows": 3,
+        "settings": {
+          "orientation": "vertical",
+          "showValues": true,
+          "sort": "none"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "evidence_table",
+        "title": "证据与判定",
+        "subtitle": "把绘图伪影、真实误差和已排除的控制异常分开。",
+        "dataset": "evidence",
+        "density": "spacious",
+        "sourceId": "roll_metrics",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "evidence",
+            "label": "证据",
+            "type": "text"
+          },
+          {
+            "field": "observed",
+            "label": "观测",
+            "type": "text"
+          },
+          {
+            "field": "meaning",
+            "label": "判定",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "roll_metrics",
+        "label": "Torso Roll diagnostic summary",
+        "path": "reports/crg_wbc_roll_diagnostic/roll_step_summary.csv",
+        "query": {
+          "engine": "NumPy/SciPy deterministic replay",
+          "description": "读取 11876 个 500 Hz torso tracking 样本，比较旧绝对 Euler 重建、由 err_rotation 反算的相对姿态，以及直接 rotvec error 的相邻样本变化。",
+          "executed_at": "2026-07-23T14:06:44Z",
+          "language": "Python",
+          "filters": [
+            "plot comparison window=8–22 s",
+            "tracking metric window=causally aligned nonzero-force window",
+            "no downsampling"
+          ],
+          "metric_definitions": [
+            "max step = max(abs(signal[k] - signal[k-1]))",
+            "old plotted Roll = Euler(R_current_logged * inverse(R_nominal_logged)).roll",
+            "SO(3)-reconstructed current uses offset, nominal rotation and logged err_rotation(desired,current)",
+            "3D tracking error = norm(logged err_rotvec)"
+          ]
+        }
+      },
+      {
+        "id": "plotting_code",
+        "label": "CRG/WBC plotting implementation",
+        "path": "scripts/crg_wbc_plotting.py",
+        "query": {
+          "engine": "static code trace and rerun",
+          "description": "检查相对姿态重建、ZYX 顺序、弧度转角度、时间窗口和绘图降采样，并用同一旧日志重新生成图 03。",
+          "language": "Python"
+        }
+      },
+      {
+        "id": "logging_code",
+        "label": "WalkingManager torso logging implementation",
+        "path": "src/WalkingManager.cpp",
+        "query": {
+          "engine": "static code trace",
+          "description": "检查 absolute RPY、SO(3) error 的生成方式和 ostream 输出精度。",
+          "language": "C++"
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "layout": "full",
+        "body": "# CRG/WBC Torso Roll 突变诊断"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "roll_metrics",
+        "body": "## 技术结论\n\n第三张图 Roll 的阶梯式突变主要是**日志精度与 Euler 分支共同造成的绘图伪影**，不是机器人、接触或 WBC 求解器突然失稳。旧图最大台阶为 572.96 µdeg，恰好对应 `1e-5 rad`；用同一日志中的高分辨率 SO(3) 误差反算后，最大相邻变化降到 5.35 µdeg，缩小约 107 倍。\n\n修复后的曲线仍在加载和卸载边沿出现约 ±0.001° 的平滑 Roll 瞬态。这一部分是真实但极小的交叉轴跟踪误差，三维误差最大值只有 0.001255°，当前没有控制稳定性风险。"
+      },
+      {
+        "id": "metric_strip",
+        "type": "metric-strip",
+        "layout": "full",
+        "cardIds": [
+          "old_step",
+          "step_reduction",
+          "tracking_max"
+        ],
+        "sourceId": "roll_metrics"
+      },
+      {
+        "id": "visual_finding",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "roll_metrics",
+        "body": "## 高分辨率 SO(3) 信号中不存在旧图台阶\n\n旧图从接近 ±π 的绝对 Euler 角重建相对 Roll，而日志只保留六位有效数字。`3.14157 → 3.14158` 的最小文本变化就是 `1e-5 rad`，因此形成 572.96 µdeg 的规则台阶。直接记录的 rotvec error 和由它反算的 measured relative attitude 都是连续的，最大相邻变化只有约 5.35 µdeg。"
+      },
+      {
+        "id": "step_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "roll_step_comparison",
+        "sourceId": "roll_metrics"
+      },
+      {
+        "id": "mechanism",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "logging_code",
+        "body": "## 根因是绝对 Euler 表示在 ±π 附近损失精度\n\n`rotationToRpy()` 使用 ZYX Euler 分解。一个接近纯小 yaw 的姿态可以被等价地写成约 `[π, -π, π+yaw]`；当前日志中的 nominal、desired 和 current 正处于这个分支。旧绘图再对已经四舍五入的绝对 RPY 做旋转合成，原本应相消的共同大角度无法精确抵消，于是微小的文本量化被放大成可见台阶。\n\n控制器本身使用旋转矩阵、LOCAL_WORLD_ALIGNED Jacobian 和小角主旋转向量误差，不依赖这条低精度绘图链。"
+      },
+      {
+        "id": "evidence_block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "evidence_table",
+        "sourceId": "roll_metrics"
+      },
+      {
+        "id": "scope",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "roll_metrics",
+        "body": "## 数据范围与指标定义\n\n数据来自当前第三张图对应的 `rho=0.5`、左右 x 向 ±10 N、500 Hz、11876 样本仿真。台阶比较使用图示的 8–22 s 范围且不降采样；WBC 跟踪 RMSE/max 使用与外力窗口因果对齐后的直接 SO(3) error。Roll 台阶定义为相邻采样值绝对差的最大值，不是曲线峰峰值。"
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "plotting_code",
+        "body": "## 复核方法\n\n诊断依次核对了弧度/角度单位、ZYX 轴顺序、时间戳、2 ms 因果延迟、绘图降采样、CRG Roll reference、HPIPM 状态和 SO(3) tracking error。随后按 C++ `err_rotation(desired,current)` 的定义，在 SO(3) 上从 offset、nominal rotation 和 error rotvec 精确重建 current relative attitude，并与旧绝对 RPY 往返结果逐样本比较。"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 限制、剩余误差与稳健性\n\n本次修复解决的是可见的离散台阶，不会人为平滑或隐藏真实姿态误差。修复后的 ±0.001° 平滑 Roll 瞬态仍保留在图中。它可能部分来自把 ZYX RPY 导数直接作为世界系角速度/角加速度使用；若要继续压低这一微小量，应先改用 Euler-rate Jacobian 或 SO(3) 增量，并重新验证 torso、hand 分配和足底稳定性。\n\n旧日志已经丢失绝对 Euler 的低位精度，但 SO(3) error 是由运行时旋转矩阵直接计算的小量，六位有效数字对它仍提供足够分辨率，因此可以可靠重建本次相对姿态。"
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "plotting_code",
+        "body": "## 已实施改进与下一步\n\n1. torso tracking 日志输出改为 17 位有效数字，防止后续绝对 RPY 往返丢失精度。\n2. 绘图优先使用 offset 与 SO(3) error 重建 measured relative attitude；旧日志也能直接重新绘图，无需重跑仿真。\n3. 保留 rotvec error 面板作为控制质量的主验收量，不用绝对 Euler 差判断稳定性。\n4. 如果还要压低剩余的约 0.001° 平滑瞬态，再单独验证 ZYX rate 到 world angular velocity/acceleration 的严格映射；不要通过低通滤波掩盖。"
+      },
+      {
+        "id": "open_questions",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## 后续问题\n\n当前已经没有证据表明 Roll 存在离散物理突变。进一步工作只需回答一个性能问题：是否值得为了小于 0.0013° 的边沿姿态误差，引入更严格的 SO(3) 导数映射并承担一次完整的 CRG/WBC 回归验证。"
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-07-23T14:06:44Z",
+    "status": "ready",
+    "datasets": {
+      "metric_summary": [
+        {
+          "old_step_microdeg": 572.956637191465,
+          "step_reduction_ratio": 107.162,
+          "tracking_max_deg": 0.001255
+        }
+      ],
+      "step_comparison": [
+        {
+          "signal": "旧绝对 RPY 重建",
+          "max_step_microdeg": 572.956637191465,
+          "method": "低精度 absolute RPY → relative Euler"
+        },
+        {
+          "signal": "SO(3) 重建 measured",
+          "max_step_microdeg": 5.346656757247,
+          "method": "offset + nominal + err_rotation"
+        },
+        {
+          "signal": "直接 rotvec error x",
+          "max_step_microdeg": 5.362884962425,
+          "method": "运行时旋转矩阵误差"
+        }
+      ],
+      "evidence": [
+        {
+          "evidence": "旧图最大 Roll 台阶",
+          "observed": "0.0005729566°",
+          "meaning": "等于 1e-5 rad，精确匹配默认日志量化步长"
+        },
+        {
+          "evidence": "SO(3) 重建最大相邻变化",
+          "observed": "0.0000053467°",
+          "meaning": "比旧图小约 107 倍且曲线连续"
+        },
+        {
+          "evidence": "CRG Roll reference",
+          "observed": "全程 0°",
+          "meaning": "Roll 台阶不是 CRG 指令突变"
+        },
+        {
+          "evidence": "WBC HPIPM 状态",
+          "observed": "11876/11876 status=0",
+          "meaning": "不存在与台阶同步的求解失败"
+        },
+        {
+          "evidence": "SO(3) 3D tracking RMSE/max",
+          "observed": "0.0004711° / 0.001255°",
+          "meaning": "真实姿态误差极小且连续"
+        }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "roll_metrics",
+      "label": "Torso Roll diagnostic summary",
+      "path": "reports/crg_wbc_roll_diagnostic/roll_step_summary.csv",
+      "query": {
+        "engine": "NumPy/SciPy deterministic replay",
+        "description": "旧绝对 Euler 重建、SO(3) 重建与直接 rotvec error 的逐样本比较。"
+      }
+    },
+    {
+      "id": "plotting_code",
+      "label": "CRG/WBC plotting implementation",
+      "path": "scripts/crg_wbc_plotting.py",
+      "query": {
+        "engine": "static code trace and rerun",
+        "description": "相对姿态重建与图 03 生成逻辑。"
+      }
+    },
+    {
+      "id": "logging_code",
+      "label": "WalkingManager torso logging implementation",
+      "path": "src/WalkingManager.cpp",
+      "query": {
+        "engine": "static code trace",
+        "description": "torso absolute RPY、SO(3) error 与日志精度。"
+      }
+    }
+  ]
+}

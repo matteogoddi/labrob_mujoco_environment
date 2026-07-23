@@ -1,0 +1,9 @@
+metric,value,unit,scope,interpretation
+old_absolute_rpy_max_step,0.000572956637191465,deg,8-22 s,Old plot reconstruction from six-significant-digit absolute Euler angles
+so3_reconstructed_max_step,0.000005346656757247,deg,8-22 s,Measured relative attitude reconstructed from the logged SO(3) error
+rotvec_x_max_step,0.000005362884962425,deg,8-22 s,Direct logged WBC orientation-error x component
+old_to_so3_step_ratio,107.162,ratio,8-22 s,Old plotted step divided by SO(3)-reconstructed step
+wbc_torso_3d_rmse,0.0004711,deg,causal force window,Norm RMSE of the directly logged SO(3) tracking error
+wbc_torso_3d_max_error,0.001255,deg,causal force window,Maximum norm of the directly logged SO(3) tracking error
+crg_roll_reference_peak,0,deg,full run,CRG final roll reference remained zero
+wbc_solver_success,100,percent,full run,HPIPM status was zero for all 11876 samples

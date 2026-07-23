@@ -101,9 +101,9 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole
 ){
     double swing_foot_trajectory_height = 0.05;//0.05
-    double step_length_x = 0.06;//0.1
+    double step_length_x = 0.01;//0.1
     double step_length_y = 0.0;
-    double step_rotation = 3.0 * M_PI / 180.0;//45 * M_PI / 180.0
+    double step_rotation = 0.0;//45 * M_PI / 180.0
     int n_steps = 0;//20
 
     if (n_steps <= 0) {

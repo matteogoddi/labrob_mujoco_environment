@@ -27,6 +27,12 @@ class QPSolver {
       const Scalar* d_max) = 0;
   virtual const Scalar* get_solution() const = 0;
 
+  // Solver-specific status code from the most recent solve. A negative value
+  // means that the backend does not expose a status (or has not run yet).
+  virtual int get_status() const {
+    return -1;
+  }
+
   const int num_variables_;
   const int num_equality_constraints_;
   const int num_inequality_constraints_;

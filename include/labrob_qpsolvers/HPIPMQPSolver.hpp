@@ -20,7 +20,6 @@
 #include <hpipm_timing.h>
 
 #include <iostream>
-#include <numeric>
 
 namespace labrob {
 namespace qpsolvers {
@@ -29,12 +28,17 @@ namespace qpsolvers {
 class HPIPMQPSolver : public QPSolver<double> {
  public:
   HPIPMQPSolver(int numVariables, int numEqualityConstraints, int numInequalityConstraints) :
-  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints), numIneq_(numInequalityConstraints) {
+  QPSolver<double>(numVariables, numEqualityConstraints, numInequalityConstraints) {
     int dim_size = d_dense_qp_dim_memsize();
     dim_mem_ = malloc(dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
 
-    d_dense_qp_dim_set_all(numVariables, numEqualityConstraints, 0, numInequalityConstraints, 0, numInequalityConstraints, &dim_);
+    // General inequalities (joint limits and friction constraints in the WBC)
+    // are hard constraints. Softening every row with a near-zero penalty makes
+    // those bounds effectively optional.
+    d_dense_qp_dim_set_all(
+        numVariables, numEqualityConstraints, 0,
+        numInequalityConstraints, 0, 0, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = malloc(qp_size);
@@ -49,20 +53,14 @@ class HPIPMQPSolver : public QPSolver<double> {
     int ipm_arg_size = d_dense_qp_ipm_arg_memsize(&dim_);
     ipm_arg_mem_ = malloc(ipm_arg_size);
     d_dense_qp_ipm_arg_create(&dim_, &arg_, ipm_arg_mem_);
-    enum hpipm_mode mode = SPEED; // set mode ROBUST, SPEED, BALANCE, SPEED_ABS
+    enum hpipm_mode mode = ROBUST;
     d_dense_qp_ipm_arg_set_default(mode, &arg_);
+    int iter_max = 50;
+    d_dense_qp_ipm_arg_set_iter_max(&iter_max, &arg_);
 
     int ipm_size = d_dense_qp_ipm_ws_memsize(&dim_, &arg_);
     ipm_mem_ = malloc(ipm_size);
     d_dense_qp_ipm_ws_create(&dim_, &arg_, &workspace_, ipm_mem_);
-
-    idxs_sg_.resize(numIneq_);
-    std::iota(idxs_sg_.begin(), idxs_sg_.end(), 0);
-
-    Zl_ = std::vector<double>(numIneq_, 1e-6);
-    Zu_ = std::vector<double>(numIneq_, 1e-6);
-    zl_ = std::vector<double>(numIneq_, 0.0);
-    zu_ = std::vector<double>(numIneq_, 0.0);
 
     u_ = (double*) malloc(numVariables * sizeof(double));
   }
@@ -94,21 +92,18 @@ class HPIPMQPSolver : public QPSolver<double> {
     d_dense_qp_set_lg((double*) d_min, &qp_);
     d_dense_qp_set_ug((double*) d_max, &qp_);
 
-    d_dense_qp_set_idxs_rev(idxs_sg_.data(), &qp_);
-    d_dense_qp_set_Zl((double*) Zl_.data(), &qp_);
-    d_dense_qp_set_Zu((double*) Zu_.data(), &qp_);
-    d_dense_qp_set_zl((double*) zl_.data(), &qp_);
-    d_dense_qp_set_zu((double*) zu_.data(), &qp_);
-
     // solve QP
     d_dense_qp_ipm_solve(&qp_, &qp_sol_, &arg_, &workspace_);
+    d_dense_qp_ipm_get_status(&workspace_, &status_);
     d_dense_qp_sol_get_v(&qp_sol_, u_);
-
-    //std::cout << "Status = " << workspace_.status << std::endl;
   }
 
   const double* get_solution() const override {
     return u_;
+  }
+
+  int get_status() const override {
+    return status_;
   }
 
  protected:
@@ -124,10 +119,7 @@ class HPIPMQPSolver : public QPSolver<double> {
   void* qp_sol_mem_;
   void* ipm_arg_mem_;
 
-  int numIneq_;
-  std::vector<int> idxs_sg_;
-  std::vector<double> Zl_, Zu_, zl_, zu_;
-
+  int status_ = -1;
   double* u_;
 
 }; // end class HPIPMQPSolver

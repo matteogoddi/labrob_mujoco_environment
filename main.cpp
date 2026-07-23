@@ -787,8 +787,8 @@ double clampJointTorque(
 struct FootContactPointDiag {
   std::string side;
   int geom_id;
-  Eigen::Vector3d center;
-  double radius;
+  Eigen::Vector3d point;
+  double normal_extent;
   double surface_z;
 };
 
@@ -810,22 +810,48 @@ std::vector<FootContactPointDiag> getFootContactPointDiagnostics(
       continue;
     }
 
-    if (model->geom_type[geom_id] != mjGEOM_SPHERE) {
-      continue;
-    }
-
-    const double radius = model->geom_size[3 * geom_id];
     const Eigen::Vector3d center(
         data->geom_xpos[3 * geom_id + 0],
         data->geom_xpos[3 * geom_id + 1],
         data->geom_xpos[3 * geom_id + 2]);
-    points.push_back({
-        side,
-        geom_id,
-        center,
-        radius,
-        center.z() - radius
-    });
+    if (model->geom_type[geom_id] == mjGEOM_SPHERE) {
+      const double radius = model->geom_size[3 * geom_id];
+      const Eigen::Vector3d surface_point =
+          center - radius * Eigen::Vector3d::UnitZ();
+      points.push_back(
+          {side, geom_id, surface_point, radius, surface_point.z()});
+      continue;
+    }
+
+    const char* geom_name =
+        mj_id2name(model, mjOBJ_GEOM, geom_id);
+    if (model->geom_type[geom_id] != mjGEOM_BOX ||
+        geom_name == nullptr ||
+        std::string(geom_name).find("_foot_contact") ==
+            std::string::npos) {
+      continue;
+    }
+
+    Eigen::Matrix3d rotation;
+    for (int row = 0; row < 3; ++row) {
+      for (int col = 0; col < 3; ++col) {
+        rotation(row, col) =
+            data->geom_xmat[9 * geom_id + 3 * row + col];
+      }
+    }
+    const double half_x = model->geom_size[3 * geom_id + 0];
+    const double half_y = model->geom_size[3 * geom_id + 1];
+    const double half_z = model->geom_size[3 * geom_id + 2];
+    for (const double sx : {-1.0, 1.0}) {
+      for (const double sy : {-1.0, 1.0}) {
+        const Eigen::Vector3d surface_point =
+            center +
+            rotation * Eigen::Vector3d(
+                sx * half_x, sy * half_y, -half_z);
+        points.push_back(
+            {side, geom_id, surface_point, half_z, surface_point.z()});
+      }
+    }
   }
 
   return points;
@@ -902,7 +928,7 @@ void printInitialStanceDiagnostics(
 
   if (points.empty()) {
     std::cout << "[stance-diag] " << label
-              << " no foot contact sphere geoms found on ankle roll bodies."
+              << " no supported foot-contact geoms found on ankle roll bodies."
               << std::endl;
     return;
   }
@@ -915,10 +941,10 @@ void printInitialStanceDiagnostics(
   double max_surface_z = -std::numeric_limits<double>::infinity();
 
   for (const auto& point : points) {
-    min_x = std::min(min_x, point.center.x());
-    max_x = std::max(max_x, point.center.x());
-    min_y = std::min(min_y, point.center.y());
-    max_y = std::max(max_y, point.center.y());
+    min_x = std::min(min_x, point.point.x());
+    max_x = std::max(max_x, point.point.x());
+    min_y = std::min(min_y, point.point.y());
+    max_y = std::max(max_y, point.point.y());
     min_surface_z = std::min(min_surface_z, point.surface_z);
     max_surface_z = std::max(max_surface_z, point.surface_z);
   }
@@ -951,10 +977,10 @@ void printInitialStanceDiagnostics(
     std::cout << "[stance-foot] " << label
               << " side=" << point.side
               << " geom_id=" << point.geom_id
-              << " center=[" << point.center.x()
-              << ", " << point.center.y()
-              << ", " << point.center.z() << "]"
-              << " radius=" << point.radius
+              << " support_point=[" << point.point.x()
+              << ", " << point.point.y()
+              << ", " << point.point.z() << "]"
+              << " normal_extent=" << point.normal_extent
               << " surface_z=" << point.surface_z
               << std::endl;
   }
@@ -983,10 +1009,10 @@ void printRuntimeStanceDiagnostics(
   double min_y = std::numeric_limits<double>::infinity();
   double max_y = -std::numeric_limits<double>::infinity();
   for (const auto& point : points) {
-    min_x = std::min(min_x, point.center.x());
-    max_x = std::max(max_x, point.center.x());
-    min_y = std::min(min_y, point.center.y());
-    max_y = std::max(max_y, point.center.y());
+    min_x = std::min(min_x, point.point.x());
+    max_x = std::max(max_x, point.point.x());
+    min_y = std::min(min_y, point.point.y());
+    max_y = std::max(max_y, point.point.y());
   }
   const bool com_in_bbox =
       has_support_bbox &&
@@ -1348,6 +1374,15 @@ int main(const int argc, const char* argv[]) {
   bool enable_torso_compliance_wbc_test = false;
   bool wbc_use_interaction_wrench = true;
   double crg_rho = 1.0;
+  double crg_admittance_scale = 1.0;
+  constexpr double crg_admittance_scale_min = 0.1;
+  constexpr double crg_admittance_scale_max = 2.0;
+  constexpr double crg_base_ma_translation = 5.0;
+  constexpr double crg_base_da_translation = 63.25;
+  constexpr double crg_base_ka_translation = 200.0;
+  double crg_admittance_translation_limit_m = 0.03;
+  constexpr double crg_admittance_translation_limit_min_m = 0.005;
+  constexpr double crg_admittance_translation_limit_max_m = 0.05;
   bool waist_yaw_compliance_kp_user_set = false;
   bool waist_yaw_compliance_kd_user_set = false;
   bool waist_roll_compliance_kp_user_set = false;
@@ -1517,6 +1552,36 @@ int main(const int argc, const char* argv[]) {
         return -1;
       }
       crg_rho = parsed_rho;
+    } else if ((a == "--crg-admittance-scale" ||
+                a == "--crg-arm-admittance-scale") &&
+               i + 1 < argc) {
+      const char* scale_text = argv[++i];
+      char* scale_end = nullptr;
+      errno = 0;
+      const double parsed_scale = std::strtod(scale_text, &scale_end);
+      if (scale_text == scale_end || scale_end == nullptr ||
+          *scale_end != '\0' || errno == ERANGE ||
+          !std::isfinite(parsed_scale)) {
+        std::cerr << "Invalid finite numeric value for " << a << ": "
+                  << scale_text << std::endl;
+        return -1;
+      }
+      crg_admittance_scale = parsed_scale;
+    } else if ((a == "--crg-admittance-translation-limit" ||
+                a == "--crg-arm-translation-limit") &&
+               i + 1 < argc) {
+      const char* limit_text = argv[++i];
+      char* limit_end = nullptr;
+      errno = 0;
+      const double parsed_limit = std::strtod(limit_text, &limit_end);
+      if (limit_text == limit_end || limit_end == nullptr ||
+          *limit_end != '\0' || errno == ERANGE ||
+          !std::isfinite(parsed_limit)) {
+        std::cerr << "Invalid finite numeric value for " << a << ": "
+                  << limit_text << std::endl;
+        return -1;
+      }
+      crg_admittance_translation_limit_m = parsed_limit;
     } else if (a == "--joint-pd-hold-test") {
       enable_joint_pd_hold_test = true;
       disable_feedback_loops = true;
@@ -1584,15 +1649,22 @@ int main(const int argc, const char* argv[]) {
             << "    Diagnostic only: disables the Eq. (3) known-wrench feedforward in the WBC test.\n"
             << "  --crg-rho <0..1> (default 1; --crg-rou and --rho are aliases)\n"
             << "    0 = hand-only allocation, 1 = torso-dominant allocation.\n"
+            << "  --crg-admittance-scale <0.1..2> (default 1; alias --crg-arm-admittance-scale)\n"
+            << "    Scales both arms' unconstrained xyz response by dividing Ma/Da/Ka by this value.\n"
+            << "  --crg-admittance-translation-limit <0.005..0.05 m> (default 0.03 m;\n"
+            << "      alias --crg-arm-translation-limit)\n"
+            << "    Independently clips each arm's pre-allocation delta_xc x/y/z component;\n"
+            << "    this is a per-axis box limit, not a 3D translation-norm limit.\n"
+            << "    The legacy log-only numeric diagnostic disables this limit.\n"
             << "Other:\n"
             << "  --joint-pd-hold-test\n"
             << "    Bypasses WBC and holds the initial joint pose with bounded joint PD torques.\n"
             << "  --mujoco-torque-limit-scale <scale>\n"
             << "    Optional MuJoCo torque clamp before writing ctrl. Use 1 for nominal joint limits.\n"
             << "  --auto-initial-base-height\n"
-            << "    Shifts the initial floating-base z so the lowest foot contact sphere is near the floor.\n"
+            << "    Shifts the initial floating-base z so the lowest foot contact surface is near the floor.\n"
             << "  --initial-foot-clearance <m>\n"
-            << "    Target lowest foot sphere clearance used with --auto-initial-base-height.\n"
+            << "    Target lowest foot-surface clearance used with --auto-initial-base-height.\n"
             << "  --disable-feedback-loops\n"
             << "  --enable-feedback-loops\n"
             << "  --auto-save-logs\n"
@@ -1697,6 +1769,25 @@ int main(const int argc, const char* argv[]) {
     std::cerr << "CRG rho must be finite and in [0, 1]." << std::endl;
     return -1;
   }
+  if (!std::isfinite(crg_admittance_scale) ||
+      crg_admittance_scale < crg_admittance_scale_min ||
+      crg_admittance_scale > crg_admittance_scale_max) {
+    std::cerr << "CRG admittance scale must be finite and in ["
+              << crg_admittance_scale_min << ", "
+              << crg_admittance_scale_max << "]." << std::endl;
+    return -1;
+  }
+  if (!std::isfinite(crg_admittance_translation_limit_m) ||
+      crg_admittance_translation_limit_m <
+          crg_admittance_translation_limit_min_m ||
+      crg_admittance_translation_limit_m >
+          crg_admittance_translation_limit_max_m) {
+    std::cerr << "CRG admittance translation limit must be finite and in ["
+              << crg_admittance_translation_limit_min_m << ", "
+              << crg_admittance_translation_limit_max_m << "] meters."
+              << std::endl;
+    return -1;
+  }
   if (!std::isfinite(stop_time_sec) ||
       stop_time_sec == 0.0 || stop_time_sec < -1.0) {
     std::cerr << "Stop time must be positive, or negative to disable it." << std::endl;
@@ -1717,8 +1808,35 @@ int main(const int argc, const char* argv[]) {
     return -1;
   }
 
+  const bool crg_admittance_translation_limit_enabled =
+      !(enable_torso_compliance_numeric_test &&
+        !enable_torso_compliance_wbc_test);
   std::ostringstream metadata_stream;
   metadata_stream << "crg_rho=" << crg_rho << "\n"
+                  << "crg_admittance_scale="
+                  << crg_admittance_scale << "\n"
+                  << "crg_arm_ma_translation_kg="
+                  << crg_base_ma_translation / crg_admittance_scale << "\n"
+                  << "crg_arm_da_translation_n_s_per_m="
+                  << crg_base_da_translation / crg_admittance_scale << "\n"
+                  << "crg_arm_ka_translation_n_per_m="
+                  << crg_base_ka_translation / crg_admittance_scale << "\n"
+                  << "crg_admittance_translation_limit_enabled="
+                  << (crg_admittance_translation_limit_enabled ? 1 : 0) << "\n"
+                  << "crg_admittance_translation_limit_m="
+                  << crg_admittance_translation_limit_m << "\n"
+                  << "crg_admittance_translation_limit_effective_m="
+                  << (crg_admittance_translation_limit_enabled
+                          ? crg_admittance_translation_limit_m
+                          : 1e9)
+                  << "\n"
+                  << "crg_arm_force_at_translation_limit_n="
+                  << (crg_admittance_translation_limit_enabled
+                          ? (crg_base_ka_translation /
+                             crg_admittance_scale) *
+                                crg_admittance_translation_limit_m
+                          : std::numeric_limits<double>::quiet_NaN())
+                  << "\n"
                   << "torso_compliance_wbc_test="
                   << (enable_torso_compliance_wbc_test ? 1 : 0) << "\n"
                   << "wbc_use_interaction_wrench="
@@ -1727,6 +1845,8 @@ int main(const int argc, const char* argv[]) {
                   << external_force_start_sec << "\n"
                   << "external_force_duration_sec="
                   << external_force_duration_sec << "\n"
+                  << "external_force_ramp_sec="
+                  << external_force_ramp_sec << "\n"
                   << "expected_stop_sec=" << stop_time_sec << "\n"
                   << "command=";
   for (int i = 0; i < argc; ++i) {
@@ -1785,7 +1905,11 @@ int main(const int argc, const char* argv[]) {
     }
     std::cout << "  Ab source: Eq. (11) from current Pinocchio torso-to-wrist lever arms in world/LWA frame." << std::endl;
     if (enable_torso_compliance_wbc_test) {
-      std::cout << "  WBC coupling: Eq. (20) uses delta_xb and delta_dxb; Eq. (21) uses residual arm offsets and velocities." << std::endl;
+      std::cout
+          << "  WBC coupling: Eq. (20) uses torso position/velocity/acceleration; "
+          << "Eq. (21) uses residual-arm position/velocity/acceleration in a "
+          << "measured Cartesian closed loop."
+          << std::endl;
       std::cout << "  WBC Eq. (3) known-wrench feedforward: "
                 << (wbc_use_interaction_wrench ? "enabled" : "disabled")
                 << "." << std::endl;
@@ -1974,7 +2098,7 @@ int main(const int argc, const char* argv[]) {
                 << base_z_shift << std::endl;
       printInitialStanceDiagnostics(mj_model_ptr, mj_data_ptr, "after-auto-height");
     } else {
-      std::cout << "[stance-diag] auto_initial_base_height skipped: no foot contact sphere geoms found."
+      std::cout << "[stance-diag] auto_initial_base_height skipped: no supported foot-contact geoms found."
                 << std::endl;
     }
   }
@@ -2022,6 +2146,38 @@ int main(const int argc, const char* argv[]) {
   compliance_params.S_allocation_right.setZero();
   compliance_params.S_allocation_left.topLeftCorner<3, 3>().setIdentity();
   compliance_params.S_allocation_right.topLeftCorner<3, 3>().setIdentity();
+  if (enable_torso_compliance_wbc_test) {
+    // In the controlled force experiment rho is meant to be the fraction of
+    // motion along each excited compliance direction. Penalizing unexcited
+    // xyz directions makes a torso yaw avoid the desired x contribution
+    // because it also creates harmless cross-axis wrist motion. Select the
+    // actually excited force axes so rho=0.5 produces a 50:50 projection;
+    // the residual arm task cancels any kinematic cross-axis component.
+    const auto select_excited_translation_axes =
+        [](Eigen::Matrix<double, 6, 6>& selector,
+           double fx, double fy, double fz) {
+          selector.setZero();
+          const Eigen::Vector3d force(fx, fy, fz);
+          for (int axis = 0; axis < 3; ++axis) {
+            if (std::abs(force(axis)) > 1e-9) {
+              selector(axis, axis) = 1.0;
+            }
+          }
+          if (selector.topLeftCorner<3, 3>().isZero(1e-12)) {
+            selector.topLeftCorner<3, 3>().setIdentity();
+          }
+        };
+    select_excited_translation_axes(
+        compliance_params.S_allocation_left,
+        external_left_fx_newton,
+        external_left_fy_newton,
+        external_left_fz_newton);
+    select_excited_translation_axes(
+        compliance_params.S_allocation_right,
+        external_right_fx_newton,
+        external_right_fy_newton,
+        external_right_fz_newton);
+  }
 
   compliance_params.Ma_left.setZero();
   compliance_params.Da_left.setZero();
@@ -2030,22 +2186,57 @@ int main(const int argc, const char* argv[]) {
   compliance_params.Da_right.setZero();
   compliance_params.Ka_right.setZero();
 
-  // Eq. (6) arm admittance. The translational stiffness preserves the 6 N :
-  // 2 N yaw-test ratio inside the 3 cm safety limit.
-  compliance_params.Ma_left.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_left.diagonal() << 200.0, 200.0, 200.0, 10.0, 10.0, 10.0;
-  compliance_params.Da_left.diagonal() << 63.25, 63.25, 63.25, 2.0, 2.0, 2.0;
-  compliance_params.Ma_right.diagonal() << 5.0, 5.0, 5.0, 0.1, 0.1, 0.1;
-  compliance_params.Ka_right.diagonal() << 200.0, 200.0, 200.0, 10.0, 10.0, 10.0;
-  compliance_params.Da_right.diagonal() << 63.25, 63.25, 63.25, 2.0, 2.0, 2.0;
+  // Eq. (6) arm admittance. Dividing translational Ma, Da and Ka by the
+  // same positive scale preserves the normalized dynamics while multiplying
+  // the unconstrained compliant response by that scale. The independent bound
+  // below still limits each pre-allocation admittance displacement component.
+  const double crg_ma_translation =
+      crg_base_ma_translation / crg_admittance_scale;
+  const double crg_da_translation =
+      crg_base_da_translation / crg_admittance_scale;
+  const double crg_ka_translation =
+      crg_base_ka_translation / crg_admittance_scale;
+  if (!std::isfinite(crg_ma_translation) || crg_ma_translation <= 0.0 ||
+      !std::isfinite(crg_da_translation) || crg_da_translation <= 0.0 ||
+      !std::isfinite(crg_ka_translation) || crg_ka_translation <= 0.0) {
+    std::cerr << "Derived CRG translational admittance parameters are invalid."
+              << std::endl;
+    return -1;
+  }
+  compliance_params.Ma_left.diagonal()
+      << crg_ma_translation, crg_ma_translation, crg_ma_translation,
+         0.1, 0.1, 0.1;
+  compliance_params.Ka_left.diagonal()
+      << crg_ka_translation, crg_ka_translation, crg_ka_translation,
+         10.0, 10.0, 10.0;
+  compliance_params.Da_left.diagonal()
+      << crg_da_translation, crg_da_translation, crg_da_translation,
+         2.0, 2.0, 2.0;
+  compliance_params.Ma_right.diagonal()
+      << crg_ma_translation, crg_ma_translation, crg_ma_translation,
+         0.1, 0.1, 0.1;
+  compliance_params.Ka_right.diagonal()
+      << crg_ka_translation, crg_ka_translation, crg_ka_translation,
+         10.0, 10.0, 10.0;
+  compliance_params.Da_right.diagonal()
+      << crg_da_translation, crg_da_translation, crg_da_translation,
+         2.0, 2.0, 2.0;
 
   compliance_params.Kb.diagonal() << 100.0, 100.0, 100.0, 0.001, 0.001, 0.001;
   compliance_params.W_smooth.bottomRightCorner<3, 3>() =
       0.02 * Eigen::Matrix3d::Identity();
 
   // safety limit: do not comment this out
-  compliance_params.delta_xc_left_limit  << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
-  compliance_params.delta_xc_right_limit << 0.03, 0.03, 0.03, 0.08, 0.08, 0.08;
+  compliance_params.delta_xc_left_limit
+      << crg_admittance_translation_limit_m,
+         crg_admittance_translation_limit_m,
+         crg_admittance_translation_limit_m,
+         0.08, 0.08, 0.08;
+  compliance_params.delta_xc_right_limit
+      << crg_admittance_translation_limit_m,
+         crg_admittance_translation_limit_m,
+         crg_admittance_translation_limit_m,
+         0.08, 0.08, 0.08;
   compliance_params.delta_xb_min.tail<3>() << -0.15, -0.15, -0.20;
   compliance_params.delta_xb_max.tail<3>() <<  0.15,  0.15,  0.20;
 
@@ -2066,14 +2257,55 @@ int main(const int argc, const char* argv[]) {
     }
   }
 
+  const double crg_force_at_translation_limit_n =
+      crg_admittance_translation_limit_enabled
+          ? crg_ka_translation * crg_admittance_translation_limit_m
+          : std::numeric_limits<double>::quiet_NaN();
+  const double max_external_force_component_n = std::max(
+      {std::abs(external_left_fx_newton),
+       std::abs(external_left_fy_newton),
+       std::abs(external_left_fz_newton),
+       std::abs(external_right_fx_newton),
+       std::abs(external_right_fy_newton),
+       std::abs(external_right_fz_newton)});
+  if (enable_torso_compliance_wbc_test &&
+      !enable_torso_compliance_zero_input_test &&
+      max_external_force_component_n + 1e-12 >=
+          crg_force_at_translation_limit_n) {
+    std::cout
+        << "[WARN] Configured external force has a steady-state demand at "
+        << "or above the CRG translational limit: max component="
+        << max_external_force_component_n
+        << " N, steady-state per-axis threshold="
+        << crg_force_at_translation_limit_n
+        << " N. If held long enough, larger force components will not "
+        << "increase the limited delta_xc component." << std::endl;
+  }
+
+  std::ostringstream crg_force_limit_stream;
+  if (std::isfinite(crg_force_at_translation_limit_n)) {
+    crg_force_limit_stream << crg_force_at_translation_limit_n << " N/axis";
+  } else {
+    crg_force_limit_stream << "disabled";
+  }
+
   std::cout << "CRG params: rho=" << crg_rho
+            << ", admittance_scale=" << crg_admittance_scale
             << ", mode="
             << (enable_torso_compliance_wbc_test ? "HAND_AND_TORSO" : "diagnostic")
             << ", Kb_rpy=("
             << compliance_params.Kb.diagonal().tail<3>().transpose()
+            << "), Ma_translation=("
+            << compliance_params.Ma_left.diagonal().head<3>().transpose()
+            << "), Da_translation=("
+            << compliance_params.Da_left.diagonal().head<3>().transpose()
             << "), Ka_translation=("
             << compliance_params.Ka_left.diagonal().head<3>().transpose()
-            << "), xb_bounds_min=("
+            << "), admittance_translation_limit=("
+            << compliance_params.delta_xc_left_limit.head<3>().transpose()
+            << "), force_at_translation_limit="
+            << crg_force_limit_stream.str()
+            << ", xb_bounds_min=("
             << compliance_params.delta_xb_min.tail<3>().transpose()
             << "), xb_bounds_max=("
             << compliance_params.delta_xb_max.tail<3>().transpose()
@@ -2995,23 +3227,16 @@ int main(const int argc, const char* argv[]) {
 	              walking_manager.setTorsoComplianceReference(
 	                  compliance_output.delta_xb_final.tail<3>(),
 	                  compliance_output.delta_dxb.tail<3>(),
-	                  Eigen::Vector3d::Zero());
+	                  compliance_output.delta_ddxb.tail<3>());
 	              // Eq. (13)/(21): pass the spatial arm residual; the WBC
 	              // applies S_h and tracks only its selected 3D translation.
-	              const double hand_reference_norm =
-	                  compliance_output.delta_x_left_arm.head<3>().norm() +
-	                  compliance_output.delta_x_right_arm.head<3>().norm() +
-	                  compliance_output.delta_dx_left_arm.head<3>().norm() +
-	                  compliance_output.delta_dx_right_arm.head<3>().norm();
-	              if (hand_reference_norm > 1.0e-10) {
-	                walking_manager.setHandComplianceReferences(
-	                    compliance_output.delta_x_left_arm,
-	                    compliance_output.delta_x_right_arm,
-	                    compliance_output.delta_dx_left_arm,
-	                    compliance_output.delta_dx_right_arm);
-	              } else {
-	                walking_manager.clearHandComplianceReferences();
-	              }
+	              walking_manager.setHandComplianceReferences(
+	                  compliance_output.delta_x_left_arm,
+	                  compliance_output.delta_x_right_arm,
+	                  compliance_output.delta_dx_left_arm,
+	                  compliance_output.delta_dx_right_arm,
+	                  compliance_output.delta_ddx_left_arm,
+	                  compliance_output.delta_ddx_right_arm);
 	            }
 	          }
 	        }

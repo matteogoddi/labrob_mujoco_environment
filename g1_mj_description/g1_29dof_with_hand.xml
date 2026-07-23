@@ -55,6 +55,17 @@
   </asset>
 
   <default>
+    <!--
+      A single flat sole per foot gives MuJoCo the same four-corner support
+      interpretation used by the WBC, while retaining the original 170 x 60 mm
+      contact footprint and the original -35 mm lowest point.  condim=4 adds
+      torsional friction about the contact normal, which a finite rubber sole
+      has but the former condim=3 point spheres could not represent.
+    -->
+    <default class="foot_contact">
+      <geom type="box" condim="4" friction="1.0 0.01 0.0001"
+            solref="0.01 1" solimp="0.95 0.99 0.001" priority="5"/>
+    </default>
     <default class="soft_fingertip">
       <geom condim="6" friction="3.0 0.25 0.01" solref="0.006 1.2" solimp="0.88 0.97 0.003" margin="0.002" priority="4"/>
     </default>
@@ -97,10 +108,9 @@
                   <inertial pos="0.026505 0 -0.016425" quat="-0.000481092 0.728482 -0.000618967 0.685065" mass="0.608" diaginertia="0.00167218 0.0016161 0.000217621"/>
                   <joint name="left_ankle_roll_joint" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-50 50"/>
                   <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="left_ankle_roll_link"/>
-                  <geom size="0.005" pos="-0.05 0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="-0.05 -0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="0.12 0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="0.12 -0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
+                  <geom name="left_foot_contact" class="foot_contact"
+                        size="0.085 0.03 0.005" pos="0.035 0 -0.03"
+                        rgba="0.2 0.2 0.2 1"/>
                 </body>
               </body>
             </body>
@@ -136,10 +146,9 @@
                   <inertial pos="0.026505 0 -0.016425" quat="0.000481092 0.728482 0.000618967 0.685065" mass="0.608" diaginertia="0.00167218 0.0016161 0.000217621"/>
                   <joint name="right_ankle_roll_joint" pos="0 0 0" axis="1 0 0" range="-0.2618 0.2618" actuatorfrcrange="-50 50"/>
                   <geom type="mesh" contype="0" conaffinity="0" group="1" density="0" rgba="0.2 0.2 0.2 1" mesh="right_ankle_roll_link"/>
-                  <geom size="0.005" pos="-0.05 0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="-0.05 -0.025 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="0.12 0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
-                  <geom size="0.005" pos="0.12 -0.03 -0.03" rgba="0.2 0.2 0.2 1"/>
+                  <geom name="right_foot_contact" class="foot_contact"
+                        size="0.085 0.03 0.005" pos="0.035 0 -0.03"
+                        rgba="0.2 0.2 0.2 1"/>
                 </body>
               </body>
             </body>

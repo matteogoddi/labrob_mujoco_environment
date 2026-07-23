@@ -6,6 +6,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <stdexcept>
 
@@ -149,6 +150,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     right_hand_compliance_acc_ref_log_.reserve(max_steps);
     left_hand_compliance_acc_achieved_log_.reserve(max_steps);
     right_hand_compliance_acc_achieved_log_.reserve(max_steps);
+    left_hand_compliance_position_ref_log_.reserve(max_steps);
+    right_hand_compliance_position_ref_log_.reserve(max_steps);
+    left_hand_compliance_position_achieved_log_.reserve(max_steps);
+    right_hand_compliance_position_achieved_log_.reserve(max_steps);
+    wbc_solver_status_log_.reserve(max_steps);
+    wbc_equality_residual_log_.reserve(max_steps);
+    wbc_inequality_violation_log_.reserve(max_steps);
     mpc_predictions_log_.reserve(max_steps);
 
     measured_imu_orientation_log_.reserve(max_steps);
@@ -442,6 +450,13 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
               << "), kd(r,p,y)=("
               << params.Kd_torso_motion.transpose()
               << "), weight=" << params.weight_torso << std::endl;
+    std::cout << "WBC residual-hand task params: kp(x,y,z)=("
+              << params.Kp_hand_compliance.head<3>().transpose()
+              << "), kd(x,y,z)=("
+              << params.Kd_hand_compliance.head<3>().transpose()
+              << "), weight(L/R)="
+              << params.weight_lhand_compliance << "/"
+              << params.weight_rhand_compliance << std::endl;
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
         robot_model,
@@ -533,12 +548,16 @@ void WalkingManager::setHandComplianceReferences(
     const Eigen::Matrix<double, 6, 1>& left_arm_offset,
     const Eigen::Matrix<double, 6, 1>& right_arm_offset,
     const Eigen::Matrix<double, 6, 1>& left_arm_velocity,
-    const Eigen::Matrix<double, 6, 1>& right_arm_velocity) {
+    const Eigen::Matrix<double, 6, 1>& right_arm_velocity,
+    const Eigen::Matrix<double, 6, 1>& left_arm_acceleration,
+    const Eigen::Matrix<double, 6, 1>& right_arm_acceleration) {
     use_hand_compliance_reference_ = true;
     left_arm_compliance_offset_ = left_arm_offset;
     right_arm_compliance_offset_ = right_arm_offset;
     left_arm_compliance_velocity_ = left_arm_velocity;
     right_arm_compliance_velocity_ = right_arm_velocity;
+    left_arm_compliance_acceleration_ = left_arm_acceleration;
+    right_arm_compliance_acceleration_ = right_arm_acceleration;
 }
 
 void WalkingManager::clearHandComplianceReferences() {
@@ -547,6 +566,8 @@ void WalkingManager::clearHandComplianceReferences() {
     right_arm_compliance_offset_.setZero();
     left_arm_compliance_velocity_.setZero();
     right_arm_compliance_velocity_.setZero();
+    left_arm_compliance_acceleration_.setZero();
+    right_arm_compliance_acceleration_.setZero();
 }
 
 void WalkingManager::setInteractionWrenches(
@@ -1519,6 +1540,10 @@ WalkingManager::update(
         left_arm_compliance_velocity_;
     desired_gait_configuration.rhand_compliance_velocity =
         right_arm_compliance_velocity_;
+    desired_gait_configuration.lhand_compliance_acceleration =
+        left_arm_compliance_acceleration_;
+    desired_gait_configuration.rhand_compliance_acceleration =
+        right_arm_compliance_acceleration_;
 
     const Eigen::Vector3d desired_torso_rpy = rotationToRpy(desired_gait_configuration.torso.pos);
     const Eigen::Vector3d current_torso_rpy = rotationToRpy(current_gait_configuration.torso.pos);
@@ -1624,6 +1649,20 @@ WalkingManager::update(
         whole_body_controller_ptr_->getLeftHandComplianceAccelerationAchieved());
     right_hand_compliance_acc_achieved_log_.push_back(
         whole_body_controller_ptr_->getRightHandComplianceAccelerationAchieved());
+    left_hand_compliance_position_ref_log_.push_back(
+        whole_body_controller_ptr_->getLeftHandCompliancePositionReference());
+    right_hand_compliance_position_ref_log_.push_back(
+        whole_body_controller_ptr_->getRightHandCompliancePositionReference());
+    left_hand_compliance_position_achieved_log_.push_back(
+        whole_body_controller_ptr_->getLeftHandCompliancePositionAchieved());
+    right_hand_compliance_position_achieved_log_.push_back(
+        whole_body_controller_ptr_->getRightHandCompliancePositionAchieved());
+    wbc_solver_status_log_.push_back(
+        whole_body_controller_ptr_->getSolverStatus());
+    wbc_equality_residual_log_.push_back(
+        whole_body_controller_ptr_->getEqualityResidualInfinityNorm());
+    wbc_inequality_violation_log_.push_back(
+        whole_body_controller_ptr_->getInequalityViolationInfinityNorm());
 
     // Get measured joint torques from the joint command
     Eigen::VectorXd measured_torques(robot_model.nv - 6);  // Exclude floating base
@@ -1946,6 +1985,10 @@ void WalkingManager::saveLogs() {
     }
 
     std::ofstream torso_tracking_file("/tmp/wbc_torso_orientation_tracking.txt");
+    // Absolute Euler angles can sit close to a +/-pi branch even when the
+    // physical torso rotation is small. Preserve enough digits that
+    // post-processing can compose the rotations without staircase artifacts.
+    torso_tracking_file << std::setprecision(17);
     torso_tracking_file
         << "time "
         << "offset_roll offset_pitch offset_yaw "
@@ -1992,6 +2035,51 @@ void WalkingManager::saveLogs() {
             << left_hand_compliance_acc_achieved_log_[i].transpose() << " "
             << right_hand_compliance_acc_ref_log_[i].transpose() << " "
             << right_hand_compliance_acc_achieved_log_[i].transpose() << "\n";
+    }
+
+    std::ofstream hand_compliance_position_file(
+        "/tmp/wbc_hand_compliance_position_tracking.txt");
+    hand_compliance_position_file
+        << "time "
+        << "l_ref_x l_ref_y l_ref_z l_ach_x l_ach_y l_ach_z "
+        << "r_ref_x r_ref_y r_ref_z r_ach_x r_ach_y r_ach_z\n";
+    std::size_t hand_position_samples = torso_tracking_time_log_.size();
+    hand_position_samples = std::min(
+        hand_position_samples, left_hand_compliance_position_ref_log_.size());
+    hand_position_samples = std::min(
+        hand_position_samples, right_hand_compliance_position_ref_log_.size());
+    hand_position_samples = std::min(
+        hand_position_samples,
+        left_hand_compliance_position_achieved_log_.size());
+    hand_position_samples = std::min(
+        hand_position_samples,
+        right_hand_compliance_position_achieved_log_.size());
+    for (std::size_t i = 0; i < hand_position_samples; ++i) {
+        hand_compliance_position_file
+            << torso_tracking_time_log_[i] << " "
+            << left_hand_compliance_position_ref_log_[i].transpose() << " "
+            << left_hand_compliance_position_achieved_log_[i].transpose() << " "
+            << right_hand_compliance_position_ref_log_[i].transpose() << " "
+            << right_hand_compliance_position_achieved_log_[i].transpose()
+            << "\n";
+    }
+
+    std::ofstream wbc_solver_quality_file("/tmp/wbc_solver_quality.txt");
+    wbc_solver_quality_file
+        << "time status equality_residual_inf inequality_violation_inf\n";
+    std::size_t solver_quality_samples = torso_tracking_time_log_.size();
+    solver_quality_samples = std::min(
+        solver_quality_samples, wbc_solver_status_log_.size());
+    solver_quality_samples = std::min(
+        solver_quality_samples, wbc_equality_residual_log_.size());
+    solver_quality_samples = std::min(
+        solver_quality_samples, wbc_inequality_violation_log_.size());
+    for (std::size_t i = 0; i < solver_quality_samples; ++i) {
+        wbc_solver_quality_file
+            << torso_tracking_time_log_[i] << " "
+            << wbc_solver_status_log_[i] << " "
+            << wbc_equality_residual_log_[i] << " "
+            << wbc_inequality_violation_log_[i] << "\n";
     }
     
     std::ofstream measured_joint_position_file("/tmp/measured_joint_position.txt");
