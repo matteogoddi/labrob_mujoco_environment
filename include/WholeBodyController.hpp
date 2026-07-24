@@ -90,6 +90,8 @@ class WholeBodyController {
   );
 
   const Eigen::VectorXd& get_q_ddot() const { return q_ddot_; }
+  const Eigen::VectorXd& get_q_dot_des() const { return q_dot_des_; }
+  const Eigen::VectorXd& get_q_des() const { return q_des_; }
   const Eigen::VectorXd& get_flr()    const { return flr_; }
   const Eigen::VectorXd& getLeftFootWrench()  const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
@@ -114,6 +116,9 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
   Eigen::VectorXd q_ddot_;
   Eigen::VectorXd flr_;
+
+  Eigen::VectorXd q_dot_des_;
+  Eigen::VectorXd q_des_;
 
   double sample_time_;
   WholeBodyControllerParams params_;

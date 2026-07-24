@@ -137,6 +137,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "left_arm_tau_g", "right_arm_tau_g",
         "initial_generalized_momentum", "generalized_momentum",
         "wbc_force_lsole", "wbc_force_rsole", "wbc_corner_forces_left", "wbc_corner_forces_right", "wbc_accelerations",
+        "q_dot_des", "q_des",
         "angular_momentum", "angular_momentum_rate",
         "input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
@@ -1504,6 +1505,8 @@ WalkingManager::update(
     logger_.log("friction_cone_ratio_right_y_bl", friction_cone_ratios_right_y_[2]);
     logger_.log("friction_cone_ratio_right_y_br", friction_cone_ratios_right_y_[3]);
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
+    logger_.log("q_dot_des",             whole_body_controller_ptr_->get_q_dot_des());
+    logger_.log("q_des",                 whole_body_controller_ptr_->get_q_des());
     logger_.log("angular_momentum",      angular_momentum);
     logger_.log("angular_momentum_rate", L_dot_);
 

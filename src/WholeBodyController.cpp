@@ -109,12 +109,15 @@ WholeBodyController::WholeBodyController(
   q_ddot_ = Eigen::VectorXd::Zero(robot_model.nv);
   flr_    = Eigen::VectorXd::Zero(2 * 3 * nc);
 
+  q_dot_des_ = Eigen::VectorXd::Zero(robot_model.nv - 6);
+  q_des_ = Eigen::VectorXd::Zero(robot_model.nv - 6);
+
   M_armature_ = Eigen::VectorXd::Zero(nj);
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
   wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_, SPEED_ABS, 50, 1e-6);
+      n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_, SPEED_ABS, 50, 1e6);
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
   right_foot_wrench_ = Eigen::VectorXd::Zero(6);
@@ -462,9 +465,34 @@ WholeBodyController::compute_inverse_dynamics(
   left_foot_wrench_  = T_l_ * fl;
   right_foot_wrench_ = T_r_ * fr;
 
+  // Online reference generation with semi-implicit Euler integration
+  q_dot_des_ = qdot + sample_time_ * q_ddot_;
+  q_des_ = q + sample_time_ * q_dot_des_ + 0.5 * (sample_time_ * sample_time_) * q_ddot_;
+
+
+  Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
+  Kd_vec << 2, 2, 2, 3, 2, 2,
+            2, 2, 2, 3, 2, 2,
+            2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2,
+            2, 2, 2, 2, 2, 2, 2;
+  Eigen::MatrixXd Kd = Kd_vec.asDiagonal();
+
+  Eigen::VectorXd Kp_vec = Eigen::VectorXd::Zero(nj);
+  Kp_vec << 40, 40, 40, 60, 40, 30,    // left leg
+            40, 40, 40, 60, 40, 30,    // right leg
+            25, 25, 15,                // waist
+            12, 12, 12, 7,  4, 4, 4,   // left arm
+            12, 12, 12, 7,  4, 4, 4;   // right arm
+  
+
+  Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
+
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
-      - Jra_.transpose() * right_foot_wrench_;
+      - Jra_.transpose() * right_foot_wrench_
+      + Kd * (q_dot_des_ - qdot)
+      + Kp * (q_des_ - q);
 
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)

@@ -69,6 +69,8 @@ if __name__ == '__main__':
 
     input_torque = _load('input_torque.txt', 29)
     motor_torque_filt = _load('motor_torque_filt.txt', 29)  # real-robot only (EMA-filtered motor torques)
+    q_dot_des = _load('q_dot_des.txt', 29)
+    q_des = _load('q_des.txt', 29)
 
     ef_zmp_position = _load('ef_zmp_position.txt', 3)
 
@@ -242,6 +244,10 @@ if __name__ == '__main__':
         os.makedirs('images/wbc_solutions/wbc_sole_forces')
     if not os.path.exists('images/wbc_solutions/friction_cone'):
         os.makedirs('images/wbc_solutions/friction_cone')
+    if not os.path.exists('images/wbc_solutions/online_references/joint_positions'):
+        os.makedirs('images/wbc_solutions/online_references/joint_positions')
+    if not os.path.exists('images/wbc_solutions/online_references/joint_velocities'):
+        os.makedirs('images/wbc_solutions/online_references/joint_velocities')
     if not os.path.exists('images/wrench_estimations/sole_wrenches'):
         os.makedirs('images/wrench_estimations/sole_wrenches')
     if not os.path.exists('images/soles/references'):
@@ -442,6 +448,32 @@ if __name__ == '__main__':
         fig.savefig(f"images/wbc_solutions/wbc_joint_torques_ffw/{group_name}_input_joint_torques.png")
         plt.close(fig)
         figs.append(fig)
+
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, q_dot_des[:, i], label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Velocity [rad/s]')
+        ax.set_title(f'WBC Desired Joint Velocity (Online Reference) - {group_name}')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/wbc_solutions/online_references/joint_velocities/{group_name}_q_dot_des.png")
+        plt.close(fig)
+
+    for group_name, indices in grouped_indices.items():
+        fig, ax = plt.subplots()
+        for i in indices:
+            ax.plot(t, q_des[:, i], label=joint_names[i].strip())
+        ax.set_xlabel('Time [s]')
+        ax.set_ylabel('Position [rad]')
+        ax.set_title(f'WBC Desired Joint Position (Online Reference) - {group_name}')
+        ax.grid(True)
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(f"images/wbc_solutions/online_references/joint_positions/{group_name}_q_des.png")
+        plt.close(fig)
 
     fig, ax = plt.subplots()
     ax.plot(t, wbc_accelerations[:, 0], label='Acceleration X', color='blue')
