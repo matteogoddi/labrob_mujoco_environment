@@ -466,8 +466,8 @@ WholeBodyController::compute_inverse_dynamics(
   right_foot_wrench_ = T_r_ * fr;
 
   // Online reference generation with semi-implicit Euler integration
-  q_dot_des_ = qdot + sample_time_ * q_ddot_;
-  q_des_ = q + sample_time_ * q_dot_des_ + 0.5 * (sample_time_ * sample_time_) * q_ddot_;
+  q_dot_des_ = qdot.tail(nj) + sample_time_ * q_ddot_.tail(nj);
+  q_des_ = q.tail(nj) + sample_time_ * q_dot_des_ + 0.5 * (sample_time_ * sample_time_) * q_ddot_.tail(nj);
 
 
   Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
@@ -491,8 +491,8 @@ WholeBodyController::compute_inverse_dynamics(
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
       - Jra_.transpose() * right_foot_wrench_
-      + Kd * (q_dot_des_ - qdot)
-      + Kp * (q_des_ - q);
+      + Kd * (q_dot_des_ - qdot.tail(nj))
+      + Kp * (q_des_ - q.tail(nj));
 
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)

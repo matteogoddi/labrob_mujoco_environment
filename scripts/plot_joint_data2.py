@@ -3139,6 +3139,23 @@ if __name__ == '__main__':
     WF_EST_COLORS = ['tab:blue', 'tab:orange', 'tab:green']
     WF_GT_COLORS = ['tab:cyan', 'tab:red', 'tab:olive']
 
+    def _robust_loadtxt(path):
+        # If the simulation is interrupted (Ctrl+C/crash) while a row is being
+        # written, the log's last line ends up with fewer columns than the rest.
+        # Fall back to dropping any malformed trailing row(s) instead of failing.
+        try:
+            return np.loadtxt(path)
+        except ValueError:
+            with open(path) as f:
+                lines = f.readlines()
+            ncols = len(lines[0].split())
+            good_lines = [ln for ln in lines if len(ln.split()) == ncols]
+            dropped = len(lines) - len(good_lines)
+            if dropped:
+                print(f"[WARN] {os.path.basename(path)}: dropped {dropped} malformed "
+                      f"row(s) (likely truncated by an interrupted simulation).")
+            return np.loadtxt(io.StringIO(''.join(good_lines)))
+
     def _wf_load(filename, required=True):
         path = folder + '/' + filename
         if not os.path.exists(path):
@@ -3146,7 +3163,7 @@ if __name__ == '__main__':
                 raise FileNotFoundError(f"File non trovato: {path}")
             print(f"[INFO] {filename} non trovato — ground truth non visualizzato.")
             return None
-        data = np.loadtxt(path)
+        data = _robust_loadtxt(path)
         if data.ndim == 1:
             data = data.reshape(1, -1)
         return data
@@ -3170,7 +3187,7 @@ if __name__ == '__main__':
         def _load_gt(name):
             p = _gt_base + '/' + name
             if os.path.exists(p):
-                return np.loadtxt(p)
+                return _robust_loadtxt(p)
             print(f"[INFO] {name} non trovato in {_gt_base} — ground truth non visualizzato.")
             return None
         gt_right = _load_gt('gt_right_wrist.txt')

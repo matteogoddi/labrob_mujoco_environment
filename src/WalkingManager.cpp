@@ -695,7 +695,7 @@ WalkingManager::update(
     else
         LipState = LIPState(p_CoM, J_CoM * qdot, ef_zmp_3d);
 
-    // kf_LipState = LipState; // --> use this to disable the CoM KF
+    //kf_LipState = LipState; // --> use this to disable the CoM KF
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
 
     auto end_kf = std::chrono::high_resolution_clock::now();
