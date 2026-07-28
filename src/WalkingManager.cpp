@@ -601,6 +601,19 @@ WalkingManager::update(
     
     zmp_3d_est = zmp_3d_meas + controller_timestep_msec_ * 0.001 * ismpc_input;
 
+    left_foot_torque = wrist_force_estimator_ptr_->getLeftFootWrench().tail<3>();
+    right_foot_torque = wrist_force_estimator_ptr_->getRightFootWrench().tail<3>();
+
+    Eigen::VectorXd FourC_foot_force = whole_body_controller_ptr_->get_flr();
+
+    Eigen::VectorXd FourC_left_foot_force = FourC_foot_force.head<12>();
+    Eigen::VectorXd FourC_right_foot_force = FourC_foot_force.tail<12>();
+
+    double FourC_left_foot_force_z = FourC_left_foot_force(2) + FourC_left_foot_force(5) + FourC_left_foot_force(8) + FourC_left_foot_force(11);
+    double FourC_right_foot_force_z = FourC_right_foot_force(2) + FourC_right_foot_force(5) + FourC_right_foot_force(8) + FourC_right_foot_force(11);
+
+    double FourC_total_foot_force_z = FourC_left_foot_force_z + FourC_right_foot_force_z;
+
     zmp_3d_meas.setZero();
     if (ZMP_TYPE == 1){
 
@@ -638,7 +651,62 @@ WalkingManager::update(
         zmp_3d_meas.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
         zmp_3d_meas.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
         zmp_3d_meas.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
+    
+    
+
+    } else if (ZMP_TYPE == 5) {
+        if (t_msec_ < 5000) {
+            Eigen::Vector3d com_acc = a_CoM_drift + J_CoM * whole_body_controller_ptr_->get_q_ddot();
+        
+            zmp_3d_meas.x() = p_CoM.x() - (com_acc.x()) / eta2;
+            zmp_3d_meas.y() = p_CoM.y() - (com_acc.y()) / eta2;
+        }
+        else{
+            zmp_3d_meas.z() = 0.0;
+            zmp_3d_meas.x() = 0.0;
+            zmp_3d_meas.y() = 0.0;
+            for (int i = 0; i < robot_state.contact_points.size(); ++i) {
+                auto &pi = robot_state.contact_points[i];
+                auto &fi = robot_state.contact_forces[i];
+                zmp_3d_meas.x() += (pi.x() * fi.z() / total_force.z() + (zmp_3d_meas.z() - pi.z()) * fi.x() / total_force.z());
+                zmp_3d_meas.y() += (pi.y() * fi.z() / total_force.z() + (zmp_3d_meas.z() - pi.z()) * fi.y() / total_force.z());
+            }
+        }
+    } else if (ZMP_TYPE == 6) {
+
+        if (std::abs(total_force.z()) < 1e-3) {
+            zmp_3d_meas = zmp_3d_est;
+        }
+        else{
+            zmp_3d_meas.x() = ( left_foot_force.z()  * T_lsole.translation().x()
+                    + right_foot_force.z() * T_rsole.translation().x()
+                    - left_foot_torque.y() - right_foot_torque.y() ) / total_force.z();
+
+            zmp_3d_meas.y() = ( left_foot_force.z()  * T_lsole.translation().y()
+                    + right_foot_force.z() * T_rsole.translation().y()
+                    + left_foot_torque.x() + right_foot_torque.x() ) / total_force.z();
+
+            zmp_3d_meas.z() = 0.0;
+        }
+    } else if (ZMP_TYPE == 7) {
+        if (t_msec_ < 5000) {
+            zmp_3d_meas = zmp_3d_est;
+        }
+        else{
+            zmp_3d_meas.x() = ( (T_lsole.translation().x() + 0.1) * FourC_left_foot_force(2) + (T_lsole.translation().x() + 0.1) * FourC_left_foot_force(5) 
+            + (T_lsole.translation().x() - 0.1) * FourC_left_foot_force(8) + (T_lsole.translation().x() - 0.1) * FourC_left_foot_force(11) + (T_rsole.translation().x() + 0.1) * FourC_right_foot_force(2) 
+            + (T_rsole.translation().x() + 0.1) * FourC_right_foot_force(5) + (T_rsole.translation().x() - 0.1) * FourC_right_foot_force(8) + (T_rsole.translation().x() - 0.1) * FourC_right_foot_force(11) )
+            / FourC_total_foot_force_z;
+
+            zmp_3d_meas.y() = ( (T_lsole.translation().y() + 0.225) * FourC_left_foot_force(2) + (T_lsole.translation().y() - 0.225) * FourC_left_foot_force(5)
+            + (T_lsole.translation().y() + 0.225) * FourC_left_foot_force(8) + (T_lsole.translation().y() - 0.225) * FourC_left_foot_force(11) + (T_rsole.translation().y() + 0.225) * FourC_right_foot_force(2)
+            + (T_rsole.translation().y() - 0.225) * FourC_right_foot_force(5) + (T_rsole.translation().y() + 0.225) * FourC_right_foot_force(8) + (T_rsole.translation().y() - 0.225) * FourC_right_foot_force(11) )
+            / FourC_total_foot_force_z;
+
+            zmp_3d_meas.z() = 0.0;
+        }
     }
+
 
     Eigen::Vector3d zmp_3d = (ZMP_TYPE > 0) ? zmp_3d_meas : zmp_3d_est;
     zmp_3d = zmp_3d_meas;
@@ -683,7 +751,13 @@ WalkingManager::update(
     auto start_kf = std::chrono::high_resolution_clock::now();
     LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_input_3d(*ismpc_ptr_));
-    kf_LipState = LipState;
+    // kf_LipState = LipState;
+
+    // set the kf_lip_state com position and velocity to the LipState com position and velocity
+
+    kf_LipState.com_pos_ = LipState.com_pos_;
+    kf_LipState.com_vel_ = LipState.com_vel_;
+    
     auto end_kf = std::chrono::high_resolution_clock::now();
 
 
@@ -1030,7 +1104,7 @@ WalkingManager::update(
         {
             if(isMPCLoopClosed){
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState);
-                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                // ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 1000000 * (zmp_3d_est - zmp_3d_meas);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     kf_LipState,
@@ -1039,7 +1113,7 @@ WalkingManager::update(
             }
             else{
                 ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState);
-                ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 10 * (zmp_3d_est - zmp_3d_meas);
+                // ismpc_input = ismpc_input_3d(*ismpc_ptr_) + 1000000 * (zmp_3d_est - zmp_3d_meas);
                 ismpc_input = ismpc_input_3d(*ismpc_ptr_);
                 des_LipState = discrete_lip_dynamics_ptr_->integrate(
                     des_LipState,
@@ -1065,7 +1139,7 @@ WalkingManager::update(
         LIPState LipState_mpc = mpc_LipState_prec;
 
         // Buffer per-solve MPC snapshot in memory; written to disk in saveLogs().
-        constexpr int64_t kMpcSnapshotPeriodMs = 10;
+        constexpr int64_t kMpcSnapshotPeriodMs = 100;
         if (t_msec_ % kMpcSnapshotPeriodMs == 0) {
             const int N_log = static_cast<int>(inputSequenceX.size());
 
@@ -1120,9 +1194,9 @@ WalkingManager::update(
     desired_gait_configuration.com.acc.z() = 0;
 
 
-    desired_gait_configuration.com.pos = p_CoM_init;
-    desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
-    desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.pos = p_CoM_init;
+    // desired_gait_configuration.com.vel << 0.0, 0.0, 0.0;
+    // desired_gait_configuration.com.acc << 0.0, 0.0, 0.0;
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;

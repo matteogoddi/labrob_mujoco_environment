@@ -90,7 +90,7 @@ WalkingData::initializeWalkingData(
             labrob::Foot::RIGHT
         ),
         0.0,
-        2000,
+        10000,
         labrob::WalkingState::Standing
     ));
 }

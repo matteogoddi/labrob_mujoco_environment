@@ -125,6 +125,9 @@ class WalkingManager {
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
   std::unique_ptr<labrob::WristForceEstimator> wrist_force_estimator_ptr_;
 
+  Eigen::Vector3d right_foot_torque = Eigen::Vector3d::Zero();
+  Eigen::Vector3d left_foot_torque = Eigen::Vector3d::Zero();
+
 private:
 
   // ── CoMKF (inlined) ─────────────────────────────────────────────────────
@@ -137,7 +140,7 @@ private:
   // noise parameters (same defaults as CoMKF class)
   static constexpr double kComKfMeasPos = 1.0e-2;
   static constexpr double kComKfMeasVel = 1.0e-2;
-  static constexpr double kComKfMeasZmp = 1.0e8;
+  static constexpr double kComKfMeasZmp = 1.0e3;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;

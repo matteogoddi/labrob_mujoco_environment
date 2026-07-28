@@ -25,7 +25,7 @@
 bool isMPCLoopClosed    = true;
 bool isObserverActive   = false;
 bool switchWalkingState = false;  // never set in sim, WalkingManager reads it
-int  ZMP_TYPE           = 3;
+int  ZMP_TYPE           = 7;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(G1_NUM_MOTOR);
 
