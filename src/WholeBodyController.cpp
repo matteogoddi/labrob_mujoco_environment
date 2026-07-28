@@ -494,6 +494,21 @@ WholeBodyController::compute_inverse_dynamics(
       + Kd * (q_dot_des_ - qdot.tail(nj))
       + Kp * (q_des_ - q.tail(nj));
 
+  
+  // Check for limit exceeding
+  double upper_limit, lower_limit;
+  for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid) {
+    
+    lower_limit = joint_limits.at(robot_model.names[jid + 2]).lower;
+    upper_limit = joint_limits.at(robot_model.names[jid + 2]).upper;
+
+    if (q_des_[jid] < lower_limit)
+      std::cout << "Joint " << robot_model.names[jid + 2] << " exceeding lower bound by " << lower_limit - q_des_[jid] << std::endl;
+
+    if (q_des_[jid] > upper_limit)
+      std::cout << "Joint " << robot_model.names[jid + 2] << " exceeding upper bound by " << q_des_[jid] - upper_limit << std::endl;
+  }
+
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     joint_command[robot_model.names[jid + 2]] = tau[jid];

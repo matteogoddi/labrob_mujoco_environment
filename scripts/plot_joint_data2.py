@@ -32,6 +32,41 @@ if __name__ == '__main__':
 
     joint_names = open(folder + '/joint_names.txt').readlines()
 
+    # Joint position limits [rad] (lower, upper), from
+    # robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf (the URDF loaded
+    # by WalkingManager.cpp).
+    joint_limits = {
+        'left_hip_pitch_joint': (-2.5307, 2.8798),
+        'left_hip_roll_joint': (-0.5236, 2.9671),
+        'left_hip_yaw_joint': (-2.7576, 2.7576),
+        'left_knee_joint': (-0.087267, 2.8798),
+        'left_ankle_pitch_joint': (-0.87267, 0.5236),
+        'left_ankle_roll_joint': (-0.2618, 0.2618),
+        'right_hip_pitch_joint': (-2.5307, 2.8798),
+        'right_hip_roll_joint': (-2.9671, 0.5236),
+        'right_hip_yaw_joint': (-2.7576, 2.7576),
+        'right_knee_joint': (-0.087267, 2.8798),
+        'right_ankle_pitch_joint': (-0.87267, 0.5236),
+        'right_ankle_roll_joint': (-0.2618, 0.2618),
+        'waist_yaw_joint': (-2.618, 2.618),
+        'waist_roll_joint': (-0.52, 0.52),
+        'waist_pitch_joint': (-0.52, 0.52),
+        'left_shoulder_pitch_joint': (-3.0892, 2.6704),
+        'left_shoulder_roll_joint': (-1.5882, 2.2515),
+        'left_shoulder_yaw_joint': (-2.618, 2.618),
+        'left_elbow_joint': (-1.0472, 2.0944),
+        'left_wrist_roll_joint': (-1.972222054, 1.972222054),
+        'left_wrist_pitch_joint': (-1.614429558, 1.614429558),
+        'left_wrist_yaw_joint': (-1.614429558, 1.614429558),
+        'right_shoulder_pitch_joint': (-3.0892, 2.6704),
+        'right_shoulder_roll_joint': (-2.2515, 1.5882),
+        'right_shoulder_yaw_joint': (-2.618, 2.618),
+        'right_elbow_joint': (-1.0472, 2.0944),
+        'right_wrist_roll_joint': (-1.972222054, 1.972222054),
+        'right_wrist_pitch_joint': (-1.614429558, 1.614429558),
+        'right_wrist_yaw_joint': (-1.614429558, 1.614429558),
+    }
+
     startPlot = 0
 
     fb_com_position = np.loadtxt(folder + '/com_position.txt')
@@ -465,7 +500,12 @@ if __name__ == '__main__':
     for group_name, indices in grouped_indices.items():
         fig, ax = plt.subplots()
         for i in indices:
-            ax.plot(t, q_des[:, i], label=joint_names[i].strip())
+            jname = joint_names[i].strip()
+            line, = ax.plot(t, q_des[:, i], label=jname)
+            if jname in joint_limits:
+                lower, upper = joint_limits[jname]
+                ax.axhline(lower, color=line.get_color(), linestyle='--', linewidth=1, alpha=0.5)
+                ax.axhline(upper, color=line.get_color(), linestyle='--', linewidth=1, alpha=0.5)
         ax.set_xlabel('Time [s]')
         ax.set_ylabel('Position [rad]')
         ax.set_title(f'WBC Desired Joint Position (Online Reference) - {group_name}')

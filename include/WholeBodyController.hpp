@@ -24,6 +24,7 @@
 #include <GaitConfiguration.hpp>
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
+#include <RobotConfig.hpp>
 
 #include <QpSolver.hpp>
 
