@@ -9,7 +9,7 @@
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/model.hpp>
 
-#include <DcmFeedbackController.hpp>
+#include <ComComplianceController.hpp>
 #include <DiscreteLIPDynamics.hpp>
 #include <globals.h>
 #ifdef ISMPC_USE_2D
@@ -112,7 +112,8 @@ class WalkingManager {
   LIPState kf_LipState;
   LIPState des_LipState;
   // Self-integrating open-loop nominal LIP trajectory (decoupled from the
-  // estimated state), used as xi_d/z_d reference by the DCM feedback below.
+  // estimated state), used as the zmp_desired/com_des_from_MPC reference by
+  // the CoM compliance stabilizer below.
   LIPState nominal_LipState_;
 
   Eigen::Vector3d p_CoM_init;
@@ -170,7 +171,7 @@ private:
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
-  std::unique_ptr<labrob::DcmFeedbackController> dcm_feedback_ptr_;
+  std::unique_ptr<labrob::ComComplianceController> com_compliance_ptr_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
     // Private members online planner

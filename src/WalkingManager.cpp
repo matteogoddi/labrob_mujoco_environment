@@ -147,7 +147,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "kf_com_position",  "kf_com_velocity",  "kf_zmp_position",
         "des_com_position", "des_com_velocity", "des_zmp_position", "des_com_acceleration",
         "nominal_com_position", "nominal_com_velocity", "nominal_zmp_position",
-        "dcm_nominal", "dcm_measured", "dcm_error", "dcm_integral_state", "zmp_command",
+        "zmp_error_tpc", "com_compliance_delta",
         "ef_zmp_position",
         "p_lsole", "p_rsole", "v_lsole", "v_rsole",
         "p_lsole_des", "p_rsole_des", "v_lsole_des", "v_rsole_des",
@@ -443,30 +443,25 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         0.001 * mpc_timestep_msec
     );
 
-    // DCM feedback stabilizer: disabled by default (true no-op, see
-    // DcmFeedbackController::Params) — abilitare e ritarare gradualmente
-    // seguendo il piano di taratura incrementale.
-    // Fase 1-3 (piano DCM feedback), guadagni confermati con isMPCLoopClosed
-    // =false: kp/eta=1 (Fase 1); kz=0.4*kp (Fase 2, rapporto del paper);
-    // ki=4*kp con Ti=20s default (Fase 3, rapporto del paper) — l'integratore
-    // ora resta delimitato invece di crescere senza freno come con ki=0.
-    // Fase 4 in corso: isMPCLoopClosed=true (main_sim.cpp) — l'MPC richiude
-    // di nuovo il loop sullo stato misurato insieme a questo feedback
-    // esplicito; se emergono oscillazioni da doppio anello, ridurre questi
-    // guadagni (probabile prima kp, poi ki) prima di tornare a isolare
-    // l'anello con isMPCLoopClosed=false.
-    // Nota aperta (tuning WBC, non DCM): torso/pelvis ora oscillano meno
-    // (weight_torso/weight_pelvis alzati) ma le braccia si muovono molto
-    // durante il cammino laterale — ancora da risolvere.
-    labrob::DcmFeedbackController::Params dcm_params =
-        labrob::DcmFeedbackController::Params::getDefaultParams();
-    dcm_params.enabled = true;
-    dcm_params.kp = std::sqrt(eta2);
-    dcm_params.kz = 0.4 * dcm_params.kp;
-    dcm_params.ki = 4.0 * dcm_params.kp;
-    dcm_feedback_ptr_ = std::make_unique<labrob::DcmFeedbackController>(
-        std::sqrt(eta2),
-        dcm_params
+    // CoM position compliance stabilizer (Nagasaka TPC-style, see
+    // ComComplianceController.hpp): treats the CoM as connected to the
+    // measured ZMP through a virtual spring-damper, correcting the CoM
+    // *position* reference instead of feeding an acceleration term or a
+    // corrected ZMP — replaces the previous DCM-error-based
+    // DcmFeedbackController entirely.
+    // Gains below are conservative Phase-1 starting points, NOT validated in
+    // simulation yet — follow the same incremental rollout used previously
+    // for the DCM controller: start with isMPCLoopClosed=false to isolate
+    // the loop, Kd_c=0 first, then introduce Kd_c, then re-enable
+    // isMPCLoopClosed=true and watch for double-loop oscillations.
+    labrob::ComComplianceController::Params com_compliance_params =
+        labrob::ComComplianceController::Params::getDefaultParams();
+    com_compliance_params.enabled = false;
+    com_compliance_params.Kp_c = 0.3 * std::sqrt(eta2);
+    com_compliance_params.Kd_c = 0.0;
+    com_compliance_params.T_leak = 1.0;
+    com_compliance_ptr_ = std::make_unique<labrob::ComComplianceController>(
+        com_compliance_params
     );
 
     // WRIST FORCE ESTIMATOR BASED ON FULL MODEL AND ALL EXTERNAL WRENCHES
@@ -801,7 +796,7 @@ WalkingManager::update(
         // Reset LIP state at current measured value
         des_LipState = kf_LipState;
         nominal_LipState_ = kf_LipState;
-        dcm_feedback_ptr_->reset();
+        com_compliance_ptr_->reset();
 
          // Standing --> Walking transition: remove infinite standing step, reset t0, pre-fill deque
         if (reactive_standing_) {
@@ -1119,45 +1114,34 @@ WalkingManager::update(
         }
     }
 
-    // DCM feedback stabilizer: corrects the ZMP command (x,y) based on the
-    // error between the nominal (open-loop) DCM and the estimated DCM, while
-    // leaving the nominal CoM pos/vel untouched — so the WBC's CoM PD task
-    // keeps a genuine tracking error, and the correction enters only as a
-    // feedforward acceleration term (see desired_gait_configuration.com.acc
-    // below). Disabled (and re-synced) outside active walking states.
-    const bool dcm_feedback_active =
+    // CoM compliance stabilizer: corrects the CoM *position* reference (x,y)
+    // based on the ZMP tracking error (measured vs. nominal/MPC), leaving
+    // the nominal CoM velocity and acceleration feedforward untouched — see
+    // ComComplianceController.hpp for the control law. Disabled (and
+    // re-synced) outside active walking states.
+    const bool com_compliance_active =
         (walking_data_.getWalkingState() != labrob::WalkingState::Init &&
          walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation &&
          walking_data_.getWalkingState() != labrob::WalkingState::Standing);
 
-    if (!dcm_feedback_active) {
+    if (!com_compliance_active) {
         nominal_LipState_ = kf_LipState;
-        dcm_feedback_ptr_->reset();
+        com_compliance_ptr_->reset();
     }
 
-    const double eta_dcm = std::sqrt(eta2);
-    const Eigen::Vector2d dcm_nominal =
-        nominal_LipState_.com_pos_.head<2>() + nominal_LipState_.com_vel_.head<2>() / eta_dcm;
-    const Eigen::Vector2d dcm_measured =
-        kf_LipState.com_pos_.head<2>() + kf_LipState.com_vel_.head<2>() / eta_dcm;
-
-    const Eigen::Vector2d zmp_cmd_xy = dcm_feedback_ptr_->computeCorrectedZmp(
-        dcm_nominal, dcm_measured,
-        nominal_LipState_.zmp_pos_.head<2>(), kf_LipState.zmp_pos_.head<2>(),
+    const Eigen::Vector2d delta_com_xy = com_compliance_ptr_->update(
+        kf_LipState.zmp_pos_.head<2>(),        // zmp_measured
+        nominal_LipState_.zmp_pos_.head<2>(),  // zmp_desired (from the MPC-LIP)
         controller_timestep_msec_ * 0.001
     );
 
     des_LipState = nominal_LipState_;
-    des_LipState.zmp_pos_.head<2>() = zmp_cmd_xy;
 
     logger_.log("nominal_com_position", nominal_LipState_.com_pos_);
     logger_.log("nominal_com_velocity", nominal_LipState_.com_vel_);
     logger_.log("nominal_zmp_position", nominal_LipState_.zmp_pos_);
-    logger_.log("dcm_nominal", dcm_nominal);
-    logger_.log("dcm_measured", dcm_measured);
-    logger_.log("dcm_error", dcm_feedback_ptr_->getLastDcmError());
-    logger_.log("dcm_integral_state", dcm_feedback_ptr_->getIntegralState());
-    logger_.log("zmp_command", zmp_cmd_xy);
+    logger_.log("zmp_error_tpc", com_compliance_ptr_->getLastZmpError());
+    logger_.log("com_compliance_delta", delta_com_xy);
 
     logger_.log("mpc_zmp_velocity", ismpc_input_3d(*ismpc_ptr_));
 
@@ -1227,6 +1211,10 @@ WalkingManager::update(
 
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
+    // CoM position compliance correction (ZMP error -> CoM position, see
+    // ComComplianceController above): applied only in x,y, only to the
+    // position reference -- velocity/acceleration stay pure feedforward.
+    desired_gait_configuration.com.pos.head<2>() += delta_com_xy;
     desired_gait_configuration.com.pos.z() = p_CoM_init.z();
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
     desired_gait_configuration.com.vel.z() = 0;

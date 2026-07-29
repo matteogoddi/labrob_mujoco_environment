@@ -165,11 +165,8 @@ if __name__ == '__main__':
     nominal_com_position     = L('nominal_com_position')
     nominal_com_velocity     = L('nominal_com_velocity')
     nominal_zmp_position     = L('nominal_zmp_position')
-    dcm_nominal              = L('dcm_nominal')
-    dcm_measured             = L('dcm_measured')
-    dcm_error                = L('dcm_error')
-    dcm_integral_state       = L('dcm_integral_state')
-    zmp_command              = L('zmp_command')
+    zmp_error_tpc            = L('zmp_error_tpc')
+    com_compliance_delta     = L('com_compliance_delta')
     input_torque             = L('input_torque')
     wbc_accelerations        = L('wbc_accelerations')
     estimated_force_lsole    = L('estimated_force_lsole')
@@ -656,20 +653,17 @@ if __name__ == '__main__':
         'Nominal (open-loop) ZMP Position', r'Position [$\mathrm{m}$]',
         'images/task_com/references/nominal_zmp_position_plot.png')
 
-    plot_comparison(t, dcm_measured, dcm_nominal,
-        [fr'${l}$' for l in labels_xy], 'DCM', r'[$\mathrm{m}$]',
-        'images/task_com/references/dcm_comparison_plot.png')
-    plot_components(t, dcm_error,
-        [fr'DCM Error ${l}$' for l in labels_xy],
-        'DCM Feedback Error', r'Error [$\mathrm{m}$]',
-        'images/task_com/errors/dcm_error_plot.png')
-    plot_components(t, dcm_integral_state,
-        [fr'Integral State ${l}$' for l in labels_xy],
-        'DCM Feedback Leaky Integral State', r'State [$\mathrm{m}$]',
-        'images/task_com/errors/dcm_integral_state_plot.png')
+    plot_components(t, zmp_error_tpc,
+        [fr'ZMP Error ${l}$' for l in labels_xy],
+        'CoM Compliance ZMP Error (measured - nominal)', r'Error [$\mathrm{m}$]',
+        'images/task_com/errors/zmp_error_tpc_plot.png')
+    plot_components(t, com_compliance_delta,
+        [fr'CoM Compliance $\Delta {l}$' for l in labels_xy],
+        'CoM Position Compliance Correction', r'Correction [$\mathrm{m}$]',
+        'images/task_com/references/com_compliance_delta_plot.png')
     plot_comparison(
-        t, kf_zmp_position[:, :2] if kf_zmp_position is not None else None, zmp_command,
-        [fr'${l}$' for l in labels_xy], 'ZMP: measured vs DCM-commanded', r'[$\mathrm{m}$]',
+        t, kf_zmp_position[:, :2] if kf_zmp_position is not None else None, nominal_zmp_position[:, :2],
+        [fr'${l}$' for l in labels_xy], 'ZMP: measured vs nominal (MPC)', r'[$\mathrm{m}$]',
         'images/task_com/references/zmp_command_comparison_plot.png')
 
     if kf_com_position is not None and kf_zmp_position is not None and \

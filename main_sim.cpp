@@ -22,10 +22,12 @@
 #include "MujocoUI.hpp"
 
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
-// Fase 4 (piano DcmFeedbackController): riattivato — l'MPC richiude di nuovo
-// il loop sullo stato misurato (kf_LipState) insieme al DCM feedback esplicito.
-// Se emergono oscillazioni da doppio anello, tornare a false e ridurre i
-// guadagni DCM (kp/ki/kz in WalkingManager::init()).
+// DcmFeedbackController was replaced by ComComplianceController (CoM position
+// compliance, Nagasaka TPC-style -- see WalkingManager::init()). Gains are
+// fresh/unvalidated. Default stays closed-loop (matches the rest of the
+// system's tuning); if the new compliance gains misbehave, temporarily flip
+// this to false to isolate them from the MPC's own closed-loop replanning
+// while tuning Kp_c/Kd_c/T_leak, then set back to true.
 bool isMPCLoopClosed    = true;
 bool isObserverActive   = false;
 bool switchWalkingState = false;  // never set in sim, WalkingManager reads it

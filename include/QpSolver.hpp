@@ -50,10 +50,13 @@ class QpSolver {
     dim_mem_ = calloc(1, dim_size);
     d_dense_qp_dim_create(&dim_, dim_mem_);
 
-    // This installed HPIPM (/opt/hpipm) takes a single combined `ns`
-    // (nb=0 always in this codebase, no native box constraints).
+    // This installed HPIPM (/opt/hpipm) takes separate soft-bound (nsb) and
+    // soft-general (nsg) counts (nv, ne, nb, ng, nsb, nsg, dim). This codebase
+    // never uses box constraints (nb=0) or soft box constraints (nsb=0) --
+    // num_soft_constraints only ever softens rows of the general constraint
+    // matrix C, i.e. it is nsg.
     d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-                           num_inequality_constraints, num_soft_constraints, &dim_);
+                           num_inequality_constraints, 0, num_soft_constraints, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = calloc(1, qp_size);
