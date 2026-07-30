@@ -25,6 +25,7 @@
 #include <WristForceEstimator.hpp>
 #include <FootstepPlannerCoop.hpp>
 #include <HandAdmittanceController.hpp>
+#include <ComComplianceController.hpp>
 
 #include <QpSolver.hpp>
 #include <globals.h>
@@ -110,6 +111,7 @@ class WalkingManager {
   LIPState LipState;
   LIPState kf_LipState;
   LIPState des_LipState;
+  LIPState nominal_LipState_;
 
   Eigen::Vector3d p_CoM_init;
 
@@ -140,7 +142,7 @@ private:
   // noise parameters (same defaults as CoMKF class)
   static constexpr double kComKfMeasPos = 1.0e-2;
   static constexpr double kComKfMeasVel = 1.0e-2;
-  static constexpr double kComKfMeasZmp = 1.0e3;
+  static constexpr double kComKfMeasZmp = 1.0e4;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;
@@ -170,6 +172,7 @@ private:
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
+  std::unique_ptr<labrob::ComComplianceController> com_compliance_ptr_;
 
     // Private members online planner
   std::unique_ptr<labrob::FootstepPlannerCoop> coop_planner_ptr_;

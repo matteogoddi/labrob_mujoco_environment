@@ -146,6 +146,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "com_position",  "com_velocity",  "zmp_position",
         "kf_com_position",  "kf_com_velocity",  "kf_zmp_position",
         "des_com_position", "des_com_velocity", "des_zmp_position", "des_com_acceleration",
+        "nominal_com_position", "nominal_com_velocity", "nominal_zmp_position",
+        "zmp_error_tpc", "com_compliance_delta",
         "ef_zmp_position",
         "p_lsole", "p_rsole", "v_lsole", "v_rsole",
         "p_lsole_des", "p_rsole_des", "v_lsole_des", "v_rsole_des",
@@ -328,6 +330,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         p_ZMP
     );
     des_LipState = kf_LipState;
+
+    nominal_LipState_ = kf_LipState;
+
 #ifdef ISMPC_USE_2D
     ismpc_ptr_ = std::make_unique<labrob::ISMPC2D>(
         mpc_prediction_horizon_msec,
@@ -449,6 +454,15 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "left_wrist_yaw_link",
         "right_foot_link",
         "left_foot_link"
+    );
+
+    labrob::ComComplianceController::Params com_compliance_params = labrob::ComComplianceController::Params::getDefaultParams();
+    com_compliance_params.enabled = true;
+    com_compliance_params.Kp_c = 100 * std::sqrt(eta2);
+    com_compliance_params.Kd_c = 100;
+    com_compliance_params.T_leak = 1.0;
+    com_compliance_ptr_ = std::make_unique<labrob::ComComplianceController>(
+        com_compliance_params
     );
 
     // CoMKF covariance matrices are reset to identity (default) at construction.
@@ -1126,6 +1140,25 @@ WalkingManager::update(
         }
     }
 
+    const bool com_compliance_active =
+
+    (walking_data_.getWalkingState() != labrob::WalkingState::Init &&
+        walking_data_.getWalkingState() != labrob::WalkingState::PostureRegulation &&
+        walking_data_.getWalkingState() != labrob::WalkingState::Standing);
+
+    if (!com_compliance_active) {
+        nominal_LipState_ = kf_LipState;
+        com_compliance_ptr_->reset();
+    }
+
+    const Eigen::Vector2d delta_com_xy = com_compliance_ptr_->update(
+        kf_LipState.zmp_pos_.head<2>(),        // zmp_measured
+        nominal_LipState_.zmp_pos_.head<2>(),  // zmp_desired (from the MPC-LIP)
+        controller_timestep_msec_ * 0.001
+    );
+
+    // des_LipState = nominal_LipState_;
+
     logger_.log("mpc_zmp_velocity", ismpc_input_3d(*ismpc_ptr_));
 
         // LOG MPC PREDICTIONS FOR GIF FILES
@@ -1186,6 +1219,11 @@ WalkingManager::update(
 
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
+    desired_gait_configuration.com.pos.z() = p_CoM_init.z();
+    // CoM position compliance correction (ZMP error -> CoM position, see
+    // ComComplianceController above): applied only in x,y, only to the
+    // position reference -- velocity/acceleration stay pure feedforward.
+    // desired_gait_configuration.com.pos.head<2>() += delta_com_xy;
     desired_gait_configuration.com.pos.z() = p_CoM_init.z();
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
     desired_gait_configuration.com.vel.z() = 0;
