@@ -36,7 +36,7 @@ static constexpr double G1_CONTROLLER_DT = 1.0 / G1_CONTROLLER_HZ;
 // robot: add an enumerator here, add a `robot_type::kXxx` RobotConfig below
 // with every field filled in from that robot's URDF, and extend the
 // kRobotConfig selection at the bottom of this section.
-enum class RobotId { G1, Gene01 };
+enum class RobotId { G1 };
 constexpr RobotId kRobotId = RobotId::G1;
 
 struct RobotConfig {
@@ -104,37 +104,10 @@ inline const RobotConfig G1{
     },
 };
 
-// gene01, robot/gene01/gene01_description/gene01.urdf
-inline const RobotConfig Gene01{
-    "../robot/gene01/gene01_description/gene01.urdf",
-    "../robot/gene01/gene01_mj_description/gene_scene.xml",
-    "l_sole",
-    "r_sole",
-    "l_wrist_3",
-    "r_wrist_3",
-    "chest",
-    "pelvis",
-    {"l_shoulder_pitch", "l_shoulder_roll", "l_shoulder_yaw",
-     "l_elbow", "l_wrist_yaw", "l_wrist_pitch", "l_wrist_roll"},
-    {"r_shoulder_pitch", "r_shoulder_roll", "r_shoulder_yaw",
-     "r_elbow", "r_wrist_yaw", "r_wrist_pitch", "r_wrist_roll"},
-    {
-        {"l_hip_pitch",       0.0}, {"l_hip_roll",        0.0}, {"l_hip_yaw",         0.0},
-        {"l_knee",            0.0}, {"l_ankle_pitch",     0.0}, {"l_ankle_roll",      0.0},
-        {"r_hip_pitch",       0.0}, {"r_hip_roll",        0.0}, {"r_hip_yaw",         0.0},
-        {"r_knee",            0.0}, {"r_ankle_pitch",     0.0}, {"r_ankle_roll",      0.0},
-        {"torso_yaw",         0.0}, {"torso_roll",        0.0},
-        {"l_shoulder_pitch",  0.0}, {"l_shoulder_roll",   0.0}, {"l_shoulder_yaw",    0.0},
-        {"l_elbow",           0.0}, {"l_wrist_yaw",       0.0}, {"l_wrist_pitch",     0.0}, {"l_wrist_roll", 0.0},
-        {"r_shoulder_pitch",  0.0}, {"r_shoulder_roll",   0.0}, {"r_shoulder_yaw",    0.0},
-        {"r_elbow",           0.0}, {"r_wrist_yaw",       0.0}, {"r_wrist_pitch",     0.0}, {"r_wrist_roll", 0.0},
-    },
-};
-
 }  // namespace robot_type
 
 inline const RobotConfig& kRobotConfig =
-    (kRobotId == RobotId::G1) ? robot_type::G1 : robot_type::Gene01;
+    (kRobotId == RobotId::G1) ? robot_type::G1 : robot_type::G1;
 
 extern bool isMPCLoopClosed;
 extern bool isObserverActive;
