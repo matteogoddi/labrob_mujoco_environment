@@ -8,6 +8,7 @@
 #include <pinocchio/algorithm/model.hpp>
 #include <pinocchio/parsers/urdf.hpp>
 
+#include <globals.h>
 #include <utils.hpp>
 
 namespace labrob {
@@ -433,8 +434,8 @@ StateEstimator::StateEstimator(const pinocchio::Model& model,
     Eigen::VectorXd q0 = pinocchio::neutral(model_);
 
     std::array<RightInvariantEKF::FootConfig, 2> feet = {{
-        {"left_foot_link",  0},
-        {"right_foot_link", 1}
+        {kRobotConfig.left_foot_link,  0},
+        {kRobotConfig.right_foot_link, 1}
     }};
     ri_ekf_ = std::make_unique<RightInvariantEKF>(model_, q0, dt_, feet, noise);
 }
@@ -463,8 +464,8 @@ void StateEstimator::activate(const RobotState& robot_state,
             return {R_wb, p_wb};
         };
 
-        auto [R_l, p_l] = fk_foot("left_foot_link");
-        auto [R_r, p_r] = fk_foot("right_foot_link");
+        auto [R_l, p_l] = fk_foot(kRobotConfig.left_foot_link);
+        auto [R_r, p_r] = fk_foot(kRobotConfig.right_foot_link);
 
         Eigen::Vector3d p_wb(0.0, 0.0, 0.5 * (p_l.z() + p_r.z()));
         Eigen::Matrix3d R_avg = 0.5 * (R_l + R_r);

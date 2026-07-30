@@ -25,7 +25,7 @@ ISMPC2D::ISMPC2D(
 
   qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
       num_variables_, num_equality_constraints_, num_inequality_constraints_
-     , num_inequality_constraints_, 1e1
+    //  , num_inequality_constraints_, 1e-6
     );
 
   cost_function_H_ = Eigen::MatrixXd(num_variables_, num_variables_);

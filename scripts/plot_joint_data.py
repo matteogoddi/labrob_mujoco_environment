@@ -162,6 +162,10 @@ if __name__ == '__main__':
     des_com_velocity         = L('des_com_velocity')
     des_zmp_position         = L('des_zmp_position')
     des_com_acceleration     = L('des_com_acceleration')
+    q_ref_joints             = L('q_ref_joints')
+    dq_ref_joints            = L('dq_ref_joints')
+    joint_pos_wbc            = L('joint_pos')
+    joint_vel_wbc            = L('joint_vel')
     input_torque             = L('input_torque')
     wbc_accelerations        = L('wbc_accelerations')
     estimated_force_lsole    = L('estimated_force_lsole')
@@ -277,10 +281,93 @@ if __name__ == '__main__':
 
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  WBC SOLUTIONS
+    #  JOINT REFERENCE TRACKING (q_ref_joints / dq_ref_joints vs measured feedback)
     # ══════════════════════════════════════════════════════════════════════════
 
     _waist_idx = grouped_indices.get('waist', [])
+
+    if q_ref_joints is not None and joint_pos_wbc is not None:
+        for li, ri, suffix in _lr_pairs:
+            plot_comparison(t,
+                joint_pos_wbc[:, [li, ri]], q_ref_joints[:, [li, ri]],
+                [f'Left {suffix}', f'Right {suffix}'],
+                f'Joint Position Tracking – {suffix}', r'Position [rad]',
+                f'images/wbc_solutions/joint_tracking/{suffix}_position_comparison.png')
+        if _waist_idx:
+            plot_comparison(t,
+                joint_pos_wbc[:, _waist_idx], q_ref_joints[:, _waist_idx],
+                [_jnames_stripped[i] for i in _waist_idx],
+                'Joint Position Tracking – waist', r'Position [rad]',
+                'images/wbc_solutions/joint_tracking/waist_position_comparison.png')
+
+        _cmap, _lstyles = plt.colormaps['tab10'], ['-', '--', '-.', ':']
+        _nj = min(len(joint_pos_wbc), len(q_ref_joints))
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in range(num_joints):
+            ax.plot(t[:_nj], q_ref_joints[:_nj, i] - joint_pos_wbc[:_nj, i],
+                    label=_jnames_stripped[i], color=_cmap(i % 10),
+                    linestyle=_lstyles[(i // 10) % 4], linewidth=2)
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Position Error [rad]', fontsize=11)
+        ax.set_title('Joint Position Error (q_ref − measured), all joints', fontsize=12)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(loc='best', frameon=True, fontsize=4)
+        fig.tight_layout()
+        os.makedirs('images/wbc_solutions/joint_tracking', exist_ok=True)
+        fig.savefig('images/wbc_solutions/joint_tracking/error_joint_position_plot.png',
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        os.makedirs('images/wbc_solutions/joint_tracking/errors', exist_ok=True)
+        for i in range(num_joints):
+            plot_components(t, _sub(q_ref_joints[:, i:i+1], joint_pos_wbc[:, i:i+1]),
+                [f'{_jnames_stripped[i]} Pos Error'],
+                f'Position Error – {_jnames_stripped[i]}', r'Error [rad]',
+                f'images/wbc_solutions/joint_tracking/errors/{_jnames_stripped[i]}_position_error.png')
+
+    if dq_ref_joints is not None and joint_vel_wbc is not None:
+        for li, ri, suffix in _lr_pairs:
+            plot_comparison(t,
+                joint_vel_wbc[:, [li, ri]], dq_ref_joints[:, [li, ri]],
+                [f'Left {suffix}', f'Right {suffix}'],
+                f'Joint Velocity Tracking – {suffix}', r'Velocity [rad/s]',
+                f'images/wbc_solutions/joint_tracking/{suffix}_velocity_comparison.png')
+        if _waist_idx:
+            plot_comparison(t,
+                joint_vel_wbc[:, _waist_idx], dq_ref_joints[:, _waist_idx],
+                [_jnames_stripped[i] for i in _waist_idx],
+                'Joint Velocity Tracking – waist', r'Velocity [rad/s]',
+                'images/wbc_solutions/joint_tracking/waist_velocity_comparison.png')
+
+        _cmap, _lstyles = plt.colormaps['tab10'], ['-', '--', '-.', ':']
+        _nj = min(len(joint_vel_wbc), len(dq_ref_joints))
+        fig, ax = plt.subplots(figsize=(7, 4))
+        for i in range(num_joints):
+            ax.plot(t[:_nj], dq_ref_joints[:_nj, i] - joint_vel_wbc[:_nj, i],
+                    label=_jnames_stripped[i], color=_cmap(i % 10),
+                    linestyle=_lstyles[(i // 10) % 4], linewidth=2)
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(r'Velocity Error [rad/s]', fontsize=11)
+        ax.set_title('Joint Velocity Error (dq_ref − measured), all joints', fontsize=12)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(loc='best', frameon=True, fontsize=4)
+        fig.tight_layout()
+        os.makedirs('images/wbc_solutions/joint_tracking', exist_ok=True)
+        fig.savefig('images/wbc_solutions/joint_tracking/error_joint_velocity_plot.png',
+                    dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        os.makedirs('images/wbc_solutions/joint_tracking/errors', exist_ok=True)
+        for i in range(num_joints):
+            plot_components(t, _sub(dq_ref_joints[:, i:i+1], joint_vel_wbc[:, i:i+1]),
+                [f'{_jnames_stripped[i]} Vel Error'],
+                f'Velocity Error – {_jnames_stripped[i]}', r'Error [rad/s]',
+                f'images/wbc_solutions/joint_tracking/errors/{_jnames_stripped[i]}_velocity_error.png')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  WBC SOLUTIONS
+    # ══════════════════════════════════════════════════════════════════════════
+
     if input_torque is not None:
         for li, ri, suffix in _lr_pairs:
             plot_components(t,
@@ -318,18 +405,18 @@ if __name__ == '__main__':
     labels_wrench = ['Fx', 'Fy', 'Fz', 'Mx', 'My', 'Mz']
     plot_components(t, wbc_force_lsole,  labels_wrench,
         'WBC Optimal Left Foot Wrench',  r'Force [N] / Torque [Nm]',
-        'images/wbc_solutions/forces/wbc_force_left_sole.png')
+        'images/contact_forces/wbc_force_left_sole.png')
     plot_components(t, wbc_force_rsole,  labels_wrench,
         'WBC Optimal Right Foot Wrench', r'Force [N] / Torque [Nm]',
-        'images/wbc_solutions/forces/wbc_force_right_sole.png')
+        'images/contact_forces/wbc_force_right_sole.png')
     plot_components(t, estimated_force_lsole,
         [f'Left sole force {l}' for l in labels_xyz],
         'Estimated Forces on Left Sole', 'Force [N]',
-        'images/task_soles/forces/estimated_force_left_sole.png')
+        'images/contact_forces/estimated_force_left_sole.png')
     plot_components(t, estimated_force_rsole,
         [f'Right sole force {l}' for l in labels_xyz],
         'Estimated Forces on Right Sole', 'Force [N]',
-        'images/task_soles/forces/estimated_force_right_sole.png')
+        'images/contact_forces/estimated_force_right_sole.png')
 
     # ══════════════════════════════════════════════════════════════════════════
     #  WBC PER-CORNER CONTACT FORCES + FRICTION CONE
@@ -364,7 +451,7 @@ if __name__ == '__main__':
                 [f'{lbl} Fz' for lbl in _corner_labels],
                 f'WBC {foot_name.capitalize()} Foot — Per-Corner Normal Force',
                 'Force [N]',
-                f'images/wbc_solutions/forces/{foot_name}_corner_fz.png')
+                f'images/contact_forces/{foot_name}_corner_fz.png')
 
             # Friction-cone margin per corner: mu*Fz - sqrt(Fx^2+Fy^2).
             # Negative => the corner is outside the friction pyramid.
@@ -391,8 +478,8 @@ if __name__ == '__main__':
                          f'(mu={mu:.2f})', fontsize=12)
             ax.legend(loc='best', frameon=True, fontsize=9)
             fig.tight_layout()
-            os.makedirs('images/wbc_solutions/forces', exist_ok=True)
-            fig.savefig(f'images/wbc_solutions/forces/{foot_name}_friction_cone_margin.png',
+            os.makedirs('images/contact_forces', exist_ok=True)
+            fig.savefig(f'images/contact_forces/{foot_name}_friction_cone_margin.png',
                         dpi=300, bbox_inches='tight')
             plt.close(fig)
 
@@ -407,7 +494,7 @@ if __name__ == '__main__':
                            for idx in edges]
             transitions_by_foot[foot_name] = transitions
 
-            zoom_dir = f'images/wbc_solutions/forces/transitions'
+            zoom_dir = f'images/contact_forces/transitions'
             os.makedirs(zoom_dir, exist_ok=True)
             summary_lines = [
                 f'{"#":>3}  {"type":<10}  {"t [s]":>8}  {"min margin [N]":>15}  '
@@ -440,7 +527,7 @@ if __name__ == '__main__':
                     f'{_corner_labels[worst_c]:<12}  {violation_dur_ms:>18.1f}'
                 )
 
-            with open(f'images/wbc_solutions/forces/{foot_name}_friction_violations_summary.txt',
+            with open(f'images/contact_forces/{foot_name}_friction_violations_summary.txt',
                       'w') as f:
                 f.write('\n'.join(summary_lines) + '\n')
 
@@ -480,8 +567,8 @@ if __name__ == '__main__':
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             ax.legend(loc='best', frameon=True, fontsize=9)
             fig.tight_layout()
-            os.makedirs('images/wbc_solutions/joint_limits', exist_ok=True)
-            fig.savefig(f'images/wbc_solutions/joint_limits/{kind_name}_margin_plot.png',
+            os.makedirs('images/joint_limits', exist_ok=True)
+            fig.savefig(f'images/joint_limits/{kind_name}_margin_plot.png',
                         dpi=300, bbox_inches='tight')
             plt.close(fig)
 
@@ -500,11 +587,11 @@ if __name__ == '__main__':
                              'Margin, Overall', fontsize=12)
                 ax.grid(True, axis='x', linestyle='--', linewidth=0.5, alpha=0.7)
                 fig.tight_layout()
-                fig.savefig(f'images/wbc_solutions/joint_limits/{kind_name}_worst_joint_histogram.png',
+                fig.savefig(f'images/joint_limits/{kind_name}_worst_joint_histogram.png',
                             dpi=300, bbox_inches='tight')
                 plt.close(fig)
 
-            zoom_dir = f'images/wbc_solutions/joint_limits/transitions'
+            zoom_dir = f'images/joint_limits/transitions'
             os.makedirs(zoom_dir, exist_ok=True)
             for foot_name, transitions in transitions_by_foot.items():
                 summary_lines = [
@@ -551,7 +638,7 @@ if __name__ == '__main__':
                     )
 
                 with open(
-                    f'images/wbc_solutions/joint_limits/{foot_name}_{kind_name}_limit_violations_summary.txt',
+                    f'images/joint_limits/{foot_name}_{kind_name}_limit_violations_summary.txt',
                     'w') as f:
                     f.write('\n'.join(summary_lines) + '\n')
 
@@ -662,41 +749,44 @@ if __name__ == '__main__':
     plot_components(t, p_lsole_des,
         [fr'Des L Sole ${l}$' for l in labels_xyz],
         'Desired Left Sole Position', r'Position [$\mathrm{m}$]',
-        'images/task_soles/references/desired_left_sole_position_plot.png')
+        'images/task_soles/position/desired_left_sole_position_plot.png')
     plot_components(t, p_rsole_des,
         [fr'Des R Sole ${l}$' for l in labels_xyz],
         'Desired Right Sole Position', r'Position [$\mathrm{m}$]',
-        'images/task_soles/references/desired_right_sole_position_plot.png')
+        'images/task_soles/position/desired_right_sole_position_plot.png')
 
     plot_components(t, _sub(p_lsole_des, p_lsole),
         [fr'L Sole Pos Error ${l}$' for l in labels_xyz],
         'Error – Left Sole Position', r'Position [$\mathrm{m}$]',
-        'images/task_soles/errors/error_left_sole_position_plot.png')
+        'images/task_soles/position/error_left_sole_position_plot.png')
     plot_components(t, _sub(p_rsole_des, p_rsole),
         [fr'R Sole Pos Error ${l}$' for l in labels_xyz],
         'Error – Right Sole Position', r'Position [$\mathrm{m}$]',
-        'images/task_soles/errors/error_right_sole_position_plot.png')
+        'images/task_soles/position/error_right_sole_position_plot.png')
     plot_components(t, _sub(v_lsole_des, v_lsole),
         [fr'L Sole Vel Error ${l}$' for l in labels_xyz],
         'Error – Left Sole Velocity', r'Velocity [$\mathrm{m/s}$]',
-        'images/task_soles/errors/error_left_sole_velocity_plot.png')
+        'images/task_soles/position/error_left_sole_velocity_plot.png')
     plot_components(t, _sub(v_rsole_des, v_rsole),
         [fr'R Sole Vel Error ${l}$' for l in labels_xyz],
         'Error – Right Sole Velocity', r'Velocity [$\mathrm{m/s}$]',
-        'images/task_soles/errors/error_right_sole_velocity_plot.png')
+        'images/task_soles/position/error_right_sole_velocity_plot.png')
 
     plot_comparison(t, p_lsole, p_lsole_des,
         [fr'${l}$' for l in labels_xyz], 'Left Sole Position', r'[$\mathrm{m}$]',
-        'images/task_soles/errors/comparison_left_sole_position_plot.png')
+        'images/task_soles/position/comparison_left_sole_position_plot.png')
     plot_comparison(t, p_rsole, p_rsole_des,
         [fr'${l}$' for l in labels_xyz], 'Right Sole Position', r'[$\mathrm{m}$]',
-        'images/task_soles/errors/comparison_right_sole_position_plot.png')
+        'images/task_soles/position/comparison_right_sole_position_plot.png')
     plot_comparison(t, v_lsole, v_lsole_des,
         [fr'${l}$' for l in labels_xyz], 'Left Sole Velocity', r'[$\mathrm{m/s}$]',
-        'images/task_soles/errors/comparison_left_sole_velocity_plot.png')
+        'images/task_soles/position/comparison_left_sole_velocity_plot.png')
     plot_comparison(t, v_rsole, v_rsole_des,
         [fr'${l}$' for l in labels_xyz], 'Right Sole Velocity', r'[$\mathrm{m/s}$]',
-        'images/task_soles/errors/comparison_right_sole_velocity_plot.png')
+        'images/task_soles/position/comparison_right_sole_velocity_plot.png')
+
+    # QUICK COMPARISON BETWEEN JOINT POS AND REFERENCE
+
 
     # ══════════════════════════════════════════════════════════════════════════
     #  EKF  (all plots use t_full — aligned with feedback, not WBC)
@@ -855,12 +945,12 @@ if __name__ == '__main__':
         plot_components(t,
             np.column_stack([lsole_orientation[:, 0], rsole_orientation[:, 0]]),
             ['Left', 'Right'], 'Sole Roll – Measured (Left vs Right)', r'Roll [$\mathrm{rad}$]',
-            'images/task_orientation/soles/roll_measured_left_vs_right_plot.png')
+            'images/task_soles/orientation/roll_measured_left_vs_right_plot.png')
     if des_lsole_orientation is not None and des_rsole_orientation is not None:
         plot_components(t,
             np.column_stack([des_lsole_orientation[:, 0], des_rsole_orientation[:, 0]]),
             ['Left', 'Right'], 'Sole Roll – Desired (Left vs Right)', r'Roll [$\mathrm{rad}$]',
-            'images/task_orientation/soles/roll_desired_left_vs_right_plot.png')
+            'images/task_soles/orientation/roll_desired_left_vs_right_plot.png')
     if all(x is not None for x in (lsole_orientation, rsole_orientation,
                                     des_lsole_orientation, des_rsole_orientation)):
         roll_err_l = _sub(lsole_orientation[:, 0:1], des_lsole_orientation[:, 0:1])
@@ -870,7 +960,7 @@ if __name__ == '__main__':
             np.column_stack([roll_err_l[:_n_roll], roll_err_r[:_n_roll]]),
             ['Left', 'Right'], 'Sole Roll Error – Measured vs Desired (Left vs Right)',
             r'Roll Error [$\mathrm{rad}$]',
-            'images/task_orientation/soles/roll_error_left_vs_right_plot.png')
+            'images/task_soles/orientation/roll_error_left_vs_right_plot.png')
 
     # ══════════════════════════════════════════════════════════════════════════
     #  FEEDBACK  (full sensor data – from tick 0, use t_full)

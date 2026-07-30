@@ -147,7 +147,7 @@ int main(const int argc, const char* argv[]) {
     mj_loadAllPluginLibraries("/usr/local/lib/mujoco", nullptr);
     const int kErrorLength = 1024;
     char loadError[kErrorLength] = "";
-    mjModel* mj_model_ptr = mj_loadXML(robotScenePath.data(), nullptr, loadError, kErrorLength);
+    mjModel* mj_model_ptr = mj_loadXML(kRobotConfig.scene_path.data(), nullptr, loadError, kErrorLength);
     if (!mj_model_ptr) {
         std::cerr << "mj_loadXML failed: " << loadError << std::endl;
         return -1;
@@ -161,12 +161,12 @@ int main(const int argc, const char* argv[]) {
     // the URDF leg chain for knee 0.95->0.30, hip/ankle pitch -0.44/-0.50->
     // -0.15/-0.15), so the pelvis must start that much higher to keep the
     // feet on the ground.
-    // mj_data_ptr->qpos[2] = 0.789039;
+    // mj_data_ptr->qpos[2] = 1.0;
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
-        auto it = joint_initial_positions.find(name);
-        if (it != joint_initial_positions.end())
+        auto it = kRobotConfig.initial_joint_positions.find(name);
+        if (it != kRobotConfig.initial_joint_positions.end())
             mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[i]] = it->second;
     }
 
@@ -221,8 +221,8 @@ int main(const int argc, const char* argv[]) {
     labrob::MujocoUI* mujoco_ui_ptr = labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
     static constexpr int framerate = 60;
 
-    while (true) {
-        if (g_signal_received || mujoco_ui_ptr->windowShouldClose()) break;
+    while (!(g_signal_received || mujoco_ui_ptr->windowShouldClose())) {
+        if (mujoco_ui_ptr->windowShouldClose()) break;
 
         mjtNum simstart = mj_data_ptr->time;
         while (!g_signal_received &&
@@ -331,6 +331,7 @@ int main(const int argc, const char* argv[]) {
                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                 mj_data_ptr->ctrl[i] = joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)];
             }
+            // mujoco_ui_ptr->render();
             mj_step2(mj_model_ptr, mj_data_ptr);
 
             robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);

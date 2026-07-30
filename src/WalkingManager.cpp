@@ -160,6 +160,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "wbc_accelerations", "angular_momentum", "input_torque",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
+        "mpc_zmp_reference_x", "mpc_zmp_reference_y",
         "torso_orientation",     "torso_angular_velocity",
         "des_torso_orientation", "des_torso_angular_velocity",
         "pelvis_orientation",     "pelvis_angular_velocity",
@@ -183,7 +184,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // READING ROBOT DESCRIPTION (URDF) AND BUILDING PINOCCHIO MODEL
 
-    std::string robot_description_filename = std::string(robotUrdfPath);
+    std::string robot_description_filename = std::string(kRobotConfig.urdf_path);
 
     pinocchio::Model full_robot_model;
 
@@ -230,12 +231,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     // GET INDICES OF INTEREST AND ARMATURES
 
-    lsole_idx_ = robot_model.getFrameId("left_foot_link");
-    rsole_idx_ = robot_model.getFrameId("right_foot_link");
-    lwrist_idx_ = robot_model.getFrameId("left_wrist_yaw_link");
-    rwrist_idx_ = robot_model.getFrameId("right_wrist_yaw_link");
-    torso_idx_ = robot_model.getFrameId("torso_link");
-    pelvis_idx_ = robot_model.getFrameId("pelvis");
+    lsole_idx_ = robot_model.getFrameId(kRobotConfig.left_foot_link);
+    rsole_idx_ = robot_model.getFrameId(kRobotConfig.right_foot_link);
+    lwrist_idx_ = robot_model.getFrameId(kRobotConfig.left_wrist_link);
+    rwrist_idx_ = robot_model.getFrameId(kRobotConfig.right_wrist_link);
+    torso_idx_ = robot_model.getFrameId(kRobotConfig.torso_link);
+    pelvis_idx_ = robot_model.getFrameId(kRobotConfig.pelvis_link);
     const auto& T_lsole_init = robot_data.oMf[lsole_idx_];
     const auto& T_rsole_init = robot_data.oMf[rsole_idx_];
 
@@ -445,10 +446,10 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         robot_model,
         armatures,
         500.0,                      // Ki = 50
-        "right_wrist_yaw_link",
-        "left_wrist_yaw_link",
-        "right_foot_link",
-        "left_foot_link"
+        kRobotConfig.right_wrist_link,
+        kRobotConfig.left_wrist_link,
+        kRobotConfig.right_foot_link,
+        kRobotConfig.left_foot_link
     );
 
     // CoMKF covariance matrices are reset to identity (default) at construction.
@@ -1081,6 +1082,13 @@ WalkingManager::update(
     logger_.log("mpc_foot_constraint_size",
         Eigen::Vector2d(ismpc_ptr_->getFootConstraintLength(), ismpc_ptr_->getFootConstraintWidth()));
 
+    // Full ZMP reference over the whole prediction horizon (not just step 0
+    // above) — to check whether, at solve time, the MPC's own horizon already
+    // "sees" an upcoming blend ramp (e.g. the double-support shift toward the
+    // new support foot) or not yet.
+    logger_.log("mpc_zmp_reference_x", ismpc_ptr_->getZmpReferenceX());
+    logger_.log("mpc_zmp_reference_y", ismpc_ptr_->getZmpReferenceY());
+
         // LOG MPC PREDICTIONS FOR GIF FILES
         Eigen::VectorXd inputSequenceX = ismpc_ptr_->getInputSequenceX();
         Eigen::VectorXd inputSequenceY = ismpc_ptr_->getInputSequenceY();
@@ -1205,6 +1213,9 @@ WalkingManager::update(
     desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
+    // desired_gait_configuration.torso = initial_gait_configuration.torso;
+    // desired_gait_configuration.pelvis = initial_gait_configuration.pelvis;
+    
     // Wrist task — active fron Standing phase on (not during PostureRegulation/Init)
     const bool wrist_task_active =
         (walking_data_.getWalkingState() != WalkingState::Init &&
@@ -1439,14 +1450,8 @@ WalkingManager::update(
     logger_.log("residual_vector_norm", residual_vector_norm);
 
     {
-        static const std::vector<std::string> left_arm_joints = {
-            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
-            "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint"
-        };
-        static const std::vector<std::string> right_arm_joints = {
-            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
-            "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint"
-        };
+        const std::vector<std::string>& left_arm_joints = kRobotConfig.left_arm_joints;
+        const std::vector<std::string>& right_arm_joints = kRobotConfig.right_arm_joints;
         const Eigen::VectorXd& r_full = wrist_force_estimator_ptr_->getResidual();
         const Eigen::VectorXd tau_minus_g = wrist_force_estimator_ptr_->getTauMinusG();
 

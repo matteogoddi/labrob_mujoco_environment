@@ -25,7 +25,7 @@
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
 
-#include <QpSolver.hpp>
+#include <QpOASESSolver.hpp>
 
 namespace labrob {
 
@@ -133,7 +133,7 @@ class WholeBodyController {
 
   int n_joints_, n_contacts_, n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_;
 
-  std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
+  std::unique_ptr<labrob::QpOASESSolver> wbc_solver_ptr_;
   Eigen::VectorXd left_foot_wrench_, right_foot_wrench_;
 
   // ── pre-allocated buffers — no malloc in the 1kHz hot path ──────────────

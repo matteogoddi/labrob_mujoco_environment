@@ -25,8 +25,9 @@ from pathlib import Path
 DT_MS = 50.0  # mpc_timestep_msec
 
 # Column indices in x.txt
-COM_X, COM_Y, COM_Z = 0, 1, 2
-ZMP_X, ZMP_Y, ZMP_Z = 6, 7, 8
+COM_X,  COM_Y,  COM_Z  = 0, 1, 2
+COM_VX, COM_VY, COM_VZ = 3, 4, 5
+ZMP_X,  ZMP_Y,  ZMP_Z  = 6, 7, 8
 
 # Column indices in u.txt
 U_X, U_Y, U_Z = 0, 1, 2
@@ -62,12 +63,14 @@ def main() -> None:
     # Load data
     # ------------------------------------------------------------------
     times = []
-    hist_com_x, hist_com_y, hist_com_z = [], [], []
-    hist_zmp_x, hist_zmp_y, hist_zmp_z = [], [], []
-    hist_u_x,   hist_u_y,   hist_u_z   = [], [], []
+    hist_com_x,  hist_com_y,  hist_com_z  = [], [], []
+    hist_com_vx, hist_com_vy, hist_com_vz = [], [], []
+    hist_zmp_x,  hist_zmp_y,  hist_zmp_z  = [], [], []
+    hist_u_x,    hist_u_y,    hist_u_z    = [], [], []
 
     pred_xt_list = []
-    pred_com_x_list, pred_com_y_list, pred_com_z_list = [], [], []
+    pred_com_x_list,  pred_com_y_list,  pred_com_z_list  = [], [], []
+    pred_com_vx_list, pred_com_vy_list, pred_com_vz_list = [], [], []
     pred_zmp_x_list, pred_zmp_y_list, pred_zmp_z_list = [], [], []
 
     pred_ut_list = []
@@ -89,6 +92,7 @@ def main() -> None:
         x0 = x_data[0]
         times.append(t)
         hist_com_x.append(x0[COM_X]); hist_com_y.append(x0[COM_Y]); hist_com_z.append(x0[COM_Z])
+        hist_com_vx.append(x0[COM_VX]); hist_com_vy.append(x0[COM_VY]); hist_com_vz.append(x0[COM_VZ])
         hist_zmp_x.append(x0[ZMP_X]); hist_zmp_y.append(x0[ZMP_Y]); hist_zmp_z.append(x0[ZMP_Z])
         hist_u_x.append(u_data[0, U_X]); hist_u_y.append(u_data[0, U_Y]); hist_u_z.append(u_data[0, U_Z])
 
@@ -98,12 +102,15 @@ def main() -> None:
             pred_xt_list.append(pred_xt)
             pred_com_x_list.append(x_data[1:, COM_X]); pred_com_y_list.append(x_data[1:, COM_Y])
             pred_com_z_list.append(x_data[1:, COM_Z])
+            pred_com_vx_list.append(x_data[1:, COM_VX]); pred_com_vy_list.append(x_data[1:, COM_VY])
+            pred_com_vz_list.append(x_data[1:, COM_VZ])
             pred_zmp_x_list.append(x_data[1:, ZMP_X]); pred_zmp_y_list.append(x_data[1:, ZMP_Y])
             pred_zmp_z_list.append(x_data[1:, ZMP_Z])
             t_max_pred = max(t_max_pred, pred_xt[-1])
         else:
             pred_xt_list.append(empty)
             for lst in (pred_com_x_list, pred_com_y_list, pred_com_z_list,
+                        pred_com_vx_list, pred_com_vy_list, pred_com_vz_list,
                         pred_zmp_x_list, pred_zmp_y_list, pred_zmp_z_list):
                 lst.append(empty)
 
@@ -122,18 +129,20 @@ def main() -> None:
 
     times        = np.asarray(times, dtype=float)
     hist_com_x   = np.asarray(hist_com_x);  hist_com_y  = np.asarray(hist_com_y);  hist_com_z  = np.asarray(hist_com_z)
+    hist_com_vx  = np.asarray(hist_com_vx); hist_com_vy = np.asarray(hist_com_vy); hist_com_vz = np.asarray(hist_com_vz)
     hist_zmp_x   = np.asarray(hist_zmp_x);  hist_zmp_y  = np.asarray(hist_zmp_y);  hist_zmp_z  = np.asarray(hist_zmp_z)
     hist_u_x     = np.asarray(hist_u_x);    hist_u_y    = np.asarray(hist_u_y);    hist_u_z    = np.asarray(hist_u_z)
 
     # ------------------------------------------------------------------
-    # Figure: 3 rows x 2 cols
-    #   Left  col: COM x/y/z  (history blue + ZMP dashed orange + prediction red)
-    #   Right col: input zdot_x/y/z  (history blue + prediction red)
+    # Figure: 3 rows x 3 cols
+    #   Col 1: COM position x/y/z (history blue + ZMP dashed orange + prediction red)
+    #   Col 2: COM velocity x/y/z (history blue + prediction red)
+    #   Col 3: input zdot_x/y/z   (history blue + prediction red)
     # ------------------------------------------------------------------
-    fig, axes = plt.subplots(3, 2, figsize=(13, 8), sharex=False)
-    ax_cx, ax_ux = axes[0]
-    ax_cy, ax_uy = axes[1]
-    ax_cz, ax_uz = axes[2]
+    fig, axes = plt.subplots(3, 3, figsize=(18, 8), sharex=False)
+    ax_cx, ax_vx, ax_ux = axes[0]
+    ax_cy, ax_vy, ax_uy = axes[1]
+    ax_cz, ax_vz, ax_uz = axes[2]
 
     fig.suptitle('ISMPC predictions', fontsize=12)
 
@@ -141,9 +150,9 @@ def main() -> None:
         ax.set_ylabel(ylabel); ax.grid(True)
         if xlabel: ax.set_xlabel(xlabel)
 
-    setup_ax(ax_cx, 'x [m]');          setup_ax(ax_ux, r'$\dot{z}_x$ [m/s]')
-    setup_ax(ax_cy, 'y [m]');          setup_ax(ax_uy, r'$\dot{z}_y$ [m/s]')
-    setup_ax(ax_cz, 'z [m]', 't [ms]'); setup_ax(ax_uz, r'$\dot{z}_z$ [m/s]', 't [ms]')
+    setup_ax(ax_cx, 'x [m]');           setup_ax(ax_vx, r'$\dot{c}_x$ [m/s]');           setup_ax(ax_ux, r'$\dot{z}_x$ [m/s]')
+    setup_ax(ax_cy, 'y [m]');           setup_ax(ax_vy, r'$\dot{c}_y$ [m/s]');           setup_ax(ax_uy, r'$\dot{z}_y$ [m/s]')
+    setup_ax(ax_cz, 'z [m]', 't [ms]'); setup_ax(ax_vz, r'$\dot{c}_z$ [m/s]', 't [ms]'); setup_ax(ax_uz, r'$\dot{z}_z$ [m/s]', 't [ms]')
 
     def make_state_lines(ax):
         (hc,)  = ax.plot([], [], lw=2,   color='tab:blue',   label='COM hist')
@@ -158,9 +167,9 @@ def main() -> None:
     (hcy, hzy, pcy, pzy, doty) = make_state_lines(ax_cy)
     (hcz, hzz, pcz, pzz, dotz) = make_state_lines(ax_cz)
 
-    def make_input_lines(ax):
-        (hi,)  = ax.plot([], [], lw=2,   color='tab:blue',  label='applied')
-        (pi,)  = ax.plot([], [], lw=2,   color='red',       label='pred')
+    def make_input_lines(ax, hist_label='applied', pred_label='pred'):
+        (hi,)  = ax.plot([], [], lw=2,   color='tab:blue',  label=hist_label)
+        (pi,)  = ax.plot([], [], lw=2,   color='red',       label=pred_label)
         (dot,) = ax.plot([], [], 'o',    color='tab:blue')
         ax.legend(fontsize=7)
         return hi, pi, dot
@@ -168,6 +177,10 @@ def main() -> None:
     (hux, pux, dotux) = make_input_lines(ax_ux)
     (huy, puy, dotuy) = make_input_lines(ax_uy)
     (huz, puz, dotuz) = make_input_lines(ax_uz)
+
+    (hvx, pvx, dotvx) = make_input_lines(ax_vx, 'COM vel hist', 'COM vel pred')
+    (hvy, pvy, dotvy) = make_input_lines(ax_vy, 'COM vel hist', 'COM vel pred')
+    (hvz, pvz, dotvz) = make_input_lines(ax_vz, 'COM vel hist', 'COM vel pred')
 
     # Set axis limits once
     def set_lim(ax, t_arr, *val_groups):
@@ -189,6 +202,9 @@ def main() -> None:
     set_lim(ax_cx, times, hist_com_x, hist_zmp_x, pred_com_x_list, pred_zmp_x_list)
     set_lim(ax_cy, times, hist_com_y, hist_zmp_y, pred_com_y_list, pred_zmp_y_list)
     set_lim(ax_cz, times, hist_com_z, hist_zmp_z, pred_com_z_list, pred_zmp_z_list)
+    set_lim(ax_vx, times, hist_com_vx, pred_com_vx_list)
+    set_lim(ax_vy, times, hist_com_vy, pred_com_vy_list)
+    set_lim(ax_vz, times, hist_com_vz, pred_com_vz_list)
     set_lim(ax_ux, times, hist_u_x, pred_u_x_list)
     set_lim(ax_uy, times, hist_u_y, pred_u_y_list)
     set_lim(ax_uz, times, hist_u_z, pred_u_z_list)
@@ -196,6 +212,7 @@ def main() -> None:
     all_artists = (hcx, hzx, pcx, pzx, dotx,
                    hcy, hzy, pcy, pzy, doty,
                    hcz, hzz, pcz, pzz, dotz,
+                   hvx, pvx, dotvx, hvy, pvy, dotvy, hvz, pvz, dotvz,
                    hux, pux, dotux, huy, puy, dotuy, huz, puz, dotuz)
 
     def init():
@@ -209,6 +226,11 @@ def main() -> None:
         hcx.set_data(ts, hist_com_x[:i+1]); hzx.set_data(ts, hist_zmp_x[:i+1]); dotx.set_data([ts[-1]], [hist_com_x[i]])
         hcy.set_data(ts, hist_com_y[:i+1]); hzy.set_data(ts, hist_zmp_y[:i+1]); doty.set_data([ts[-1]], [hist_com_y[i]])
         hcz.set_data(ts, hist_com_z[:i+1]); hzz.set_data(ts, hist_zmp_z[:i+1]); dotz.set_data([ts[-1]], [hist_com_z[i]])
+
+        # COM velocity history
+        hvx.set_data(ts, hist_com_vx[:i+1]); dotvx.set_data([ts[-1]], [hist_com_vx[i]])
+        hvy.set_data(ts, hist_com_vy[:i+1]); dotvy.set_data([ts[-1]], [hist_com_vy[i]])
+        hvz.set_data(ts, hist_com_vz[:i+1]); dotvz.set_data([ts[-1]], [hist_com_vz[i]])
 
         # Input history
         if i > 0:
@@ -224,8 +246,11 @@ def main() -> None:
             pcx.set_data(pxt, pred_com_x_list[i]); pzx.set_data(pxt, pred_zmp_x_list[i])
             pcy.set_data(pxt, pred_com_y_list[i]); pzy.set_data(pxt, pred_zmp_y_list[i])
             pcz.set_data(pxt, pred_com_z_list[i]); pzz.set_data(pxt, pred_zmp_z_list[i])
+            pvx.set_data(pxt, pred_com_vx_list[i])
+            pvy.set_data(pxt, pred_com_vy_list[i])
+            pvz.set_data(pxt, pred_com_vz_list[i])
         else:
-            for a in (pcx, pzx, pcy, pzy, pcz, pzz): a.set_data([], [])
+            for a in (pcx, pzx, pcy, pzy, pcz, pzz, pvx, pvy, pvz): a.set_data([], [])
 
         # Input predictions
         put = pred_ut_list[i]

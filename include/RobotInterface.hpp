@@ -44,6 +44,8 @@ struct ImuState {
 };
 
 struct MotorState {
+    std::array<uint8_t, G1_NUM_MOTOR> mode = {};
+    std::array<uint32_t, G1_NUM_MOTOR> motorstate = {};
     std::array<float, G1_NUM_MOTOR> q  = {};
     std::array<float, G1_NUM_MOTOR> dq = {};
     std::array<float, G1_NUM_MOTOR> tau_est = {};
@@ -104,25 +106,25 @@ inline uint32_t Crc32Core(uint32_t* ptr, uint32_t len) {
 
 // ── Low-level gains (body joints, in MuJoCo actuator order: legs, waist, arms) ─
 inline constexpr std::array<float, 29> Kp_cl{
-    400, 400, 400, 600, 400, 300,      // left leg
-    400, 400, 400, 600, 400, 300,      // right leg
-    250,  250,  250,                     // waist yaw/roll/pitch
-    120, 120, 120, 70,  40, 40, 40,   // left arm
-    120, 120, 120, 70,  40, 40, 40    // right arm
+    20, 20, 20, 30, 20, 20,      // left leg
+    20, 20, 20, 30, 20, 20,      // right leg
+    10,  10,  10,                     // waist yaw/roll/pitch
+    10, 10, 10, 10,  2, 2, 2,   // left arm
+    10, 10, 10, 10,  2, 2, 2    // right arm
 };
 inline constexpr std::array<float, 29> Kd_cl{
-    2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2,
-    2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2,
-    2, 2, 2, 2, 2, 2, 2
+    10, 10, 10, 10, 10, 10,
+    10, 10, 10, 10, 10, 10,
+    10, 10, 10,
+    10, 10, 10, 10, 10, 10, 10,
+    10, 10, 10, 10, 10, 10, 10
 };
 inline constexpr std::array<float, 29> Kp_reg{
     400, 400, 400, 600, 400, 300,
     400, 400, 400, 600, 400, 300,
     250,  250,  250,
-    120, 120, 120, 20,  40, 40, 40,
-    120, 120, 120, 20,  40, 40, 40
+    120, 120, 120, 100,  40, 40, 40,
+    120, 120, 120, 100,  40, 40, 40
 };
 inline constexpr std::array<float, 29> Kd_reg{
     2, 2, 2, 3, 2, 2,

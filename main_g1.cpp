@@ -39,7 +39,7 @@ bool isObserverActive = false;
 bool isEKFactive      = false;
 bool switchWalkingState = false;
 bool switchCoopState  = false;
-int  ZMP_TYPE         = 1;
+int  ZMP_TYPE         = 3;
 
 bool pendingWBCInit   = false;   // set on X press, consumed after EKF update
 bool useViz           = true;
@@ -91,7 +91,7 @@ static void save_experiment_logs(const std::vector<std::string>& ordered_joint_n
         }
         ++n;
     }
-    for (const char* src : {"/tmp/robot_logs", "/tmp/mpc_data"}) {
+    for (const char* src : {"/tmp/robot_logs", "/tmp/mpc_logs"}) {
         const char* dst_name = (std::string(src) == "/tmp/robot_logs") ? "robot_logs" : "mpc_logs";
         if (std::filesystem::exists(src))
             std::filesystem::copy(src,
@@ -191,8 +191,10 @@ static void send_dds_command(
             motor_command.kd[i] = Kd_reg[i];
         }
     } else if (experiment_mode == ExperimentMode::WBC) {
-        motor_command.kp = Kp_cl;
-        motor_command.kd = Kd_cl;
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+            motor_command.kp[i] = 0.0f;
+            motor_command.kd[i] = Kd_cl[i];
+        }
     } else if (experiment_mode == ExperimentMode::Regulation) {
         motor_command.kp = Kp_reg;
         motor_command.kd = Kd_reg;
@@ -203,8 +205,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (experiment_mode == ExperimentMode::WBC) {
             if (std::abs(robot_state.joint_state.at(jname).pos) > 3.14 ||
-                std::abs(robot_state.joint_state.at(jname).vel) > 2.5   ||
-                std::abs(joint_command[jname]) > 1.0) {
+                std::abs(robot_state.joint_state.at(jname).vel) > 0.5  ||
+                std::abs(joint_command[jname]) > 50.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state.at(jname).pos
                           << " dq=" << robot_state.joint_state.at(jname).vel
@@ -214,13 +216,17 @@ static void send_dds_command(
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
             motor_command.dq_target[i] = static_cast<float>(dq_ref[i]);
             motor_command.tau_ff[i]    = joint_command[jname];
-            // motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
+            // motor_command.q_target[i]  = static_cast<float>(kRobotConfig.initial_joint_positions.at(jname));
             // motor_command.dq_target[i] = 0.0f;
             // motor_command.tau_ff[i] = 0.0f;
             // if (i == 25)
+            //     motor_command.tau_ff[i]    = joint_command[jname] + Kp_cl[i] * (- q_ref[i] + robot_state.joint_state.at(jname).pos) + Kd_cl[i] * (- dq_ref[i] + robot_state.joint_state.at(jname).vel);
+            // if (i == 3)
+            //     motor_command.tau_ff[i]    = joint_command[jname];
+            // if (i == 11)
             //     motor_command.tau_ff[i]    = joint_command[jname];
         } else if (experiment_mode == ExperimentMode::Regulation){
-            motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
+            motor_command.q_target[i]  = static_cast<float>(kRobotConfig.initial_joint_positions.at(jname));
         }
     }
 
@@ -268,7 +274,7 @@ int main(const int argc, const char* argv[]) {
     mj_loadAllPluginLibraries("/usr/local/lib/mujoco", nullptr);
     const int kErrorLength = 1024;
     char loadError[kErrorLength] = "";
-    mjModel* mj_model_ptr = mj_loadXML(robotScenePath.data(), nullptr, loadError, kErrorLength);
+    mjModel* mj_model_ptr = mj_loadXML(kRobotConfig.scene_path.data(), nullptr, loadError, kErrorLength);
     if (!mj_model_ptr) {
         std::cerr << "mj_loadXML failed: " << loadError << std::endl;
         return -1;
@@ -329,8 +335,8 @@ int main(const int argc, const char* argv[]) {
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
-        auto it = joint_initial_positions.find(name);
-        if (it != joint_initial_positions.end())
+        auto it = kRobotConfig.initial_joint_positions.find(name);
+        if (it != kRobotConfig.initial_joint_positions.end())
             mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[i]] = it->second;
     }
 
@@ -369,7 +375,7 @@ int main(const int argc, const char* argv[]) {
     ri_noise.encoder_noise = 0.001;
 
     labrob::StateEstimator state_estimator(
-        std::string(robotUrdfPath),
+        std::string(kRobotConfig.urdf_path),
         G1_CONTROLLER_DT,
         ri_noise
     );
@@ -387,6 +393,10 @@ int main(const int argc, const char* argv[]) {
 
     Eigen::VectorXd q_ref_joints  = Eigen::VectorXd::Zero(29);
     Eigen::VectorXd dq_ref_joints = Eigen::VectorXd::Zero(29);
+    Eigen::VectorXd jddot_prev_joints = Eigen::VectorXd::Zero(29);  // per l'integrazione trapezoidale
+    double acc_ref_prev = 0.0;                                     // idem, per il test sinusoidale del gomito
+
+    double t_swing = 0;
 
     // ── Main loop ─────────────────────────────────────────────────────────────
     while (!g_signal_received) {
@@ -498,6 +508,10 @@ int main(const int argc, const char* argv[]) {
                 walking_manager.init(robot_state, armatures);
                 isWBCLoopClosed = true;
                 isMPCLoopClosed = true;
+                q_ref_joints  = measured_joint_pos;
+                dq_ref_joints = measured_joint_vel;
+                // initialize velocity reference for elbow
+                // dq_ref_joints[25] = 1.13/2 * (2.0 * M_PI / 10.0);
             }
 
             {
@@ -539,17 +553,60 @@ int main(const int argc, const char* argv[]) {
                         for (int i = 0; i < mj_model_ptr->nu; ++i) {
                             int jid = mj_model_ptr->actuator_trnid[i * 2];
                             std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                            q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                            dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
-                            // set to joint initial position instead
-                            // q_ref_joints[i] = joint_initial_positions.at(jname);
-                            // dq_ref_joints[i] = 0.0;
+                            if (true){
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                                // set to joint initial position instead
+                                // q_ref_joints[i] = kRobotConfig.initial_joint_positions.at(jname);
+                                // dq_ref_joints[i] = 0.0;
+                            }
+                            else {
+                                q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                dq_ref_joints[i] = dq_ref_joints[i] + jddot_joints[i] * cmd_dt;
+                                dq_ref_joints[i] = std::clamp(dq_ref_joints[i], -10.0, 10.0);
+                                // set to joint initial position instead
+                                // q_ref_joints[i] = kRobotConfig.initial_joint_positions.at(jname);
+                                // dq_ref_joints[i] = 0.0;
+                            }
+                            // design a sinusoidal trajectory for the right arm joint 25 (right shoulder pitch) to test WBC starting at 1.13 rad and ending at 0.0 rad
+                            // if (i == 25){
+                            //     q_ref_joints[i] = 1.13/2 + 1.13/2 * (std::sin(2.0 * M_PI * t_swing / 10.0));
+                            //     dq_ref_joints[i] = 1.13/2 * (2.0 * M_PI / 10.0) * std::cos(2.0 * M_PI * t_swing / 10.0);
+                            //     // t_swing += cmd_dt;
+                            // }
+                            // if (i == 25){
+                            //     double acc_ref = - 1.13/2 * (2.0 * M_PI / 10.0) * (2.0 * M_PI / 10.0) * std::sin(2.0 * M_PI * t_swing / 10.0);
+                            //     // q_ref_joints[i] = (0.3) * (std::sin(2.0 * M_PI * t_swing / 10.0));
+                            //     // dq_ref_joints[i] = (0.3) * (2.0 * M_PI / 10.0) * std::cos(2.0 * M_PI * t_swing / 10.0);
+                            //     q_ref_joints[i]  = q_ref_joints[i] + dq_ref_joints[i] * cmd_dt + 0.5 * acc_ref * cmd_dt * cmd_dt;
+                            //     dq_ref_joints[i] = dq_ref_joints[i] + acc_ref * cmd_dt;
+                            //     t_swing += cmd_dt;
+                            // }
+                            // if (i == 3){
+                            //     q_ref_joints[i] = 1.25 - (0.3) * (std::cos(2.0 * M_PI * t_swing / 10.0));
+                            //     dq_ref_joints[i] = (0.3) * (2.0 * M_PI / 10.0) * std::sin(2.0 * M_PI * t_swing / 10.0);
+                            //     t_swing += cmd_dt;
+                            // }
+                            // if (i == 11){
+                            //     double acc_ref = - (0.3) * (2.0 * M_PI / 10.0) * (2.0 * M_PI / 10.0) * std::sin(2.0 * M_PI * t_swing / 10.0);
+                            //     // q_ref_joints[i] = (0.3) * (std::sin(2.0 * M_PI * t_swing / 10.0));
+                            //     // dq_ref_joints[i] = (0.3) * (2.0 * M_PI / 10.0) * std::cos(2.0 * M_PI * t_swing / 10.0);
+                            //     q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * acc_ref * cmd_dt * cmd_dt;
+                            //     dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + acc_ref * cmd_dt;
+                            //     t_swing += cmd_dt;
+                            // }
+                            
                         }
                     }
                     // for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     //     int jid = mj_model_ptr->actuator_trnid[i * 2];
                     //     joint_command[mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid)] = 0.0;
                     // }
+
+                    // add logs for references
+                    sensor_logger.log("q_ref_joints", q_ref_joints);
+                    sensor_logger.log("dq_ref_joints", dq_ref_joints);
+
                     break;
             }
 

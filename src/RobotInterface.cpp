@@ -36,6 +36,8 @@ void LowStateHandler(const void* msg) {
         motor_state_data.q[i]  = low_state.motor_state()[i].q();
         motor_state_data.dq[i] = low_state.motor_state()[i].dq();
         motor_state_data.tau_est[i] = low_state.motor_state()[i].tau_est();
+        motor_state_data.mode[i] = low_state.motor_state()[i].mode();
+        motor_state_data.motorstate[i] = low_state.motor_state()[i].motorstate();
     }
     imu_pelvis_data.omega         = Eigen::Vector3d(
         low_state.imu_state().gyroscope()[0], low_state.imu_state().gyroscope()[1],

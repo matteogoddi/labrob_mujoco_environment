@@ -24,6 +24,8 @@ set(blasfeo_INCLUDE_DIRS /opt/blasfeo/include)
 set(hpipm_INCLUDE_DIRS /opt/hpipm/include)
 set(blasfeo_LIBRARIES /opt/blasfeo/lib/libblasfeo.a)
 set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
+set(qpOASES_INCLUDE_DIRS /usr/local/include)
+set(qpOASES_LIBRARIES /usr/local/lib/libqpOASES.a)
 
 add_library(
   WalkingControllerLibrary STATIC
@@ -45,6 +47,7 @@ target_include_directories(WalkingControllerLibrary
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${hpipm_INCLUDE_DIRS}
     ${blasfeo_INCLUDE_DIRS}
+    ${qpOASES_INCLUDE_DIRS}
 )
 add_definitions(-DCOAL_DISABLE_HPP_FCL_WARNINGS)
 
@@ -52,6 +55,7 @@ target_link_libraries(WalkingControllerLibrary
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
+  ${qpOASES_LIBRARIES}
   jsoncpp_lib
   OpenMP::OpenMP_CXX
   mujoco::mujoco

@@ -20,33 +20,32 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 150.0;
-  params.Kd_motion = 50.0;
+  params.Kp_motion = 30.0;
+  params.Kd_motion = 10.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 80.0;
-  params.Kd_orientation = 40.0;
-  params.Kp_foot = 200.0;
-  params.Kd_foot = 80.0;
+  params.Kp_orientation = 150.0;
+  params.Kd_orientation = 30.0;
+  params.Kp_foot = 300.0;
+  params.Kd_foot = 200.0;
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 40;
-  params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
-  params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;
+  // params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
+  // params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
   // params.Kp_joint_matrix.block(12, 12, 3, 3).setZero();
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
-
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 10;
-  params.weight_lsole            = 5;
-  params.weight_rsole            = 5;
+  params.weight_lsole            = 0;
+  params.weight_rsole            = 0;
   params.weight_lwrist            = 0.0;
   params.weight_rwrist            = 0.0;
   params.weight_torso            = 1e-3;
   params.weight_pelvis           = 1e-1;
-  params.weight_angular_momentum = 1e-4;
+  params.weight_angular_momentum = 0.0;
   params.weight_regulation       = 1e-4;
 
   params.cmm_selection_matrix_x = 1e-1;
@@ -55,7 +54,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
 
   params.beta = 0;
   params.gamma = 30;
-  params.mu = 0.6;
+  params.mu = 0.8;
 
   params.foot_length = 0.20;
   params.foot_width  = 0.05;
@@ -76,12 +75,12 @@ WholeBodyController::WholeBodyController(
 {
   robot_data_ = pinocchio::Data(robot_model_);
 
-  lsole_idx_  = robot_model_.getFrameId("left_foot_link");
-  rsole_idx_  = robot_model_.getFrameId("right_foot_link");
-  lwrist_idx_  = robot_model_.getFrameId("left_wrist_yaw_link");
-  rwrist_idx_  = robot_model_.getFrameId("right_wrist_yaw_link");
-  torso_idx_  = robot_model_.getFrameId("torso_link");
-  pelvis_idx_ = robot_model_.getFrameId("pelvis");
+  lsole_idx_  = robot_model_.getFrameId(kRobotConfig.left_foot_link);
+  rsole_idx_  = robot_model_.getFrameId(kRobotConfig.right_foot_link);
+  lwrist_idx_  = robot_model_.getFrameId(kRobotConfig.left_wrist_link);
+  rwrist_idx_  = robot_model_.getFrameId(kRobotConfig.right_wrist_link);
+  torso_idx_  = robot_model_.getFrameId(kRobotConfig.torso_link);
+  pelvis_idx_ = robot_model_.getFrameId(kRobotConfig.pelvis_link);
 
   J_torso_     = Eigen::MatrixXd::Zero(6, robot_model_.nv);
   J_pelvis_    = Eigen::MatrixXd::Zero(6, robot_model_.nv);
@@ -113,9 +112,9 @@ WholeBodyController::WholeBodyController(
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
-  wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+  wbc_solver_ptr_ = std::make_unique<labrob::QpOASESSolver>(
       n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
-      , n_wbc_inequalities_, 1e1
+      // , n_wbc_inequalities_, 1e-6
     );
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
@@ -206,6 +205,12 @@ WholeBodyController::WholeBodyController(
   d_min_wbc_.segment(2*nj+4*nc, 4*nc) = d_min_force_;
   d_max_wbc_.segment(2*nj,       4*nc) = d_max_force_;
   d_max_wbc_.segment(2*nj+4*nc, 4*nc) = d_max_force_;
+
+  // print joint limits
+  // std::cout << "Joint limits: " << std::endl;
+  // for (int i = 0; i < n_joints_; ++i) {
+  //   std::cout << "  " << robot_model_.names[i + 2] << " : [" << robot_model_.lowerPositionLimit[i + 6] << ", " << robot_model_.upperPositionLimit[i + 6] << "]" << std::endl;
+  // }
 }
 
 labrob::JointCommand
@@ -315,12 +320,19 @@ WholeBodyController::compute_inverse_dynamics(
   // std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
   // std::cout << "error rsole pos " << err_rsole.transpose() << " vel " << err_rsole_vel.transpose() << "\n" << std::endl;
 
+  // Foot motion-tracking weight: only meaningful for the swing foot (the
+  // stance foot's acceleration is already pinned by the hard equality
+  // constraint A_acc_wbc_, so a soft tracking cost on it is redundant at
+  // best). 5 while swinging, 0 while in stance.
+  const double weight_lsole_eff = current.is_left_foot_support  ? 0.0 : 5.0;
+  const double weight_rsole_eff = current.is_right_foot_support ? 0.0 : 5.0;
+
   // ── H_acc / f_acc (no temporaries, noalias products) ─────────────────────
   H_acc_.setZero();
   H_acc_.diagonal().setConstant(params_.weight_q_ddot);
   H_acc_.noalias() += params_.weight_com     * (J_com.transpose()                 * J_com);
-  H_acc_.noalias() += params_.weight_lsole   * (J_lsole_.transpose()              * J_lsole_);
-  H_acc_.noalias() += params_.weight_rsole   * (J_rsole_.transpose()              * J_rsole_);
+  H_acc_.noalias() += weight_lsole_eff       * (J_lsole_.transpose()              * J_lsole_);
+  H_acc_.noalias() += weight_rsole_eff       * (J_rsole_.transpose()              * J_rsole_);
   H_acc_.noalias() += params_.weight_lwrist   * (J_lwrist_.topRows<3>().transpose() * J_lwrist_.topRows<3>());
   H_acc_.noalias() += params_.weight_rwrist   * (J_rwrist_.topRows<3>().transpose() * J_rwrist_.topRows<3>());
   H_acc_.noalias() += params_.weight_torso   * (J_torso_.bottomRows<3>().transpose()  * J_torso_.bottomRows<3>());
@@ -334,8 +346,8 @@ WholeBodyController::compute_inverse_dynamics(
 
   f_acc_.setZero();
   f_acc_.noalias() += params_.weight_com    * J_com.transpose()                 * (a_com_drift - a_com_total);
-  f_acc_.noalias() += params_.weight_lsole  * J_lsole_.transpose()              * (a_lsole_drift - a_lsole_total);
-  f_acc_.noalias() += params_.weight_rsole  * J_rsole_.transpose()              * (a_rsole_drift - a_rsole_total);
+  f_acc_.noalias() += weight_lsole_eff      * J_lsole_.transpose()              * (a_lsole_drift - a_lsole_total);
+  f_acc_.noalias() += weight_rsole_eff      * J_rsole_.transpose()              * (a_rsole_drift - a_rsole_total);
   f_acc_.noalias() += params_.weight_lwrist  * J_lwrist_.topRows<3>().transpose() * (a_lwrist_drift - a_lwrist_total);
   f_acc_.noalias() += params_.weight_rwrist  * J_rwrist_.topRows<3>().transpose() * (a_rwrist_drift - a_rwrist_total);
   f_acc_.noalias() += params_.weight_torso  * J_torso_.bottomRows<3>().transpose()  * (a_torso_drift  - a_torso_total);
@@ -393,8 +405,8 @@ WholeBodyController::compute_inverse_dynamics(
 
   // Rotated contact points
   for (int i = 0; i < nc; ++i) {
-    pcis_l_[i] = desired.lsole.pos.R * pcis_[i];
-    pcis_r_[i] = desired.rsole.pos.R * pcis_[i];
+    pcis_l_[i] = current.lsole.pos.R * pcis_[i];
+    pcis_r_[i] = current.rsole.pos.R * pcis_[i];
   }
 
   // Grasp matrices T_l, T_r
@@ -479,37 +491,37 @@ WholeBodyController::compute_inverse_dynamics(
   // and position-limit rows, kept separate (different units), for
   // diagnosing whether these (rather than the friction cone) are the source
   // of QP infeasibility at gait transitions.
-  {
-    const Eigen::VectorXd Cx          = C_acc_ * q_ddot_;
-    const Eigen::VectorXd margin_low  = Cx - d_min_acc_;
-    const Eigen::VectorXd margin_high = d_max_acc_ - Cx;
+  // {
+  //   const Eigen::VectorXd Cx          = C_acc_ * q_ddot_;
+  //   const Eigen::VectorXd margin_low  = Cx - d_min_acc_;
+  //   const Eigen::VectorXd margin_high = d_max_acc_ - Cx;
 
-    Eigen::Index vel_low_idx, vel_high_idx, pos_low_idx, pos_high_idx;
-    const double vel_low_min  = margin_low.head(nj).minCoeff(&vel_low_idx);
-    const double vel_high_min = margin_high.head(nj).minCoeff(&vel_high_idx);
-    const double pos_low_min  = margin_low.tail(nj).minCoeff(&pos_low_idx);
-    const double pos_high_min = margin_high.tail(nj).minCoeff(&pos_high_idx);
+  //   Eigen::Index vel_low_idx, vel_high_idx, pos_low_idx, pos_high_idx;
+  //   const double vel_low_min  = margin_low.head(nj).minCoeff(&vel_low_idx);
+  //   const double vel_high_min = margin_high.head(nj).minCoeff(&vel_high_idx);
+  //   const double pos_low_min  = margin_low.tail(nj).minCoeff(&pos_low_idx);
+  //   const double pos_high_min = margin_high.tail(nj).minCoeff(&pos_high_idx);
 
-    if (vel_low_min <= vel_high_min) {
-      joint_vel_limit_margin_    = vel_low_min;
-      worst_vel_limit_joint_     = static_cast<int>(vel_low_idx);
-      worst_vel_limit_is_upper_  = false;
-    } else {
-      joint_vel_limit_margin_    = vel_high_min;
-      worst_vel_limit_joint_     = static_cast<int>(vel_high_idx);
-      worst_vel_limit_is_upper_  = true;
-    }
+  //   if (vel_low_min <= vel_high_min) {
+  //     joint_vel_limit_margin_    = vel_low_min;
+  //     worst_vel_limit_joint_     = static_cast<int>(vel_low_idx);
+  //     worst_vel_limit_is_upper_  = false;
+  //   } else {
+  //     joint_vel_limit_margin_    = vel_high_min;
+  //     worst_vel_limit_joint_     = static_cast<int>(vel_high_idx);
+  //     worst_vel_limit_is_upper_  = true;
+  //   }
 
-    if (pos_low_min <= pos_high_min) {
-      joint_pos_limit_margin_    = pos_low_min;
-      worst_pos_limit_joint_     = static_cast<int>(pos_low_idx);
-      worst_pos_limit_is_upper_  = false;
-    } else {
-      joint_pos_limit_margin_    = pos_high_min;
-      worst_pos_limit_joint_     = static_cast<int>(pos_high_idx);
-      worst_pos_limit_is_upper_  = true;
-    }
-  }
+  //   if (pos_low_min <= pos_high_min) {
+  //     joint_pos_limit_margin_    = pos_low_min;
+  //     worst_pos_limit_joint_     = static_cast<int>(pos_low_idx);
+  //     worst_pos_limit_is_upper_  = false;
+  //   } else {
+  //     joint_pos_limit_margin_    = pos_high_min;
+  //     worst_pos_limit_joint_     = static_cast<int>(pos_high_idx);
+  //     worst_pos_limit_is_upper_  = true;
+  //   }
+  // }
 
   const auto& fl = flr_.head(3 * nc);
   const auto& fr = flr_.tail(3 * nc);

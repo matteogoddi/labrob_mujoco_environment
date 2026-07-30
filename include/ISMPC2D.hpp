@@ -55,6 +55,12 @@ class ISMPC2D {
   double getFootConstraintLength() const { return foot_constraint_square_length_; }
   double getFootConstraintWidth()  const { return foot_constraint_square_width_; }
 
+  // Full ZMP reference (mc_x_/mc_y_) over the whole prediction horizon, for
+  // debugging whether the horizon already "sees" an upcoming blend ramp at
+  // solve time (as opposed to just the current-step value above).
+  const Eigen::VectorXd& getZmpReferenceX() const { return mc_x_; }
+  const Eigen::VectorXd& getZmpReferenceY() const { return mc_y_; }
+
   void resetInput() {
     input_ = Eigen::Vector2d::Zero();
   }
@@ -80,7 +86,7 @@ class ISMPC2D {
   double beta_x_ = 10000.0;
   double beta_y_ = 10000.0;
 
-  double single_support_zmp_blend_ = 0.95;
+  double single_support_zmp_blend_ = 1.0;
 
   Eigen::MatrixXd A_eq_;
   Eigen::VectorXd b_eq_;
