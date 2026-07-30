@@ -53,7 +53,7 @@ class QpSolver {
     // This installed HPIPM (/opt/hpipm) takes a single combined `ns`
     // (nb=0 always in this codebase, no native box constraints).
     d_dense_qp_dim_set_all(num_variables, num_equality_constraints, 0,
-                           num_inequality_constraints, num_soft_constraints, &dim_);
+                           num_inequality_constraints, 0, num_soft_constraints, &dim_);
 
     int qp_size = d_dense_qp_memsize(&dim_);
     qp_mem_ = calloc(1, qp_size);
