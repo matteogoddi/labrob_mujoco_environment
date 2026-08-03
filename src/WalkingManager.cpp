@@ -395,7 +395,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     coop_fp.ell = foot_separation;
     //coop_fp.kp_x = 0.8;  coop_fp.kp_y = 0.8;
     coop_fp.kp_x = 0.5;  coop_fp.kp_y = 0.5;
-    coop_fp.kd_x = 0.1;  coop_fp.kd_y = 0.1;
+    coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
     coop_fp.ki_x = 0.05; coop_fp.ki_y = 0.05;
     coop_fp.da_x = 0.20; coop_fp.da_y = 0.10;
 
@@ -623,11 +623,23 @@ WalkingManager::update(
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
+        Eigen::Vector3d M_left = wrist_force_estimator_ptr_->getLeftFootWrench().tail<3>();
+        Eigen::Vector3d M_right = wrist_force_estimator_ptr_->getRightFootWrench().tail<3>();
+
         ef_zmp_3d.x() =
             ( left_foot_force.z()  * T_lsole.translation().x() +
             right_foot_force.z() * T_rsole.translation().x()+
             f_right_wrist.z() * T_lwrist.translation().x() +
             f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
+
+        
+        ef_zmp_3d.x() =
+            ( left_foot_force.z()  * T_lsole.translation().x() +
+            right_foot_force.z() * T_rsole.translation().x()+
+            f_right_wrist.z() * T_lwrist.translation().x() +
+            f_left_wrist.z() * T_rwrist.translation().x() 
+            - M_left.y() - M_right.y() ) / total_force.z();
+        
 
 
         ef_zmp_3d.y() =
@@ -635,6 +647,15 @@ WalkingManager::update(
             right_foot_force.z() * T_rsole.translation().y() +
             f_right_wrist.z() * T_lwrist.translation().y() +
             f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
+
+        
+        ef_zmp_3d.y() =
+            ( left_foot_force.z()  * T_lsole.translation().y() +
+            right_foot_force.z() * T_rsole.translation().y() +
+            f_right_wrist.z() * T_lwrist.translation().y() +
+            f_left_wrist.z() * T_rwrist.translation().y() 
+            + M_left.x() + M_right.x() ) / total_force.z();
+        
 
         ef_zmp_3d.z() = zmp_3d.z() + (f_right_wrist.z() + f_left_wrist.z() ) / (robot_data.mass[0] * eta2);
 
@@ -1389,8 +1410,8 @@ WalkingManager::update(
     // Print estimated wrist forces
     if ((t_msec_ % 500 == 0) && verbose_coop_ && isObserverActive) 
     {
-        std::cout << "[WRIST FORCE] right: " << estimated_force_wrist.head<3>().transpose() << "\n";
-        std::cout << "[WRIST FORCE] left:  " << estimated_force_wrist.tail<3>().transpose()  << "\n";
+        std::cout << "[WRIST FORCE] left: " << estimated_force_wrist.head<3>().transpose() << "\n";
+        std::cout << "[WRIST FORCE] right:  " << estimated_force_wrist.tail<3>().transpose()  << "\n";
     }
     
     // =========================================================================
@@ -1441,8 +1462,8 @@ WalkingManager::update(
     logger_.log("hac_eh_dot", hac_ptr_->getEhDot());
     logger_.log("estimated_force_lsole", estimated_force_sole.head<3>());
     logger_.log("estimated_force_rsole", estimated_force_sole.tail<3>());
-    logger_.log("estimated_force_lwrist", estimated_force_wrist.tail<3>());
-    logger_.log("estimated_force_rwrist", estimated_force_wrist.head<3>());
+    logger_.log("estimated_force_lwrist", estimated_force_wrist.head<3>());
+    logger_.log("estimated_force_rwrist", estimated_force_wrist.tail<3>());
     logger_.log("residual_vector_norm", residual_vector_norm);
 
     {

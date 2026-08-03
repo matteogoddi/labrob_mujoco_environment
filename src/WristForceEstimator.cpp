@@ -65,7 +65,7 @@ namespace labrob {
         n_wrench_qp_equalities_ = 0;
         n_wrench_qp_inequalities_ = 2;         // non-negativity of vertical forces for each foot
         // Large slack weight makes the Fz >= 0 inequality effectively rigid, unlike the
-        // default (1e-6) soft-constraint weight used by WBC/ISMPC/FootstepPlannerCoop.
+        // default (1e-6) soft-constraint weight
         wrench_solver_ptr_ = std::make_unique<labrob::QpSolver>(
             n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_,
             SPEED_ABS, 50, 1e6);
@@ -81,8 +81,8 @@ namespace labrob {
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.1, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.1, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
+                                    0.001, 0.001, 0.1, 0.001, 0.001, 0.001,
+                                    0.001, 0.001, 0.1, 0.001, 0.001, 0.001;
 
 
         
