@@ -328,6 +328,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     );
     */
 
+    /*
     ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
         mpc_prediction_horizon_msec,
         mpc_timestep_msec,
@@ -336,6 +337,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_length,
         foot_constraint_square_width
     );
+    */
 
 
     // INIT HAC
@@ -394,7 +396,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
     //coop_fp.kp_x = 0.8;  coop_fp.kp_y = 0.8;
-    coop_fp.kp_x = 0.5;  coop_fp.kp_y = 0.5;
+    coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
     coop_fp.ki_x = 0.05; coop_fp.ki_y = 0.05;
     coop_fp.da_x = 0.20; coop_fp.da_y = 0.10;
@@ -424,6 +426,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     friction_cone_ratios_right_x_.resize(whole_body_controller_ptr_->get_n_contacts());
     friction_cone_ratios_right_y_.resize(whole_body_controller_ptr_->get_n_contacts());
 
+    
     // Init Perturbed LIP (PLIP) dynamics
     discrete_lip_dynamics_ptr_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(eta2),
@@ -444,6 +447,21 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         std::sqrt(eta2),
         0.001 * mpc_timestep_msec
     );
+
+
+    // ++++++++++++++++++++
+
+    eta2 = discrete_plip_dynamics_ptr_->getEta2();
+
+    ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
+            mpc_prediction_horizon_msec,
+            mpc_timestep_msec,
+            std::sqrt(eta2),
+            Eigen::Vector3d::Zero(),            // w = 0
+            foot_constraint_square_length,
+            foot_constraint_square_width
+        );
+    // ++++++++++++++++++++
 
     // WRIST FORCE ESTIMATOR BASED ON FULL MODEL AND ALL EXTERNAL WRENCHES
     wrist_force_estimator_ptr_ = std::make_unique<labrob::WristForceEstimator>(
@@ -485,7 +503,7 @@ WalkingManager::update(
     Eigen::Vector3d left_foot_force = estimated_force_sole.head(3);
     Eigen::Vector3d right_foot_force = estimated_force_sole.tail(3);
 
-    Eigen::Vector3d total_force = left_foot_force + right_foot_force + f_left_wrist + f_right_wrist;
+    Eigen::Vector3d total_force = left_foot_force + right_foot_force; //+ f_left_wrist + f_right_wrist;
 
     // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
 
@@ -626,39 +644,24 @@ WalkingManager::update(
         Eigen::Vector3d M_left = wrist_force_estimator_ptr_->getLeftFootWrench().tail<3>();
         Eigen::Vector3d M_right = wrist_force_estimator_ptr_->getRightFootWrench().tail<3>();
 
-        ef_zmp_3d.x() =
-            ( left_foot_force.z()  * T_lsole.translation().x() +
-            right_foot_force.z() * T_rsole.translation().x()+
-            f_right_wrist.z() * T_lwrist.translation().x() +
-            f_left_wrist.z() * T_rwrist.translation().x() ) / total_force.z();
-
+        ef_zmp_3d.z() = zmp_3d.z();
         
         ef_zmp_3d.x() =
             ( left_foot_force.z()  * T_lsole.translation().x() +
-            right_foot_force.z() * T_rsole.translation().x()+
-            f_right_wrist.z() * T_lwrist.translation().x() +
-            f_left_wrist.z() * T_rwrist.translation().x() 
-            - M_left.y() - M_right.y() ) / total_force.z();
+            right_foot_force.z() * T_rsole.translation().x() -
+            M_left.y() - M_right.y()  +
+            left_foot_force.x() * (ef_zmp_3d.z() - T_lsole.translation().z()) +
+            right_foot_force.x() * (ef_zmp_3d.z() - T_rsole.translation().z()) ) / total_force.z();
         
-
-
-        ef_zmp_3d.y() =
-            ( left_foot_force.z()  * T_lsole.translation().y() +
-            right_foot_force.z() * T_rsole.translation().y() +
-            f_right_wrist.z() * T_lwrist.translation().y() +
-            f_left_wrist.z() * T_rwrist.translation().y() ) / total_force.z();
-
+        
         
         ef_zmp_3d.y() =
             ( left_foot_force.z()  * T_lsole.translation().y() +
             right_foot_force.z() * T_rsole.translation().y() +
-            f_right_wrist.z() * T_lwrist.translation().y() +
-            f_left_wrist.z() * T_rwrist.translation().y() 
-            + M_left.x() + M_right.x() ) / total_force.z();
+            M_left.x() + M_right.x() +
+            left_foot_force.y() * (ef_zmp_3d.z() - T_lsole.translation().z()) +
+            right_foot_force.y() * (ef_zmp_3d.z() - T_rsole.translation().z())) / total_force.z();
         
-
-        ef_zmp_3d.z() = zmp_3d.z() + (f_right_wrist.z() + f_left_wrist.z() ) / (robot_data.mass[0] * eta2);
-
         
     } else {
         ef_zmp_3d.z() = zmp_3d.z();

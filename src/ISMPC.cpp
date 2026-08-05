@@ -129,12 +129,15 @@ ISMPC::solve(
 
   const double half_len = foot_constraint_square_length_ / 2.0;
   const double half_wid = foot_constraint_square_width_  / 2.0;
+  const double half_height = 0.01; // 1cm above and below the foot
   b_zmp_min_.head(N_) = mc_x_.array() - (half_len + zmp_pos(0));
   b_zmp_min_.segment(N_, N_) = mc_y_.array() - (half_wid + zmp_pos(1));
-  b_zmp_min_.tail(N_) = mc_z_.array() - (half_len + zmp_pos(2));
+  //b_zmp_min_.tail(N_) = mc_z_.array() - (half_len + zmp_pos(2));
+  b_zmp_min_.tail(N_) = mc_z_.array() - (half_height + zmp_pos(2));
   b_zmp_max_.head(N_) = mc_x_.array() + (half_len - zmp_pos(0));
   b_zmp_max_.segment(N_, N_) = mc_y_.array() + (half_wid - zmp_pos(1));
-  b_zmp_max_.tail(N_) = mc_z_.array() + (half_len - zmp_pos(2));
+  //b_zmp_max_.tail(N_) = mc_z_.array() + (half_len - zmp_pos(2));
+  b_zmp_max_.tail(N_) = mc_z_.array() + (half_height - zmp_pos(2));
 
   // Geometric decay b_decay_(i) = exp(-eta*dt)^i (no pow/exp per iteration)
   A_eq_.setZero();

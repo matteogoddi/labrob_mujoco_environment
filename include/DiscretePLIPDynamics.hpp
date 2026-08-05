@@ -21,6 +21,7 @@ class DiscretePLIPDynamics {
   );
 
   void setEta2();
+  double getEta2() const { return eta2_; }
   double getEta() const { return std::sqrt(eta2_); }
 
   void updateDisturbanceTerm(const LIPState& lip_state,

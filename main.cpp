@@ -560,7 +560,7 @@ int main(const int argc, const char* argv[]) {
                 f_r_test = Eigen::Vector3d::Zero();
 
                 
-                if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 25.0) {
+                if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
 
                     f_l_test = Eigen::Vector3d(5.0, 0.0, -5.0);
                     f_r_test = Eigen::Vector3d(5.0, 0.0, -5.0);
@@ -574,12 +574,12 @@ int main(const int argc, const char* argv[]) {
                     f_l_test = Eigen::Vector3d(4.0, 0.0, 0.0);
                     f_r_test = Eigen::Vector3d(2.0, 0.0, 0.0);
 
-                } else if (mj_data_ptr->time >= 25.0 && mj_data_ptr->time < 30.0) {
+                } else if (mj_data_ptr->time >= 25.0 && mj_data_ptr->time < 35.0) {
                     
                     f_l_test = Eigen::Vector3d(0.0, 0.0, 0.0);
                     f_r_test = Eigen::Vector3d(0.0, 0.0, 0.0);
 
-                } else if (mj_data_ptr->time >= 30.0 && mj_data_ptr->time < 45.0) {
+                } else if (mj_data_ptr->time >= 35.0 && mj_data_ptr->time < 45.0) {
 
                     f_l_test = Eigen::Vector3d(2.0, 0.0, 0.0);
                     f_r_test = Eigen::Vector3d(4.0, 0.0, 0.0);
