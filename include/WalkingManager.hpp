@@ -112,6 +112,7 @@ class WalkingManager {
 
   Eigen::VectorXd estimated_force_sole = Eigen::VectorXd::Zero(6);
   Eigen::VectorXd estimated_force_wrist = Eigen::VectorXd::Zero(6);
+  Eigen::VectorXd estimated_moment_sole = Eigen::VectorXd::Zero(6);
 
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
@@ -127,9 +128,9 @@ private:
   Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d com_kf_cov_z_ = Eigen::Matrix3d::Identity();
   // noise parameters (same defaults as CoMKF class)
-  static constexpr double kComKfMeasPos = 1.0e1;
-  static constexpr double kComKfMeasVel = 1.0e2;
-  static constexpr double kComKfMeasZmp = 1.0e8;
+  static constexpr double kComKfMeasPos = 0;//1.0e1;
+  static constexpr double kComKfMeasVel = 0;//1.0e2;
+  static constexpr double kComKfMeasZmp = 1.0e3;//1.0e8;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;

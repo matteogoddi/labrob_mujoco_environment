@@ -49,8 +49,12 @@ namespace labrob {
             // Getters with filter
             const Eigen::VectorXd& getResidual()          const { return r_; }
             const Eigen::VectorXd& getEstimatedWrenches() const { return W_ext_filt_; }
-            Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_arm_filt_.segment<3>(0); }
-            Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_arm_filt_.segment<3>(6); }
+
+            //Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_arm_filt_.segment<3>(0); }
+            //Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_arm_filt_.segment<3>(6); }
+            Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_filt_.segment<3>(0); }
+            Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_filt_.segment<3>(6); }
+
             Eigen::Matrix<double,6,1> getRightFootWrench() const { return W_ext_filt_.segment<6>(12); }
             Eigen::Matrix<double,6,1> getLeftFootWrench()  const { return W_ext_filt_.segment<6>(18); }
             const Eigen::VectorXd& getGeneralizedMomentum()        const { return p_; }

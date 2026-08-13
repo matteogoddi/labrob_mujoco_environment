@@ -125,6 +125,8 @@ if __name__ == '__main__':
 
     estimated_force_lsole = _load('estimated_force_lsole.txt', 3)
     estimated_force_rsole = _load('estimated_force_rsole.txt', 3)
+    estimated_moment_lsole = _load('estimated_moment_lsole.txt', 3)
+    estimated_moment_rsole = _load('estimated_moment_rsole.txt', 3)
     wbc_accelerations = _load('wbc_accelerations.txt', 35)
     wbc_force_lsole = _load('wbc_force_lsole.txt', 6)
     wbc_force_rsole = _load('wbc_force_rsole.txt', 6)
@@ -658,7 +660,31 @@ if __name__ == '__main__':
     fig.tight_layout()
     fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_right_sole.png")
     plt.close(fig)
-    
+
+    fig, ax = plt.subplots()
+    ax.plot(t, estimated_moment_lsole[:, 0], label='Estimated Moment Left Sole Mx', color='blue')
+    ax.plot(t, estimated_moment_lsole[:, 1], label='Estimated Moment Left Sole My', color='orange')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Estimated Moment [Nm]')
+    ax.set_title('Estimated Moments on Left Sole')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_left_sole.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, estimated_moment_rsole[:, 0], label='Estimated Moment Right Sole Mx', color='blue')
+    ax.plot(t, estimated_moment_rsole[:, 1], label='Estimated Moment Right Sole My', color='orange')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Estimated Moment [Nm]')
+    ax.set_title('Estimated Moments on Right Sole')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_right_sole.png")
+    plt.close(fig)
+
 
 
     #################################
@@ -961,7 +987,7 @@ if __name__ == '__main__':
         linewidth=2.0
     )
     ax.plot(
-        t, des_zmp_position[:, 1] - kf_zmp_position[0, 1],
+        t, kf_zmp_position[:, 1] - kf_zmp_position[0, 1],
         label=r'Actual ZMP Position $y$',
         linewidth=2.0,
         linestyle='--'
@@ -1176,7 +1202,46 @@ if __name__ == '__main__':
         bbox_inches='tight'
     )
     plt.close(fig)
-    
+
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(
+        t, kf_com_position[:, 2],
+        label=r'CoM Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, kf_zmp_position[:, 2],
+        label=r'ZMP Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_lsole_fb[:, 2],
+        label=r'Left Foot Position $z$',
+        linewidth=2.0
+    )
+    ax.plot(
+        t, p_rsole_fb[:, 2],
+        label=r'Right Foot Position $z$',
+        linewidth=2.0
+    )
+    ax.set_xlabel('Time [s]', fontsize=11)
+    ax.set_ylabel(r'Position $z$ [$\mathrm{m}$]', fontsize=11)
+    ax.set_title('Motion in the vertical direction', fontsize=12)
+    ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+    ax.legend(
+        loc='best',
+        frameon=True,
+        fontsize=9
+    )
+    ax.tick_params(axis='both', labelsize=10)
+    fig.tight_layout()
+    fig.savefig(
+        "images/com/motion_z.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
 
     fig, ax = plt.subplots()
     ax.plot(t, ef_zmp_position[:, 0], label='residual based ZMP X', color='blue')

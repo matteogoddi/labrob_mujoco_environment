@@ -132,6 +132,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "lsole_orientation",  "rsole_orientation",
         "des_lsole_orientation", "des_rsole_orientation",
         "estimated_force_lsole", "estimated_force_rsole",
+        "estimated_moment_lsole", "estimated_moment_rsole",
         "estimated_force_lwrist", "estimated_force_rwrist",
         "left_arm_residual", "right_arm_residual",
         "left_arm_tau_g", "right_arm_tau_g",
@@ -503,7 +504,7 @@ WalkingManager::update(
     Eigen::Vector3d left_foot_force = estimated_force_sole.head(3);
     Eigen::Vector3d right_foot_force = estimated_force_sole.tail(3);
 
-    Eigen::Vector3d total_force = left_foot_force + right_foot_force; //+ f_left_wrist + f_right_wrist;
+    Eigen::Vector3d total_force = left_foot_force + right_foot_force;
 
     // UPDATE FORWARD KINEMATICS, LIP AND PINOCCHIO QUANTITIES
 
@@ -516,6 +517,7 @@ WalkingManager::update(
     pinocchio::computeJointJacobiansTimeVariation(robot_model, robot_data, q, qdot);
     pinocchio::framesForwardKinematics(robot_model, robot_data, q);
     pinocchio::centerOfMass(robot_model, robot_data, q, qdot, 0.0 * qdot); // This is used to compute the CoM drift (J_com_dot * qdot)
+    //pinocchio::centerOfMass(robot_model, robot_data, q, qdot, whole_body_controller_ptr_->get_q_ddot());
     
     // Compute centroidal momentum matrix and angular momentum
     const auto& centroidal_momentum_matrix = pinocchio::ccrba(
@@ -619,25 +621,51 @@ WalkingManager::update(
     const auto& a_CoM_drift = robot_data.acom[0];
     Eigen::Vector3d v_CoM = J_CoM * qdot;
 
-    
+
 
     // =========================================================
     // ZMP RECONSTRUCTION
     // =========================================================
 
-    // From LIP
+    // From PLIP
+
+    // Update disturbance term using the raw (unfiltered) CoM position, so that
+    // it is time-consistent with a_CoM_drift below: both are computed from the
+    // current-cycle Pinocchio data, and the only delay left is the intrinsic
+    // 1-step delay of the wrist/sole force estimates (f_left_wrist/f_right_wrist).
+    // This is distinct from the later updateDisturbanceTerm() call (near the MPC
+    // solve), which uses kf_LipState and feeds the disturbance used to integrate
+    // des_LipState forward.
+    discrete_plip_dynamics_ptr_->updateDisturbanceTerm(
+        labrob::LIPState(p_CoM, Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero()),
+        f_right_wrist, f_left_wrist,
+        L_dot_,
+        T_rwrist.translation(), T_lwrist.translation()
+    );
+
+    // Disturbance consistent with the current-cycle CoM measurement
+    Eigen::Vector3d w = discrete_plip_dynamics_ptr_->get_disturbance();
     Eigen::Vector3d zmp_3d;
 
+    if (t_msec_ < 2000) {
+        
+        // ZMP reconstruction from LIP (no disturbance) --> to cut out the initial transient of the disturbance term
+        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
+        zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
+        zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
 
-    zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
-    zmp_3d.x() = p_CoM.x() - a_CoM_drift.x() / eta2;
-    zmp_3d.y() = p_CoM.y() - a_CoM_drift.y() / eta2;
-    
+    } else {
+        // ZMP reconstruction from PLIP ( with disturbance)
+        zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() - w.z()) / eta2;
+        zmp_3d.x() = p_CoM.x() - (a_CoM_drift.x() - w.x()) / eta2;
+        zmp_3d.y() = p_CoM.y() - (a_CoM_drift.y() - w.y()) / eta2;
+
+    }
 
     // From RW-BO    
     Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
-    if (total_force.z() > 1e-5) {
+    if (total_force.z() > 1e-5 && t_msec_ > 2000) {
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
@@ -718,6 +746,7 @@ WalkingManager::update(
         LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     else
         LipState = LIPState(p_CoM, J_CoM * qdot, ef_zmp_3d);
+
 
     //kf_LipState = LipState; // --> use this to disable the CoM KF
     kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
@@ -1070,7 +1099,9 @@ WalkingManager::update(
                     L_dot_, // Eigen::Vector3d::Zero(),
                     T_rwrist.translation(), T_lwrist.translation()
                 );
+                
 
+                
                 Eigen::Vector3d current_disturbance; 
 
                 // Cut off transient
@@ -1081,7 +1112,7 @@ WalkingManager::update(
                 } else {
                     current_disturbance = discrete_plip_dynamics_ptr_->get_disturbance();
                 }
-
+                
 
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, current_disturbance);
 
@@ -1094,7 +1125,6 @@ WalkingManager::update(
                     ismpc_ptr_->getInput(),
                     current_disturbance
                 );
-                
                 
                 
                 
@@ -1389,6 +1419,9 @@ WalkingManager::update(
             estimated_force_sole.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().head<3>();
             estimated_force_sole.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().head<3>();
 
+            estimated_moment_sole.head<3>() = wrist_force_estimator_ptr_->getLeftFootWrench().tail<3>();
+            estimated_moment_sole.tail<3>() = wrist_force_estimator_ptr_->getRightFootWrench().tail<3>();
+
             estimated_force_wrist.head<3>() = wrist_force_estimator_ptr_->getWeightedLeftWristForce();
             estimated_force_wrist.tail<3>() = wrist_force_estimator_ptr_->getWeightedRightWristForce();
             
@@ -1465,6 +1498,8 @@ WalkingManager::update(
     logger_.log("hac_eh_dot", hac_ptr_->getEhDot());
     logger_.log("estimated_force_lsole", estimated_force_sole.head<3>());
     logger_.log("estimated_force_rsole", estimated_force_sole.tail<3>());
+    logger_.log("estimated_moment_lsole", estimated_moment_sole.head<3>());
+    logger_.log("estimated_moment_rsole", estimated_moment_sole.tail<3>());
     logger_.log("estimated_force_lwrist", estimated_force_wrist.head<3>());
     logger_.log("estimated_force_rwrist", estimated_force_wrist.tail<3>());
     logger_.log("residual_vector_norm", residual_vector_norm);

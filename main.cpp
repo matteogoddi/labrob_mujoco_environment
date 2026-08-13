@@ -559,7 +559,7 @@ int main(const int argc, const char* argv[]) {
                 f_l_test = Eigen::Vector3d::Zero();
                 f_r_test = Eigen::Vector3d::Zero();
 
-                
+                                
                 if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
 
                     f_l_test = Eigen::Vector3d(5.0, 0.0, -5.0);

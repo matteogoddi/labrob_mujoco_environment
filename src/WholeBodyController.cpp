@@ -488,13 +488,14 @@ WholeBodyController::compute_inverse_dynamics(
 
   Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
 
+  
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
       - Jra_.transpose() * right_foot_wrench_
       + Kd * (q_dot_des_ - qdot.tail(nj))
       + Kp * (q_des_ - q.tail(nj));
 
-  
+      
   // Check for limit exceeding
   /*
   double upper_limit, lower_limit;

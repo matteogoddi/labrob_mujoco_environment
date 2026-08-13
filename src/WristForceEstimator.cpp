@@ -81,8 +81,8 @@ namespace labrob {
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.1, 0.001, 0.001, 0.001,
-                                    0.001, 0.001, 0.1, 0.001, 0.001, 0.001;
+                                    0.001, 0.001, 0.2, 0.001, 0.001, 0.001,
+                                    0.001, 0.001, 0.2, 0.001, 0.001, 0.001;
 
 
         
@@ -140,7 +140,7 @@ namespace labrob {
         computeFullResidual(robot_state, dt);
         //estimateWrenches();                         // unweighted, for feet/ZMP
         estimateWrenchesQP();                         // QP, for feet/ZMP
-        estimateWrenchesWeighted();                   // arm-weighted, for HAC wrists
+        //estimateWrenchesWeighted();                   // arm-weighted, for HAC wrists
         lowPassFilter();
     }
 
@@ -283,10 +283,11 @@ namespace labrob {
         // and C W <= d (inequality constraints)
 
         // H = J_ext^T J_ext
-        H_qp_ = J_ext_ * J_ext_.transpose();
+        //H_qp_ = J_ext_ * J_ext_.transpose();
+        H_qp_ = J_ext_ * W_nv_ * J_ext_.transpose();
 
         // f = -J_ext^T r
-        f_qp_ = - J_ext_ * r_;
+        f_qp_ = - J_ext_ * W_nv_ * r_;
 
 
         // Solve the QP problem using the QpSolver

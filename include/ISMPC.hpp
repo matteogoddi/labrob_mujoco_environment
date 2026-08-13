@@ -94,6 +94,7 @@ class ISMPC{
 
   // Pre-allocated per-solve buffers (no malloc in hot path):
   Eigen::VectorXd mc_x_, mc_y_, mc_z_;  // reference ZMP centroid per step
+  Eigen::VectorXd mc_theta_;            // support/swing-interpolated foot yaw per step
   Eigen::VectorXd b_decay_;             // geometric decay sequence for A_eq
   double mpc_timestep_;                 // 0.001 * mpc_timestep_msec_
 
@@ -203,6 +204,7 @@ class ISMPC{
 
   // Pre-allocated per-solve buffers (no malloc in hot path):
   Eigen::VectorXd mc_x_, mc_y_, mc_z_;  // reference ZMP centroid per step
+  Eigen::VectorXd mc_theta_;            // support/swing-interpolated foot yaw per step
   Eigen::VectorXd b_decay_;             // geometric decay sequence for A_eq
   double mpc_timestep_;                 // 0.001 * mpc_timestep_msec_
 
