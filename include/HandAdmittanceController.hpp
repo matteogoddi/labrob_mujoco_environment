@@ -69,12 +69,14 @@ public:
      * @param f_r_W  Measured force on right hand (world frame) [N]
      * @param p_F    Origin of F expressed in world [m]
      * @param R_F    Orientation of F w.r.t. world (columns = F axes in world)
+     * @param v_F    Velocity of the origin of F expressed in world [m/s]
      */
     void integrate(
         const Eigen::Vector3d& f_l_W,
         const Eigen::Vector3d& f_r_W,
         const Eigen::Vector3d& p_F,
-        const Eigen::Matrix3d& R_F
+        const Eigen::Matrix3d& R_F,
+        const Eigen::Vector3d& v_F
     );
 
     /**
@@ -160,6 +162,7 @@ private:
     // Cached frame from last integrate() call (needed by getters and onSupportSwitch)
     Eigen::Vector3d p_F_;
     Eigen::Matrix3d R_F_;
+    Eigen::Vector3d v_F_;  ///< velocity of F origin in world frame
 
     double eh_threshold_;
     int below_threshold_counter_;

@@ -299,6 +299,14 @@ if __name__ == '__main__':
         os.makedirs('images/residuals/right_arm')
     if not os.path.exists('images/residuals/left_arm'):
         os.makedirs('images/residuals/left_arm')
+    if not os.path.exists('images/residuals/base'):
+        os.makedirs('images/residuals/base')
+    if not os.path.exists('images/residuals/right_leg'):
+        os.makedirs('images/residuals/right_leg')
+    if not os.path.exists('images/residuals/left_leg'):
+        os.makedirs('images/residuals/left_leg')
+    if not os.path.exists('images/residuals/waist'):
+        os.makedirs('images/residuals/waist')
     if not os.path.exists('images/tau_g/right_arm'):
         os.makedirs('images/tau_g/right_arm')
     if not os.path.exists('images/tau_g/left_arm'):
@@ -1257,6 +1265,7 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/zmp_lip_vs_residual_plot.png")
+    plt.close(fig)
 
     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
     axis_labels = ['x', 'y', 'z']
@@ -3521,6 +3530,64 @@ if __name__ == '__main__':
         print("[INFO] left_arm_residuals.txt not found — skipped left arm residual plots.")
 
     ##########################
+    #  BASE / LEGS / WAIST RESIDUALS PLOTS
+    ##########################
+
+    def _plot_residual_group(path, joint_labels, outdir, group_title, ylabel='Residual [Nm]'):
+        if not os.path.exists(path):
+            print(f"[INFO] {os.path.basename(path)} not found — skipped {group_title} residual plots.")
+            return
+        res = np.loadtxt(path)
+        if res.ndim == 1:
+            res = res.reshape(-1, 1)
+        N = res.shape[0]
+        t = np.linspace(0.0, delta * N, N)
+        n_joints = min(res.shape[1], len(joint_labels))
+        for i in range(n_joints):
+            fig, ax = plt.subplots(figsize=(7, 4))
+            ax.plot(t, res[:, i], linewidth=1.5)
+            ax.set_xlabel('Time [s]', fontsize=11)
+            ax.set_ylabel(ylabel, fontsize=11)
+            ax.set_title(f'{group_title} Residual — {joint_labels[i]}', fontsize=12)
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            fig.tight_layout()
+            fig.savefig(f'{outdir}/{joint_labels[i]}_residual.png', dpi=150, bbox_inches='tight')
+            plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(9, 5))
+        for i in range(n_joints):
+            ax.plot(t, res[:, i], label=joint_labels[i], linewidth=1.5)
+        ax.set_xlabel('Time [s]', fontsize=11)
+        ax.set_ylabel(ylabel, fontsize=11)
+        ax.set_title(f'{group_title} — All DOF Residuals', fontsize=12)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(fontsize=8, loc='best')
+        fig.tight_layout()
+        fig.savefig(f'{outdir}/all_joints_residual.png', dpi=150, bbox_inches='tight')
+        plt.close(fig)
+        print(f"[INFO] {group_title} residual plots saved ({N} samples).")
+
+    _plot_residual_group(
+        folder + '/base_residual.txt',
+        ['base_lin_x', 'base_lin_y', 'base_lin_z', 'base_ang_x', 'base_ang_y', 'base_ang_z'],
+        'images/residuals/base', 'Base', ylabel='Residual [N, Nm]')
+
+    _plot_residual_group(
+        folder + '/right_leg_residual.txt',
+        ['r_hip_pitch', 'r_hip_roll', 'r_hip_yaw', 'r_knee', 'r_ankle_pitch', 'r_ankle_roll'],
+        'images/residuals/right_leg', 'Right Leg')
+
+    _plot_residual_group(
+        folder + '/left_leg_residual.txt',
+        ['l_hip_pitch', 'l_hip_roll', 'l_hip_yaw', 'l_knee', 'l_ankle_pitch', 'l_ankle_roll'],
+        'images/residuals/left_leg', 'Left Leg')
+
+    _plot_residual_group(
+        folder + '/waist_residual.txt',
+        ['waist_yaw', 'waist_roll', 'waist_pitch'],
+        'images/residuals/waist', 'Waist')
+
+    ##########################
     #  GENERALIZED MOMENTUM
     ##########################
 
@@ -3719,3 +3786,4 @@ if __name__ == '__main__':
         print(f"[INFO] Left arm tau_m-g plots saved ({Nl_tg} samples).")
     else:
         print("[INFO] left_arm_tau_g.txt not found — skipped left arm tau_m-g plots.")
+

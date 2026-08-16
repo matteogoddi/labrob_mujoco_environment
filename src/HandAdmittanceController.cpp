@@ -51,7 +51,8 @@ void HandAdmittanceController::integrate(
     const Eigen::Vector3d& f_l_W,
     const Eigen::Vector3d& f_r_W,
     const Eigen::Vector3d& p_F,
-    const Eigen::Matrix3d& R_F
+    const Eigen::Matrix3d& R_F,
+    const Eigen::Vector3d& v_F
 ) {
     // Map force errors from world frame to F frame:
     //   fe_i = R_F^T * (f_i - f_i_bar)
@@ -83,6 +84,7 @@ void HandAdmittanceController::integrate(
     // Cache the current frame for getters and onSupportSwitch
     p_F_ = p_F;
     R_F_ = R_F;
+    v_F_ = v_F;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +110,16 @@ void HandAdmittanceController::onSupportSwitch(
     // Re-map rest positions to the new local frame F
     r_l_bar_ = R_rel * r_l_bar_;
     r_r_bar_ = R_rel * r_r_bar_;
+
+    // Re-symmetrize: a z-rotation does not commute with the L/R mirror reflection,
+    // so R_rel*r_bar_ can pick up a spurious x-offset between r_l_bar_/r_r_bar_
+    // even though the physical (world-frame) rest posture is unchanged by this
+    // bookkeeping transform. Left uncorrected, this reintroduces a delta_theta
+    // bias at every support switch.
+    const double x_mid  = 0.5 * (r_l_bar_.x() + r_r_bar_.x());
+    const double y_half = 0.5 * (r_l_bar_.y() - r_r_bar_.y());
+    r_l_bar_.x() = x_mid;   r_r_bar_.x() = x_mid;
+    r_l_bar_.y() = y_half;  r_r_bar_.y() = -y_half;
 
     // 4. Update cached frame
     p_F_ = p_F_new;
@@ -156,14 +168,12 @@ Eigen::Vector3d HandAdmittanceController::getRightHandRef() const {
 
 // Return left hand velocity reference in world frame
 Eigen::Vector3d HandAdmittanceController::getLeftHandVelRef() const {
-    // v_i^W = R_F * v_i^F
-    // (ignoring p_F_dot which is negligible as feedforward)
-    return R_F_ * v_l_F_;
+    return v_F_ + R_F_ * v_l_F_;
 }
 
 // Return right hand velocity reference in world frame
 Eigen::Vector3d HandAdmittanceController::getRightHandVelRef() const {
-    return R_F_ * v_r_F_;
+    return v_F_ + R_F_ * v_r_F_;
 }
 
 // Return hand position error in local frame F

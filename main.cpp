@@ -85,8 +85,9 @@ void signalHandler(int signum) {
                 }
                 ++n;
             }
-            for (const char* src : {"/tmp/robot_logs", "/tmp/mpc_data"}) {
-                const char* dst_name = (std::string(src) == "/tmp/robot_logs") ? "robot_logs" : "mpc_logs";
+            for (const char* src : {"/tmp/robot_logs", "/tmp/mpc_data", "/tmp/ofp_data"}) {
+                const char* dst_name = (std::string(src) == "/tmp/robot_logs") ? "robot_logs"
+                    : (std::string(src) == "/tmp/mpc_data") ? "mpc_logs" : "ofp_logs";
                 if (std::filesystem::exists(src))
                     std::filesystem::copy(src,
                         std::filesystem::path(experiment_folder) / dst_name,
@@ -562,8 +563,8 @@ int main(const int argc, const char* argv[]) {
                                 
                 if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
 
-                    f_l_test = Eigen::Vector3d(5.0, 0.0, -5.0);
-                    f_r_test = Eigen::Vector3d(5.0, 0.0, -5.0);
+                    f_l_test = Eigen::Vector3d(5.0, 0.0, 0.0);
+                    f_r_test = Eigen::Vector3d(5.0, 0.0, 0.0);
 
                 }
                 
@@ -579,7 +580,7 @@ int main(const int argc, const char* argv[]) {
                     f_l_test = Eigen::Vector3d(0.0, 0.0, 0.0);
                     f_r_test = Eigen::Vector3d(0.0, 0.0, 0.0);
 
-                } else if (mj_data_ptr->time >= 35.0 && mj_data_ptr->time < 45.0) {
+                } else if (mj_data_ptr->time >= 35.0 && mj_data_ptr->time < 50.0) {
 
                     f_l_test = Eigen::Vector3d(2.0, 0.0, 0.0);
                     f_r_test = Eigen::Vector3d(4.0, 0.0, 0.0);

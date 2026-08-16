@@ -128,9 +128,9 @@ private:
   Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d com_kf_cov_z_ = Eigen::Matrix3d::Identity();
   // noise parameters (same defaults as CoMKF class)
-  static constexpr double kComKfMeasPos = 0;//1.0e1;
-  static constexpr double kComKfMeasVel = 0;//1.0e2;
-  static constexpr double kComKfMeasZmp = 1.0e3;//1.0e8;
+  static constexpr double kComKfMeasPos = 1.0e1;
+  static constexpr double kComKfMeasVel = 1.0e2;
+  static constexpr double kComKfMeasZmp = 1.0e8; //1.0e03;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;
@@ -146,6 +146,9 @@ private:
 
   Eigen::Vector3d p_F_hac_;
   Eigen::Matrix3d R_F_hac_;
+  Eigen::Vector3d v_F_hac_;
+  Eigen::Vector3d v_lsole_;
+  Eigen::Vector3d v_rsole_;
   pinocchio::SE3 T_lsole_;
   pinocchio::SE3 T_rsole_;
   void updateHACLocalFrame();
@@ -153,6 +156,12 @@ private:
   // HELPERS //
   void showPlan(const labrob::FootstepPlannerCoop::QP2DResult res);
   void showDeque(const labrob::WalkingData wd);
+  void logOfpSnapshot(
+    int64_t t_msec,
+    const labrob::FootstepPlannerCoop::QP2DResult& result,
+    const Eigen::Vector2d& p0,
+    double yaw0
+  );
   void frictionConeRatios(
     const Eigen::VectorXd& flr,
     double mu,
@@ -180,6 +189,18 @@ private:
   double  coop_step_height_ = 0.06;
   bool waiting_for_rolling_ = false;
   bool stopping_requested_ = false;
+
+  // Per-solve online footstep planner (coop) snapshots, written to disk in saveLogs().
+  std::vector<int64_t>         ofp_snapshot_t_log_;
+  std::vector<Eigen::VectorXd> ofp_snapshot_solution_log_;   ///< qp_solution, stacked [x1,y1,...,xF,yF]
+  std::vector<double>          ofp_snapshot_delta_theta_log_;
+  std::vector<Eigen::Vector2d> ofp_snapshot_delta_p_log_;
+  std::vector<int>             ofp_snapshot_support_foot_log_;  ///< 0 = LEFT, 1 = RIGHT (support_foot_start)
+  std::vector<Eigen::Vector2d> ofp_snapshot_p0_log_;            ///< posizione piede di supporto usata come anchor
+  std::vector<double>          ofp_snapshot_yaw0_log_;          ///< yaw del piede di supporto usato come anchor [rad]
+  double ofp_da_x_ = 0.0;  ///< dimensione x della regione ammissibile cinematica del planner [m]
+  double ofp_da_y_ = 0.0;  ///< dimensione y della regione ammissibile cinematica del planner [m]
+  double ofp_ell_  = 0.0;  ///< semidistanza laterale nominale tra i piedi usata dal planner [m]
 
     // Private members HAC
   Eigen::Vector3d hac_f_l_W = Eigen::Vector3d::Zero();
