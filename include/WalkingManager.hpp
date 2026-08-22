@@ -67,6 +67,9 @@ class WalkingManager {
 
   const pinocchio::Model& get_robot_model() const { return robot_model; }
 
+  // Orientation of the HAC frame F w.r.t. world, cached from the last update()
+  const Eigen::Matrix3d& get_R_F_hac() const { return R_F_hac_; }
+
  protected:
   pinocchio::Model robot_model;
   pinocchio::Data robot_data;

@@ -135,7 +135,7 @@ ISMPC::solve(
 
   const double half_len = foot_constraint_square_length_ / 2.0;
   const double half_wid = foot_constraint_square_width_  / 2.0;
-  const double half_height = 0.01; // 1cm above and below the foot
+  const double half_height = 0.05; // 20cm above and below the foot
 
   // Sagittal/lateral (foot-frame) ZMP box constraint: rotate the world-frame
   // ZMP-to-foot offset by the (interpolated) foot yaw before applying the
@@ -157,9 +157,8 @@ ISMPC::solve(
   b_zmp_min_.segment(N_, N_).array() = -half_wid - mc_sin * dx + mc_cos * dy;
   b_zmp_max_.segment(N_, N_).array() =  half_wid - mc_sin * dx + mc_cos * dy;
 
-  //b_zmp_min_.tail(N_) = mc_z_.array() - (half_len + zmp_pos(2));
-  b_zmp_min_.tail(N_) = mc_z_.array() - (half_height + zmp_pos(2));
-  //b_zmp_max_.tail(N_) = mc_z_.array() + (half_len - zmp_pos(2));
+  
+  b_zmp_min_.tail(N_) = mc_z_.array() - (0.0 + zmp_pos(2));
   b_zmp_max_.tail(N_) = mc_z_.array() + (half_height - zmp_pos(2));
 
   // Geometric decay b_decay_(i) = exp(-eta*dt)^i (no pow/exp per iteration)

@@ -407,7 +407,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
-    //coop_fp.kp_x = 0.8;  coop_fp.kp_y = 0.8;
+    //coop_fp.ell = 0.15;
+    std::cout << "Initial foot separation (ell) = " << coop_fp.ell << " m" << std::endl;
     coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
     coop_fp.ki_x = 0.1; coop_fp.ki_y = 0.1;
@@ -465,8 +466,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     );
 
 
-    // ++++++++++++++++++++
-
     eta2 = discrete_plip_dynamics_ptr_->getEta2();
 
     ismpc_ptr_ = std::make_unique<labrob::ISMPC>(
@@ -477,7 +476,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
             foot_constraint_square_length,
             foot_constraint_square_width
         );
-    // ++++++++++++++++++++
+    
 
     // WRIST FORCE ESTIMATOR BASED ON FULL MODEL AND ALL EXTERNAL WRENCHES
     wrist_force_estimator_ptr_ = std::make_unique<labrob::WristForceEstimator>(
