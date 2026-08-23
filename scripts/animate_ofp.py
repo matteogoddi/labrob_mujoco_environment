@@ -29,7 +29,7 @@ src/FootstepPlannerCoop.cpp for the underlying geometry reproduced below:
     headings, i.e. Delta_theta itself.
 
 Feet are drawn as rectangles sized like WholeBodyController::Params
-(foot_length = 0.20 m, foot_width = 0.07 m, src/WholeBodyController.cpp).
+(foot_length = 0.17 m, foot_width = 0.05 m, src/WholeBodyController.cpp).
 Only the latest solution is shown each frame — old ones are not overlaid.
 
 Run from the build/run directory that contains the ofp_data/ folder:
@@ -52,9 +52,9 @@ from matplotlib.animation import FuncAnimation
 from pathlib import Path
 
 # Foot rectangle size — must match WholeBodyController::Params
-# (src/WholeBodyController.cpp: foot_length = 0.20, foot_width = 0.07).
-FOOT_LENGTH = 0.20
-FOOT_WIDTH = 0.07
+# (src/WholeBodyController.cpp: foot_length = 0.17, foot_width = 0.05).
+FOOT_LENGTH = 0.17
+FOOT_WIDTH = 0.05
 
 HEADING_LEN = 0.10     # length of the foot-heading arrows [m]
 DTHETA_ARC_RADIUS = 0.045  # radius of the Delta_theta arc drawn at the first swing foot [m]

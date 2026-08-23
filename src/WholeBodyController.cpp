@@ -57,8 +57,12 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = 30;
   params.mu = 0.8;
 
-  params.foot_length = 0.20;
-  params.foot_width  = 0.07;
+  // Aligned to the physical sole footprint: robot/g1/g1_description/
+  // g1_29dof_with_hand_rev_1_0.urdf's 4 collision spheres on left_foot_link/
+  // right_foot_link sit at local (+-0.085, +-0.025, 0) -- i.e. exactly this
+  // frame, the one lsole_idx_/rsole_idx_ resolve to (WholeBodyController.cpp:79-80).
+  params.foot_length = 0.17;
+  params.foot_width  = 0.05;
 
   return params;
 }

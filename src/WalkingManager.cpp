@@ -144,6 +144,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
+        "zmp_box_center", "current_disturbance", "contact_flags",
         "torso_orientation",     "torso_angular_velocity",
         "des_torso_orientation", "des_torso_angular_velocity",
         "hac_eh", "hac_eh_dot"
@@ -153,7 +154,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "execution_time_wbc", "execution_time_mpc",
         "execution_time_ekf", "execution_time_kf", "execution_time_update",
         "execution_time_res_obs", "execution_time_hac", "execution_time_coop_planner",
-        "residual_vector_norm", "wbc_friction_coefficient",
+        "residual_vector_norm", "wbc_friction_coefficient", "zmp_box_yaw", "walking_state",
         "friction_cone_ratio_left_x_fl", "friction_cone_ratio_left_x_fr", "friction_cone_ratio_left_x_bl", "friction_cone_ratio_left_x_br",
         "friction_cone_ratio_left_y_fl", "friction_cone_ratio_left_y_fr", "friction_cone_ratio_left_y_bl", "friction_cone_ratio_left_y_br",
         "friction_cone_ratio_right_x_fl", "friction_cone_ratio_right_x_fr", "friction_cone_ratio_right_x_bl", "friction_cone_ratio_right_x_br",
@@ -1146,6 +1147,11 @@ WalkingManager::update(
                 // Log disturbance term right before it enters the PLIP integration
                 logger_.log("current_disturbance", current_disturbance);
 
+                // Log the ZMP admissible box (moving box) at t_k, i.e. the constraint
+                // that the ZMP produced by the PLIP integration step below must satisfy.
+                logger_.log("zmp_box_center", ismpc_ptr_->getZmpConstraintBoxCenter());
+                logger_.log("zmp_box_yaw", ismpc_ptr_->getZmpConstraintBoxYaw());
+
                 // CoM reference generation while considering external disturbance (overwrite)
                 des_LipState = discrete_plip_dynamics_ptr_->integrate(
                     kf_LipState,
@@ -1537,6 +1543,11 @@ WalkingManager::update(
     logger_.log("rsole_orientation",  T_rsole.rotation().eulerAngles(0,1,2));
     logger_.log("des_lsole_orientation", desired_gait_configuration.lsole.pos.R.eulerAngles(0,1,2));
     logger_.log("des_rsole_orientation", desired_gait_configuration.rsole.pos.R.eulerAngles(0,1,2));
+
+    // Which foot(s) are in contact/support at this tick (true/true outside SingleSupport).
+    auto contact = get_contact();
+    logger_.log("contact_flags", Eigen::Vector2d(contact[0] ? 1.0 : 0.0, contact[1] ? 1.0 : 0.0));
+    logger_.log("walking_state", static_cast<double>(static_cast<int>(walking_data_.getWalkingState())));
 
     logger_.log("hac_eh",     hac_ptr_->getEh());
     logger_.log("hac_eh_dot", hac_ptr_->getEhDot());

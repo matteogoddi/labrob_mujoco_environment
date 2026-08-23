@@ -151,7 +151,7 @@ class ISMPC{
   const Eigen::VectorXd& getInputSequenceZ() const;
 
   Eigen::Vector3d getStabConstraintOffset() const;
-  
+
   double getEta() const;
 
   void setEta(double eta);
@@ -159,6 +159,13 @@ class ISMPC{
   void resetInput(){
       input_ = Eigen::Vector3d::Zero();
   }
+
+  // Current (t_k, i.e. index 0 of the MPC horizon) ZMP admissible-box center
+  // (mc_x_, mc_y_, mc_z_) and foot-frame yaw (mc_theta_), as used to build
+  // the sagittal/lateral ZMP box constraint in solve(). Half-extents are the
+  // constructor parameters foot_constraint_square_length_/_width_.
+  Eigen::Vector3d getZmpConstraintBoxCenter() const;
+  double getZmpConstraintBoxYaw() const;
 
  private:
   // NOTE: std::clamp available from C++17

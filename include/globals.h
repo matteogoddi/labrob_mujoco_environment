@@ -22,6 +22,10 @@ extern bool switchWalkingState;
 extern bool switchCoopState;
 extern bool loopClosed;
 
+extern bool forward;
+extern bool lateral;
+extern bool curve;
+
 extern Eigen::VectorXd measured_joint_velocity;
 
 

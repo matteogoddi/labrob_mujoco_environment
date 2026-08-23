@@ -244,6 +244,16 @@ ISMPC::getStabConstraintOffset() const {
   return Eigen::Vector3d(offset(0), offset(1), offset(2));
 }
 
+Eigen::Vector3d
+ISMPC::getZmpConstraintBoxCenter() const {
+  return Eigen::Vector3d(mc_x_(0), mc_y_(0), mc_z_(0));
+}
+
+double
+ISMPC::getZmpConstraintBoxYaw() const {
+  return mc_theta_(0);
+}
+
 double
 ISMPC::getEta() const {
   return eta_;

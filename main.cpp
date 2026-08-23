@@ -46,6 +46,9 @@ bool useViz           = true;
 bool switchWalkingState = false;
 bool reactiveStanding = true;
 bool verboseCoop = false;
+bool forward = false;
+bool lateral = false;
+bool curve = false;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
@@ -302,10 +305,17 @@ int main(const int argc, const char* argv[]) {
             reactiveStanding = false;
         } else if (a == "--verbose") {
             verboseCoop = true;
+        } else if (useSim == true && a == "--forward") {
+            forward = true;
+        } else if (useSim == true && a == "--lateral") {
+            lateral = true;
+        } else if (useSim == true && a == "--curve") {
+            curve = true;
         } else if (needInterface && netInterface.empty() && a[0] != '-') {
             netInterface = a;
         }
     }
+    
     if (!useRobot && !useSim) {
         std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
         return -1;
@@ -561,30 +571,46 @@ int main(const int argc, const char* argv[]) {
                 f_l_test = Eigen::Vector3d::Zero();
                 f_r_test = Eigen::Vector3d::Zero();
 
-                /*
-                if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
+                
+                // Forward walk
+                if (forward == true) {
+                    if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
 
-                    f_l_test = Eigen::Vector3d(3.0, 0.0, 0.0);
-                    f_r_test = Eigen::Vector3d(3.0, 0.0, 0.0);
+                        f_l_test = Eigen::Vector3d(3.0, 0.0, 0.0);
+                        f_r_test = Eigen::Vector3d(3.0, 0.0, 0.0);
 
+                    }
                 }
-                */
+                
 
-                                
-                if (mj_data_ptr->time >= 10.0 && mj_data_ptr->time < 33.0) {
+                // Lateral walk
+                if (lateral == true) {
+                    if (mj_data_ptr->time >= 8.0 && mj_data_ptr->time < 30.0) {
 
-                    f_l_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
-                    f_r_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(2.0, 0.0, -4.0);
+                        f_l_test = Eigen::Vector3d(0.0, 3.0, 0.0);
+                        f_r_test = Eigen::Vector3d(0.0, 0.0, 0.0);
 
-                } else if (mj_data_ptr->time >= 33.0 && mj_data_ptr->time < 35.0) {
-                    
-                    f_l_test = Eigen::Vector3d(0.0, 0.0, -4.0);
-                    f_r_test = Eigen::Vector3d(0.0, 0.0, -4.0);
+                    }
+                }
 
-                } else if (mj_data_ptr->time >= 35.0 && mj_data_ptr->time < 55.0) {
 
-                    f_l_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
-                    f_r_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
+                // Curve walk
+                if (curve == true) {               
+                    if (mj_data_ptr->time >= 10.0 && mj_data_ptr->time < 33.0) {
+
+                        f_l_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
+                        f_r_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(2.0, 0.0, -4.0);
+
+                    } else if (mj_data_ptr->time >= 33.0 && mj_data_ptr->time < 35.0) {
+                        
+                        f_l_test = Eigen::Vector3d(0.0, 0.0, -4.0);
+                        f_r_test = Eigen::Vector3d(0.0, 0.0, -4.0);
+
+                    } else if (mj_data_ptr->time >= 35.0 && mj_data_ptr->time < 55.0) {
+
+                        f_l_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
+                        f_r_test = walking_manager.get_R_F_hac() * Eigen::Vector3d(4.0, 0.0, -4.0);
+                    }
                 }
                 
 
