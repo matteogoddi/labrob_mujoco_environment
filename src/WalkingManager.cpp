@@ -1237,8 +1237,13 @@ WalkingManager::update(
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
-    desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+    if (t_msec_ < 2000 || lateral == true) {
+        desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
+    } else {
+        desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+                                       + discrete_plip_dynamics_ptr_->get_disturbance();
+    }
 
     // contact flags
     desired_gait_configuration.is_left_foot_support  = current_gait_configuration.is_left_foot_support;
