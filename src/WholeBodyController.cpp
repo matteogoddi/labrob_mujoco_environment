@@ -141,10 +141,18 @@ WholeBodyController::WholeBodyController(
   f_force_ = Eigen::VectorXd::Zero(3 * nc);
 
   C_force_block_.resize(4, 3);
+  const double mu_pyr = params_.mu / std::sqrt(2.0); // conservative pyramid approximation of friction cone 
+  /*
   C_force_block_ <<  1.0,  0.0, -params_.mu,
                       0.0,  1.0, -params_.mu,
                      -1.0,  0.0, -params_.mu,
                       0.0, -1.0, -params_.mu;
+  */
+  C_force_block_ <<  1.0,  0.0, -mu_pyr,
+                    0.0,  1.0, -mu_pyr,
+                    -1.0,  0.0, -mu_pyr,
+                    0.0, -1.0, -mu_pyr;
+
 
   d_min_force_ = -10000.0 * Eigen::VectorXd::Ones(4 * nc);
   d_max_force_ = Eigen::VectorXd::Zero(4 * nc);
