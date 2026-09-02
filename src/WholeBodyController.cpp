@@ -191,6 +191,9 @@ WholeBodyController::WholeBodyController(
   Jla_             = Eigen::MatrixXd::Zero(6, nj);
   Jru_             = Eigen::MatrixXd::Zero(6, 6);
   Jra_             = Eigen::MatrixXd::Zero(6, nj);
+  J_lsole_des_     = Eigen::MatrixXd::Zero(6, nv);
+  J_rsole_des_     = Eigen::MatrixXd::Zero(6, nv);
+  M_inertia_des_   = Eigen::MatrixXd::Zero(nv, nv);
   A_acc_wbc_       = Eigen::MatrixXd::Zero(12, nv);
   b_acc_wbc_       = Eigen::VectorXd::Zero(12);
   A_no_contact_    = Eigen::MatrixXd::Zero(3 * nc, 2 * 3 * nc);
@@ -371,7 +374,11 @@ WholeBodyController::compute_inverse_dynamics(
   d_max_acc_ << q_jnt_dot_max - current.qjntdot,
                 q_jnt_max - current.qjnt - sample_time_ * current.qjntdot;
 
-  // Inertia matrix (pinocchio::crba returns const& to data.M — copy once)
+  // Floating-base dynamics constraint terms (Mu_, cu_, Jlu_, Jru_) enter the
+  // QP's instantaneous equations of motion, so they must be evaluated at the
+  // current state (q, qdot), not at the desired trajectory: the QP solves
+  // for the acceleration achievable right now, subject to the dynamics that
+  // actually hold at the current state.
   M_inertia_ = pinocchio::crba(robot_model, robot_data, q);
   M_inertia_.triangularView<Eigen::StrictlyLower>() =
       M_inertia_.transpose().triangularView<Eigen::StrictlyLower>();
@@ -380,13 +387,9 @@ WholeBodyController::compute_inverse_dynamics(
   const auto& c = pinocchio::rnea(robot_model, robot_data, q, qdot, zero_nv_);
 
   Mu_ = M_inertia_.topRows(6);
-  Ma_ = M_inertia_.bottomRows(nj);
   cu_ = c.head(6);
-  ca_ = c.tail(nj);
   Jlu_ = J_lsole_.leftCols(6);
-  Jla_ = J_lsole_.rightCols(nj);
   Jru_ = J_rsole_.leftCols(6);
-  Jra_ = J_rsole_.rightCols(nj);
 
   // Rotated contact points
   for (int i = 0; i < nc; ++i) {
@@ -477,10 +480,42 @@ WholeBodyController::compute_inverse_dynamics(
   left_foot_wrench_  = T_l_ * fl;
   right_foot_wrench_ = T_r_ * fr;
 
-  // Online reference generation with semi-implicit Euler integration
-  q_dot_des_ = qdot.tail(nj) + sample_time_ * q_ddot_.tail(nj);
-  q_des_ = q.tail(nj) + sample_time_ * q_dot_des_ + 0.5 * (sample_time_ * sample_time_) * q_ddot_.tail(nj);
+  // Online reference generation (semi-implicit Euler on the state manifold):
+  // the floating base is integrated with pinocchio::integrate() so that its
+  // quaternion part is updated correctly (a plain vector sum would not stay
+  // a unit quaternion), while the joint part reduces to ordinary Euler
+  // integration since joints live in a vector space.
+  q_full_dot_des_ = qdot + sample_time_ * q_ddot_;
+  q_full_des_ = pinocchio::integrate(robot_model, q, sample_time_ * q_full_dot_des_);
 
+  // Keep the joint-only views in sync for backward-compatible getters/logs.
+  q_dot_des_ = q_full_dot_des_.tail(nj);
+  q_des_     = q_full_des_.tail(nj);
+
+  // Inverse-dynamics trajectory tracking: the mass matrix, nonlinear effects
+  // and foot Jacobians used below to compute the feedforward torque must be
+  // evaluated at the desired trajectory (q_full_des_, q_full_dot_des_,
+  // floating base included), not at the current state, otherwise the
+  // feedforward term is only exact for the current configuration rather
+  // than for where the trajectory is headed.
+  const Eigen::VectorXd& q_id    = q_full_des_;
+  const Eigen::VectorXd& qdot_id = q_full_dot_des_;
+
+  pinocchio::computeJointJacobians(robot_model, robot_data, q_id);
+  pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_lsole_des_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_rsole_des_);
+
+  M_inertia_des_ = pinocchio::crba(robot_model, robot_data, q_id);
+  M_inertia_des_.triangularView<Eigen::StrictlyLower>() =
+      M_inertia_des_.transpose().triangularView<Eigen::StrictlyLower>();
+  M_inertia_des_.diagonal().tail(nj) += M_armature_;
+
+  const auto& c_des = pinocchio::rnea(robot_model, robot_data, q_id, qdot_id, zero_nv_);
+
+  Ma_  = M_inertia_des_.bottomRows(nj);
+  ca_  = c_des.tail(nj);
+  Jla_ = J_lsole_des_.rightCols(nj);
+  Jra_ = J_rsole_des_.rightCols(nj);
 
   Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
   Kd_vec << 2, 2, 2, 3, 2, 2,
@@ -504,8 +539,8 @@ WholeBodyController::compute_inverse_dynamics(
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
       - Jra_.transpose() * right_foot_wrench_
-      + Kd * (q_dot_des_ - qdot.tail(nj))
-      + Kp * (q_des_ - q.tail(nj));
+      + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
+      + Kp * (q_full_des_.tail(nj) - q.tail(nj));
 
       
   // Check for limit exceeding

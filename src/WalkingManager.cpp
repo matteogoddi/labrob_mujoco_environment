@@ -408,7 +408,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
-    //coop_fp.ell = 0.15;
+    //coop_fp.ell = 0.10;
     std::cout << "Initial foot separation (ell) = " << coop_fp.ell << " m" << std::endl;
     coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
@@ -679,7 +679,7 @@ WalkingManager::update(
 
     }
 
-    // From RW-BO    
+    // From RB-WO    
     Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
     if (total_force.z() > 1e-5 && t_msec_ > 2000) {
@@ -1665,6 +1665,10 @@ WalkingManager::update(
     logger_.log("wbc_accelerations",     whole_body_controller_ptr_->get_q_ddot());
     logger_.log("q_dot_des",             whole_body_controller_ptr_->get_q_dot_des());
     logger_.log("q_des",                 whole_body_controller_ptr_->get_q_des());
+    logger_.log("base_position_des",         whole_body_controller_ptr_->get_base_position_des());
+    logger_.log("base_orientation_des",      whole_body_controller_ptr_->get_base_orientation_des());
+    logger_.log("base_linear_velocity_des",  whole_body_controller_ptr_->get_base_linear_velocity_des());
+    logger_.log("base_angular_velocity_des", whole_body_controller_ptr_->get_base_angular_velocity_des());
     logger_.log("angular_momentum",      angular_momentum);
     logger_.log("angular_momentum_rate", L_dot_);
 

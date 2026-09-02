@@ -137,7 +137,7 @@ private:
   // noise parameters (same defaults as CoMKF class)
   static constexpr double kComKfMeasPos = 1.0e1;
   static constexpr double kComKfMeasVel = 1.0e2;
-  static constexpr double kComKfMeasZmp = 1.0e8; //1.0e03;
+  static constexpr double kComKfMeasZmp = 1.0e3; //1.0e03;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;

@@ -10,6 +10,24 @@ import io
 import imageio.v2 as imageio
 # import cv2
 
+# Mirror every PNG plot saved via fig.savefig("images/...") as a vector PDF
+# under SIM_PLOTS_DIR, preserving the same sub-directory layout as
+# scripts/images/. This keeps a high-quality, vectorized copy of every plot
+# ready to be included in the thesis without touching each savefig() call.
+SIM_PLOTS_DIR = os.path.expanduser('~/thesis/material/images/sim_plots')
+_original_savefig = plt.Figure.savefig
+
+
+def _savefig_and_mirror_pdf(self, fname, *args, **kwargs):
+    _original_savefig(self, fname, *args, **kwargs)
+    if isinstance(fname, str) and fname.startswith('images/') and fname.endswith('.png'):
+        pdf_path = os.path.join(SIM_PLOTS_DIR, fname[len('images/'):-len('.png')] + '.pdf')
+        os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+        _original_savefig(self, pdf_path, *args, **kwargs)
+
+
+plt.Figure.savefig = _savefig_and_mirror_pdf
+
 
 if __name__ == '__main__':
     #request input from terminal
@@ -106,6 +124,11 @@ if __name__ == '__main__':
     motor_torque_filt = _load('motor_torque_filt.txt', 29)  # real-robot only (EMA-filtered motor torques)
     q_dot_des = _load('q_dot_des.txt', 29)
     q_des = _load('q_des.txt', 29)
+
+    base_position_des = _load('base_position_des.txt', 3)
+    base_orientation_des = _load('base_orientation_des.txt', 4)  # (x, y, z, w)
+    base_linear_velocity_des = _load('base_linear_velocity_des.txt', 3)
+    base_angular_velocity_des = _load('base_angular_velocity_des.txt', 3)
 
     ef_zmp_position = _load('ef_zmp_position.txt', 3)
 
@@ -285,6 +308,10 @@ if __name__ == '__main__':
         os.makedirs('images/wbc_solutions/online_references/joint_positions')
     if not os.path.exists('images/wbc_solutions/online_references/joint_velocities'):
         os.makedirs('images/wbc_solutions/online_references/joint_velocities')
+    if not os.path.exists('images/wbc_solutions/online_references/floating_base_positions'):
+        os.makedirs('images/wbc_solutions/online_references/floating_base_positions')
+    if not os.path.exists('images/wbc_solutions/online_references/floating_base_velocities'):
+        os.makedirs('images/wbc_solutions/online_references/floating_base_velocities')
     if not os.path.exists('images/wrench_estimations/sole_wrenches'):
         os.makedirs('images/wrench_estimations/sole_wrenches')
     if not os.path.exists('images/soles/references'):
@@ -524,6 +551,62 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig(f"images/wbc_solutions/online_references/joint_positions/{group_name}_q_des.png")
         plt.close(fig)
+
+    # Floating-base online references (desired trajectory used for the
+    # inverse-dynamics feedforward, one control cycle ahead of the current
+    # state -- see WholeBodyController::compute_inverse_dynamics()).
+    fig, ax = plt.subplots()
+    ax.plot(t, base_position_des[:, 0], label='Base Position X')
+    ax.plot(t, base_position_des[:, 1], label='Base Position Y')
+    ax.plot(t, base_position_des[:, 2], label='Base Position Z')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Position [m]')
+    ax.set_title('WBC Desired Floating Base Position (Online Reference)')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/online_references/floating_base_positions/base_position_des.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, base_orientation_des[:, 0], label='Base Orientation X')
+    ax.plot(t, base_orientation_des[:, 1], label='Base Orientation Y')
+    ax.plot(t, base_orientation_des[:, 2], label='Base Orientation Z')
+    ax.plot(t, base_orientation_des[:, 3], label='Base Orientation W')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Orientation [quat]')
+    ax.set_title('WBC Desired Floating Base Orientation (Online Reference)')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/online_references/floating_base_positions/base_orientation_des.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, base_linear_velocity_des[:, 0], label='Base Linear Velocity X')
+    ax.plot(t, base_linear_velocity_des[:, 1], label='Base Linear Velocity Y')
+    ax.plot(t, base_linear_velocity_des[:, 2], label='Base Linear Velocity Z')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Velocity [m/s]')
+    ax.set_title('WBC Desired Floating Base Linear Velocity (Online Reference)')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/online_references/floating_base_velocities/base_linear_velocity_des.png")
+    plt.close(fig)
+
+    fig, ax = plt.subplots()
+    ax.plot(t, base_angular_velocity_des[:, 0], label='Base Angular Velocity X')
+    ax.plot(t, base_angular_velocity_des[:, 1], label='Base Angular Velocity Y')
+    ax.plot(t, base_angular_velocity_des[:, 2], label='Base Angular Velocity Z')
+    ax.set_xlabel('Time [s]')
+    ax.set_ylabel('Angular velocity [rad/s]')
+    ax.set_title('WBC Desired Floating Base Angular Velocity (Online Reference)')
+    ax.grid(True)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig("images/wbc_solutions/online_references/floating_base_velocities/base_angular_velocity_des.png")
+    plt.close(fig)
 
     fig, ax = plt.subplots()
     ax.plot(t, wbc_accelerations[:, 0], label='Acceleration X', color='blue')
