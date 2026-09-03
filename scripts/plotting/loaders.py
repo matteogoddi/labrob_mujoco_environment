@@ -12,12 +12,13 @@ from collections import defaultdict
 
 import numpy as np
 
-from .common import DT, try_load
+from .common import DT, build_lr_pairs, try_load
 from .context import PlotContext
 
 
 def load_context(folder: str, wbc_only: bool) -> PlotContext:
     joint_names = open(folder + '/joint_names.txt').readlines()
+    jnames_full = [jn.strip() for jn in joint_names]
     num_joints = len(joint_names)
 
     # ── load all sensor / EKF logs ────────────────────────────────────────
@@ -35,6 +36,44 @@ def load_context(folder: str, wbc_only: bool) -> PlotContext:
             sens_raw[nm] = d
             if t_sensor is None:
                 t_sensor = d.shape[0]
+
+    # ── detect whether this run controlled fewer joints than the full
+    # joint_names.txt list (e.g. G1 with waist_roll/waist_pitch excluded from
+    # WBC control and regulated independently instead -- see globals.h's
+    # G1_WBC_CONTROLS_WAIST_ROLL_PITCH). When it did:
+    #  - filtered_joint_velocity/input_torque/wbc_accelerations are logged
+    #    directly at the reduced width;
+    #  - joint_pos/joint_vel/q_ref_joints/dq_ref_joints are still logged at
+    #    the full width, but only the first `num_joints` (reduced) columns
+    #    are meaningful -- the rest are always-zero padding.
+    # Both cases are normalized here, once, so every section downstream can
+    # just use jnames_stripped/lr_pairs/waist_idx/num_joints directly instead
+    # of guessing per-array which joint order/width applies.
+    _excluded_if_reduced = ('waist_roll_joint', 'waist_pitch_joint')
+    n_controlled = len(jnames_full)
+    for probe_name in ('filtered_joint_velocity', 'input_torque'):
+        probe = sens_raw.get(probe_name) if probe_name in sens_raw else try_load(folder, probe_name)
+        if probe is not None:
+            n_controlled = probe.shape[1] if probe.ndim > 1 else 1
+            break
+
+    if n_controlled != len(jnames_full):
+        jnames_stripped = [n for n in jnames_full if n not in _excluded_if_reduced]
+        if len(jnames_stripped) != n_controlled:
+            # Unknown reduction pattern -- fall back to positional names
+            # rather than mislabeling.
+            jnames_stripped = [f'joint_{i}' for i in range(n_controlled)]
+    else:
+        jnames_stripped = jnames_full
+    num_joints = len(jnames_stripped)
+
+    # joint_pos/joint_vel are still logged at the full (padded) width when
+    # reduced -- trim the always-zero tail so they line up with
+    # jnames_stripped like every other per-joint array.
+    for nm in ('joint_pos', 'joint_vel'):
+        d = sens_raw.get(nm)
+        if d is not None and d.ndim > 1 and d.shape[1] > num_joints:
+            sens_raw[nm] = d[:, :num_joints]
 
     # ── determine WBC window length ───────────────────────────────────────
     ctrl_anchor = None
@@ -64,6 +103,15 @@ def load_context(folder: str, wbc_only: bool) -> PlotContext:
         rows = d.shape[0]
         s = max(0, rows - n_wbc)
         return d[s:]
+
+    # Lj(): like L(), but also trims the always-zero padding tail from
+    # per-joint arrays still logged at the full (unreduced) width -- see the
+    # joint_pos/joint_vel trimming above for why this is needed.
+    def Lj(name):
+        d = L(name)
+        if d is not None and d.ndim > 1 and d.shape[1] > num_joints:
+            d = d[:, :num_joints]
+        return d
 
     # ── sensor / EKF time axis ────────────────────────────────────────────
     if t_sensor is not None:
@@ -96,23 +144,15 @@ def load_context(folder: str, wbc_only: bool) -> PlotContext:
         'elbows': 'elbow',
         'wrists': 'wrist',
     }
-    for i, jname in enumerate(joint_names):
-        jname_lower = jname.strip().lower()
+    for i, jname in enumerate(jnames_stripped):
+        jname_lower = jname.lower()
         for gname, kw in kw_groups.items():
             if kw in jname_lower:
                 grouped_indices[gname].append(i)
                 break
 
     # Build left-right joint pairs, skip waist
-    jnames_stripped = [jn.strip() for jn in joint_names]
-    lr_pairs = []
-    for li, lname in enumerate(jnames_stripped):
-        if not lname.startswith('left_') or 'waist' in lname:
-            continue
-        suffix = lname[len('left_'):]
-        rname = 'right_' + suffix
-        if rname in jnames_stripped:
-            lr_pairs.append((li, jnames_stripped.index(rname), suffix))
+    lr_pairs = build_lr_pairs(jnames_stripped)
 
     waist_idx = grouped_indices.get('waist', [])
 
@@ -144,10 +184,10 @@ def load_context(folder: str, wbc_only: bool) -> PlotContext:
         des_com_velocity=L('des_com_velocity'),
         des_zmp_position=L('des_zmp_position'),
         des_com_acceleration=L('des_com_acceleration'),
-        q_ref_joints=L('q_ref_joints'),
-        dq_ref_joints=L('dq_ref_joints'),
-        joint_pos_wbc=L('joint_pos'),
-        joint_vel_wbc=L('joint_vel'),
+        q_ref_joints=Lj('q_ref_joints'),
+        dq_ref_joints=Lj('dq_ref_joints'),
+        joint_pos_wbc=Lj('joint_pos'),
+        joint_vel_wbc=Lj('joint_vel'),
         input_torque=L('input_torque'),
         wbc_accelerations=L('wbc_accelerations'),
         estimated_force_lsole=L('estimated_force_lsole'),

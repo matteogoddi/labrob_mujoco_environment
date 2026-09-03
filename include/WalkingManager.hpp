@@ -10,11 +10,12 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <DiscreteLIPDynamics.hpp>
+#include <DiscretePLIPDynamics.hpp>
 #include <globals.h>
 #ifdef ISMPC_USE_2D
 #include <ISMPC2D.hpp>
 #else
-#include <ISMPC.hpp>
+#include <ISMPC_dist.hpp>
 #endif
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
@@ -70,6 +71,9 @@ class WalkingManager {
 
   const pinocchio::Model& get_robot_model() const { return robot_model; }
 
+  // Orientation of the HAC frame F w.r.t. world, cached from the last update()
+  const Eigen::Matrix3d& get_R_F_hac() const { return R_F_hac_; }
+
  protected:
   pinocchio::Model robot_model;
   pinocchio::Data robot_data;
@@ -87,8 +91,8 @@ class WalkingManager {
 
   int64_t mpc_prediction_horizon_msec = 2000;
   int64_t mpc_timestep_msec = 100;
-  double foot_constraint_square_length = 0.20;
-  double foot_constraint_square_width = 0.045;
+  double foot_constraint_square_length = 0.16;
+  double foot_constraint_square_width = 0.04;
 
   Eigen::Vector3d ismpc_input = Eigen::Vector3d::Zero();
 
@@ -102,7 +106,7 @@ class WalkingManager {
 #ifdef ISMPC_USE_2D
   std::unique_ptr<labrob::ISMPC2D> ismpc_ptr_;
 #else
-  std::unique_ptr<labrob::ISMPC> ismpc_ptr_;
+  std::unique_ptr<labrob::ISMPC_dist> ismpc_ptr_;
 #endif
 
   Eigen::VectorXd M_armature_;
@@ -120,6 +124,7 @@ class WalkingManager {
 
   Eigen::VectorXd estimated_force_sole = Eigen::VectorXd::Zero(6);
   Eigen::VectorXd estimated_force_wrist = Eigen::VectorXd::Zero(6);
+  Eigen::VectorXd estimated_moment_sole = Eigen::VectorXd::Zero(6);
 
 
   std::shared_ptr<WholeBodyController> whole_body_controller_ptr_;
@@ -137,7 +142,7 @@ private:
   // noise parameters (same defaults as CoMKF class)
   static constexpr double kComKfMeasPos = 1.0e-2;
   static constexpr double kComKfMeasVel = 1.0e-2;
-  static constexpr double kComKfMeasZmp = 1.0e8;
+  static constexpr double kComKfMeasZmp = 1.0e8; //1e3
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;
@@ -153,6 +158,9 @@ private:
 
   Eigen::Vector3d p_F_hac_;
   Eigen::Matrix3d R_F_hac_;
+  Eigen::Vector3d v_F_hac_;  
+  Eigen::Vector3d v_lsole_;
+  Eigen::Vector3d v_rsole_;
   pinocchio::SE3 T_lsole_;
   pinocchio::SE3 T_rsole_;
   void updateHACLocalFrame();
@@ -160,15 +168,28 @@ private:
   // DEBUG HELPERS //
   void showPlan(const labrob::FootstepPlannerCoop::QP2DResult res);
   void showDeque(const labrob::WalkingData wd);
+  void logOfpSnapshot(
+    int64_t t_msec,
+    const labrob::FootstepPlannerCoop::QP2DResult& result,
+    const Eigen::Vector2d& p0,
+    double yaw0
+  );
+  void frictionConeRatios(
+    const Eigen::VectorXd& flr,
+    double mu,
+    int nc
+  );
 
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
+  std::unique_ptr<labrob::DiscretePLIPDynamics> discrete_plip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
-    // Private members online planner
+
+  // Private members online planner
   std::unique_ptr<labrob::FootstepPlannerCoop> coop_planner_ptr_;
   bool reactive_standing_ = true;
   bool verbose_coop_ = false;
@@ -181,6 +202,18 @@ private:
   double  coop_step_height_ = 0.06;
   bool waiting_for_rolling_ = false;
   bool stopping_requested_ = false;
+
+  // Per-solve online footstep planner (coop) snapshots, written to disk in saveLogs().
+  std::vector<int64_t>         ofp_snapshot_t_log_;
+  std::vector<Eigen::VectorXd> ofp_snapshot_solution_log_;   ///< qp_solution, stacked [x1,y1,...,xF,yF]
+  std::vector<double>          ofp_snapshot_delta_theta_log_;
+  std::vector<Eigen::Vector2d> ofp_snapshot_delta_p_log_;
+  std::vector<int>             ofp_snapshot_support_foot_log_;  ///< 0 = LEFT, 1 = RIGHT (support_foot_start)
+  std::vector<Eigen::Vector2d> ofp_snapshot_p0_log_;            ///< posizione piede di supporto usata come anchor
+  std::vector<double>          ofp_snapshot_yaw0_log_;          ///< yaw del piede di supporto usato come anchor [rad]
+  double ofp_da_x_ = 0.0;  ///< dimensione x della regione ammissibile cinematica del planner [m]
+  double ofp_da_y_ = 0.0;  ///< dimensione y della regione ammissibile cinematica del planner [m]
+  double ofp_ell_  = 0.0;  ///< semidistanza laterale nominale tra i piedi usata dal planner [m]
 
     // Private members HAC
   Eigen::Vector3d hac_f_l_W = Eigen::Vector3d::Zero();
@@ -197,6 +230,13 @@ private:
   bool joint_vel_filt_init_ = false;
 
   Eigen::Vector3d prev_angular_momentum_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d L_dot_;
+
+  // Private members WBC
+  std::vector<double> friction_cone_ratios_left_x_;
+  std::vector<double> friction_cone_ratios_left_y_;
+  std::vector<double> friction_cone_ratios_right_x_;
+  std::vector<double> friction_cone_ratios_right_y_;
 
   // Logs
   Logger logger_;

@@ -99,14 +99,14 @@ void
 WalkingData::addSteps(
   const labrob::SE3& T_lsole,
   const labrob::SE3& T_rsole,
-  const double yaw_angle
+  double step_length_x,
+  double step_length_y,
+  const double yaw_angle,
+  double double_support_duration,
+  double single_support_duration
 ){
     double swing_foot_trajectory_height = 0.01;
-    double step_length_x = 0.1;
-    double step_length_y = 0.0;
     int n_steps = 20;
-    double double_support_duration = 2000;
-    double single_support_duration = 2000;
 
     // Decompose the initial stance into a centerline point and each foot's
     // lateral offset from it (expressed in the initial heading frame). As
@@ -130,19 +130,33 @@ WalkingData::addSteps(
     // final heading. Both feet share the SAME heading at the end of a given
     // stride (they must end up parallel again after every double support,
     // like a real turning gait) — only the stride index j = ceil(k/2)
-    // matters for R_at[k], not k itself. R_at[k] is therefore the heading
-    // after ceil(k/2) full strides; offset_at[k] is the cumulative
-    // centerline offset after k steps, each taken along the heading
-    // accumulated so far.
+    // matters for R_at[k], not k itself. R_at[k] is therefore the INCREMENTAL
+    // heading after ceil(k/2) full strides, relative to the robot's current
+    // stance -- it is composed with T_lsole/T_rsole.rotation() below for
+    // foot orientation, so it must stay purely incremental (R_at[0] =
+    // Identity) rather than baking in the robot's current heading itself.
     std::vector<Eigen::Matrix3d> R_at(n_steps + 1);
     std::vector<Eigen::Vector3d> offset_at(n_steps + 1);
     R_at[0] = Eigen::Matrix3d::Identity();
     offset_at[0] = Eigen::Vector3d::Zero();
+
+    // "Forward" (step_length_x) must mean the robot's OWN current forward
+    // direction, not the fixed world +X axis: after a previous sequence has
+    // turned the robot away from its original heading (e.g. ~180 degrees),
+    // world +X may now point behind it, so walking straight world-+X would
+    // actually be walking backward from the robot's point of view. Extract
+    // the robot's current yaw from the current left-foot orientation and use
+    // it (composed with the incremental R_at) only when accumulating the
+    // centerline offset -- foot orientation composition above is unaffected,
+    // since it already starts from the real T_lsole/T_rsole.rotation().
+    const double yaw_current = std::atan2(T_lsole.rotation()(1, 0), T_lsole.rotation()(0, 0));
+    const Eigen::Matrix3d R_heading = labrob::Rz(yaw_current);
+
     for (int k = 1; k <= n_steps; ++k) {
         const int stride = (k + 1) / 2; // ceil(k / 2), integer arithmetic
         R_at[k] = labrob::Rz(stride * yaw_angle);
         offset_at[k] = offset_at[k - 1]
-            + R_at[k - 1] * Eigen::Vector3d(step_length_x, step_length_y, 0.0);
+            + (R_heading * R_at[k - 1]) * Eigen::Vector3d(step_length_x, step_length_y, 0.0);
     }
 
     // Foot pose at step k: centerline point plus this foot's lateral offset

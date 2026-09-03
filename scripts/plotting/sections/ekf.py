@@ -102,6 +102,6 @@ def run(ctx: PlotContext) -> None:
 
         plot_aggregate_joint_error(
             ctx.t_full, ctx.filtered_joint_velocity, ctx.measured_joint_velocity,
-            [jn.strip() for jn in ctx.joint_names],
+            ctx.jnames_stripped,
             'Error EKF vs Measured – Joint Velocity', r'Velocity [$\mathrm{rad/s}$]',
             'images/ekf/joints/error/error_joint_velocity_plot.png')

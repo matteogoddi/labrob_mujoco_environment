@@ -23,7 +23,7 @@ ISMPC2D::ISMPC2D(
   num_equality_constraints_  = 2;
   num_inequality_constraints_ = 2 * N_;
 
-  qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+  qp_solver_ptr_ = std::make_unique<labrob::QpOASESSolver>(
       num_variables_, num_equality_constraints_, num_inequality_constraints_
     //  , num_inequality_constraints_, 1e-6
     );

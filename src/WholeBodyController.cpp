@@ -20,32 +20,32 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
-  params.Kp_motion = 30.0;
-  params.Kd_motion = 10.0;
+  params.Kp_motion = 120.0;
+  params.Kd_motion = 30.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
   params.Kp_orientation = 150.0;
   params.Kd_orientation = 30.0;
-  params.Kp_foot = 300.0;
-  params.Kd_foot = 200.0;
+  params.Kp_foot = 70.0;
+  params.Kd_foot = 30.0;
   params.Kp_wrist = 20.0;
   params.Kd_wrist = 10.0;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;
-  // params.Kp_joint_matrix.block(6, 6, 15, 15).setZero();
-  // params.Kd_joint_matrix.block(6, 6, 15, 15).setZero();
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + kNumControlledMotors, 6 + kNumControlledMotors) * 200;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + kNumControlledMotors, 6 + kNumControlledMotors) * 70;
+  params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
+  params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
   // params.Kp_joint_matrix.block(12, 12, 3, 3).setZero();
   // params.Kd_joint_matrix.block(12, 12, 3, 3).setZero();
   params.weight_q_ddot           = 1e-4;
-  params.weight_com              = 10;
+  params.weight_com              = 1;
   params.weight_lsole            = 0;
   params.weight_rsole            = 0;
   params.weight_lwrist            = 0.0;
   params.weight_rwrist            = 0.0;
-  params.weight_torso            = 1e-3;
-  params.weight_pelvis           = 1e-1;
-  params.weight_angular_momentum = 0.0;
+  params.weight_torso            = 1e-1;
+  params.weight_pelvis           = 1e-4;
+  params.weight_angular_momentum = 1e-4;
   params.weight_regulation       = 1e-4;
 
   params.cmm_selection_matrix_x = 1e-1;
@@ -56,8 +56,8 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.gamma = 30;
   params.mu = 0.8;
 
-  params.foot_length = 0.20;
-  params.foot_width  = 0.05;
+  params.foot_length = kRobotConfig.foot_length;
+  params.foot_width  = kRobotConfig.foot_width;
 
   return params;
 }
@@ -112,9 +112,9 @@ WholeBodyController::WholeBodyController(
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
 
-  wbc_solver_ptr_ = std::make_unique<labrob::QpOASESSolver>(
+  wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
       n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_
-      // , n_wbc_inequalities_, 1e-6
+     // , n_wbc_inequalities_, 1e-6
     );
 
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
@@ -135,10 +135,17 @@ WholeBodyController::WholeBodyController(
   f_force_ = Eigen::VectorXd::Zero(3 * nc);
 
   C_force_block_.resize(4, 3);
+  const double mu_pyr = params_.mu / std::sqrt(2.0); // conservative pyramid approximation of friction cone 
+  /*
   C_force_block_ <<  1.0,  0.0, -params_.mu,
                       0.0,  1.0, -params_.mu,
                      -1.0,  0.0, -params_.mu,
                       0.0, -1.0, -params_.mu;
+  */
+  C_force_block_ <<  1.0,  0.0, -mu_pyr,
+                    0.0,  1.0, -mu_pyr,
+                    -1.0,  0.0, -mu_pyr,
+                    0.0, -1.0, -mu_pyr;
 
   d_min_force_ = -10000.0 * Eigen::VectorXd::Ones(4 * nc);
   d_max_force_ = Eigen::VectorXd::Zero(4 * nc);
@@ -324,8 +331,8 @@ WholeBodyController::compute_inverse_dynamics(
   // stance foot's acceleration is already pinned by the hard equality
   // constraint A_acc_wbc_, so a soft tracking cost on it is redundant at
   // best). 5 while swinging, 0 while in stance.
-  const double weight_lsole_eff = current.is_left_foot_support  ? 0.0 : 5.0;
-  const double weight_rsole_eff = current.is_right_foot_support ? 0.0 : 5.0;
+  const double weight_lsole_eff = current.is_left_foot_support  ? 1.0 : 0.5;
+  const double weight_rsole_eff = current.is_right_foot_support ? 1.0 : 0.5;
 
   // ── H_acc / f_acc (no temporaries, noalias products) ─────────────────────
   H_acc_.setZero();
@@ -532,9 +539,73 @@ WholeBodyController::compute_inverse_dynamics(
       - Jla_.transpose() * left_foot_wrench_
       - Jra_.transpose() * right_foot_wrench_;
 
+  // // Online reference generation (semi-implicit Euler on the state manifold):
+  // // the floating base is integrated with pinocchio::integrate() so that its
+  // // quaternion part is updated correctly (a plain vector sum would not stay
+  // // a unit quaternion), while the joint part reduces to ordinary Euler
+  // // integration since joints live in a vector space.
+  // q_full_dot_des_ = qdot + sample_time_ * q_ddot_;
+  // q_full_des_ = pinocchio::integrate(robot_model, q, sample_time_ * q_full_dot_des_);
+
+  // // Keep the joint-only views in sync for backward-compatible getters/logs.
+  // q_dot_des_ = q_full_dot_des_.tail(nj);
+  // q_des_     = q_full_des_.tail(nj);
+
+  // // Inverse-dynamics trajectory tracking: the mass matrix, nonlinear effects
+  // // and foot Jacobians used below to compute the feedforward torque must be
+  // // evaluated at the desired trajectory (q_full_des_, q_full_dot_des_,
+  // // floating base included), not at the current state, otherwise the
+  // // feedforward term is only exact for the current configuration rather
+  // // than for where the trajectory is headed.
+  // const Eigen::VectorXd& q_id    = q_full_des_;
+  // const Eigen::VectorXd& qdot_id = q_full_dot_des_;
+
+  // pinocchio::computeJointJacobians(robot_model, robot_data, q_id);
+  // pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_lsole_des_);
+  // pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_rsole_des_);
+
+  // M_inertia_des_ = pinocchio::crba(robot_model, robot_data, q_id);
+  // M_inertia_des_.triangularView<Eigen::StrictlyLower>() =
+  //     M_inertia_des_.transpose().triangularView<Eigen::StrictlyLower>();
+  // M_inertia_des_.diagonal().tail(nj) += M_armature_;
+
+  // const auto& c_des = pinocchio::rnea(robot_model, robot_data, q_id, qdot_id, zero_nv_);
+
+  // Ma_  = M_inertia_des_.bottomRows(nj);
+  // ca_  = c_des.tail(nj);
+  // Jla_ = J_lsole_des_.rightCols(nj);
+  // Jra_ = J_rsole_des_.rightCols(nj);
+
+  // Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
+  // Kd_vec << 2, 2, 2, 3, 2, 2,
+  //           2, 2, 2, 3, 2, 2,
+  //           2, 2, 2,
+  //           2, 2, 2, 2, 2, 2, 2,
+  //           2, 2, 2, 2, 2, 2, 2;
+  // Eigen::MatrixXd Kd = Kd_vec.asDiagonal();
+
+  // Eigen::VectorXd Kp_vec = Eigen::VectorXd::Zero(nj);
+  // Kp_vec << 40, 40, 40, 60, 40, 30,    // left leg
+  //           40, 40, 40, 60, 40, 30,    // right leg
+  //           25, 25, 15,                // waist
+  //           12, 12, 12, 7,  4, 4, 4,   // left arm
+  //           12, 12, 12, 7,  4, 4, 4;   // right arm
+  
+
+  // Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
+
+  
+  // const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
+  //     - Jla_.transpose() * left_foot_wrench_
+  //     - Jra_.transpose() * right_foot_wrench_
+  //     + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
+  //     + Kp * (q_full_des_.tail(nj) - q.tail(nj));
+
+
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     joint_command[robot_model.names[jid + 2]] = tau[jid];
+    
 
   // set joint command to gravity compensation only
   // for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)

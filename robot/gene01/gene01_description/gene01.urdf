@@ -94,7 +94,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="torso_roll" type="revolute">
+  <joint name="torso_roll" type="fixed">
     <origin xyz="-0.053 0 0" rpy="0 0 0" />
     <axis xyz="1 0 0" />
     <parent link="waist" />
@@ -268,7 +268,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="r_wrist_yaw" type="revolute">
+  <joint name="r_wrist_yaw" type="fixed">
     <origin xyz="0 0.02945 -0.106" rpy="0 0 -3.11914e-06" />
     <axis xyz="0 0 1" />
     <parent link="r_forearm" />
@@ -295,7 +295,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="r_wrist_pitch" type="revolute">
+  <joint name="r_wrist_pitch" type="fixed">
     <origin xyz="-6.23828e-08 0.01 -0.179" rpy="0 -0.0871899 6.23828e-06" />
     <axis xyz="6.21459e-06 1 -5.43227e-07" />
     <parent link="r_wrist_1" />
@@ -316,7 +316,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="r_wrist_roll" type="revolute">
+  <joint name="r_wrist_roll" type="fixed">
     <origin xyz="0 0 0" rpy="-2.71628e-07 0 0" />
     <axis xyz="1 0 0" />
     <parent link="r_wrist_2" />
@@ -437,7 +437,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="l_wrist_yaw" type="revolute">
+  <joint name="l_wrist_yaw" type="fixed">
     <origin xyz="2.03519e-09 -0.02945 -0.106" rpy="2.32719e-08 4.03082e-08 -1.06004e-10" />
     <axis xyz="0 0 -1" />
     <parent link="l_forearm" />
@@ -464,7 +464,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="l_wrist_pitch" type="revolute">
+  <joint name="l_wrist_pitch" type="fixed">
     <origin xyz="-7.5629e-08 -0.01 -0.179" rpy="0 -0.0872744 -7.56289e-06" />
     <axis xyz="-7.53411e-06 1 6.59209e-07" />
     <parent link="l_wrist_1" />
@@ -485,7 +485,7 @@
       </geometry>
     </collision>
   </link>
-  <joint name="l_wrist_roll" type="revolute">
+  <joint name="l_wrist_roll" type="fixed">
     <origin xyz="0 0 0" rpy="9.33556e-07 0 0" />
     <axis xyz="-1 0 0" />
     <parent link="l_wrist_2" />
@@ -892,7 +892,7 @@
   </joint>
   <link name="l_sole" />
   <joint name="l_sole_fixed_joint" type="fixed">
-    <origin xyz="-0.015 0 -0.036" rpy="0 0 0" />
+    <origin xyz="0.045 0 -0.036" rpy="0 0 0" />
     <parent link="l_foot" />
     <child link="l_sole" />
   </joint>
@@ -904,7 +904,7 @@
   </joint>
   <link name="r_sole" />
   <joint name="r_sole_fixed_joint" type="fixed">
-    <origin xyz="-0.015 0 -0.036" rpy="0 0 0" />
+    <origin xyz="0.045 0 -0.036" rpy="0 0 0" />
     <parent link="r_foot" />
     <child link="r_sole" />
   </joint>

@@ -30,10 +30,12 @@ set(qpOASES_LIBRARIES /usr/local/lib/libqpOASES.a)
 add_library(
   WalkingControllerLibrary STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscretePLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlannerCoop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HandAdmittanceController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC2D.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC_dist.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp

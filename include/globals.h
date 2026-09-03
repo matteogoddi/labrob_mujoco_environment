@@ -12,7 +12,7 @@
 
 // ── MPC dimensionality switch ─────────────────────────────────────────────────
 // Uncomment to use the 2D ISMPC (x/y only, constant CoM height assumed).
-#define ISMPC_USE_2D
+// #define ISMPC_USE_2D
 
 // ── Joint configuration switch (g1) ───────────────────────────────────────────
 // true  = 29 DOF (waist yaw + roll + pitch active)
@@ -48,6 +48,12 @@ struct RobotConfig {
     std::string right_wrist_link;
     std::string torso_link;        // pinocchio frame the arms/head attach to
     std::string pelvis_link;
+    double foot_length;             // support-polygon foot size [m], for ZMP/WBC contact constraints
+    double foot_width;
+    double initial_pelvis_height;   // floating-base z [m] so the feet land exactly on the ground
+                                     // given initial_joint_positions below -- robot- (and pose-)
+                                     // specific, computed via pinocchio forward kinematics at that
+                                     // pose with the pelvis at the origin (see the sole frame's z).
     std::vector<std::string> left_arm_joints;   // shoulder->wrist joint chain, for per-joint logging
     std::vector<std::string> right_arm_joints;
     std::map<std::string, double> initial_joint_positions;  // startup/standing pose, keyed by joint name
@@ -56,6 +62,13 @@ struct RobotConfig {
 namespace robot_type {
 
 // g1 (Unitree), robot/g1/g1_description/*.urdf
+// initial_joint_positions always lists all 29 joint names, regardless of
+// G1_29DOF: even when the loaded model/URDF only has 27 movable joints, the
+// real DDS hardware always has 29 motors, and the 2 not present in the model
+// (waist_roll/waist_pitch) still need a regulation setpoint (see their
+// dedicated handling in main_g1.cpp's send_dds_command). Dropping them here
+// would break that lookup -- kNumControlledMotors (below) is what tracks
+// G1_29DOF, not this map's size.
 inline const RobotConfig G1{
     G1_29DOF ? "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf"
              : "../robot/g1/g1_description/g1_29dof_lock_waist_with_hand_rev_1_0.urdf",
@@ -67,6 +80,10 @@ inline const RobotConfig G1{
     "right_wrist_yaw_link",
     "torso_link",
     "pelvis",
+    0.20,
+    0.05,
+    0.725112,  // deeper-squat pose matching initial_joint_positions below
+               // (hip_pitch=-0.44, knee=0.95, ankle_pitch=-0.50)
     {"left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
      "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint"},
     {"right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
@@ -114,20 +131,30 @@ inline const RobotConfig Gene01{
     "r_wrist_3",
     "chest",
     "pelvis",
+    0.26,
+    0.09,
+    1.0,  // computed via pinocchio FK at the initial_joint_positions
+               // pose below (pelvis at origin, sole frame z negated), same
+               // methodology as the CoM-centering comment above
     {"l_shoulder_pitch", "l_shoulder_roll", "l_shoulder_yaw",
      "l_elbow", "l_wrist_yaw", "l_wrist_pitch", "l_wrist_roll"},
     {"r_shoulder_pitch", "r_shoulder_roll", "r_shoulder_yaw",
      "r_elbow", "r_wrist_yaw", "r_wrist_pitch", "r_wrist_roll"},
+    // hip_pitch/ankle_pitch = +-0.057 rad keeps the feet flat (hip_pitch +
+    // knee + ankle_pitch == 0) while centering the CoM over the support
+    // polygon at rest: verified with pinocchio at q=neutral, the all-zero
+    // pose had CoM ~4.1cm behind mid-foot (a likely cause of falling
+    // backward); this brings that offset to <1mm.
     {
-        {"l_hip_pitch",       0.0}, {"l_hip_roll",        0.0}, {"l_hip_yaw",         0.0},
-        {"l_knee",            0.0}, {"l_ankle_pitch",     0.0}, {"l_ankle_roll",      0.0},
-        {"r_hip_pitch",       0.0}, {"r_hip_roll",        0.0}, {"r_hip_yaw",         0.0},
-        {"r_knee",            0.0}, {"r_ankle_pitch",     0.0}, {"r_ankle_roll",      0.0},
-        {"torso_yaw",         0.0}, {"torso_roll",        0.0},
+        {"l_hip_pitch",       0.057}, {"l_hip_roll",        0.0}, {"l_hip_yaw",         0.0},
+        {"l_knee",            0.0}, {"l_ankle_pitch",     -0.057}, {"l_ankle_roll",      0.0},
+        {"r_hip_pitch",       0.057}, {"r_hip_roll",        0.0}, {"r_hip_yaw",         0.0},
+        {"r_knee",            0.0}, {"r_ankle_pitch",     -0.057}, {"r_ankle_roll",      0.0},
+        {"torso_yaw",         0.0}, /*{"torso_roll",        0.0},*/
         {"l_shoulder_pitch",  0.0}, {"l_shoulder_roll",   0.0}, {"l_shoulder_yaw",    0.0},
-        {"l_elbow",           0.0}, {"l_wrist_yaw",       0.0}, {"l_wrist_pitch",     0.0}, {"l_wrist_roll", 0.0},
+        {"l_elbow",           0.0}, /*{"l_wrist_yaw",       0.0}, {"l_wrist_pitch",     0.0}, {"l_wrist_roll", 0.0},*/
         {"r_shoulder_pitch",  0.0}, {"r_shoulder_roll",   0.0}, {"r_shoulder_yaw",    0.0},
-        {"r_elbow",           0.0}, {"r_wrist_yaw",       0.0}, {"r_wrist_pitch",     0.0}, {"r_wrist_roll", 0.0},
+        {"r_elbow",           0.0}, /*{"r_wrist_yaw",       0.0}, {"r_wrist_pitch",     0.0}, {"r_wrist_roll", 0.0},*/
     },
 };
 
@@ -136,10 +163,31 @@ inline const RobotConfig Gene01{
 inline const RobotConfig& kRobotConfig =
     (kRobotId == RobotId::G1) ? robot_type::G1 : robot_type::Gene01;
 
+// Number of movable joints in the currently loaded robot MODEL (URDF/MuJoCo
+// scene) -- NOT the same as initial_joint_positions.size(), which for G1
+// always lists all 29 real motor names regardless of G1_29DOF (see above).
+// For G1 this must track G1_29DOF explicitly, since the model literally has
+// fewer DOF in the locked-waist URDF variant. Use this instead of
+// G1_NUM_MOTOR wherever code is meant to work for any kRobotId/URDF variant,
+// not just the real G1 DDS hardware path (which always has 29 physical
+// motors no matter which URDF is loaded for kinematics/WBC).
+inline const int kNumControlledMotors =
+    (kRobotId == RobotId::G1)
+        ? (G1_29DOF ? 29 : 27)
+        : static_cast<int>(kRobotConfig.initial_joint_positions.size());
+
 extern bool isMPCLoopClosed;
 extern bool isObserverActive;
 extern bool switchWalkingState;
 extern bool switchCoopState;
 extern int  ZMP_TYPE;  // 1=force-based, 2=wrench-based, 3=CoM-accel-based
+
+// Gait parameters set from the MuJoCo UI control panel (see MujocoUI.hpp),
+// read at the switchWalkingState trigger site in WalkingManager.cpp.
+extern double uiStepLengthX;
+extern double uiStepLengthY;
+extern double uiYawIncrement;
+extern double uiDoubleSupportDuration;  // milliseconds
+extern double uiSingleSupportDuration;  // milliseconds
 
 extern Eigen::VectorXd measured_joint_velocity;

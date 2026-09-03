@@ -17,9 +17,9 @@
 
 namespace labrob {
 
-class ISMPC{
+class ISMPC_dist{
  public:
-  ISMPC(
+  ISMPC_dist(
       int64_t prediction_horizon_msec,
       int64_t mpc_timestep_msec,
       double eta,
@@ -30,7 +30,8 @@ class ISMPC{
   void solve(
       int64_t time,
       const labrob::WalkingData& walking_data,
-      const labrob::LIPState& state
+      const labrob::LIPState& state,
+      const Eigen::Vector3d disturbance = Eigen::Vector3d (0.0, 0.0, -9.81)
   );
 
   const Eigen::Vector3d& getInput() const;
@@ -40,7 +41,7 @@ class ISMPC{
   const Eigen::VectorXd& getInputSequenceZ() const;
 
   Eigen::Vector3d getStabConstraintOffset() const;
-  
+
   double getEta() const;
 
   void setEta(double eta);
@@ -50,8 +51,16 @@ class ISMPC{
   // the support/swing-foot-interpolated centroid used at n=0 of the horizon.
   double getZmpBoxCenterX() const { return mc_x_(0); }
   double getZmpBoxCenterY() const { return mc_y_(0); }
+  double getZmpConstraintBoxYaw() const { return mc_theta_(0); }
+  Eigen::Vector3d getZmpConstraintBoxCenter() const { return Eigen::Vector3d(mc_x_(0), mc_y_(0), mc_z_(0)); }
   double getFootConstraintLength() const { return foot_constraint_square_length_; }
   double getFootConstraintWidth()  const { return foot_constraint_square_width_; }
+
+  // Full ZMP reference (mc_x_/mc_y_) over the whole prediction horizon, for
+  // debugging whether the horizon already "sees" an upcoming blend ramp at
+  // solve time (as opposed to just the current-step value above).
+  const Eigen::VectorXd& getZmpReferenceX() const { return mc_x_; }
+  const Eigen::VectorXd& getZmpReferenceY() const { return mc_y_; }
 
   void resetInput(){
       input_ = Eigen::Vector3d::Zero();
@@ -91,7 +100,6 @@ class ISMPC{
   // (tuning knob for the real-robot ankle-roll issue).
   double single_support_zmp_blend_ = 1.0;
 
-
   // Matrices for stability constraint:
   Eigen::MatrixXd A_eq_;
   Eigen::VectorXd b_eq_;
@@ -111,6 +119,7 @@ class ISMPC{
 
   // Pre-allocated per-solve buffers (no malloc in hot path):
   Eigen::VectorXd mc_x_, mc_y_, mc_z_;  // reference ZMP centroid per step
+  Eigen::VectorXd mc_theta_;            // support/swing-interpolated foot yaw per step
   Eigen::VectorXd b_decay_;             // geometric decay sequence for A_eq
   double mpc_timestep_;                 // 0.001 * mpc_timestep_msec_
 

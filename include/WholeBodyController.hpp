@@ -25,7 +25,7 @@
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
 
-#include <QpOASESSolver.hpp>
+#include <QpSolver.hpp>
 
 namespace labrob {
 
@@ -90,9 +90,21 @@ class WholeBodyController {
   );
 
   const Eigen::VectorXd& get_q_ddot() const { return q_ddot_; }
+  const Eigen::VectorXd& get_q_dot_des() const { return q_dot_des_; }
+  const Eigen::VectorXd& get_q_des() const { return q_des_; }
+
+  // Desired floating-base trajectory used for inverse-dynamics trajectory
+  // tracking (see compute_inverse_dynamics()): position/quaternion and
+  // linear/angular velocity, one control-cycle-ahead of the current state.
+  Eigen::Vector3d get_base_position_des() const { return q_full_des_.head<3>(); }
+  Eigen::Vector4d get_base_orientation_des() const { return q_full_des_.segment<4>(3); } // (x, y, z, w)
+  Eigen::Vector3d get_base_linear_velocity_des() const { return q_full_dot_des_.head<3>(); }
+  Eigen::Vector3d get_base_angular_velocity_des() const { return q_full_dot_des_.segment<3>(3); }
   const Eigen::VectorXd& get_flr()    const { return flr_; }
   const Eigen::VectorXd& getLeftFootWrench()  const { return left_foot_wrench_; }
   const Eigen::VectorXd& getRightFootWrench() const { return right_foot_wrench_; }
+
+  int get_n_contacts() const { return n_contacts_; }
   double get_mu() const { return params_.mu; }
   // Worst-case margin (>=0 means satisfied) across the joint velocity-limit
   // rows [rad/s] and position-limit rows [rad] of C_acc_, respectively, for
@@ -108,6 +120,10 @@ class WholeBodyController {
   int  get_worst_pos_limit_joint()    const { return worst_pos_limit_joint_; }
   bool get_worst_pos_limit_is_upper() const { return worst_pos_limit_is_upper_; }
 
+
+  // INFO
+  int  wbc_solver_status()      const { return wbc_solver_ptr_->get_status(); }
+
  private:
   pinocchio::Model robot_model_;
   pinocchio::Data  robot_data_;
@@ -120,6 +136,14 @@ class WholeBodyController {
   Eigen::VectorXd q_jnt_reg_;
   Eigen::VectorXd q_ddot_;
   Eigen::VectorXd flr_;
+
+
+  Eigen::VectorXd q_dot_des_;
+  Eigen::VectorXd q_des_;
+
+  Eigen::VectorXd q_full_dot_des_;
+  Eigen::VectorXd q_full_des_;
+
   double joint_vel_limit_margin_ = 0.0;
   double joint_pos_limit_margin_ = 0.0;
   int  worst_vel_limit_joint_    = -1;
@@ -133,7 +157,7 @@ class WholeBodyController {
 
   int n_joints_, n_contacts_, n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_;
 
-  std::unique_ptr<labrob::QpOASESSolver> wbc_solver_ptr_;
+  std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
   Eigen::VectorXd left_foot_wrench_, right_foot_wrench_;
 
   // ── pre-allocated buffers — no malloc in the 1kHz hot path ──────────────
@@ -161,6 +185,13 @@ class WholeBodyController {
   Eigen::MatrixXd Mu_, Ma_;
   Eigen::VectorXd cu_, ca_;
   Eigen::MatrixXd Jlu_, Jla_, Jru_, Jra_;
+  // Dynamic terms re-evaluated at the desired trajectory (q_des_, q_dot_des_)
+  // for inverse-dynamics trajectory tracking (Ma_/ca_/Jla_/Jra_ above end up
+  // holding these values; Mu_/cu_/Jlu_/Jru_ stay evaluated at the current
+  // state since they enter the QP's instantaneous floating-base dynamics
+  // constraint).
+  Eigen::MatrixXd J_lsole_des_, J_rsole_des_;
+  Eigen::MatrixXd M_inertia_des_;
   Eigen::MatrixXd H_wbc_;
   Eigen::VectorXd f_wbc_;
   Eigen::MatrixXd A_acc_wbc_;

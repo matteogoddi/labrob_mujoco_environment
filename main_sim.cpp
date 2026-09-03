@@ -24,10 +24,16 @@
 // ── Globals required by WalkingManager (via globals.h) ───────────────────────
 bool isMPCLoopClosed    = true;
 bool isObserverActive   = false;
-bool switchWalkingState = false;  // never set in sim, WalkingManager reads it
+bool switchWalkingState = false;  // set from the MuJoCo UI "Start steps" button
 int  ZMP_TYPE           = 3;
 
-Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(G1_NUM_MOTOR);
+double uiStepLengthX  = 0.1;
+double uiStepLengthY  = 0.0;
+double uiYawIncrement = 0.0;
+double uiDoubleSupportDuration = 2000;
+double uiSingleSupportDuration = 2000;
+
+Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(kNumControlledMotors);
 
 using Clock = std::chrono::steady_clock;
 
@@ -156,7 +162,7 @@ int main(const int argc, const char* argv[]) {
 
     // Initial joint configuration
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
-    mj_data_ptr->qpos[2] = 0.725112;  // deeper-squat pose (see globals.h)
+    mj_data_ptr->qpos[2] = kRobotConfig.initial_pelvis_height;
     // More upright pose: legs are ~6.29cm taller hip-to-ankle (computed from
     // the URDF leg chain for knee 0.95->0.30, hip/ankle pitch -0.44/-0.50->
     // -0.15/-0.15), so the pelvis must start that much higher to keep the
@@ -314,12 +320,22 @@ int main(const int argc, const char* argv[]) {
                 }
             }
             static bool ekf_took_over = false;
-            if (mj_data_ptr->time >= 3.0 && false) {
+            if (mj_data_ptr->time >= 3.0 && mujoco_ui_ptr->isFilterEnabled()) {
                 robot_state = rs_ekf;
                 if (!ekf_took_over) {
                     ekf_took_over = true;
                     walking_manager.init(robot_state, armatures);
                 }
+            }
+
+            // Read gait parameters from the MuJoCo UI control panel.
+            uiStepLengthX  = mujoco_ui_ptr->getStepLengthX();
+            uiStepLengthY  = mujoco_ui_ptr->getStepLengthY();
+            uiYawIncrement = mujoco_ui_ptr->getYawIncrement();
+            uiDoubleSupportDuration = mujoco_ui_ptr->getDoubleSupportDuration();
+            uiSingleSupportDuration = mujoco_ui_ptr->getSingleSupportDuration();
+            if (mujoco_ui_ptr->consumeStartStepsPressed()) {
+                switchWalkingState = true;
             }
 
             walking_manager.update(robot_state, joint_command);

@@ -42,8 +42,8 @@ namespace labrob {
         W_ext_(Eigen::VectorXd::Zero(24)),
         W_ext_filt_(Eigen::VectorXd::Zero(24)),
         filter_alpha_x_(0.00628), // 0.00628 designed basing on T_step
-        filter_alpha_y_(0.001), // 0.001 for sim
-        filter_alpha_z_(0.001), // 0.001 for sim
+        filter_alpha_y_(0.006),
+        filter_alpha_z_(0.006),
         alpha_matrix_(Eigen::MatrixXd::Zero(24, 24)),
         right_wrist_frame_(right_wrist_frame),
         left_wrist_frame_(left_wrist_frame),
@@ -60,12 +60,30 @@ namespace labrob {
             }
         }
 
+        // Initialize parameters for QP
+        n_wrench_qp_variables_ = 24;            // 6 for each contact point (left foot, right foot, left wrist, right wrist)
+        n_wrench_qp_equalities_ = 0;
+        n_wrench_qp_inequalities_ = 2;         // non-negativity of vertical forces for each foot
+        // Large slack weight makes the Fz >= 0 inequality effectively rigid, unlike the
+        // default (1e-6) soft-constraint weight
+        wrench_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+            n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_
+            // ,SPEED_ABS, 50, 1e6
+        );
+        A_qp_.resize(0, n_wrench_qp_variables_);
+        b_qp_.resize(0);
+        C_qp_ = Eigen::MatrixXd::Zero(n_wrench_qp_inequalities_, n_wrench_qp_variables_);
+        C_qp_(0, 14)  = -1.0;                 // -Fz right foot
+        C_qp_(1, 20)  = -1.0;                  // -Fz left foot
+        ug_qp_ = Eigen::VectorXd::Zero(n_wrench_qp_inequalities_);
+        lg_qp_ = Eigen::VectorXd::Constant(n_wrench_qp_inequalities_, -1e10);
+
 
         // Initialize alpha matrix for low-pass filter
         alpha_matrix_.diagonal() << filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, 
                                     filter_alpha_x_, filter_alpha_y_, filter_alpha_z_, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_,
-                                    0.001, 0.001, 0.01, filter_alpha_x_, filter_alpha_y_, filter_alpha_z_;
+                                    0.2, 0.2, 0.2, 0.2, 0.2, 0.001,
+                                    0.2, 0.2, 0.2, 0.2, 0.2, 0.001;
 
 
         
@@ -95,7 +113,7 @@ namespace labrob {
             "right_wrist_yaw_joint"
         };
 
-        const double arm_weight = 1000.0;       // 800 good trade-off in sim
+        const double arm_weight = 1000.0;       // 1000 is needed for accurate estimation on wrist forces
         for (const auto& jname : arm_joints) {
             if (robot_model_.existJointName(jname)) {
                 pinocchio::JointIndex jid = robot_model_.getJointId(jname);
@@ -121,8 +139,9 @@ namespace labrob {
         updateDynamicTerms(robot_state, robot_data, measured_torques);
         updateForceJacobians(robot_data);
         computeFullResidual(robot_state, dt);
-        estimateWrenches();                         // unweighted, for feet/ZMP
-        estimateWrenchesWeighted();                 // arm-weighted, for HAC wrists
+        //estimateWrenches();                         // unweighted, for feet/ZMP
+        estimateWrenchesQP();                         // QP, for feet/ZMP
+        //estimateWrenchesWeighted();                   // arm-weighted, for HAC wrists
         lowPassFilter();
     }
 
@@ -215,15 +234,6 @@ namespace labrob {
         // Transpose of Coriolis and centrifugal matrix
         Eigen::MatrixXd C_T = C_.transpose();
 
-        
-        /*
-        // Initialize generalized momentum if at first step
-        
-        if (!initialized_) {
-            p0_ = p_;                  // catch the moment at the first step
-            initialized_ = true;
-        }
-        */
 
         // Capture p0_ only once the robot is actually still, so the reference
         // momentum is not frozen during a transient. Until then, hold the
@@ -264,6 +274,28 @@ namespace labrob {
     {
         Eigen::MatrixXd J_ext_T_pinv = J_ext_.transpose().completeOrthogonalDecomposition().pseudoInverse();
         W_ext_ = J_ext_T_pinv * r_;
+
+    }
+
+    void WristForceEstimator::estimateWrenchesQP() {
+        
+        // Solve the QP problem: min_W 0.5 * W^T H W + f^T W
+        // subject to A W = b (equality constraints)
+        // and C W <= d (inequality constraints)
+
+        // H = J_ext^T J_ext
+        //H_qp_ = J_ext_ * J_ext_.transpose();
+        H_qp_ = J_ext_ * W_nv_ * J_ext_.transpose();
+
+        // f = -J_ext^T r
+        f_qp_ = - J_ext_ * W_nv_ * r_;
+
+
+        // Solve the QP problem using the QpSolver
+        wrench_solver_ptr_->solve(H_qp_, f_qp_, A_qp_, b_qp_, C_qp_, lg_qp_, ug_qp_);
+
+        // Get the solution
+        W_ext_ = wrench_solver_ptr_->get_solution();
 
     }
 

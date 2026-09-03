@@ -82,6 +82,24 @@ def plot_comparison(t, actual, desired, coord_labels, title_prefix, ylabel, path
     plt.close(fig)
 
 
+def build_lr_pairs(names):
+    """Left/right joint index pairs (li, ri, suffix) by name-matching within
+    `names`, skipping waist joints. Factored out so callers can rebuild this
+    against a DIFFERENT joint-name list than the full DDS/model one (e.g. a
+    WBC-controlled-only subset — see sections/wbc_solutions.py) instead of
+    assuming every per-joint array shares the same column layout.
+    """
+    pairs = []
+    for li, lname in enumerate(names):
+        if not lname.startswith('left_') or 'waist' in lname:
+            continue
+        suffix = lname[len('left_'):]
+        rname = 'right_' + suffix
+        if rname in names:
+            pairs.append((li, names.index(rname), suffix))
+    return pairs
+
+
 def try_load(folder, name):
     """Load name.txt if it exists, else return None.
 

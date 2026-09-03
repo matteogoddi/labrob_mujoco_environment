@@ -46,6 +46,12 @@ bool useViz           = true;
 bool reactiveStanding = false;
 bool verboseCoop      = false;
 
+double uiStepLengthX  = 0.1;
+double uiStepLengthY  = 0.0;
+double uiYawIncrement = 0.0;
+double uiDoubleSupportDuration = 2000;
+double uiSingleSupportDuration = 2000;
+
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
 using Clock = std::chrono::steady_clock;
@@ -160,6 +166,9 @@ static void handle_gamepad(
                 std::cout << "[GAMEPAD] A -> EKF started." << std::endl;
                 isEKFactive = true;
                 se.activate(robot_state, measured_joint_pos);
+                if (useViz) {
+                    labrob::MujocoUI::getInstance()->setFilterEnabled(true);
+                }
             }
         }
     } else {
@@ -185,19 +194,33 @@ static void send_dds_command(
     const float t_s        = std::chrono::duration<float>(elapsed).count();
     const bool  in_ramp    = elapsed < std::chrono::seconds(5);
 
+    // motor_command.{q_target,dq_target,tau_ff,kp,kd} are all indexed by the
+    // MuJoCo actuator index i (0..m->nu-1, contiguous), matching the loop
+    // below that fills q_target/dq_target/tau_ff -- NOT the real DDS motor
+    // index (0..28, with a gap at 13/14 for waist_roll/pitch when running
+    // the 27-DOF model). Kp_reg/Kd_reg/Kd_cl are DDS-indexed, so they must be
+    // looked up via ridx here too, never read at [i] directly.
     if (in_ramp) {
-        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-            motor_command.kp[i] = Kp_reg[i] * (t_s / 5.0f);
-            motor_command.kd[i] = Kd_reg[i];
+        for (int i = 0; i < m->nu; ++i) {
+            int jid  = m->actuator_trnid[i * 2];
+            int ridx = joint_name_to_index.at(mj_id2name(m, mjOBJ_JOINT, jid));
+            motor_command.kp[i] = Kp_reg[ridx] * (t_s / 5.0f);
+            motor_command.kd[i] = Kd_reg[ridx];
         }
     } else if (experiment_mode == ExperimentMode::WBC) {
-        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-            motor_command.kp[i] = 0.0f;
-            motor_command.kd[i] = Kd_cl[i];
+        for (int i = 0; i < m->nu; ++i) {
+            int jid  = m->actuator_trnid[i * 2];
+            int ridx = joint_name_to_index.at(mj_id2name(m, mjOBJ_JOINT, jid));
+            motor_command.kp[i] = Kp_cl[ridx];
+            motor_command.kd[i] = Kd_cl[ridx];
         }
     } else if (experiment_mode == ExperimentMode::Regulation) {
-        motor_command.kp = Kp_reg;
-        motor_command.kd = Kd_reg;
+        for (int i = 0; i < m->nu; ++i) {
+            int jid  = m->actuator_trnid[i * 2];
+            int ridx = joint_name_to_index.at(mj_id2name(m, mjOBJ_JOINT, jid));
+            motor_command.kp[i] = Kp_reg[ridx];
+            motor_command.kd[i] = Kd_reg[ridx];
+        }
     }
 
     for (int i = 0; i < m->nu; ++i) {
@@ -233,11 +256,16 @@ static void send_dds_command(
     LowCmd_ dds_cmd;
     dds_cmd.mode_pr()      = static_cast<uint8_t>(Mode::PR);
     dds_cmd.mode_machine() = mode_machine_;
-    for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    // Loop over the model's real actuators (m->nu, e.g. 27 for the
+    // locked-waist variant) -- NOT G1_NUM_MOTOR (always 29), since
+    // m->actuator_trnid only has valid entries for the actuators the loaded
+    // model actually has. ridx (the real DDS index) naturally skips 13/14
+    // here, because those joint names never appear among this model's
+    // actuators when G1_29DOF is false.
+    for (int i = 0; i < m->nu; ++i) {
         int jid   = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         int ridx  = joint_name_to_index.at(jname);
-        if (!g1_motor_active(ridx)) continue;
         auto& cmd = dds_cmd.motor_cmd().at(ridx);
         cmd.mode() = 1;
         cmd.q()    = motor_command.q_target[i];
@@ -245,6 +273,23 @@ static void send_dds_command(
         cmd.tau()  = motor_command.tau_ff[i];
         cmd.kp()   = motor_command.kp[i];
         cmd.kd()   = motor_command.kd[i];
+    }
+
+    // waist_roll_joint (DDS idx 13) and waist_pitch_joint (DDS idx 14) are
+    // real motors that always exist on the hardware, but are absent from the
+    // loaded model's actuators when G1_29DOF is false, so the loop above
+    // never reaches their DDS indices. Send them an explicit, independent
+    // regulation command instead of leaving them uncommanded.
+    for (const auto& [ridx, jname] : {std::pair{13, "waist_roll_joint"},
+                                       std::pair{14, "waist_pitch_joint"}}) {
+        if (g1_motor_active(ridx)) continue;
+        auto& cmd = dds_cmd.motor_cmd().at(ridx);
+        cmd.mode() = 1;
+        cmd.q()    = static_cast<float>(kRobotConfig.initial_joint_positions.at(jname));
+        cmd.dq()   = 0.0f;
+        cmd.tau()  = 0.0f;
+        cmd.kp()   = Kp_reg[ridx];
+        cmd.kd()   = Kd_reg[ridx];
     }
     dds_cmd.crc() = Crc32Core((uint32_t*)&dds_cmd, (sizeof(dds_cmd) >> 2) - 1);
     publisher->Write(dds_cmd);
@@ -331,7 +376,7 @@ int main(const int argc, const char* argv[]) {
 
     // Initial MuJoCo state (used for joint name mapping only in robot mode)
     for (int i = 0; i < mj_model_ptr->nq; ++i) mj_data_ptr->qpos[i] = 0.0;
-    mj_data_ptr->qpos[2] = 0.728112;
+    mj_data_ptr->qpos[2] = kRobotConfig.initial_pelvis_height;
     mj_data_ptr->qpos[3] = 1;
     for (int i = 0; i < mj_model_ptr->njnt; ++i) {
         const char* name = mj_id2name(mj_model_ptr, mjOBJ_JOINT, i);
@@ -438,8 +483,18 @@ int main(const int argc, const char* argv[]) {
                 ema_imu_gyro = ema_alpha_gyro * imu_gyro
                              + (1.0 - ema_alpha_gyro) * ema_imu_gyro;
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
-                    measured_joint_pos[i] = motor_state_data.q[i];
-                    measured_joint_vel[i] = motor_state_data.dq[i];
+                    // i is the MuJoCo actuator index (contiguous, 0..nu-1);
+                    // motor_state_data is indexed by the fixed real DDS motor
+                    // index (0..28, with a gap at 13/14 for waist_roll/pitch
+                    // when the loaded model is the 27-DOF variant), so it
+                    // must be looked up via ridx, not read at [i] directly --
+                    // otherwise every joint after the gap silently reads the
+                    // wrong motor's sensor data (off by 2).
+                    int jid  = mj_model_ptr->actuator_trnid[i * 2];
+                    std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
+                    int ridx = joint_name_to_index.at(jname);
+                    measured_joint_pos[i] = motor_state_data.q[ridx];
+                    measured_joint_vel[i] = motor_state_data.dq[ridx];
                     ema_joint_vel[i] = ema_alpha * measured_joint_vel[i]
                                      + (1.0 - ema_alpha) * ema_joint_vel[i];
                 }
@@ -489,6 +544,23 @@ int main(const int argc, const char* argv[]) {
             handle_gamepad(walking_manager, state_estimator, robot_state,
                            armatures, measured_joint_pos,
                            1000.0 * mj_data_ptr->time);
+
+            // ── MuJoCo UI control panel: coexists with gamepad B/A ─────────────
+            if (useViz) {
+                uiStepLengthX  = mujoco_ui_ptr->getStepLengthX();
+                uiStepLengthY  = mujoco_ui_ptr->getStepLengthY();
+                uiYawIncrement = mujoco_ui_ptr->getYawIncrement();
+                uiDoubleSupportDuration = mujoco_ui_ptr->getDoubleSupportDuration();
+                uiSingleSupportDuration = mujoco_ui_ptr->getSingleSupportDuration();
+                if (mujoco_ui_ptr->consumeStartStepsPressed()) {
+                    switchWalkingState = true;
+                }
+                if (mujoco_ui_ptr->isFilterEnabled() && !isEKFactive) {
+                    std::cout << "[UI] Filter checkbox -> EKF started." << std::endl;
+                    isEKFactive = true;
+                    state_estimator.activate(robot_state, measured_joint_pos);
+                }
+            }
 
             // ── State estimator ───────────────────────────────────────────────
             if (isEKFactive && state_estimator.is_active()) {

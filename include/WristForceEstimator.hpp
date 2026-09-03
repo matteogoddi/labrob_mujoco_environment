@@ -45,25 +45,16 @@ namespace labrob {
                 double dt
             );
 
-            // Getters with no filter
-            /*
-            const Eigen::VectorXd& getResidual()          const { return r_; }
-            const Eigen::VectorXd& getEstimatedWrenches() const { return W_ext_; }
-            Eigen::Vector3d getRightWristForce() const { return W_ext_.segment<3>(0); }
-            Eigen::Vector3d getLeftWristForce()  const { return W_ext_.segment<3>(6); }
-            Eigen::Matrix<double,6,1> getRightFootWrench() const { return W_ext_.segment<6>(12); }
-            Eigen::Matrix<double,6,1> getLeftFootWrench()  const { return W_ext_.segment<6>(18); }
-            */
 
             // Getters with filter
             const Eigen::VectorXd& getResidual()          const { return r_; }
             const Eigen::VectorXd& getEstimatedWrenches() const { return W_ext_filt_; }
-            Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_arm_filt_.segment<3>(0); }
-            Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_arm_filt_.segment<3>(6); }
-            /*
-            Eigen::Vector3d getRightWristForce() const { return W_ext_filt_.segment<3>(0); }
-            Eigen::Vector3d getLeftWristForce()  const { return W_ext_filt_.segment<3>(6); }
-            */
+
+            //Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_arm_filt_.segment<3>(0); }
+            //Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_arm_filt_.segment<3>(6); }
+            Eigen::Vector3d getWeightedRightWristForce() const { return W_ext_filt_.segment<3>(0); }
+            Eigen::Vector3d getWeightedLeftWristForce()  const { return W_ext_filt_.segment<3>(6); }
+
             Eigen::Matrix<double,6,1> getRightFootWrench() const { return W_ext_filt_.segment<6>(12); }
             Eigen::Matrix<double,6,1> getLeftFootWrench()  const { return W_ext_filt_.segment<6>(18); }
             const Eigen::VectorXd& getGeneralizedMomentum()        const { return p_; }
@@ -95,7 +86,7 @@ namespace labrob {
             double filter_alpha_y_;                                 // EMA parameter: filtering along y axis
             double filter_alpha_z_;                                 // EMA parameter: filtering along z axis
             Eigen::MatrixXd alpha_matrix_;                          // Diagonal matrix of EMA alpha parameters
-            double v_still_threshold_ = 0.2;                       // rad/s, below this the robot is considered still: 0.02 for simulation, 0.2 for real experiments
+            double v_still_threshold_ = 0.2;                        // rad/s, below this the robot is considered still: 0.02 for simulation, 0.2 for real experiments
 
 
             // WLS weighted toward left arm (for HAC wrist estimates)
@@ -120,6 +111,18 @@ namespace labrob {
             Eigen::MatrixXd J_lf_;                                   // Left foot Jacobian
 
 
+            // Foot wrench estimation with QP solver
+            std::unique_ptr<labrob::QpSolver> wrench_solver_ptr_;
+            int n_wrench_qp_variables_, n_wrench_qp_equalities_, n_wrench_qp_inequalities_;
+            Eigen::MatrixXd H_qp_;
+            Eigen::VectorXd f_qp_;
+            Eigen::MatrixXd A_qp_;
+            Eigen::VectorXd b_qp_;
+            Eigen::MatrixXd C_qp_;
+            Eigen::VectorXd ug_qp_;
+            Eigen::VectorXd lg_qp_;
+
+
             // ########## METHODS ########## //
 
             void updateDynamicTerms(
@@ -133,6 +136,8 @@ namespace labrob {
             void computeFullResidual(const RobotState& robot_state, double dt);
 
             void estimateWrenches();
+
+            void estimateWrenchesQP();
 
             void estimateWrenchesWeighted();
 

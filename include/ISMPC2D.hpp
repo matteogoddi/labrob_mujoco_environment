@@ -6,7 +6,7 @@
 
 #include <LIPState.hpp>
 #include <WalkingData.hpp>
-#include <QpSolver.hpp>
+#include <QpOASESSolver.hpp>
 
 #include <Eigen/Core>
 #include <Eigen/Geometry>
@@ -99,7 +99,7 @@ class ISMPC2D {
   Eigen::VectorXd zDotOptimalX;
   Eigen::VectorXd zDotOptimalY;
 
-  std::unique_ptr<labrob::QpSolver> qp_solver_ptr_;
+  std::unique_ptr<labrob::QpOASESSolver> qp_solver_ptr_;
 
   Eigen::VectorXd mc_x_, mc_y_;
   Eigen::VectorXd b_decay_;
