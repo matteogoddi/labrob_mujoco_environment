@@ -120,6 +120,20 @@ WholeBodyController::WholeBodyController(
   left_foot_wrench_  = Eigen::VectorXd::Zero(6);
   right_foot_wrench_ = Eigen::VectorXd::Zero(6);
 
+  // q_full_des_/q_full_dot_des_ (full floating-base desired trajectory) and
+  // q_des_/q_dot_des_ (joint-only views) are only ever written by the
+  // disabled online-reference-generation block in update() (the commented
+  // "q_full_dot_des_ = qdot + sample_time_ * q_ddot_;" and what follows it).
+  // Until that block is re-enabled they must still be sized here, otherwise
+  // get_base_position_des()/get_base_orientation_des()/
+  // get_base_linear_velocity_des()/get_base_angular_velocity_des() slice a
+  // fixed-size block out of a 0-length vector and crash (Eigen assertion in
+  // Block::Block) the first time WalkingManager logs them.
+  q_full_des_     = Eigen::VectorXd::Zero(robot_model.nq);
+  q_full_dot_des_ = Eigen::VectorXd::Zero(nv);
+  q_des_          = Eigen::VectorXd::Zero(nj);
+  q_dot_des_      = Eigen::VectorXd::Zero(nj);
+
   // ── constants ─────────────────────────────────────────────────────────────
 
   zero_nv_ = Eigen::VectorXd::Zero(nv);

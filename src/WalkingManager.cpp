@@ -155,9 +155,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "estimated_force_lwrist", "estimated_force_rwrist",
         "left_arm_residual", "right_arm_residual",
         "left_arm_tau_g", "right_arm_tau_g",
+        "base_residual", "left_leg_residual", "right_leg_residual", "waist_residual",
         "initial_generalized_momentum", "generalized_momentum",
-        "wbc_force_lsole", "wbc_force_rsole",
-        "wbc_accelerations", "angular_momentum", "input_torque",
+        "wbc_force_lsole", "wbc_force_rsole", "wbc_corner_forces_left", "wbc_corner_forces_right",
+        "wbc_accelerations", 
+        "q_dot_des", "q_des",
+        "angular_momentum", "angular_momentum_rate", "input_torque", "motor_torque_filt",
         "mpc_pred_com_pos", "mpc_pred_com_vel", "mpc_pred_zmp_pos",
         "mpc_zmp_velocity", "con_zmp_velocity",
         "mpc_zmp_reference_x", "mpc_zmp_reference_y",
@@ -172,7 +175,11 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         "execution_time_wbc", "execution_time_mpc", 
         "execution_time_kf", "execution_time_update", 
         "execution_time_res_obs", "execution_time_hac", "execution_time_coop_planner",
-        "residual_vector_norm"
+        "residual_vector_norm", "wbc_friction_coefficient", "zmp_box_yaw", "walking_state",
+        "friction_cone_ratio_left_x_fl", "friction_cone_ratio_left_x_fr", "friction_cone_ratio_left_x_bl", "friction_cone_ratio_left_x_br",
+        "friction_cone_ratio_left_y_fl", "friction_cone_ratio_left_y_fr", "friction_cone_ratio_left_y_bl", "friction_cone_ratio_left_y_br",
+        "friction_cone_ratio_right_x_fl", "friction_cone_ratio_right_x_fr", "friction_cone_ratio_right_x_bl", "friction_cone_ratio_right_x_br",
+        "friction_cone_ratio_right_y_fl", "friction_cone_ratio_right_y_fr", "friction_cone_ratio_right_y_bl", "friction_cone_ratio_right_y_br"
     }) { logger_.reserveScalar(name, max_steps); }
 
     // MPC per-solve snapshots saved at fixed 10 Hz (every 100 ms), independent of horizon.
@@ -615,8 +622,6 @@ WalkingManager::update(
     Eigen::Vector3d v_CoM = robot_data.vcom[0];
 
 
-
-
     // =========================================================
     // ZMP RECONSTRUCTION
     // =========================================================
@@ -752,14 +757,12 @@ WalkingManager::update(
         }
     }
 
-    zmp_3d = (ZMP_TYPE > 0) ? zmp_3d_meas : zmp_3d_est;
-    zmp_3d = zmp_3d_meas;
+    // zmp_3d = (ZMP_TYPE > 0) ? zmp_3d_meas : zmp_3d_est;
+    // zmp_3d = zmp_3d_meas;
 
     // =========================================================
     // END ZMP RECONSTRUCTION
     // =========================================================
-
-
 
     walking_data_.updateWalkingState(t_msec_);
 
@@ -1137,13 +1140,13 @@ WalkingManager::update(
 
     //NO-KF-FILTER
 
-    current_gait_configuration.com.pos = p_CoM;
-    current_gait_configuration.com.vel = v_CoM;
+    // current_gait_configuration.com.pos = p_CoM;
+    // current_gait_configuration.com.vel = v_CoM;
 
     //WITH KF-FILTER
 
-    // current_gait_configuration.com.pos = kf_LipState.com_pos_;
-    // current_gait_configuration.com.vel = kf_LipState.com_vel_;
+    current_gait_configuration.com.pos = kf_LipState.com_pos_;
+    current_gait_configuration.com.vel = kf_LipState.com_vel_;
 
     current_gait_configuration.torso.pos = robot_data.oMf[torso_idx_].rotation();
     current_gait_configuration.torso.vel = J_torso.bottomRows<3>() * qdot;
