@@ -40,9 +40,10 @@ WalkingManager::WalkingManager() :
 
 LIPState
 WalkingManager::com_kf_step(LIPState filtered, LIPState current,
-                             const Eigen::Vector3d& input)
+                             const Eigen::Vector3d& input,
+                             const double eta)
 {
-    const double eta = std::sqrt(eta2);
+    //const double eta = std::sqrt(eta2);
     const double dt  = 0.001 * controller_timestep_msec_;
     const double ch  = std::cosh(eta * dt);
     const double sh  = std::sinh(eta * dt);
@@ -766,7 +767,7 @@ WalkingManager::update(
 
 
     //kf_LipState = LipState; // --> use this to disable the CoM KF
-    kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput());
+    kf_LipState = com_kf_step(kf_LipState, LipState, ismpc_ptr_->getInput(), std::sqrt(discrete_plip_dynamics_ptr_->getEta2()));
 
     auto end_kf = std::chrono::high_resolution_clock::now();
 
@@ -1141,6 +1142,8 @@ WalkingManager::update(
                     current_disturbance = discrete_plip_dynamics_ptr_->get_disturbance();
                 }
                 
+                // Update eta basing on current vertical force
+                ismpc_ptr_->setEta(std::sqrt(discrete_plip_dynamics_ptr_->getEta2()));
 
                 ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, current_disturbance);
 

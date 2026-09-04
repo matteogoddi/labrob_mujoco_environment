@@ -129,7 +129,8 @@ private:
 
   // ── CoMKF (inlined) ─────────────────────────────────────────────────────
   LIPState com_kf_step(LIPState filtered, LIPState current,
-                       const Eigen::Vector3d& input);
+                       const Eigen::Vector3d& input,
+                       const double eta);
 
   Eigen::Matrix3d com_kf_cov_x_ = Eigen::Matrix3d::Identity();
   Eigen::Matrix3d com_kf_cov_y_ = Eigen::Matrix3d::Identity();
