@@ -301,6 +301,24 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     initial_gait_configuration.pelvis.vel = Eigen::Vector3d::Zero();
     initial_gait_configuration.pelvis.acc = Eigen::Vector3d::Zero();
 
+    // Freeze the measured roll/pitch tilt (yaw removed) as the orientation
+    // reference offset.  The desired torso/pelvis attitude is a pure Rz(yaw)
+    // in update(): on hardware the robot always stands 1-2 deg off vertical,
+    // so that reference is unreachable and leaves a permanent error which
+    // Kp_orientation turns into a constant base roll/pitch demand from the
+    // very first tick.  Referencing the tilt measured at loop closure makes
+    // the orientation tasks regulate *deviations* from the initial attitude;
+    // absolute verticality stays enforced by the CoM/ZMP tasks.
+    // Left at identity in simulation, where the model starts upright.
+    if (useRobot) {
+        auto tilt_of = [](const Eigen::Matrix3d& R) {
+            return Eigen::Matrix3d(
+                labrob::Rz<double>(std::atan2(R(1, 0), R(0, 0))).transpose() * R
+            );
+        };
+        R_tilt_torso_  = tilt_of(Eigen::Matrix3d(robot_data.oMf[torso_idx_].rotation()));
+        R_tilt_pelvis_ = tilt_of(initial_robot_state.orientation.toRotationMatrix());
+    }
 
     // Save and read again footstep plan to double check it's working:
     //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
@@ -1290,10 +1308,10 @@ WalkingManager::update(
     double left_foot_yaw = std::atan2(desired_gait_configuration.lsole.pos.R(1, 0), desired_gait_configuration.lsole.pos.R(0, 0));
     double right_foot_yaw = std::atan2(desired_gait_configuration.rsole.pos.R(1, 0), desired_gait_configuration.rsole.pos.R(0, 0));
     
-    desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.torso.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0) * R_tilt_torso_;
     desired_gait_configuration.torso.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.torso.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
-    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0);
+    desired_gait_configuration.pelvis.pos = Rz((left_foot_yaw + right_foot_yaw) / 2.0) * R_tilt_pelvis_;
     desired_gait_configuration.pelvis.vel = (desired_gait_configuration.lsole.vel.tail(3) + desired_gait_configuration.rsole.vel.tail(3)) / 2.0;
     desired_gait_configuration.pelvis.acc = (desired_gait_configuration.lsole.acc.tail(3) + desired_gait_configuration.rsole.acc.tail(3)) / 2.0;
 
@@ -1414,62 +1432,14 @@ WalkingManager::update(
                 // Fill wbc_torques with torques from WBC
                 wbc_torques(torque_idx) = joint_command[joint_name];
 
-                // Fill motor_torques with estimated and published torques
-                int sdk_idx = joint_name_to_index.at(joint_name);
-                motor_torques(torque_idx) = motor_state_data.tau_est[sdk_idx];
             }
 
-
-            // Select which torques to use for the observer: 
-            Eigen::VectorXd torques(robot_model.nv - 6);
-            {
-                // 1. In simulation --> WBC output 
-                torques = wbc_torques;
-
-                // 2. In real experiments --> estimates from motor's firmware + EMA filter to reduce noise
-                if (useRobot) {
-
-                    // Filter
-                    torques_filt_ = 0.1 * torques + 0.9 * torques_filt_;
-
-                    // Save for logs
-                    torques = torques_filt_;
-
-                    logger_.log("motor_torque_filt", torques_filt_);
-                }
-
-            }
-            
-            // TEST
-            // Parti dalle misure grezze del robot
-            labrob::RobotState raw_robot_state = robot_state;
-
-            // EMA sulle velocità di giunto (le posizioni restano grezze)
-            const double a_vel = 0.1;   // taratura: più basso = più filtraggio
-
-            if (!joint_vel_filt_init_) {
-                for (pinocchio::JointIndex jid = 2; jid < (pinocchio::JointIndex) robot_model.njoints; ++jid) {
-                    joint_vel_filt_(jid-2) = measured_joint_velocity(jid-2);
-                }
-                joint_vel_filt_init_ = true;
-            } else {
-                for (pinocchio::JointIndex jid = 2; jid < (pinocchio::JointIndex) robot_model.njoints; ++jid) {
-                    const auto& name = robot_model.names[jid];
-                    joint_vel_filt_(jid-2) = a_vel * robot_state.joint_state[name].vel
-                                    + (1.0 - a_vel) * joint_vel_filt_(jid-2);
-                }
-            }
-
-            // Scrivi le velocità filtrate nello stato grezzo
-            for (pinocchio::JointIndex jid = 2; jid < (pinocchio::JointIndex) robot_model.njoints; ++jid) {
-                raw_robot_state.joint_state[robot_model.names[jid]].vel = joint_vel_filt_(jid-2);
-            }
 
             // Update observer
             wrist_force_estimator_ptr_->update(
-                raw_robot_state, 
+                robot_state, 
                 robot_data,
-                torques,
+                wbc_torques,
                 controller_timestep_msec_ * 0.001
             );
     

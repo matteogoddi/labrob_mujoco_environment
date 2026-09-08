@@ -7,6 +7,7 @@
 #include <vector>
 #include <csignal>
 #include <chrono>
+#include <iomanip>
 #include <filesystem>
 #include <sstream>
 #include <thread>
@@ -54,6 +55,14 @@ Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
 using Clock = std::chrono::steady_clock;
 
+// ── Experiment duration bookkeeping ───────────────────────────────────────────
+// Wall-clock start of the main loop and last known simulation time, so that the
+// duration can be reported both on Ctrl-C and on a normal exit.
+Clock::time_point experiment_start;
+bool   experiment_started  = false;
+double last_sim_time       = 0.0;
+double initial_sim_time    = 0.0;
+
 
 enum class ExperimentMode { Regulation, WBC };
 ExperimentMode experiment_mode = ExperimentMode::Regulation;
@@ -61,9 +70,31 @@ ExperimentMode experiment_mode = ExperimentMode::Regulation;
 alignas(EIGEN_MAX_ALIGN_BYTES) labrob::WalkingManager walking_manager;
 labrob::Logger sensor_logger;
 
+// ── Experiment duration report ────────────────────────────────────────────────
+void printExperimentDuration() {
+    if (!experiment_started) {
+        std::cout << "Experiment duration: not started." << std::endl;
+        return;
+    }
+    const double wall_s = std::chrono::duration<double>(Clock::now() - experiment_start).count();
+    const double sim_s  = last_sim_time - initial_sim_time;
+
+    const int    minutes = static_cast<int>(wall_s) / 60;
+    const double seconds = wall_s - 60.0 * minutes;
+
+    std::cout << std::fixed << std::setprecision(3)
+              << "Experiment duration: " << wall_s << " s (wall clock";
+    if (minutes > 0)
+        std::cout << ", " << minutes << " min " << seconds << " s";
+    std::cout << "), " << sim_s << " s (simulated), real-time factor "
+              << (wall_s > 0.0 ? sim_s / wall_s : 0.0)
+              << std::defaultfloat << std::endl;
+}
+
 // ── Signal handler ────────────────────────────────────────────────────────────
 void signalHandler(int signum) {
     std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
+    printExperimentDuration();
     std::cout << "Do you want to save logs? [y/n]" << std::endl;
     std::string user_input;
     std::getline(std::cin, user_input);
@@ -167,7 +198,8 @@ static void handle_gamepad(
     const labrob::RobotState&           robot_state,
     std::map<std::string, double>&        armatures,
     const Eigen::VectorXd&               measured_joint_pos,
-    double                               current_sim_ms)
+    double                               current_sim_ms,
+    bool                                 base_state_ready)
 {
     if (gamepad_.Y.pressed) {
         std::cout << "[GAMEPAD] Y -> Deactivating motors..." << std::endl;
@@ -176,12 +208,23 @@ static void handle_gamepad(
     static bool xPressed = false;
     if (gamepad_.X.pressed) {
         if (!xPressed && experiment_mode == ExperimentMode::Regulation) {
-            xPressed        = true;
-            experiment_mode = ExperimentMode::WBC;
-            wm.init(robot_state, armatures);
-            isWBCLoopClosed = true;
-            isMPCLoopClosed = true;
-            std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
+            xPressed = true;
+            // WalkingManager::init freezes the desired foot/CoM poses in the
+            // world frame of whatever base pose it is given.  That frame must be
+            // the EKF one, since the EKF is what feeds walking_manager.update()
+            // afterwards.  Closing the loop on the raw Unitree odometry would
+            // offset every task by (p_odom - p_ekf).
+            if (!base_state_ready) {
+                std::cout << "[GAMEPAD] X ignored: start the EKF first (A). "
+                             "The WBC must be initialised on the filtered base pose."
+                          << std::endl;
+            } else {
+                experiment_mode = ExperimentMode::WBC;
+                wm.init(robot_state, armatures);
+                isWBCLoopClosed = true;
+                isMPCLoopClosed = true;
+                std::cout << "[GAMEPAD] X -> Switching to WBC mode." << std::endl;
+            }
         }
     } else {
         xPressed = false;
@@ -247,8 +290,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
-                std::abs(robot_state.joint_state[jname].vel) > 4   ||
-                std::abs(joint_command[jname]) > 60.0) {
+                std::abs(robot_state.joint_state[jname].vel) > 0.2   ||
+                std::abs(joint_command[jname]) > 40.0) {
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
@@ -406,8 +449,7 @@ int main(const int argc, const char* argv[]) {
 
     labrob::StateEstimator state_estimator(
         walking_manager.get_robot_model(),
-        1.0 / walking_manager.get_controller_frequency(),
-        labrob::StateEstimator::Filter::RightInvariantEKF // SimpleEKF
+        1.0 / walking_manager.get_controller_frequency()
     );
 
     labrob::MujocoUI* mujoco_ui_ptr = useViz
@@ -415,6 +457,11 @@ int main(const int argc, const char* argv[]) {
         : nullptr;
     static constexpr int framerate = 60;
     const Clock::time_point t_start = Clock::now();
+
+    experiment_start   = t_start;
+    initial_sim_time   = mj_data_ptr->time;
+    last_sim_time      = mj_data_ptr->time;
+    experiment_started = true;
 
     // EMA on raw motor dq — smoothing factor alpha: weight on the new measurement.
     // alpha = 0.15 → ~12 Hz cutoff at 500 Hz. Increase for less lag, decrease for more smoothing.
@@ -470,24 +517,34 @@ int main(const int argc, const char* argv[]) {
                     }
                     robot_state.angular_velocity = imu_gyro;
 
-                    // Fill robot_state for EKF:
-                    robot_state.position = Eigen::Vector3d(
-                        odometry_data.position[0],
-                        odometry_data.position[1],
-                        odometry_data.position[2]
-                    );
-                    robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
-                        Eigen::Vector3d(
-                            odometry_data.velocity[0],
-                            odometry_data.velocity[1],
-                            odometry_data.velocity[2]
+                    // Base pose/twist from the Unitree odometry: FALLBACK ONLY,
+                    // while the EKF is not running.  Once the filter is active it
+                    // owns the base state (updated a few lines below); overwriting
+                    // it here would leave robot_state in the odometry frame for the
+                    // whole first half of the tick — which is exactly the frame
+                    // WalkingManager::init would then freeze its tasks in.
+                    // Note also that with the motion control service released the
+                    // odometry is stale (it stops being published and keeps its
+                    // last value, metres away from the EKF origin).
+                    if (!state_estimator.is_active()) {
+                        robot_state.orientation = Eigen::Quaterniond(
+                            odometry_data.quaternion[0],
+                            odometry_data.quaternion[1],
+                            odometry_data.quaternion[2],
+                            odometry_data.quaternion[3]
                         );
-                    robot_state.orientation = Eigen::Quaterniond(
-                        odometry_data.quaternion[0],
-                        odometry_data.quaternion[1],
-                        odometry_data.quaternion[2],
-                        odometry_data.quaternion[3]
-                    );
+                        robot_state.position = Eigen::Vector3d(
+                            odometry_data.position[0],
+                            odometry_data.position[1],
+                            odometry_data.position[2]
+                        );
+                        robot_state.linear_velocity = robot_state.orientation.toRotationMatrix().transpose() *
+                            Eigen::Vector3d(
+                                odometry_data.velocity[0],
+                                odometry_data.velocity[1],
+                                odometry_data.velocity[2]
+                            );
+                    }
                     for (int i = 0; i < mj_model_ptr->nu; ++i) {
                         int jid = mj_model_ptr->actuator_trnid[i * 2];
                         std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
@@ -511,20 +568,23 @@ int main(const int argc, const char* argv[]) {
                     sensor_logger.log("joint_vel",   measured_joint_vel);
                 }
 
-                handle_gamepad(walking_manager, state_estimator, robot_state,
-                               armatures, measured_joint_pos,
-                               1000.0 * mj_data_ptr->time);
-            }
-
-            // ── State estimator (robot mode only) ────────────────────────────
-            if (useRobot && isEKFactive) {
-                if (state_estimator.is_active()) {
+                // ── State estimator ──────────────────────────────────────────
+                // Runs BEFORE the gamepad handler: a mode switch (X) must see
+                // exactly the base pose that walking_manager.update() will be
+                // fed with in this same tick, otherwise WBC init and WBC update
+                // live in two different world frames.
+                bool base_state_ready = false;
+                if (isEKFactive && state_estimator.is_active()) {
                     state_estimator.update(
                         robot_state, imu_gyro, imu_acc,
-                        walking_manager.get_contact(),
-                        walking_manager.get_wbc_q_ddot()
+                        walking_manager.get_contact()
                     );
+                    base_state_ready = true;
                 }
+
+                handle_gamepad(walking_manager, state_estimator, robot_state,
+                               armatures, measured_joint_pos,
+                               1000.0 * mj_data_ptr->time, base_state_ready);
             }
 
             // Log robot_state base quantities (odometry before EKF activation,
@@ -665,6 +725,11 @@ int main(const int argc, const char* argv[]) {
 
                 robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
 
+                if (!curve && mj_data_ptr->time > 50.0) {
+                    std::cout << "Reached 50 s of simulated time, stopping..." << std::endl;
+                    signalHandler(SIGINT);
+                }
+
             } else {
                 // ── Experiment ────────────────────────────────────────────────
                 switch (experiment_mode) {
@@ -683,6 +748,8 @@ int main(const int argc, const char* argv[]) {
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                                 q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                                 dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                                //dq_ref_joints[i] += jddot_joints[i] * cmd_dt;
+                                //q_ref_joints[i] += dq_ref_joints[i] * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                             }
                         }
                         break;
@@ -729,6 +796,7 @@ int main(const int argc, const char* argv[]) {
                                  q_ref_joints, dq_ref_joints);
             }
 
+            last_sim_time = mj_data_ptr->time;
         }
 
         if (useViz) {
@@ -760,6 +828,8 @@ int main(const int argc, const char* argv[]) {
             
         }
     }
+
+    printExperimentDuration();
 
     mj_deleteData(mj_data_ptr);
     mj_deleteModel(mj_model_ptr);

@@ -3,12 +3,183 @@ import numpy as np
 import scipy.spatial.transform
 from math import ceil, floor, sqrt
 from collections import defaultdict
+import matplotlib.axes
 import matplotlib.cm as cm
 from scipy.spatial.transform import Rotation as R
+import atexit
+import glob
 import os
 import io
+import warnings
 import imageio.v2 as imageio
 # import cv2
+
+# ---------------------------------------------------------------------------
+# Partial-log handling
+# ---------------------------------------------------------------------------
+# A run whose controller-side logging stopped early (or that predates a given
+# channel) leaves some logs missing or much shorter than the rest — the usual
+# situation on the real robot, where the sensor logger keeps writing after the
+# controller-side channels have stopped. Every channel is therefore stretched
+# onto a single time axis, as long as the longest log of the run: a shorter
+# channel keeps its own samples and is padded with NaN, a missing one becomes
+# all-NaN. NaN simply leaves a gap in the plot, so every figure is still drawn,
+# showing whatever the run holds on a time axis shared with all other figures.
+# The names of the incomplete channels travel with the arrays (see _Partial) so
+# they can be reported at exit, and only a figure that ends up with no finite
+# value at all is skipped rather than written empty.
+
+
+def _collect_sources(values):
+    """Union of the partial-channel names reachable from `values`."""
+    found = frozenset()
+    for v in values:
+        if isinstance(v, (list, tuple)):
+            found |= _collect_sources(v)
+        else:
+            found |= getattr(v, 'sources', frozenset())
+    return found
+
+
+class _Partial(np.ndarray):
+    """A log channel that is missing or shorter than the common time axis."""
+
+    def __new__(cls, data, sources):
+        obj = np.asarray(data, dtype=float).view(cls)
+        obj.sources = frozenset(sources)
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is not None:
+            self.sources = getattr(obj, 'sources', frozenset())
+
+    # Ufuncs (arithmetic, matmul, ...) already keep the subclass and carry
+    # `sources` over through __array_finalize__. np.stack & friends drop it,
+    # so re-apply the mark to whatever they return.
+    def __array_function__(self, func, types, args, kwargs):
+        out = super().__array_function__(func, types, args, kwargs)
+        if isinstance(out, np.ndarray):
+            out = out.view(_Partial)
+            out.sources = _collect_sources(list(args) + list(kwargs.values()))
+        return out
+
+
+def _figure_sources(fig):
+    return getattr(fig, '_partial_sources', frozenset())
+
+
+class _TimeAxis(np.ndarray):
+    """The common time vector, so that plots against it share their x limits."""
+
+
+# Longest time span drawn by the script; every time axis is stretched to it.
+_time_span = [0.0]
+
+
+def _time(values):
+    """Tag a time vector as the common axis (see _span_time_axes)."""
+    arr = np.asarray(values, dtype=float).view(_TimeAxis)
+    if arr.size:
+        _time_span[0] = max(_time_span[0], float(arr[-1]))
+    return arr
+
+
+def _is_reference_line(line):
+    """True for an axhline/axvline: decoration in axis coordinates, not data."""
+    x = np.asarray(line.get_xdata(), dtype=float)
+    y = np.asarray(line.get_ydata(), dtype=float)
+    return x.size == 2 and (np.array_equal(x, [0.0, 1.0])
+                            or np.array_equal(y, [0.0, 1.0]))
+
+
+def _figure_time_extent(fig):
+    """Last instant at which `fig` still holds data, or None if it holds none.
+
+    Every channel is NaN-padded up to the longest log of the run, so a figure
+    drawn from a channel that stopped early carries a long tail of NaN. The
+    x limit is taken from the samples that are actually there, so such a figure
+    is stretched over its own data instead of over the whole run.
+    """
+    last = None
+    for ax in fig.axes:
+        if not getattr(ax, '_is_time_axis', False):
+            continue
+        for line in ax.lines:
+            if _is_reference_line(line):
+                continue
+            x = np.asarray(line.get_xdata(), dtype=float)
+            y = np.asarray(line.get_ydata(), dtype=float)
+            if x.shape != y.shape:
+                continue
+            finite = x[np.isfinite(x) & np.isfinite(y)]
+            if finite.size:
+                last = finite.max() if last is None else max(last, finite.max())
+    return last
+
+
+def _span_time_axes(fig):
+    """Give every time-based Axes of `fig` the same, data-driven time span.
+
+    The subplots of one figure share their x limits, so they can be read
+    against each other, but the figure as a whole ends where its own data
+    ends rather than at the end of the longest channel of the run: a figure
+    holding few samples would otherwise be squeezed into a sliver of an axis
+    spanning the whole run. A figure with no finite sample at all (skipped
+    anyway) falls back to the run's full span.
+    """
+    last = _figure_time_extent(fig)
+    if last is None or last <= 0.0:
+        last = _time_span[0]
+    for ax in fig.axes:
+        if getattr(ax, '_is_time_axis', False):
+            ax.set_xlim(0.0, last)
+
+
+def _track_partial(method_name):
+    """Wrap an Axes plotting method so it marks figures fed partial data."""
+    original = getattr(matplotlib.axes.Axes, method_name)
+
+    def wrapper(self, *args, **kwargs):
+        values = list(args) + list(kwargs.values())
+        sources = _collect_sources(values)
+        if sources:
+            fig = self.figure
+            fig._partial_sources = _figure_sources(fig) | sources
+        if any(isinstance(v, _TimeAxis) for v in values):
+            self._is_time_axis = True
+        return original(self, *args, **kwargs)
+
+    return wrapper
+
+
+for _method in ('plot', 'bar', 'axhline'):
+    setattr(matplotlib.axes.Axes, _method, _track_partial(_method))
+
+
+def _figure_has_data(fig):
+    """True when at least one artist of `fig` carries a finite value.
+
+    A figure whose channels are all missing holds nothing but NaN, and is not
+    worth writing; one drawn from a channel that merely stopped early holds its
+    samples up to that point and is written as usual.
+    """
+    for ax in fig.axes:
+        for line in ax.lines:
+            if _is_reference_line(line):
+                continue
+            y = np.asarray(line.get_ydata(), dtype=float)
+            if y.size and np.isfinite(y).any():
+                return True
+        for patch in ax.patches:
+            height = getattr(patch, 'get_height', None)
+            if height is None or np.isfinite(height()):
+                return True
+        if ax.collections or ax.images:
+            return True
+    return False
+
+
+_skipped_figures = []
 
 # Mirror every PNG plot saved via fig.savefig("images/...") as a vector PDF
 # under SIM_PLOTS_DIR, preserving the same sub-directory layout as
@@ -19,6 +190,10 @@ _original_savefig = plt.Figure.savefig
 
 
 def _savefig_and_mirror_pdf(self, fname, *args, **kwargs):
+    _span_time_axes(self)
+    if isinstance(fname, str) and not _figure_has_data(self):
+        _skipped_figures.append((fname, _figure_sources(self)))
+        return
     _original_savefig(self, fname, *args, **kwargs)
     if isinstance(fname, str) and fname.startswith('images/') and fname.endswith('.png'):
         pdf_path = os.path.join(SIM_PLOTS_DIR, fname[len('images/'):-len('.png')] + '.pdf')
@@ -27,6 +202,20 @@ def _savefig_and_mirror_pdf(self, fname, *args, **kwargs):
 
 
 plt.Figure.savefig = _savefig_and_mirror_pdf
+
+
+@atexit.register
+def _report_skipped_figures():
+    if not _skipped_figures:
+        return
+    print(f"\n[SKIP] {len(_skipped_figures)} figure(s) not saved: every curve they hold "
+          f"is blank, so the plot would show no data at all.")
+    blank = sorted({c for _, sources in _skipped_figures for c in sources
+                    if c.endswith('(not found)')})
+    if blank:
+        print("       Channels this run never logged:")
+        for channel in blank:
+            print(f"         - {channel}")
 
 
 if __name__ == '__main__':
@@ -87,26 +276,96 @@ if __name__ == '__main__':
 
     startPlot = 0
 
-    fb_com_position = np.loadtxt(folder + '/com_position.txt')
-    num_samples = fb_com_position.shape[0] - endPlot
+    def _count_rows(path):
+        with open(path) as fh:
+            return sum(1 for line in fh if line.strip())
+
+    # The time axis of every figure spans the longest channel of the run, so
+    # that all plots share it whatever each individual log holds. On the real
+    # robot the controller-side channels (com_position and friends) often stop
+    # well before the sensor logs, or are missing altogether; they are padded
+    # up to this length instead of shrinking the axis of every other plot.
+    lengths = {
+        os.path.basename(p): _count_rows(p)
+        for p in glob.glob(folder + '/*.txt')
+        if os.path.basename(p) != 'joint_names.txt'
+    }
+    longest = max(lengths.values(), default=0)
+    if longest - endPlot <= startPlot:
+        raise SystemExit(
+            f"[ERROR] no channel in {folder} holds more than "
+            f"{endPlot + startPlot} sample(s) — nothing to plot."
+        )
+    num_samples = longest - endPlot
+    longest_name = max(lengths, key=lengths.get)
+    com_rows = lengths.get('com_position.txt', 0)
+    if com_rows < longest:
+        print(f"[WARN] com_position.txt holds {com_rows} sample(s) against the "
+              f"{longest} of {longest_name}: the controller-side logs of this run\n"
+              f"       stopped early (or are missing). All plots span the longest "
+              f"channel and the shorter ones stop where their data ends.\n"
+              f"       The time axis still assumes 500 Hz, which may not match the "
+              f"logging rate of every channel.")
     sl = slice(startPlot, num_samples)
+
+    def _fit(data, label):
+        """Trim or NaN-pad a loaded channel onto the common time axis."""
+        n_have = data.shape[0]
+        if n_have >= num_samples:
+            return data[sl]
+        reason = f"{label} ({n_have} of {num_samples} samples)"
+        print(f"[INFO] {reason} — plotted up to its last sample, then blank.")
+        pad = np.full((num_samples - n_have,) + data.shape[1:], np.nan)
+        return _Partial(np.concatenate([np.asarray(data, dtype=float), pad])[sl],
+                        [reason])
+
+    def _blank(label, shape):
+        """All-NaN stand-in for a channel this run never logged."""
+        reason = f"{label} (not found)"
+        print(f"[INFO] {reason} — its curves are left blank.")
+        return _Partial(np.full(shape, np.nan), [reason])
 
     def _load(fname, ncols):
         p = folder + '/' + fname
+        # ndmin=2 keeps a single-sample log as (1, ncols) rather than
+        # collapsing it to 1-D, so short channels are padded correctly.
         if os.path.exists(p):
-            data = np.loadtxt(p)
-            return data[sl, :] if data.ndim > 1 else data[sl].reshape(-1, 1)
-        print(f"[INFO] {fname} not found — using zeros.")
-        return np.zeros((num_samples - startPlot, ncols))
+            data = np.loadtxt(p, ndmin=2)
+            if data.size:
+                return _fit(data, fname)
+        return _blank(fname, (num_samples - startPlot, ncols))
 
     def _load1d(fname):
         p = folder + '/' + fname
         if os.path.exists(p):
-            return np.loadtxt(p)[sl]
-        print(f"[INFO] {fname} not found — using zeros.")
-        return np.zeros(num_samples - startPlot)
+            data = np.loadtxt(p, ndmin=1)
+            if data.size:
+                return _fit(data, fname)
+        return _blank(fname, (num_samples - startPlot,))
 
-    fb_com_position = fb_com_position[sl, :]
+    def _load_own(path):
+        """np.loadtxt for the sections below, which set their own time axis.
+
+        The channel is fitted to the common axis too, so those sections end up
+        with the same number of samples — and hence the same time span — as
+        every other plot of the run.
+        """
+        return _fit(np.loadtxt(path, ndmin=2), os.path.basename(path))
+
+    def _note_saved(message, *arrays):
+        """Report a section's figures, flagging those drawn from a short log."""
+        missing = _collect_sources(arrays)
+        if missing:
+            message += " — partial: " + ', '.join(sorted(missing))
+        print(message)
+
+    def _nan_mean(values, axis=0):
+        """Mean over the samples both channels actually hold (NaN if none)."""
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', RuntimeWarning)
+            return np.nanmean(values, axis=axis)
+
+    fb_com_position = _load('com_position.txt', 3)
     fb_com_velocity = _load('com_velocity.txt', 3)
     fb_zmp_position = _load('zmp_position.txt', 3)
     kf_com_position = _load('kf_com_position.txt', 3)
@@ -217,13 +476,18 @@ if __name__ == '__main__':
     measured_imu_accelerometer = _load('pelvis_acc.txt', 3)
         
     # rotate relative positions depending on the actual yaw angle
+    yaw = odometry_imu_orientation_rpy[0, 2]
+    if not np.isfinite(yaw):
+        # A run without odometry logs leaves the yaw NaN, which would turn
+        # every channel rotated below into NaN as well: keep them unrotated.
+        print("[INFO] initial yaw unavailable — relative positions left unrotated.")
+        yaw = 0.0
+    rotation_matrix = np.array([
+        [np.cos(yaw), -np.sin(yaw), 0],
+        [np.sin(yaw),  np.cos(yaw), 0],
+        [0,            0,           1]
+    ])
     for i in range(num_samples - startPlot):
-        yaw = odometry_imu_orientation_rpy[0, 2]
-        rotation_matrix = np.array([
-            [np.cos(yaw), -np.sin(yaw), 0],
-            [np.sin(yaw),  np.cos(yaw), 0],
-            [0,            0,           1]
-        ])
         p_lsole_fb[i, :] = rotation_matrix.T @ p_lsole_fb[i, :]
         p_rsole_fb[i, :] = rotation_matrix.T @ p_rsole_fb[i, :]
         p_lsole_des[i, :] = rotation_matrix.T @ p_lsole_des[i, :]
@@ -265,7 +529,7 @@ if __name__ == '__main__':
     ])
 
     delta = 1 / 500  # Assuming a control frequency of 500 Hz
-    t = np.linspace(0.0, delta * (num_samples - startPlot), num_samples - startPlot)
+    t = _time(np.linspace(0.0, delta * (num_samples - startPlot), num_samples - startPlot))
     # num_joints = 27
     num_joints = 29
 
@@ -774,6 +1038,59 @@ if __name__ == '__main__':
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_right_sole.png")
+    plt.close(fig)
+
+    # Side-by-side overviews (left sole on the left, right sole on the right),
+    # one figure for the linear forces and one for the moments, so the two feet
+    # can be read against each other on a shared time and value axis.
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True, sharey=True)
+    for ax, data, foot_name in zip(
+        axes,
+        (estimated_force_lsole, estimated_force_rsole),
+        ('Left', 'Right'),
+    ):
+        ax.plot(t, data[:, 0], label=r'$f_x$', color='blue', linewidth=1.8)
+        ax.plot(t, data[:, 1], label=r'$f_y$', color='orange', linewidth=1.8)
+        ax.plot(t, data[:, 2], label=r'$f_z$', color='green', linewidth=1.8)
+        ax.axhline(0, color='k', linewidth=0.8, linestyle='--')
+        ax.set_title(f'{foot_name} Sole', fontsize=11)
+        ax.set_xlabel('Time [s]', fontsize=10)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(loc='best', frameon=True, fontsize=10)
+        ax.tick_params(labelsize=9)
+    # sharey hides the right subplot's tick labels: one label on the left is enough
+    axes[0].set_ylabel('Estimated Force [N]', fontsize=11)
+    fig.suptitle('Estimated Sole Forces', fontsize=13)
+    fig.tight_layout()
+    fig.savefig(
+        "images/wrench_estimations/sole_wrenches/estimated_force_soles_overview.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
+    plt.close(fig)
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True, sharey=True)
+    for ax, data, foot_name in zip(
+        axes,
+        (estimated_moment_lsole, estimated_moment_rsole),
+        ('Left', 'Right'),
+    ):
+        ax.plot(t, data[:, 0], label=r'$m_x$', color='blue', linewidth=1.8)
+        ax.plot(t, data[:, 1], label=r'$m_y$', color='orange', linewidth=1.8)
+        ax.axhline(0, color='k', linewidth=0.8, linestyle='--')
+        ax.set_title(f'{foot_name} Sole', fontsize=11)
+        ax.set_xlabel('Time [s]', fontsize=10)
+        ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+        ax.legend(loc='best', frameon=True, fontsize=10)
+        ax.tick_params(labelsize=9)
+    axes[0].set_ylabel('Estimated Moment [Nm]', fontsize=11)
+    fig.suptitle('Estimated Sole Moments', fontsize=13)
+    fig.tight_layout()
+    fig.savefig(
+        "images/wrench_estimations/sole_wrenches/estimated_moment_soles_overview.png",
+        dpi=300,
+        bbox_inches='tight'
+    )
     plt.close(fig)
 
 
@@ -1338,17 +1655,44 @@ if __name__ == '__main__':
     ax.plot(t, ef_zmp_position[:, 0], label='residual based ZMP X', color='blue')
     ax.plot(t, ef_zmp_position[:, 1], label='residual based ZMP Y', color='orange')
     ax.plot(t, ef_zmp_position[:, 2], label='residual based ZMP Z', color='green')
-    ax.plot(t, fb_zmp_position[:, 0], label='lip based ZMP X', color='blue', linestyle='--')
-    ax.plot(t, fb_zmp_position[:, 1], label='lip based ZMP Y', color='orange', linestyle='--')
-    ax.plot(t, fb_zmp_position[:, 2], label='lip based ZMP Z', color='green', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 0], label='plip based ZMP X', color='blue', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 1], label='plip based ZMP Y', color='orange', linestyle='--')
+    ax.plot(t, fb_zmp_position[:, 2], label='plip based ZMP Z', color='green', linestyle='--')
     ax.set_xlabel('Time [s]')
     ax.set_ylabel('Position [m]')
-    ax.set_title('ZMP Position Feedback: LIP-based vs Residual-based')
+    ax.set_title('ZMP Position Feedback: PLIP-based vs Residual-based')
     ax.grid(True)
     ax.legend()
     fig.tight_layout()
     fig.savefig("images/com/zmp_lip_vs_residual_plot.png")
     plt.close(fig)
+
+    # Error stats: residual-based ZMP vs PLIP-based ZMP
+    def _print_zmp_error_stats(zmp_res, zmp_plip):
+        err = zmp_res - zmp_plip
+        if not np.isfinite(err).any():
+            print("[ZMP] residual-based and PLIP-based estimates never overlap — "
+                  "no stats computed.")
+            return
+        norm_err = np.linalg.norm(err, axis=1)
+        norm_err_xy = np.linalg.norm(err[:, :2], axis=1)
+        print(f"\n{'='*50}")
+        print(f"  Error — ZMP residual-based vs PLIP-based")
+        print(f"{'='*50}")
+        print(f"  {'Axis':<8} {'Mean Error [m]':>18} {'Variance [m²]':>18}")
+        print(f"  {'-'*46}")
+        for i, lbl in enumerate(['x', 'y', 'z']):
+            mean_i = _nan_mean(err[:, i], axis=None)
+            var_i = np.nanvar(err[:, i])
+            print(f"  ZMP_{lbl:<4} {mean_i:>18.6f} {var_i:>18.6f}")
+        print(f"  {'-'*46}")
+        print(f"  {'||err||':<8} {_nan_mean(norm_err, axis=None):>18.6f} "
+              f"{np.nanvar(norm_err):>18.6f}")
+        print(f"  {'||err||xy':<8} {_nan_mean(norm_err_xy, axis=None):>17.6f} "
+              f"{np.nanvar(norm_err_xy):>18.6f}")
+        print(f"{'='*50}")
+
+    _print_zmp_error_stats(ef_zmp_position, fb_zmp_position)
 
     fig, axes = plt.subplots(3, 1, figsize=(7, 9), sharex=True)
     axis_labels = ['x', 'y', 'z']
@@ -2164,7 +2508,7 @@ if __name__ == '__main__':
 
 
     # plot mean squared error between ekf joint position and simulated joint position
-    mse_position = np.mean((ekf_joint_position - measured_joint_position) ** 2, axis=0)
+    mse_position = _nan_mean((ekf_joint_position - measured_joint_position) ** 2)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(num_joints), mse_position, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
@@ -2178,7 +2522,7 @@ if __name__ == '__main__':
     plt.close(fig)
 
     #plot mean squared error between ekf joint velocity and simulated joint velocity
-    mse_velocity = np.mean((ekf_joint_velocity - measured_joint_velocity) ** 2, axis=0)
+    mse_velocity = _nan_mean((ekf_joint_velocity - measured_joint_velocity) ** 2)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(num_joints), mse_velocity, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
@@ -2192,10 +2536,10 @@ if __name__ == '__main__':
     plt.close(fig)
 
     #plot mean squared error between ekf base position and simulated base position, orientation, velocity, angular velocity
-    mse_base_position = np.mean((ekf_base_position - odometry_base_position) ** 2, axis=0)
-    mse_base_velocity = np.mean((ekf_base_velocity - odometry_base_velocity) ** 2, axis=0)
-    mse_base_orientation = np.mean((ekf_base_orientation - odometry_imu_orientation) ** 2, axis=0)
-    mse_base_angular_velocity = np.mean((ekf_base_angular_velocity - measured_imu_angular_velocity) ** 2, axis=0)
+    mse_base_position = _nan_mean((ekf_base_position - odometry_base_position) ** 2)
+    mse_base_velocity = _nan_mean((ekf_base_velocity - odometry_base_velocity) ** 2)
+    mse_base_orientation = _nan_mean((ekf_base_orientation - odometry_imu_orientation) ** 2)
+    mse_base_angular_velocity = _nan_mean((ekf_base_angular_velocity - measured_imu_angular_velocity) ** 2)
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.bar(range(3), mse_base_position, label='Position MSE', color='skyblue', alpha=0.7)
     ax.bar(range(3, 6), mse_base_velocity, label='Velocity MSE', color='orange', alpha=0.7)
@@ -3240,19 +3584,14 @@ if __name__ == '__main__':
     # Data: hac_eh.txt (N,2), hac_eh_dot.txt (N,2) from the selected folder.
     # Output: images/hac/
     # -----------------------------------------------------------------------
-    if os.path.exists(folder + '/hac_eh.txt') and os.path.exists(folder + '/hac_eh_dot.txt'):
-        hac_eh = np.loadtxt(folder + '/hac_eh.txt')[startPlot:num_samples, :]
-        hac_eh_dot = np.loadtxt(folder + '/hac_eh_dot.txt')[startPlot:num_samples, :]
-    else:
-        print("[INFO] hac_eh.txt or hac_eh_dot.txt not found — skipped HAC plots.")
-        hac_eh = np.zeros((num_samples - startPlot, 2))
-        hac_eh_dot = np.zeros((num_samples - startPlot, 2))
+    hac_eh = _load('hac_eh.txt', 2)
+    hac_eh_dot = _load('hac_eh_dot.txt', 2)
 
     if not os.path.exists('images/hac'):
         os.makedirs('images/hac')
 
     N_hac = hac_eh.shape[0]
-    t_hac = np.arange(N_hac) / 500.0  # control frequency 500 Hz
+    t_hac = _time(np.arange(N_hac) / 500.0)  # control frequency 500 Hz
 
     # Plot 1 — e_h (average hand position error, F frame xy)
     fig, axes = plt.subplots(2, 1, figsize=(9, 6), sharex=True)
@@ -3315,7 +3654,7 @@ if __name__ == '__main__':
         ax.legend(fontsize=10)
         ax.tick_params(labelsize=9)
 
-    fig.suptitle('Hand Admittance Controller — Errors', fontsize=13)
+    fig.suptitle('Hand Admittance Controller — AHE', fontsize=13)
     fig.tight_layout()
     fig.savefig('images/hac/hac_overview.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
@@ -3353,17 +3692,23 @@ if __name__ == '__main__':
                       f"row(s) (likely truncated by an interrupted simulation).")
             return np.loadtxt(io.StringIO(''.join(good_lines)))
 
-    def _wf_load(filename, required=True):
+    def _wf_reshape(data, ncols):
+        # A log holding a single row loads as 1-D, and so does a one-column
+        # channel such as residual_norm.txt: the expected width tells them apart.
+        if data.ndim == 1:
+            return data.reshape(1, -1) if data.shape[0] == ncols else data.reshape(-1, 1)
+        return data
+
+    def _wf_load(filename, ncols, required=True):
         path = folder + '/' + filename
         if not os.path.exists(path):
             if required:
-                raise FileNotFoundError(f"File non trovato: {path}")
+                # Left blank rather than fatal, so that the rest of the section
+                # (and of the script) is still plotted.
+                return _blank(filename, (num_samples - startPlot, ncols))
             print(f"[INFO] {filename} non trovato — ground truth non visualizzato.")
             return None
-        data = _robust_loadtxt(path)
-        if data.ndim == 1:
-            data = data.reshape(1, -1)
-        return data
+        return _fit(_wf_reshape(_robust_loadtxt(path), ncols), filename)
 
     def _wf_trim(a, b):
         n = min(len(a), len(b))
@@ -3372,11 +3717,13 @@ if __name__ == '__main__':
     def _wf_save(fig, name, outdir='images/wrench_estimations/wrist_force'):
         out = os.path.join(outdir, name)
         fig.savefig(out, dpi=300, bbox_inches='tight')
+        saved = _figure_has_data(fig)
         plt.close(fig)
-        print(f"Saved: {out}")
+        if saved:
+            print(f"Saved: {out}")
 
-    f_right = _wf_load('estimated_force_rwrist.txt')
-    f_left = _wf_load('estimated_force_lwrist.txt')
+    f_right = _wf_load('estimated_force_rwrist.txt', 3)
+    f_left = _wf_load('estimated_force_lwrist.txt', 3)
     # The ground truth MuJoCo makes sense only for the simulation (expType == "Simulation",
     # i.e., folder == '/tmp'). For a real experiment, only the estimates are plotted.
     if expType == "Simulation":
@@ -3384,7 +3731,7 @@ if __name__ == '__main__':
         def _load_gt(name):
             p = _gt_base + '/' + name
             if os.path.exists(p):
-                return _robust_loadtxt(p)
+                return _fit(_wf_reshape(_robust_loadtxt(p), 3), name)
             print(f"[INFO] {name} non trovato in {_gt_base} — ground truth non visualizzato.")
             return None
         gt_right = _load_gt('gt_right_wrist.txt')
@@ -3393,7 +3740,7 @@ if __name__ == '__main__':
         gt_right = None
         gt_left = None
         print("[INFO] Real experiment — ground truth not plotted, only estimates.")
-    residual = _wf_load('residual_norm.txt', required=False)
+    residual = _wf_load('residual_norm.txt', 1, required=False)
 
     # Allinea stima destra e sinistra
     Nwf = min(len(f_right), len(f_left))
@@ -3412,7 +3759,7 @@ if __name__ == '__main__':
 
     # Nessun transitorio escluso: si plotta tutto il segnale
     sl_wf = slice(0, Nwf)
-    t_wf = np.arange(Nwf)[sl_wf] / WF_FREQ
+    t_wf = _time(np.arange(Nwf)[sl_wf] / WF_FREQ)
 
     print(f"Total samples (wrist force): {Nwf}  ({Nwf/WF_FREQ:.2f} s)")
 
@@ -3458,6 +3805,36 @@ if __name__ == '__main__':
     _plot_wrist(f_right, gt_right, 'RIGHT', 'right_wrist')
     _plot_wrist(f_left, gt_left, 'LEFT', 'left_wrist')
 
+    # Overview of both wrists: the two *_components figures side by side, left
+    # wrist on the left column and right wrist on the right one, one row per
+    # component. Each row shares its force axis, so the same component can be
+    # read across the two arms.
+    fig, axes = plt.subplots(3, 2, figsize=(14, 8), sharex=True, sharey='row')
+    for col, (f_est, gt, side_label) in enumerate(zip(
+        (f_left, f_right),
+        (gt_left, gt_right),
+        ('Left', 'Right'),
+    )):
+        for i, (lbl, ec, gc) in enumerate(zip(WF_LABELS, WF_EST_COLORS, WF_GT_COLORS)):
+            ax = axes[i, col]
+            ax.plot(t_wf, f_est[sl_wf, i], linewidth=1.5, color=ec,
+                    label=rf'Estimated $F_{{{lbl}}}$')
+            if gt is not None:
+                ax.plot(t_wf, gt[sl_wf, i], linewidth=1.5, color=gc, linestyle='--',
+                        label=rf'Ground truth $F_{{{lbl}}}$')
+            ax.axhline(0, color='k', linewidth=0.7, linestyle=':', alpha=0.5)
+            ax.legend(fontsize=9, loc='upper right')
+            ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
+            ax.tick_params(labelsize=9)
+        axes[0, col].set_title(f'{side_label} Wrist', fontsize=12)
+        axes[-1, col].set_xlabel('Time [s]', fontsize=11)
+    # sharey='row' hides the right column's tick labels: label the left one only.
+    for i, lbl in enumerate(WF_LABELS):
+        axes[i, 0].set_ylabel(rf'$F_{{{lbl}}}$ [N]', fontsize=11)
+    fig.suptitle('Force estimate — both wrists', fontsize=13, fontweight='bold')
+    fig.tight_layout()
+    _wf_save(fig, 'wrist_forces_overview.png')
+
     # Confronto norma destro vs sinistro
     fig, ax = plt.subplots(figsize=(11, 4))
     ax.plot(t_wf, np.linalg.norm(f_right[sl_wf], axis=1), linewidth=1.5,
@@ -3485,7 +3862,7 @@ if __name__ == '__main__':
         r = np.ravel(residual)
         Nr = len(r)
         sl_r = slice(0, Nr)
-        t_r = np.arange(Nr)[sl_r] / WF_FREQ
+        t_r = _time(np.arange(Nr)[sl_r] / WF_FREQ)
 
         fig, ax = plt.subplots(figsize=(11, 4))
         ax.plot(t_r, r[sl_r], linewidth=1.5, color='tab:purple',
@@ -3499,8 +3876,10 @@ if __name__ == '__main__':
         fig.tight_layout()
         _wf_save(fig, 'residual_norm.png', outdir='images/residuals')
 
-        print(f"\n[RESIDUAL] samples: {Nr}  "
-              f"mean: {np.mean(r[sl_r]):.4f}  max: {np.max(r[sl_r]):.4f}")
+        if np.isfinite(r[sl_r]).any():
+            print(f"\n[RESIDUAL] samples: {int(np.isfinite(r[sl_r]).sum())} of {Nr}  "
+                  f"mean: {_nan_mean(r[sl_r], axis=None):.4f}  "
+                  f"max: {np.nanmax(r[sl_r]):.4f}")
     else:
         print("[INFO] residual_norm.txt not found — skipped residual plots.")
 
@@ -3510,6 +3889,10 @@ if __name__ == '__main__':
             print(f"[{side_label}] Ground not available — no stats computed.")
             return
         err = f_est[sl_wf] - gt[sl_wf]
+        if not np.isfinite(err).any():
+            print(f"[{side_label}] estimate and ground truth never overlap — "
+                  f"no stats computed.")
+            return
         norm_err = np.linalg.norm(err, axis=1)
         print(f"\n{'='*50}")
         print(f"  Error — Wrist {side_label}")
@@ -3517,12 +3900,13 @@ if __name__ == '__main__':
         print(f"  {'Axis':<6} {'Mean Error [N]':>20} {'Variance [N²]':>18}")
         print(f"  {'-'*46}")
         for i, lbl in enumerate(WF_LABELS):
-            mean_i = np.mean(err[:, i])
-            var_i = np.var(err[:, i])
+            mean_i = _nan_mean(err[:, i], axis=None)
+            var_i = np.nanvar(err[:, i])
             print(f"  F_{lbl:<4}  {mean_i:>20.4f} {var_i:>18.4f}")
         print(f"  {'-'*46}")
         print(f"  {'||err||':<6} {'Mean Error [N]':>20} {'Variance [N²]':>18}")
-        print(f"  {'':6}  {np.mean(norm_err):>20.4f} {np.var(norm_err):>18.4f}")
+        print(f"  {'':6}  {_nan_mean(norm_err, axis=None):>20.4f} "
+              f"{np.nanvar(norm_err):>18.4f}")
         print(f"{'='*50}")
 
     _print_error_stats(f_right, gt_right, 'RIGHT')
@@ -3545,11 +3929,9 @@ if __name__ == '__main__':
     left_arm_residuals_path  = folder + '/left_arm_residual.txt'
 
     if os.path.exists(right_arm_residuals_path):
-        right_arm_res = np.loadtxt(right_arm_residuals_path)
-        if right_arm_res.ndim == 1:
-            right_arm_res = right_arm_res.reshape(-1, 1)
+        right_arm_res = _load_own(right_arm_residuals_path)
         Nr_arm = right_arm_res.shape[0]
-        t_arm = np.linspace(0.0, delta * Nr_arm, Nr_arm)
+        t_arm = _time(np.linspace(0.0, delta * Nr_arm, Nr_arm))
         n_joints_right = min(right_arm_res.shape[1], len(right_arm_joint_labels))
         for i in range(n_joints_right):
             fig, ax = plt.subplots(figsize=(7, 4))
@@ -3574,16 +3956,14 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig('images/residuals/right_arm/all_joints_residual.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[INFO] Right arm residual plots saved ({Nr_arm} samples).")
+        _note_saved(f"[INFO] Right arm residual plots saved ({Nr_arm} samples).", right_arm_res)
     else:
         print("[INFO] right_arm_residuals.txt not found — skipped right arm residual plots.")
 
     if os.path.exists(left_arm_residuals_path):
-        left_arm_res = np.loadtxt(left_arm_residuals_path)
-        if left_arm_res.ndim == 1:
-            left_arm_res = left_arm_res.reshape(-1, 1)
+        left_arm_res = _load_own(left_arm_residuals_path)
         Nl_arm = left_arm_res.shape[0]
-        t_arm_l = np.linspace(0.0, delta * Nl_arm, Nl_arm)
+        t_arm_l = _time(np.linspace(0.0, delta * Nl_arm, Nl_arm))
         n_joints_left = min(left_arm_res.shape[1], len(left_arm_joint_labels))
         for i in range(n_joints_left):
             fig, ax = plt.subplots(figsize=(7, 4))
@@ -3608,7 +3988,7 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig('images/residuals/left_arm/all_joints_residual.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[INFO] Left arm residual plots saved ({Nl_arm} samples).")
+        _note_saved(f"[INFO] Left arm residual plots saved ({Nl_arm} samples).", left_arm_res)
     else:
         print("[INFO] left_arm_residuals.txt not found — skipped left arm residual plots.")
 
@@ -3620,11 +4000,9 @@ if __name__ == '__main__':
         if not os.path.exists(path):
             print(f"[INFO] {os.path.basename(path)} not found — skipped {group_title} residual plots.")
             return
-        res = np.loadtxt(path)
-        if res.ndim == 1:
-            res = res.reshape(-1, 1)
+        res = _load_own(path)
         N = res.shape[0]
-        t = np.linspace(0.0, delta * N, N)
+        t = _time(np.linspace(0.0, delta * N, N))
         n_joints = min(res.shape[1], len(joint_labels))
         for i in range(n_joints):
             fig, ax = plt.subplots(figsize=(7, 4))
@@ -3648,7 +4026,7 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig(f'{outdir}/all_joints_residual.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[INFO] {group_title} residual plots saved ({N} samples).")
+        _note_saved(f"[INFO] {group_title} residual plots saved ({N} samples).", res)
 
     _plot_residual_group(
         folder + '/base_residual.txt',
@@ -3678,17 +4056,12 @@ if __name__ == '__main__':
     gm0_path = folder + '/initialized_generalized_momentum.txt'
 
     if os.path.exists(gm_path) and os.path.exists(gm0_path):
-        p_data  = np.loadtxt(gm_path)
-        p0_data = np.loadtxt(gm0_path)
-
-        if p_data.ndim == 1:
-            p_data = p_data.reshape(1, -1)
-        if p0_data.ndim == 1:
-            p0_data = p0_data.reshape(1, -1)
+        p_data  = _load_own(gm_path)
+        p0_data = _load_own(gm0_path)
 
         N_gm  = p_data.shape[0]
         n_dof = p_data.shape[1]
-        t_gm  = np.linspace(0.0, delta * N_gm, N_gm)
+        t_gm  = _time(np.linspace(0.0, delta * N_gm, N_gm))
 
         # DOF labels: first 6 are floating base, rest are joints
         base_labels = ['base_vx', 'base_vy', 'base_vz', 'base_wx', 'base_wy', 'base_wz']
@@ -3782,7 +4155,7 @@ if __name__ == '__main__':
                         dpi=120, bbox_inches='tight')
             plt.close(fig)
 
-        print(f"[INFO] Generalized momentum plots saved ({N_gm} samples, {n_dof} DOFs).")
+        _note_saved(f"[INFO] Generalized momentum plots saved ({N_gm} samples, {n_dof} DOFs).", p_data, p0_data)
     else:
         print("[INFO] generalized_momentum.txt or initial_generalized_momentum.txt not found — skipped.")
 
@@ -3803,11 +4176,9 @@ if __name__ == '__main__':
     left_arm_tau_g_path  = folder + '/left_arm_tau_g.txt'
 
     if os.path.exists(right_arm_tau_g_path):
-        right_arm_tg = np.loadtxt(right_arm_tau_g_path)
-        if right_arm_tg.ndim == 1:
-            right_arm_tg = right_arm_tg.reshape(-1, 1)
+        right_arm_tg = _load_own(right_arm_tau_g_path)
         Nr_tg = right_arm_tg.shape[0]
-        t_tg = np.linspace(0.0, delta * Nr_tg, Nr_tg)
+        t_tg = _time(np.linspace(0.0, delta * Nr_tg, Nr_tg))
         n_joints_right_tg = min(right_arm_tg.shape[1], len(right_arm_joint_labels))
         for i in range(n_joints_right_tg):
             fig, ax = plt.subplots(figsize=(7, 4))
@@ -3832,16 +4203,14 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig('images/tau_g/right_arm/all_joints_tau_g.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[INFO] Right arm tau_m-g plots saved ({Nr_tg} samples).")
+        _note_saved(f"[INFO] Right arm tau_m-g plots saved ({Nr_tg} samples).", right_arm_tg)
     else:
         print("[INFO] right_arm_tau_g.txt not found — skipped right arm tau_m-g plots.")
 
     if os.path.exists(left_arm_tau_g_path):
-        left_arm_tg = np.loadtxt(left_arm_tau_g_path)
-        if left_arm_tg.ndim == 1:
-            left_arm_tg = left_arm_tg.reshape(-1, 1)
+        left_arm_tg = _load_own(left_arm_tau_g_path)
         Nl_tg = left_arm_tg.shape[0]
-        t_tg_l = np.linspace(0.0, delta * Nl_tg, Nl_tg)
+        t_tg_l = _time(np.linspace(0.0, delta * Nl_tg, Nl_tg))
         n_joints_left_tg = min(left_arm_tg.shape[1], len(left_arm_joint_labels))
         for i in range(n_joints_left_tg):
             fig, ax = plt.subplots(figsize=(7, 4))
@@ -3866,7 +4235,7 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.savefig('images/tau_g/left_arm/all_joints_tau_g.png', dpi=150, bbox_inches='tight')
         plt.close(fig)
-        print(f"[INFO] Left arm tau_m-g plots saved ({Nl_tg} samples).")
+        _note_saved(f"[INFO] Left arm tau_m-g plots saved ({Nl_tg} samples).", left_arm_tg)
     else:
         print("[INFO] left_arm_tau_g.txt not found — skipped left arm tau_m-g plots.")
 

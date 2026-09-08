@@ -184,6 +184,16 @@ private:
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
+  // Roll/pitch tilt of torso and pelvis measured at loop closure, with the yaw
+  // stripped off.  The orientation references are built as Rz(yaw_des) * tilt,
+  // so the WBC starts with zero orientation error instead of fighting the
+  // 1-2 deg tilt the robot physically has when standing on a real floor.
+  // Identity by default: frozen from the measurement in init() when running on
+  // the robot, left identity in simulation (the model starts upright).
+  // See init() and the torso/pelvis references in update().
+  Eigen::Matrix3d R_tilt_torso_ = Eigen::Matrix3d::Identity();
+  Eigen::Matrix3d R_tilt_pelvis_ = Eigen::Matrix3d::Identity();
+
     // Private members online planner
   std::unique_ptr<labrob::FootstepPlannerCoop> coop_planner_ptr_;
   bool reactive_standing_ = true;

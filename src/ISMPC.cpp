@@ -135,7 +135,7 @@ ISMPC::solve(
 
   const double half_len = foot_constraint_square_length_ / 2.0;
   const double half_wid = foot_constraint_square_width_  / 2.0;
-  const double half_height = 0.05; // [cm] above and below the foot
+  const double half_height = 0.02; // [cm] above and below the foot
 
   // Sagittal/lateral (foot-frame) ZMP box constraint: rotate the world-frame
   // ZMP-to-foot offset by the (interpolated) foot yaw before applying the

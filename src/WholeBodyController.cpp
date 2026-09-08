@@ -142,12 +142,7 @@ WholeBodyController::WholeBodyController(
 
   C_force_block_.resize(4, 3);
   const double mu_pyr = params_.mu / std::sqrt(2.0); // conservative pyramid approximation of friction cone 
-  /*
-  C_force_block_ <<  1.0,  0.0, -params_.mu,
-                      0.0,  1.0, -params_.mu,
-                     -1.0,  0.0, -params_.mu,
-                      0.0, -1.0, -params_.mu;
-  */
+  
   C_force_block_ <<  1.0,  0.0, -mu_pyr,
                     0.0,  1.0, -mu_pyr,
                     -1.0,  0.0, -mu_pyr,
@@ -391,6 +386,13 @@ WholeBodyController::compute_inverse_dynamics(
   Jlu_ = J_lsole_.leftCols(6);
   Jru_ = J_rsole_.leftCols(6);
 
+  /*
+  Ma_ = M_inertia_.bottomRows(nj);
+  ca_ = c.tail(nj);
+  Jla_ = J_lsole_.rightCols(nj);
+  Jra_ = J_rsole_.rightCols(nj);
+  */
+
   // Rotated contact points
   for (int i = 0; i < nc; ++i) {
     pcis_l_[i] = desired.lsole.pos.R * pcis_[i];
@@ -512,35 +514,36 @@ WholeBodyController::compute_inverse_dynamics(
 
   const auto& c_des = pinocchio::rnea(robot_model, robot_data, q_id, qdot_id, zero_nv_);
 
+  
   Ma_  = M_inertia_des_.bottomRows(nj);
   ca_  = c_des.tail(nj);
   Jla_ = J_lsole_des_.rightCols(nj);
   Jra_ = J_rsole_des_.rightCols(nj);
+  
 
   Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
-  Kd_vec << 2, 2, 2, 3, 2, 2,
-            2, 2, 2, 3, 2, 2,
-            2, 2, 2,
-            2, 2, 2, 2, 2, 2, 2,
-            2, 2, 2, 2, 2, 2, 2;
+  Kd_vec << 4, 4, 4, 6, 2, 2,
+            4, 4, 4, 6, 2, 2,
+            4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4;
   Eigen::MatrixXd Kd = Kd_vec.asDiagonal();
 
   Eigen::VectorXd Kp_vec = Eigen::VectorXd::Zero(nj);
-  Kp_vec << 40, 40, 40, 60, 40, 30,    // left leg
-            40, 40, 40, 60, 40, 30,    // right leg
-            25, 25, 15,                // waist
-            12, 12, 12, 7,  4, 4, 4,   // left arm
-            12, 12, 12, 7,  4, 4, 4;   // right arm
-  
-
+  Kp_vec << 150, 150, 150, 200, 40, 40,    // left leg
+            150, 150, 150, 200, 40, 40,    // right leg
+            100, 100, 100,                // waist
+            100, 100, 100, 15,  10, 10, 10,   // left arm
+            100, 100, 100, 15,  10, 10, 10;   // right arm
   Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
 
   
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
-      - Jra_.transpose() * right_foot_wrench_
-      + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
-      + Kp * (q_full_des_.tail(nj) - q.tail(nj));
+      - Jra_.transpose() * right_foot_wrench_;
+      //+ Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
+      //+ Kp * (q_full_des_.tail(nj) - q.tail(nj));
+      
 
       
   // Check for limit exceeding
