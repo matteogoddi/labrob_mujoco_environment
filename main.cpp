@@ -290,8 +290,8 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
-                std::abs(robot_state.joint_state[jname].vel) > 0.2   ||
-                std::abs(joint_command[jname]) > 40.0) {
+                std::abs(robot_state.joint_state[jname].vel) > 1.5   || // safe 1.0
+                std::abs(joint_command[jname]) > 45.0) {                // safe 40.0
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
@@ -305,6 +305,21 @@ static void send_dds_command(
             motor_command.q_target[i]  = static_cast<float>(joint_initial_positions.at(jname));
             motor_command.dq_target[i] = 0.0f;
         }
+    }
+
+    // Log the torque requested from each motor, to compare with tau_est:
+    // feedforward (WBC) and PD part. The PD part is evaluated on the latest
+    // raw motor state, so it approximates what the driver computes at its rate.
+    {
+        Eigen::VectorXd tau_ff_log(m->nu), tau_pd_log(m->nu);
+        std::lock_guard<std::mutex> lock(stateMutex);
+        for (int i = 0; i < m->nu; ++i) {
+            tau_ff_log[i] = motor_command.tau_ff[i];
+            tau_pd_log[i] = motor_command.kp[i] * (motor_command.q_target[i]  - motor_state_data.q[i])
+                          + motor_command.kd[i] * (motor_command.dq_target[i] - motor_state_data.dq[i]);
+        }
+        sensor_logger.log("motor_tau_ff", tau_ff_log);
+        sensor_logger.log("motor_tau_pd", tau_pd_log);
     }
 
     LowCmd_ dds_cmd;
@@ -433,6 +448,17 @@ int main(const int argc, const char* argv[]) {
         if (it != joint_initial_positions.end())
             mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[i]] = it->second;
     }
+    // The finger joints are unactuated and held by springs (see the "finger"
+    // default class in the model), so they are absent from
+    // joint_initial_positions: start them at their spring reference instead of
+    // 0, otherwise the thumbs begin the simulation inside the thighs and get
+    // yanked out over the first few steps.
+    for (int i = 0; i < mj_model_ptr->njnt; ++i) {
+        if (mj_model_ptr->jnt_stiffness[i] > 0.0) {
+            int adr = mj_model_ptr->jnt_qposadr[i];
+            mj_data_ptr->qpos[adr] = mj_model_ptr->qpos_spring[adr];
+        }
+    }
 
     std::map<std::string, double> armatures;
     for (int i = 0; i < mj_model_ptr->nu; ++i) {
@@ -497,6 +523,7 @@ int main(const int argc, const char* argv[]) {
             // Per-tick sensor snapshot (populated below, robot or sim):
             Eigen::VectorXd measured_joint_pos = Eigen::VectorXd::Zero(29);
             Eigen::VectorXd measured_joint_vel = Eigen::VectorXd::Zero(29);
+            Eigen::VectorXd measured_tau_est   = Eigen::VectorXd::Zero(29);
             Eigen::Vector3d imu_acc            = Eigen::Vector3d::Zero();
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
@@ -512,6 +539,7 @@ int main(const int argc, const char* argv[]) {
                     for (int i = 0; i < mj_model_ptr->nu; ++i) {
                         measured_joint_pos[i] = motor_state_data.q[i];
                         measured_joint_vel[i] = motor_state_data.dq[i];
+                        measured_tau_est[i]   = motor_state_data.tau_est[i];
                         ema_joint_vel[i] = ema_alpha * measured_joint_vel[i]
                                          + (1.0 - ema_alpha) * ema_joint_vel[i];
                     }
@@ -566,6 +594,7 @@ int main(const int argc, const char* argv[]) {
                     sensor_logger.log("odom_rpy",    odometry_data.rpy);
                     sensor_logger.log("joint_pos",   measured_joint_pos);
                     sensor_logger.log("joint_vel",   measured_joint_vel);
+                    sensor_logger.log("measured_joint_torque", measured_tau_est);
                 }
 
                 // ── State estimator ──────────────────────────────────────────
@@ -746,10 +775,13 @@ int main(const int argc, const char* argv[]) {
                             for (int i = 0; i < mj_model_ptr->nu; ++i) {
                                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
-                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
-                                //dq_ref_joints[i] += jddot_joints[i] * cmd_dt;
-                                //q_ref_joints[i] += dq_ref_joints[i] * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + std::clamp(robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt, -1.0, 1.0);
+                                dq_ref_joints[i] = 0;//robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+
+                                if (std::abs(q_ref_joints[i] - robot_state.joint_state.at(jname).pos) > 1.0) {
+                                    std::cout << "Reference joint pos update term saturated" << std::endl;
+                                }
                             }
                         }
                         break;

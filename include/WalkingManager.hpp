@@ -138,7 +138,7 @@ private:
   // noise parameters (same defaults as CoMKF class)
   static constexpr double kComKfMeasPos = 1.0e1;
   static constexpr double kComKfMeasVel = 1.0e2;
-  static constexpr double kComKfMeasZmp = 1.0e3; //1.0e03;
+  static constexpr double kComKfMeasZmp = 1.0e03;
   static constexpr double kComKfModPos  = 1.0;
   static constexpr double kComKfModVel  = 1.0;
   static constexpr double kComKfModZmp  = 1.0;
@@ -178,6 +178,7 @@ private:
 
   int64_t controller_frequency_;
   int64_t t_msec_ = 0;
+  int64_t t_obs_msec_ = 0;
 
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
   std::unique_ptr<labrob::DiscretePLIPDynamics> discrete_plip_dynamics_ptr_;

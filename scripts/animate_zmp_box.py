@@ -19,6 +19,20 @@ So at every t_k the box (logged from the same solve() call the ZMP-velocity
 decision came from) is exactly the constraint the following PLIP-integrated
 ZMP is supposed to satisfy — this script overlays the two.
 
+The estimated ZMP (ef_zmp_position, WalkingManager.cpp ~706-739) is overlaid
+too: it is reconstructed from the RB-WO foot wrenches (getLeft/RightFootWrench),
+falling back to the PLIP-reconstructed zmp_position when the total vertical
+force is ~0 or during the first 2 s of observer activity.
+
+The current CoM (kf_com_position, i.e. kf_LipState.com_pos_ output by
+com_kf_step, WalkingManager.cpp ~793) is overlaid as well, with its own trail.
+
+The desired CoM (des_com_position, i.e. des_LipState.com_pos_) is overlaid too:
+it comes out of the very same PLIP integration step that produces
+des_zmp_position, driven by the ZMP velocity that solves the MPC QP
+(ismpc_ptr_->getInput()), so des. CoM and des. ZMP are the two halves of one
+PLIP state at t_k.
+
 Box half-extents are foot_constraint_square_length/width / 2 (ISMPC
 constructor parameters, defaults 0.22 x 0.08 m, include/WalkingManager.hpp:
 90-91) — hardcoded below like animate_ofp.py hardcodes the foot rectangle
@@ -138,9 +152,15 @@ def load_data(folder: Path, end_s):
     rsole_yaw = _load('des_rsole_orientation.txt', 3)
     contact_flags = _load('contact_flags.txt', 2)
     walking_state = _load1d('walking_state.txt')
+    est_zmp = _load('ef_zmp_position.txt', 3)  # ZMP from RB-WO foot wrenches
+    kf_com = _load('kf_com_position.txt', 3)   # CoM from the LIP Kalman filter (com_kf_step)
+    des_com = _load('des_com_position.txt', 3)  # CoM from the PLIP integration (des_LipState.com_pos_)
 
     fields = (
         ('des_zmp_position.txt', des_zmp),
+        ('ef_zmp_position.txt', est_zmp),
+        ('kf_com_position.txt', kf_com),
+        ('des_com_position.txt', des_com),
         ('zmp_box_center.txt', box_center),
         ('zmp_box_yaw.txt', box_yaw),
         ('p_lsole_des.txt', p_lsole_des),
@@ -158,7 +178,8 @@ def load_data(folder: Path, end_s):
     if end_s is not None:
         n = min(n, int(end_s * CONTROL_FREQUENCY_HZ))
     return dict(
-        des_zmp=des_zmp[:n], box_center=box_center[:n], box_yaw=box_yaw[:n],
+        des_zmp=des_zmp[:n], est_zmp=est_zmp[:n], kf_com=kf_com[:n], des_com=des_com[:n],
+        box_center=box_center[:n], box_yaw=box_yaw[:n],
         p_lsole_des=p_lsole_des[:n], p_rsole_des=p_rsole_des[:n],
         lsole_yaw=lsole_yaw[:n, 2], rsole_yaw=rsole_yaw[:n, 2],
         contact_flags=contact_flags[:n], walking_state=walking_state[:n],
@@ -197,6 +218,7 @@ def main() -> None:
     p_lsole_des, p_rsole_des = data['p_lsole_des'], data['p_rsole_des']
     lsole_yaw, rsole_yaw = data['lsole_yaw'], data['rsole_yaw']
     contact_flags, walking_state = data['contact_flags'], data['walking_state']
+    est_zmp, kf_com, des_com = data['est_zmp'], data['kf_com'], data['des_com']
 
     frame_indices = list(range(0, n, PLAYBACK_STRIDE))
     if not frame_indices:
@@ -213,7 +235,8 @@ def main() -> None:
         for pos, yaw in ((p_lsole_des, lsole_yaw), (p_rsole_des, rsole_yaw))
         for k in frame_indices
     ]).reshape(-1, 2)
-    all_xy = np.vstack([des_zmp[:, :2], box_corners_all, foot_corners_all])
+    all_xy = np.vstack([des_zmp[:, :2], est_zmp[:, :2], kf_com[:, :2], des_com[:, :2],
+                        box_corners_all, foot_corners_all])
     margin = 0.05
     xlim = (all_xy[:, 0].min() - margin, all_xy[:, 0].max() + margin)
     ylim = (all_xy[:, 1].min() - margin, all_xy[:, 1].max() + margin)
@@ -247,6 +270,20 @@ def main() -> None:
     (trail_line,) = ax.plot([], [], color='tab:blue', linewidth=1.0, alpha=0.6)
     (zmp_point,) = ax.plot([], [], marker='o', markersize=8, linestyle='')
 
+    (est_trail_line,) = ax.plot([], [], color='tab:purple', linewidth=1.0, linestyle='--',
+                                alpha=0.6, zorder=5)
+    (est_zmp_point,) = ax.plot([], [], marker='D', markersize=7, linestyle='', color='tab:purple',
+                               markeredgecolor='black', zorder=6)
+
+    (com_trail_line,) = ax.plot([], [], color='tab:brown', linewidth=1.0, alpha=0.6, zorder=5)
+    (com_point,) = ax.plot([], [], marker='X', markersize=10, linestyle='', color='tab:brown',
+                           markeredgecolor='black', zorder=7)
+
+    (des_com_trail_line,) = ax.plot([], [], color='tab:cyan', linewidth=1.0, linestyle='--',
+                                    alpha=0.6, zorder=5)
+    (des_com_point,) = ax.plot([], [], marker='P', markersize=10, linestyle='', color='tab:cyan',
+                               markeredgecolor='black', zorder=7)
+
     info_text = ax.text(
         0.02, 0.98, '', transform=ax.transAxes, ha='left', va='top', fontsize=10,
         bbox=dict(boxstyle='round', facecolor='white', alpha=0.85)
@@ -258,6 +295,15 @@ def main() -> None:
         Line2D([0], [0], color='tab:blue', linewidth=1.0, alpha=0.6, label=f'des. ZMP trail ({TRAIL_LEN} ticks)'),
         Line2D([0], [0], marker='o', markersize=8, linestyle='', color='tab:green', label='des. ZMP (inside box)'),
         Line2D([0], [0], marker='o', markersize=8, linestyle='', color='tab:red', label='des. ZMP (outside box)'),
+        Line2D([0], [0], color='tab:purple', linewidth=1.0, linestyle='--',
+               marker='D', markersize=7, markerfacecolor='tab:purple', markeredgecolor='black',
+               label='est. ZMP (RB-WO) + trail'),
+        Line2D([0], [0], color='tab:brown', linewidth=1.0,
+               marker='X', markersize=10, markerfacecolor='tab:brown', markeredgecolor='black',
+               label='CoM (LIP KF) + trail'),
+        Line2D([0], [0], color='tab:cyan', linewidth=1.0, linestyle='--',
+               marker='P', markersize=10, markerfacecolor='tab:cyan', markeredgecolor='black',
+               label='des. CoM (PLIP integration) + trail'),
         mpatches.Patch(facecolor='tab:blue', edgecolor='black', alpha=0.5, label='Left foot (support, des.)'),
         mpatches.Patch(facecolor='tab:orange', edgecolor='black', alpha=0.5, label='Right foot (support, des.)'),
         Line2D([0], [0], color='black', linewidth=1.8, label='Support polygon (double support)'),
@@ -265,7 +311,8 @@ def main() -> None:
     ax.legend(handles=legend_handles, loc='lower right', fontsize=8)
 
     all_artists = [box_patch, left_foot_patch, right_foot_patch, support_polygon_line,
-                   trail_line, zmp_point, info_text, title_text]
+                   trail_line, zmp_point, est_trail_line, est_zmp_point, com_trail_line, com_point,
+                   des_com_trail_line, des_com_point, info_text, title_text]
 
     def draw_frame(frame_idx):
         k = frame_indices[frame_idx]
@@ -284,6 +331,20 @@ def main() -> None:
         inside = (abs(d[0]) <= BOX_LENGTH / 2.0) and (abs(d[1]) <= BOX_WIDTH / 2.0)
         zmp_point.set_data([zmp[0]], [zmp[1]])
         zmp_point.set_color('tab:green' if inside else 'tab:red')
+
+        est = est_zmp[k, :2]
+        est_trail_line.set_data(est_zmp[trail_start:k + 1, 0], est_zmp[trail_start:k + 1, 1])
+        est_zmp_point.set_data([est[0]], [est[1]])
+        d_est = rot2(-yaw) @ (est - center)
+        est_inside = (abs(d_est[0]) <= BOX_LENGTH / 2.0) and (abs(d_est[1]) <= BOX_WIDTH / 2.0)
+
+        com = kf_com[k, :2]
+        com_trail_line.set_data(kf_com[trail_start:k + 1, 0], kf_com[trail_start:k + 1, 1])
+        com_point.set_data([com[0]], [com[1]])
+
+        dcom = des_com[k, :2]
+        des_com_trail_line.set_data(des_com[trail_start:k + 1, 0], des_com[trail_start:k + 1, 1])
+        des_com_point.set_data([dcom[0]], [dcom[1]])
 
         # Support foot/feet: contact_flags[k] = (left_in_contact, right_in_contact),
         # true/true outside SingleSupport (WalkingManager::get_contact()).
@@ -309,12 +370,17 @@ def main() -> None:
         info_text.set_text(
             f"t = {k * DT:.3f} s (tick {k}/{n - 1})\n"
             f"walking state = {state_name}\n"
-            f"des. ZMP = ({zmp[0]:.3f}, {zmp[1]:.3f}) m\n"
+            f"des. ZMP = ({zmp[0]:.3f}, {zmp[1]:.3f}) m — {'INSIDE' if inside else 'OUTSIDE'} box\n"
+            f"est. ZMP = ({est[0]:.3f}, {est[1]:.3f}) m — {'INSIDE' if est_inside else 'OUTSIDE'} box\n"
+            f"|des - est| = {np.linalg.norm(zmp - est) * 1000:.1f} mm\n"
+            f"des. CoM (PLIP) = ({dcom[0]:.3f}, {dcom[1]:.3f}) m\n"
+            f"CoM (KF) = ({com[0]:.3f}, {com[1]:.3f}) m — |des - KF| = "
+            f"{np.linalg.norm(dcom - com) * 1000:.1f} mm\n"
             f"box center = ({center[0]:.3f}, {center[1]:.3f}) m, yaw = {np.degrees(yaw):.1f} deg\n"
-            f"box size = {BOX_LENGTH:.2f} x {BOX_WIDTH:.2f} m\n"
-            f"{'INSIDE' if inside else 'OUTSIDE'} box"
+            f"box size = {BOX_LENGTH:.2f} x {BOX_WIDTH:.2f} m"
         )
-        title_text.set_text("Desired ZMP (PLIP integration) vs. ZMP admissible box and support foot/feet")
+        title_text.set_text("Desired (PLIP) / estimated (RB-WO) ZMP and desired (PLIP) / KF CoM "
+                            "vs. ZMP box and support foot/feet")
 
         return all_artists
 

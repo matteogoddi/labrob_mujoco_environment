@@ -60,6 +60,8 @@ namespace labrob {
             const Eigen::VectorXd& getGeneralizedMomentum()        const { return p_; }
             const Eigen::VectorXd& getInitialGeneralizedMomentum() const { return p0_; }
             Eigen::VectorXd getTauMinusG() const { return tau_m_ - g_; }
+            bool isInitialized() const { return initialized_;}
+
 
 
         private:

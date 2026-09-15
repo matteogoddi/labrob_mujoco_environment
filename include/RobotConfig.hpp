@@ -25,12 +25,21 @@ const std::array<float, G1_NUM_MOTOR> Kp_cl{
     120, 120, 120, 70,  40, 40, 40    // arms
     */
 
+    
     150, 150, 150, 200, 40, 40,    // left leg
     150, 150, 150, 200, 40, 40,    // right leg
     100, 100, 100,                // waist
     100, 100, 100, 15,  10, 10, 10,   // left arm
     100, 100, 100, 15,  10, 10, 10   // right arm
     
+
+    /*
+    20, 20, 20, 30, 20, 20,      // left leg
+    20, 20, 20, 30, 20, 20,      // right leg
+    10,  10,  10,                     // waist yaw/roll/pitch
+    10, 10, 10, 10,  2, 2, 2,   // left arm
+    10, 10, 10, 10,  2, 2, 2    // right arm
+    */
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
@@ -50,11 +59,21 @@ const std::array<float, G1_NUM_MOTOR> Kd_cl{
     2, 2, 2, 2, 2, 2, 2
     */
 
+    /*
     4, 4, 4, 6, 2, 2,
     4, 4, 4, 6, 2, 2,
     4, 4, 4,
     4, 4, 4, 4, 4, 4, 4,
     4, 4, 4, 4, 4, 4, 4
+    */
+
+    
+    10, 10, 10, 10, 10, 10,
+    10, 10, 10, 10, 10, 10,
+    10, 10, 10,
+    10, 10, 10, 2, 2, 2, 2,
+    10, 10, 10, 2, 2, 2, 2
+    
 };
 
 const std::array<float, G1_NUM_MOTOR> Kp_reg{
@@ -143,6 +162,7 @@ const std::map<std::string, JointLimits> joint_limits = {
     {"right_wrist_pitch_joint",    {-1.614429558,  1.614429558}},
     {"right_wrist_yaw_joint",      {-1.614429558,  1.614429558}},
 };
+
 
 // Initial joint configuration (radians)
 const std::map<std::string, double> joint_initial_positions = {

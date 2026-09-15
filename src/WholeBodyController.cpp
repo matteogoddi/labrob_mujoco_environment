@@ -30,13 +30,20 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_foot = 35.0;
   params.Kp_wrist = 30.0;
   params.Kd_wrist = 10.0;
+  
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;//60;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;//12;
 
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
-  params.Kp_joint_matrix.block(6, 6, 12, 12).setZero();
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
-  params.Kd_joint_matrix.block(6, 6, 12, 12).setZero();
-  params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120;
-  params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90;
+  // Set joint regularization gains suitable for lateral and curved walks
+  if (lateral || curve || true) {
+    params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
+    params.Kp_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
+    params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
+    params.Kd_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
+    params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
+    params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
+  }
+  
 
   params.weight_q_ddot           = 1e-4;
   params.weight_com              = 1;
@@ -119,7 +126,7 @@ WholeBodyController::WholeBodyController(
   M_armature_ = Eigen::VectorXd::Zero(nj);
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     M_armature_(jid) = armatures[robot_model_.names[jid + 2]];
-
+  
   wbc_solver_ptr_ = std::make_unique<labrob::QpSolver>(
       n_wbc_variables_, n_wbc_equalities_, n_wbc_inequalities_, SPEED_ABS, 50, 1e6);
 
@@ -314,7 +321,7 @@ WholeBodyController::compute_inverse_dynamics(
   const Eigen::VectorXd a_pelvis_total =
       desired.pelvis.acc + params_.Kp_orientation * err_pelvis + params_.Kd_orientation * err_pelvis_vel;
 
-  // print each accelerations
+  //print each accelerations
   // std::cout << "a_jnt_total " << a_jnt_total.transpose() << "\n" << std::endl;
   // std::cout << "a_com_total " << a_com_total.transpose() << "\n" << std::endl;
   // std::cout << "a_lsole_total " << a_lsole_total.transpose() << "\n" << std::endl;
@@ -325,6 +332,10 @@ WholeBodyController::compute_inverse_dynamics(
 
   // std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
   // std::cout << "error rsole pos " << err_rsole.transpose() << " vel " << err_rsole_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error lsole pos " << err_lsole.transpose() << " vel " << err_lsole_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error com pos " << err_com.transpose() << " vel " << err_com_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error torso pos " << err_torso.transpose() << " vel " << err_torso_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error pelvis pos " << err_pelvis.transpose() << " vel " << err_pelvis_vel.transpose() << "\n" << std::endl;
 
   // ── H_acc / f_acc (no temporaries, noalias products) ─────────────────────
   H_acc_.setZero();
@@ -522,29 +533,39 @@ WholeBodyController::compute_inverse_dynamics(
   
 
   Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
-  Kd_vec << 4, 4, 4, 6, 2, 2,
-            4, 4, 4, 6, 2, 2,
-            4, 4, 4,
-            4, 4, 4, 4, 4, 4, 4,
-            4, 4, 4, 4, 4, 4, 4;
+  // Kd_vec << 4, 4, 4, 6, 2, 2,
+  //           4, 4, 4, 6, 2, 2,
+  //           4, 4, 4,
+  //           4, 4, 4, 4, 4, 4, 4,
+  //           4, 4, 4, 4, 4, 4, 4;
+  Kd_vec << 2, 2, 2, 3, 2, 2,
+    2, 2, 2, 3, 2, 2,
+    2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2,
+    2, 2, 2, 2, 2, 2, 2;
   Eigen::MatrixXd Kd = Kd_vec.asDiagonal();
 
   Eigen::VectorXd Kp_vec = Eigen::VectorXd::Zero(nj);
-  Kp_vec << 150, 150, 150, 200, 40, 40,    // left leg
-            150, 150, 150, 200, 40, 40,    // right leg
-            100, 100, 100,                // waist
-            100, 100, 100, 15,  10, 10, 10,   // left arm
-            100, 100, 100, 15,  10, 10, 10;   // right arm
+  // Kp_vec << 150, 150, 150, 200, 40, 40,    // left leg
+  //           150, 150, 150, 200, 40, 40,    // right leg
+  //           100, 100, 100,                // waist
+  //           100, 100, 100, 15,  10, 10, 10,   // left arm
+  //           100, 100, 100, 15,  10, 10, 10;   // right arm
+
+  Kp_vec << 40, 40, 40, 60, 40, 30,    // left leg
+            40, 40, 40, 60, 40, 30,    // right leg
+            25, 25, 15,                // waist
+            12, 12, 12, 7,  4, 4, 4,   // left arm
+            12, 12, 12, 7,  4, 4, 4;   // right arm
   Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
 
   
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
-      - Jra_.transpose() * right_foot_wrench_;
-      //+ Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
-      //+ Kp * (q_full_des_.tail(nj) - q.tail(nj));
+      - Jra_.transpose() * right_foot_wrench_
+      + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
+      + Kp * (q_full_des_.tail(nj) - q.tail(nj));
       
-
       
   // Check for limit exceeding
   /*
@@ -559,8 +580,16 @@ WholeBodyController::compute_inverse_dynamics(
 
     if (q_des_[jid] > upper_limit)
       std::cout << "Joint " << robot_model.names[jid + 2] << " exceeding upper bound by " << q_des_[jid] - upper_limit << std::endl;
+    */
+
+    /*
+    int i = jid + 2;
+    std::cout << "joint pos update term: " << qdot.tail(nj)[i] * sample_time_ + 0.5 * q_ddot_[i] * sample_time_ * sample_time_ << std::endl;
+    if (jid == nj - 1)
+      std::cout << "END" << std::endl;
   }
   */
+  
 
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)

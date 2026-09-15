@@ -177,7 +177,6 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Dex3-1 hand urdf
     // std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_dex3.urdf";
     std::string robot_description_filename = "../robot/g1/g1_description/g1_29dof_with_hand_rev_1_0.urdf";
-
     pinocchio::Model full_robot_model;
 
     pinocchio::JointModelFreeFlyer root_joint;
@@ -533,6 +532,12 @@ WalkingManager::update(
     
     Eigen::Vector3d f_left_wrist  = estimated_force_wrist.head(3);
     Eigen::Vector3d f_right_wrist = estimated_force_wrist.tail(3);
+
+    
+    if(t_obs_msec_ < 2000) {
+        f_left_wrist.setZero();
+        f_right_wrist.setZero();
+    }
     
 
     Eigen::Vector3d left_foot_force = estimated_force_sole.head(3);
@@ -683,7 +688,7 @@ WalkingManager::update(
     Eigen::Vector3d w = discrete_plip_dynamics_ptr_->get_disturbance();
     Eigen::Vector3d zmp_3d;
 
-    if (t_msec_ < 2000) {
+    if (t_obs_msec_ < 2000) {
         
         // ZMP reconstruction from LIP (no disturbance) --> to cut out the initial transient of the disturbance term
         zmp_3d.z() = p_CoM.z() - (a_CoM_drift.z() + 9.81) / eta2;
@@ -701,7 +706,7 @@ WalkingManager::update(
     // From RB-WO    
     Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
-    if (total_force.z() > 1e-5 && t_msec_ > 2000) {
+    if (total_force.z() > 1e-5 && t_obs_msec_ >= 2000) {
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
@@ -778,7 +783,7 @@ WalkingManager::update(
 
     auto start_kf = std::chrono::high_resolution_clock::now();
 
-    if (t_msec_ < 2000)
+    if (t_obs_msec_ < 2000)
         LipState = LIPState(p_CoM, J_CoM * qdot, zmp_3d);
     else
         LipState = LIPState(p_CoM, J_CoM * qdot, ef_zmp_3d);
@@ -1152,7 +1157,7 @@ WalkingManager::update(
                 Eigen::Vector3d current_disturbance; 
 
                 // Cut off transient
-                if (t_msec_ < 2000) {
+                if (t_obs_msec_ < 2000) {
                     current_disturbance.x() = 0.0;
                     current_disturbance.y() = 0.0;
                     current_disturbance.z() = -9.81;
@@ -1258,7 +1263,7 @@ WalkingManager::update(
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
-    if (t_msec_ < 2000 || lateral == true) {
+    if (t_obs_msec_ < 2000 || lateral == true) {
         desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
     } else {
@@ -1457,7 +1462,7 @@ WalkingManager::update(
     
             // Update forces for the HAC at next step (1 step causal delay)
             static constexpr int64_t WFE_TRANSIENT_MS = 2000;
-            if (t_msec_ >= WFE_TRANSIENT_MS) {
+            if (t_obs_msec_ >= WFE_TRANSIENT_MS) {
                 hac_f_l_W = f_left_wrist;
                 hac_f_r_W = f_right_wrist;
             } else {
@@ -1487,6 +1492,9 @@ WalkingManager::update(
     // NOTE: assuming update() is actually called every controller_timestep_msec_
     //       milliseconds.
     t_msec_ += controller_timestep_msec_;
+    if (isObserverActive && wrist_force_estimator_ptr_->isInitialized()) {
+        t_obs_msec_ += controller_timestep_msec_;
+    }
     
     // Store angular momentum for next iteration
     prev_angular_momentum_ = angular_momentum;

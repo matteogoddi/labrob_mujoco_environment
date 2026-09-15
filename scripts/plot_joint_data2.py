@@ -465,9 +465,11 @@ if __name__ == '__main__':
     odometry_imu_orientation_rpy = _load('odom_rpy.txt', 3)
     measured_joint_position = _load('joint_pos.txt', 29)
     measured_joint_velocity = _load('joint_vel.txt', 29)
-    # Not currently logged anywhere in the C++ side — stays zero until a
-    # "measured_joint_torque" channel is added to sensor_logger.
+    # Real robot only (main.cpp sensor_logger): tau_est from LowState, and the
+    # torque requested from each motor split in feedforward (WBC) and PD part.
     measured_joint_torque = _load('measured_joint_torque.txt', 29)
+    motor_tau_ff = _load('motor_tau_ff.txt', 29)
+    motor_tau_pd = _load('motor_tau_pd.txt', 29)
     # Only main_g1.cpp logs pelvis_quat/pelvis_rpy (main.cpp doesn't) — will
     # still read as zero when plotting logs produced by main.cpp.
     measured_imu_orientation = _load('pelvis_quat.txt', 4)
@@ -3495,6 +3497,51 @@ if __name__ == '__main__':
             bbox_inches='tight'
         )
         figs.append(fig)
+        plt.close(fig)
+
+    # Torque tracking: tau_est vs requested torque (tau_ff + tau_PD), one subplot per joint
+    motor_tau_cmd = motor_tau_ff + motor_tau_pd
+    for group_name, indices in grouped_indices.items():
+        fig, axs = plt.subplots(len(indices), 1, figsize=(8, 2.6 * len(indices)), sharex=True)
+        axs = np.atleast_1d(axs)
+        for ax, i in zip(axs, indices):
+            ax.plot(t, motor_tau_ff[:, i], label=r'$\tau_{ff}$ (WBC)', linewidth=1.2)
+            ax.plot(t, motor_tau_cmd[:, i], label=r'$\tau_{ff}+\tau_{PD}$', linewidth=1.2, linestyle='--')
+            ax.plot(t, measured_joint_torque[:, i], label=r'$\tau_{est}$ (motor)', linewidth=1.2)
+            ax.set_title(joint_names[i].strip(), fontsize=10)
+            ax.set_ylabel(r'Torque [$\mathrm{Nm}$]', fontsize=9)
+            ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
+            ax.legend(loc='upper left', frameon=True, fontsize=7)
+        axs[-1].set_xlabel('Time [s]', fontsize=11)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/motor_torques/{group_name}_torque_tracking.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
+        plt.close(fig)
+
+    # Mean (bias) and RMS of the tracking error per joint
+    motor_tau_err = measured_joint_torque - motor_tau_cmd
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', RuntimeWarning)
+        err_stats = [('mean', np.nanmean(motor_tau_err, axis=0), 'Mean'),
+                     ('rms', np.sqrt(np.nanmean(motor_tau_err ** 2, axis=0)), 'RMS')]
+    short_names = [n.strip().replace('_joint', '') for n in joint_names]
+    for tag, values, title in err_stats:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        ax.bar(range(len(values)), values, color='skyblue')
+        ax.set_xticks(range(len(values)))
+        ax.set_xticklabels(short_names, rotation=60, ha='right', fontsize=7)
+        ax.set_ylabel(r'Torque [$\mathrm{Nm}$]', fontsize=11)
+        ax.set_title(fr'{title} torque error $\tau_{{est}} - (\tau_{{ff}}+\tau_{{PD}})$', fontsize=12)
+        ax.grid(axis='y', linestyle='--', alpha=0.7)
+        fig.tight_layout()
+        fig.savefig(
+            f"images/feedback/motor_torques/{tag}_torque_error.png",
+            dpi=300,
+            bbox_inches='tight'
+        )
         plt.close(fig)
 
     ##########################
