@@ -291,7 +291,7 @@ static void send_dds_command(
         if (wbc_active) {
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
                 std::abs(robot_state.joint_state[jname].vel) > 0.8   || // safe 1.0
-                std::abs(joint_command[jname]) > 40.0) {                // safe 40.0
+                std::abs(joint_command[jname]) > 45.0) {                // safe 40.0
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
@@ -786,7 +786,8 @@ int main(const int argc, const char* argv[]) {
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                                 // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                                 q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                dq_ref_joints[i] = 0;//robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                                dq_ref_joints[i] = 0;
+                                // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
 
                                 if (std::abs(q_ref_joints[i] - robot_state.joint_state.at(jname).pos) > 1.0) {
                                     std::cout << "Reference joint pos update term saturated" << std::endl;

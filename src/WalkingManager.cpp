@@ -1228,7 +1228,7 @@ WalkingManager::update(
 
                 // // // Try to give CoM more boost in the direction of the ZMP reference, to reduce the CoM-ZMP error
                 // const Eigen::Vector3d zmp_ref = ismpc_ptr_->getZmpConstraintBoxCenter();
-                // const double dt = controller_timestep_msec_ * 0.001;
+                const double dt = controller_timestep_msec_ * 0.001;
                 
 
                 // P boost
@@ -1246,15 +1246,15 @@ WalkingManager::update(
                 //                         + 0.5 * dt * dt * (des_acc_com_ - Kd * des_LipState.com_vel_ + K * (zmp_ref - des_LipState.zmp_pos_));
 
                 // DCM-based stabilizer
-                // Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
-                // Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
-                // const double Kz = 3.0;
-                // const double Kzm = 2.0;
-                // Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); //+ Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
-                // // p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
-                // p_c_ddot_ref = eta2 * (kf_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
-                // p_c_dot_ref = kf_LipState.com_vel_ + dt * p_c_ddot_ref;
-                // p_c_ref = kf_LipState.com_pos_ + dt * p_c_dot_ref;
+            //     Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
+            //     Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
+            //     const double Kz = 3.0;
+            //     const double Kzm = 2.0;
+            //     Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); // + Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
+            //    p_z_ref.z() = des_LipState.zmp_pos_.z();           // <-- unica riga che serve per togliere la z
+               
+            //    // relazione PLIP esatta: p̈_c = η²(p_c − p_z) + w, coerente con l'integrazione dell'MPC
+            //    p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
 
                 
             }

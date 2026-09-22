@@ -28,7 +28,7 @@ ISMPC::ISMPC(
 
   
   qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      num_variables_, num_equality_constraints_, num_inequality_constraints_, SPEED_ABS, 50, 1e4);
+      num_variables_, num_equality_constraints_, num_inequality_constraints_, SPEED_ABS, 50, 1e6);
   
   
 
@@ -204,20 +204,6 @@ ISMPC::solve(
   cost_function_f_.segment(     0, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.x() - mc_x_);
   cost_function_f_.segment(    N_, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y_);
   cost_function_f_.segment(2 * N_, N_).noalias() = beta_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z_);
-  
-
-  /*
-  const Eigen::MatrixXd PtP = P_.transpose() * P_;
-  const Eigen::MatrixXd I   = Eigen::MatrixXd::Identity(N_, N_);
-  cost_function_H_.setZero();
-  cost_function_H_.block(     0,      0, N_, N_) = I + beta_x_ * PtP;
-  cost_function_H_.block(    N_,     N_, N_, N_) = I + beta_y_ * PtP;
-  cost_function_H_.block(2 * N_, 2 * N_, N_, N_) = I + beta_z_ * PtP;
-
-  cost_function_f_.segment(     0, N_).noalias() = beta_x_ * P_.transpose() * (p_ * zmp_pos.x() - mc_x_);
-  cost_function_f_.segment(    N_, N_).noalias() = beta_y_ * P_.transpose() * (p_ * zmp_pos.y() - mc_y_);
-  cost_function_f_.segment(2 * N_, N_).noalias() = beta_z_ * P_.transpose() * (p_ * zmp_pos.z() - mc_z_);
-  */
 
   // Solve QP
   qp_solver_ptr_->solve(
