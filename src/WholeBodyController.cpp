@@ -3,6 +3,7 @@
 //
 
 #include <WholeBodyController.hpp>
+#include <WalkingManager.hpp>
 
 #include <pinocchio/algorithm/centroidal.hpp>
 #include <pinocchio/algorithm/joint-configuration.hpp>
@@ -24,25 +25,26 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kd_motion = 40.0;
   params.Kp_regulation = 30.0;
   params.Kd_regulation = 10.0;
-  params.Kp_orientation = 400.0;
-  params.Kd_orientation = 80.0;
+  params.Kp_orientation = 60; // 400.0;
+  params.Kd_orientation = 60; // 80.0;
   params.Kp_foot = 70.0;
   params.Kd_foot = 35.0;
-  params.Kp_wrist = 30.0;
+  params.Kp_wrist = 30;
   params.Kd_wrist = 10.0;
   
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;//60;
   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;//12;
 
-  // Set joint regularization gains suitable for lateral and curved walks
-  if (lateral || curve || true) {
-    params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
-    params.Kp_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
-    params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
-    params.Kd_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
-    params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
-    params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
-  }
+  
+  // // Set joint regularization gains suitable for lateral and curved walks
+  // if (lateral || curve || true) {
+  //   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
+  //   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
+  //   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
+  //   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
+  //   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
+  //   params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
+  // }
   
 
   params.weight_q_ddot           = 1e-4;
@@ -51,7 +53,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_rsole            = 1;
   params.weight_lwrist            = 1e-3;
   params.weight_rwrist            = 1e-3;
-  params.weight_torso            = 1e-4;
+  params.weight_torso            = 1e-3; // 1e-4;
   params.weight_pelvis           = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation       = 1e-4;
@@ -271,7 +273,7 @@ WholeBodyController::compute_inverse_dynamics(
   const auto  a_pelvis_drift           = J_pelvis_dot_.bottomRows<3>() * qdot;
 
   // Desired accelerations
-  const auto err_com      = desired.com.pos - current.com.pos;
+  const Eigen::Vector3d err_com = desired.com.pos - current.com.pos; // zmp_ref_ - des_zmp_wbc_;
   const auto err_com_vel  = desired.com.vel - current.com.vel;
 
   const auto err_lsole     = err_frameplacement(
@@ -333,6 +335,8 @@ WholeBodyController::compute_inverse_dynamics(
   // std::cout << "error posture pos " << err_posture_.transpose() << " vel " << err_posture_vel_.transpose() << "\n" << std::endl;
   // std::cout << "error rsole pos " << err_rsole.transpose() << " vel " << err_rsole_vel.transpose() << "\n" << std::endl;
   // std::cout << "error lsole pos " << err_lsole.transpose() << " vel " << err_lsole_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error rwrist pos " << err_rwrist.transpose() << " vel " << err_rwrist_vel.transpose() << "\n" << std::endl;
+  // std::cout << "error lwrist pos " << err_lwrist.transpose() << " vel " << err_lwrist_vel.transpose() << "\n" << std::endl;
   // std::cout << "error com pos " << err_com.transpose() << " vel " << err_com_vel.transpose() << "\n" << std::endl;
   // std::cout << "error torso pos " << err_torso.transpose() << " vel " << err_torso_vel.transpose() << "\n" << std::endl;
   // std::cout << "error pelvis pos " << err_pelvis.transpose() << " vel " << err_pelvis_vel.transpose() << "\n" << std::endl;
@@ -562,9 +566,7 @@ WholeBodyController::compute_inverse_dynamics(
   
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
-      - Jra_.transpose() * right_foot_wrench_
-      + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
-      + Kp * (q_full_des_.tail(nj) - q.tail(nj));
+      - Jra_.transpose() * right_foot_wrench_;
       
       
   // Check for limit exceeding

@@ -26,12 +26,9 @@ ISMPC::ISMPC(
   N_ = prediction_horizon_msec / mpc_timestep_msec;
   mpc_timestep_ = mpc_timestep;
 
-  qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-      num_variables_, num_equality_constraints_, num_inequality_constraints_);
-
   
-  // qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
-  //     num_variables_, num_equality_constraints_, num_inequality_constraints_, SPEED_ABS, 50, 1e4);
+  qp_solver_ptr_ = std::make_unique<labrob::QpSolver>(
+      num_variables_, num_equality_constraints_, num_inequality_constraints_, SPEED_ABS, 50, 1e4);
   
   
 

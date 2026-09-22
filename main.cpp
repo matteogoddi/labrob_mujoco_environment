@@ -290,12 +290,13 @@ static void send_dds_command(
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
-                std::abs(robot_state.joint_state[jname].vel) > 1.5   || // safe 1.0
-                std::abs(joint_command[jname]) > 45.0) {                // safe 40.0
+                std::abs(robot_state.joint_state[jname].vel) > 0.8   || // safe 1.0
+                std::abs(joint_command[jname]) > 40.0) {                // safe 40.0
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
-                          << " tau=" << joint_command[jname] << std::endl;
+                          << " tau=" << joint_command[jname] 
+                          << " at time t = " << t_s << std::endl;
                 signalHandler(SIGINT);
             }
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
@@ -527,6 +528,12 @@ int main(const int argc, const char* argv[]) {
             Eigen::Vector3d imu_acc            = Eigen::Vector3d::Zero();
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
+            // Set below wherever walking_manager.update() is actually called, so
+            // that the control_flags channel can mark which main-loop ticks have a
+            // corresponding row in the WalkingManager logs (see the log call at the
+            // end of this tick).
+            bool wbc_updated = false;
+
             if (useRobot) {
 
                 // ── Read sensors from SDK callbacks ───────────────────────────
@@ -733,6 +740,7 @@ int main(const int argc, const char* argv[]) {
 
 
                 walking_manager.update(robot_state, joint_command);
+                wbc_updated = true;
 
                 auto t0 = std::chrono::steady_clock::now();
                 mj_step1(mj_model_ptr, mj_data_ptr);
@@ -768,6 +776,7 @@ int main(const int argc, const char* argv[]) {
 
                     case ExperimentMode::WBC:
                         walking_manager.update(robot_state, joint_command);
+                        wbc_updated = true;
                         {
                             constexpr double cmd_dt = 0.002;
                             const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
@@ -776,7 +785,7 @@ int main(const int argc, const char* argv[]) {
                                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                                 // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + std::clamp(robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt, -1.0, 1.0);
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                                 dq_ref_joints[i] = 0;//robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
 
                                 if (std::abs(q_ref_joints[i] - robot_state.joint_state.at(jname).pos) > 1.0) {
@@ -827,6 +836,19 @@ int main(const int argc, const char* argv[]) {
                                  joint_command, Clock::now() - t_start,
                                  q_ref_joints, dq_ref_joints);
             }
+
+            // Which gamepad-activated modes are on at this tick: A -> EKF, X ->
+            // closed loop (MPC/WBC), B -> wrench observer (handle_gamepad above).
+            // Logged from the main loop, not from WalkingManager, because the
+            // WalkingManager logs only start once X has closed the loop — the
+            // whole point here is to also cover the ticks before that.  The 4th
+            // column marks the ticks that do have a WalkingManager log row, so
+            // that scripts can line the two timelines up (scripts/animate_zmp_box.py).
+            sensor_logger.log("control_flags", Eigen::Vector4d(
+                isEKFactive      ? 1.0 : 0.0,
+                isMPCLoopClosed  ? 1.0 : 0.0,
+                isObserverActive ? 1.0 : 0.0,
+                wbc_updated      ? 1.0 : 0.0));
 
             last_sim_time = mj_data_ptr->time;
         }

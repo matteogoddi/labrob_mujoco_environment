@@ -426,7 +426,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
-    //coop_fp.ell = 0.10;
+    //coop_fp.ell = 0.20;
     std::cout << "Initial foot separation (ell) = " << coop_fp.ell << " m" << std::endl;
     coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
@@ -1143,17 +1143,56 @@ WalkingManager::update(
                 
     
                 // PLIP
+                // // Extract disturbance term from wrist forces and angular momentum derivative
+                // discrete_plip_dynamics_ptr_->updateDisturbanceTerm(kf_LipState,
+                //     f_right_wrist, f_left_wrist,
+                //     L_dot_, // Eigen::Vector3d::Zero(),
+                //     T_rwrist.translation(), T_lwrist.translation()
+                // );
                 
+                // Eigen::Vector3d current_disturbance; 
+
+                // // Cut off transient
+                // if (t_obs_msec_ < 2000) {
+                //     current_disturbance.x() = 0.0;
+                //     current_disturbance.y() = 0.0;
+                //     current_disturbance.z() = -9.81;
+                // } else {
+                //     current_disturbance = discrete_plip_dynamics_ptr_->get_disturbance();
+                // }
                 
+                // // Update eta basing on current vertical force
+                // ismpc_ptr_->setEta(std::sqrt(discrete_plip_dynamics_ptr_->getEta2()));
+
+
+                // ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, current_disturbance);
+
+                // // Log disturbance term right before it enters the PLIP integration
+                // logger_.log("current_disturbance", current_disturbance);
+
+                // // Log the ZMP admissible box (moving box) at t_k, i.e. the constraint
+                // // that the ZMP produced by the PLIP integration step below must satisfy.
+                // logger_.log("zmp_box_center", ismpc_ptr_->getZmpConstraintBoxCenter());
+                // logger_.log("zmp_box_yaw", ismpc_ptr_->getZmpConstraintBoxYaw());
+
+
+                // // CoM reference generation while considering external disturbance (overwrite)
+                // des_LipState = discrete_plip_dynamics_ptr_->integrate(
+                //     kf_LipState,
+                //     ismpc_ptr_->getInput(),
+                //     current_disturbance
+                // );
+
+
+                
+                // Open-Loop CoM boost
                 // Extract disturbance term from wrist forces and angular momentum derivative
-                discrete_plip_dynamics_ptr_->updateDisturbanceTerm(kf_LipState,
+                discrete_plip_dynamics_ptr_->updateDisturbanceTerm(des_LipState,
                     f_right_wrist, f_left_wrist,
                     L_dot_, // Eigen::Vector3d::Zero(),
                     T_rwrist.translation(), T_lwrist.translation()
                 );
-                
 
-                
                 Eigen::Vector3d current_disturbance; 
 
                 // Cut off transient
@@ -1168,7 +1207,8 @@ WalkingManager::update(
                 // Update eta basing on current vertical force
                 ismpc_ptr_->setEta(std::sqrt(discrete_plip_dynamics_ptr_->getEta2()));
 
-                ismpc_ptr_->solve(t_msec_, walking_data_, kf_LipState, current_disturbance);
+
+                ismpc_ptr_->solve(t_msec_, walking_data_, des_LipState, current_disturbance);
 
                 // Log disturbance term right before it enters the PLIP integration
                 logger_.log("current_disturbance", current_disturbance);
@@ -1178,14 +1218,44 @@ WalkingManager::update(
                 logger_.log("zmp_box_center", ismpc_ptr_->getZmpConstraintBoxCenter());
                 logger_.log("zmp_box_yaw", ismpc_ptr_->getZmpConstraintBoxYaw());
 
+
                 // CoM reference generation while considering external disturbance (overwrite)
                 des_LipState = discrete_plip_dynamics_ptr_->integrate(
-                    kf_LipState,
+                    des_LipState,
                     ismpc_ptr_->getInput(),
                     current_disturbance
                 );
+
+                // // // Try to give CoM more boost in the direction of the ZMP reference, to reduce the CoM-ZMP error
+                // const Eigen::Vector3d zmp_ref = ismpc_ptr_->getZmpConstraintBoxCenter();
+                // const double dt = controller_timestep_msec_ * 0.001;
                 
-                
+
+                // P boost
+                // K = 150; // Gain for CoM boost
+                // des_LipState.com_vel_ = kf_LipState.com_vel_ + dt * K * (zmp_ref - des_LipState.zmp_pos_);
+                // // des_LipState.com_pos_ = kf_LipState.com_pos_ + 0.5 * dt * dt * K * (zmp_ref - des_LipState.zmp_pos_);
+                // des_LipState.com_pos_ = kf_LipState.com_pos_ + dt * kf_LipState.com_vel_ + 0.5 * dt * dt * K * (zmp_ref - des_LipState.zmp_pos_);
+
+                // PD + FFW boost
+                // K = 150; // Gain for CoM boost
+                // Kd = 5;
+                // des_acc_com_ = eta2 * (kf_LipState.com_pos_ - des_LipState.zmp_pos_) - Eigen::Vector3d(0.0, 0.0, 9.81);
+                // des_LipState.com_vel_ = kf_LipState.com_vel_ + dt * (des_acc_com_ - Kd * des_LipState.com_vel_ +  K * (zmp_ref - des_LipState.zmp_pos_));
+                // des_LipState.com_pos_ = kf_LipState.com_pos_ + dt * des_LipState.com_vel_ 
+                //                         + 0.5 * dt * dt * (des_acc_com_ - Kd * des_LipState.com_vel_ + K * (zmp_ref - des_LipState.zmp_pos_));
+
+                // DCM-based stabilizer
+                // Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
+                // Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
+                // const double Kz = 3.0;
+                // const double Kzm = 2.0;
+                // Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); //+ Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
+                // // p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
+                // p_c_ddot_ref = eta2 * (kf_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
+                // p_c_dot_ref = kf_LipState.com_vel_ + dt * p_c_ddot_ref;
+                // p_c_ref = kf_LipState.com_pos_ + dt * p_c_dot_ref;
+
                 
             }
             else{
@@ -1263,12 +1333,36 @@ WalkingManager::update(
     // CoM desired from IS-MPC LIP integration
     desired_gait_configuration.com.pos = des_LipState.com_pos_;
     desired_gait_configuration.com.vel = des_LipState.com_vel_;
+    // desired_gait_configuration.com.pos = p_c_ref;
+    // desired_gait_configuration.com.vel = p_c_dot_ref;
     if (t_obs_msec_ < 2000 || lateral == true) {
         desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        - Eigen::Vector3d(0.0, 0.0, 9.81);
     } else {
+
+        // Regular closed-loop IS-MPC
         desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
                                        + discrete_plip_dynamics_ptr_->get_disturbance();
+
+
+        // Open-loop IS-MPC with P stabilization
+        // desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+        //                                - Eigen::Vector3d(0.0, 0.0, 9.81);
+        // desired_gait_configuration.com.acc = K * (ismpc_ptr_->getZmpConstraintBoxCenter() - des_LipState.zmp_pos_); // DOES NOT WORK
+
+        // Open-loop IS-MPC with PD + FFW stabilization
+        // desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+        //                                 - Eigen::Vector3d(0.0, 0.0, 9.81);
+        /*
+        desired_gait_configuration.com.acc = des_acc_com_ 
+                                    + Kd * (des_LipState.com_vel_  - kf_LipState.zmp_pos_)
+                                    + K * (ismpc_ptr_->getZmpConstraintBoxCenter() - des_LipState.zmp_pos_);
+                                    */ // DOES NOT WORK
+
+
+        // Open-loop IS-MPC with DCM-based stabilization
+        // desired_gait_configuration.com.acc = p_c_ddot_ref;
+        
     }
 
     // contact flags
@@ -1384,6 +1478,7 @@ WalkingManager::update(
           << " des_CoM=" << desired_gait_configuration.com.pos.transpose()
           << "\n";
     }
+
 
     auto start_wbc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)

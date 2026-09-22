@@ -70,6 +70,14 @@ class WalkingManager {
   // Orientation of the HAC frame F w.r.t. world, cached from the last update()
   const Eigen::Matrix3d& get_R_F_hac() const { return R_F_hac_; }
 
+  // CoM Boost
+  double K = 300;
+  double Kd = 100;
+  Eigen::Vector3d des_acc_com_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d p_c_ddot_ref = Eigen::Vector3d::Zero();
+  Eigen::Vector3d p_c_dot_ref = Eigen::Vector3d::Zero();
+  Eigen::Vector3d p_c_ref = Eigen::Vector3d::Zero();
+
  protected:
   pinocchio::Model robot_model;
   pinocchio::Data robot_data;
@@ -108,6 +116,8 @@ class WalkingManager {
   LIPState LipState;
   LIPState kf_LipState;
   LIPState des_LipState;
+
+  
 
   Eigen::Vector3d p_CoM_init;
 
@@ -251,6 +261,8 @@ private:
   std::vector<int64_t>                        mpc_snapshot_t_log_;
   std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_x_log_;
   std::vector<std::vector<Eigen::VectorXd>>   mpc_snapshot_u_log_;
+
+  
 
 }; // end class WalkingManager
 

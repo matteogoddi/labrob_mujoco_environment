@@ -48,6 +48,30 @@ get_contact(), true/true outside SingleSupport). In single support only the
 in-contact foot's rectangle is drawn; in double support both are drawn plus
 the line delimiting their support polygon (convex hull of both footprints).
 
+Everything that is not the scene itself — flag badges, numeric readout, legend —
+sits in a side panel to the right of the plot, so that nothing covers the feet,
+the box or the support polygon. The legend is anchored under the readout at
+build time, after measuring how tall it actually is.
+
+Three badges at the top of that panel track the gamepad-activated modes, read
+from the control_flags channel: each stays grey with a ✗ until the tick at which its
+button was pressed (A -> EKF, X -> closed loop, B -> wrench observer, main.cpp
+handle_gamepad) and turns green with a ✓ from then on.
+
+That channel is logged by the *main loop* (main.cpp, end of the per-tick block),
+not by WalkingManager, because the WalkingManager logs only start once X has
+closed the loop — by which point A and X are already on. So the animation opens
+with a pre-roll over those earlier main-loop ticks, where the plot is empty (no
+ZMP/CoM/foot logs exist yet) and only the flags advance: it starts
+PREROLL_LEAD_S before the first button press, runs at PREROLL_SPEEDUP x real
+time, and ends exactly where the closed-loop part below begins. In simulation
+main.cpp turns all three on at the first tick, so there is no pre-roll at all.
+
+The two timelines are lined up through column 3 of control_flags, which marks the
+main-loop ticks that have a WalkingManager log row; the time shown is always the
+main-loop one, so it runs continuously across the pre-roll. The panel is skipped
+for older runs whose control_flags.txt is missing or has 3 columns.
+
 Requires a run recorded *after* the zmp_box_center / zmp_box_yaw / walking_state /
 contact_flags logging was added (WalkingManager.cpp, right after
 ismpc_ptr_->solve(...) and in the per-tick LOGS block) — older logs won't
@@ -87,6 +111,16 @@ DT = 1.0 / CONTROL_FREQUENCY_HZ
 
 TRAIL_LEN = 50        # past des_zmp samples to trail behind the current point, in control ticks
 PLAYBACK_STRIDE = 10  # animate every Nth control tick (10 -> 50 Hz update rate, real-time playback)
+
+# Pre-roll: the ticks before X closed the loop, where only the flag panel has
+# anything to show (no ZMP/CoM/foot logs exist yet). Played sped up, since it is
+# just the operator taking their time between button presses.
+PREROLL_SPEEDUP = 10  # pre-roll playback speed relative to the closed-loop part
+PREROLL_LEAD_S = 1.0  # start the pre-roll this long before the first button press
+
+# Gamepad-activated modes, in the column order of control_flags.txt
+# (WalkingManager.cpp LOGS block; buttons handled in main.cpp handle_gamepad).
+CONTROL_FLAG_LABELS = ('EKF (A)', 'closed loop (X)', 'observer (B)')
 
 WALKING_STATE_NAMES = {  # include/WalkingState.hpp enum order
     0: 'Init', 1: 'PostureRegulation', 2: 'Standing', 3: 'Starting',
@@ -156,6 +190,13 @@ def load_data(folder: Path, end_s):
     kf_com = _load('kf_com_position.txt', 3)   # CoM from the LIP Kalman filter (com_kf_step)
     des_com = _load('des_com_position.txt', 3)  # CoM from the PLIP integration (des_LipState.com_pos_)
 
+    # Optional, and on a timeline of its own: control_flags is logged by the main
+    # loop (main.cpp) from the very first tick, whereas every channel above only
+    # starts once X closed the loop.  Column 3 marks the main-loop ticks that do
+    # have a row in those logs, which is what lines the two timelines up below —
+    # so it must NOT be truncated to their length here.
+    control_flags = _load('control_flags.txt', 4)
+
     fields = (
         ('des_zmp_position.txt', des_zmp),
         ('ef_zmp_position.txt', est_zmp),
@@ -174,10 +215,14 @@ def load_data(folder: Path, end_s):
     if missing:
         return None, missing
 
+    if control_flags is not None and control_flags.shape[1] < 4:
+        control_flags = None  # pre-4-column format: no way to align the timelines
+
     n = min(len(v) for _, v in fields)
     if end_s is not None:
         n = min(n, int(end_s * CONTROL_FREQUENCY_HZ))
     return dict(
+        control_flags=control_flags,
         des_zmp=des_zmp[:n], est_zmp=est_zmp[:n], kf_com=kf_com[:n], des_com=des_com[:n],
         box_center=box_center[:n], box_yaw=box_yaw[:n],
         p_lsole_des=p_lsole_des[:n], p_rsole_des=p_rsole_des[:n],
@@ -219,11 +264,49 @@ def main() -> None:
     lsole_yaw, rsole_yaw = data['lsole_yaw'], data['rsole_yaw']
     contact_flags, walking_state = data['contact_flags'], data['walking_state']
     est_zmp, kf_com, des_com = data['est_zmp'], data['kf_com'], data['des_com']
+    control_flags = data['control_flags']
+    if control_flags is None:
+        print("[warn] control_flags.txt not found (or in the old 3-column format): the EKF / "
+              "closed-loop / observer flag panel is disabled (it needs a run recorded after "
+              "that logging was added to the main loop in main.cpp).")
+
+    # control_flags is indexed by main-loop tick, everything else by WalkingManager
+    # tick. wbc_ticks[k] is the main-loop tick that produced log row k, so the two
+    # are read through it. Ticks before wbc_ticks[0] are the pre-roll: the loop is
+    # still open, so only the flag panel has data.
+    wbc_ticks, preroll_ticks = None, []
+    if control_flags is not None:
+        wbc_ticks = np.flatnonzero(control_flags[:, 3] > 0.5)
+        if len(wbc_ticks) > 0 and n - len(wbc_ticks) == 1:
+            # The run was stopped in the middle of its last tick: WalkingManager had
+            # already logged that tick, but the main loop never reached the
+            # control_flags log at the end of it. Both logs append in tick order,
+            # so the extra row can only be that final one — drop it.
+            print(f"[info] the last tick was interrupted mid-way (WalkingManager logs have "
+                  f"{n} rows, control_flags marks {len(wbc_ticks)}): dropping that tick.")
+            n = len(wbc_ticks)
+        if len(wbc_ticks) < n:
+            print(f"[warn] control_flags.txt marks {len(wbc_ticks)} closed-loop ticks but the "
+                  f"WalkingManager logs have {n} rows — the flag panel is disabled, since the "
+                  "two logs are not from the same run.")
+            control_flags, wbc_ticks = None, None
+        else:
+            wbc_ticks = wbc_ticks[:n]
+            pre_end = int(wbc_ticks[0])
+            pressed = np.any(control_flags[:pre_end, :3] > 0.5, axis=1)
+            first_press = int(np.argmax(pressed)) if pressed.any() else pre_end
+            lead = int(PREROLL_LEAD_S * CONTROL_FREQUENCY_HZ)
+            preroll_ticks = list(range(max(0, first_press - lead), pre_end,
+                                       PLAYBACK_STRIDE * PREROLL_SPEEDUP))
 
     frame_indices = list(range(0, n, PLAYBACK_STRIDE))
     if not frame_indices:
         print(f'[skip] No samples to animate in {folder}.')
         return
+
+    # One flat playlist: the open-loop pre-roll (main-loop ticks) followed by the
+    # closed-loop part (WalkingManager ticks).
+    frames = [('pre', i) for i in preroll_ticks] + [('wbc', k) for k in frame_indices]
 
     # Fixed viewport spanning the whole ZMP trajectory, every box corner, and every foot corner.
     box_corners_all = np.array([
@@ -241,7 +324,15 @@ def main() -> None:
     xlim = (all_xy[:, 0].min() - margin, all_xy[:, 0].max() + margin)
     ylim = (all_xy[:, 1].min() - margin, all_xy[:, 1].max() + margin)
 
-    fig, ax = plt.subplots(figsize=(7.5, 7.5))
+    # The plot area keeps the whole axes to itself: flags, readout and legend all
+    # live in a side panel (an axes with no frame), so that nothing is drawn on
+    # top of the feet, the box or the support polygon.
+    fig = plt.figure(figsize=(12.5, 8.0))
+    grid = fig.add_gridspec(1, 2, width_ratios=[3.0, 1.25], wspace=0.04,
+                            left=0.06, right=0.985, top=0.93, bottom=0.07)
+    ax = fig.add_subplot(grid[0, 0])
+    side = fig.add_subplot(grid[0, 1])
+    side.axis('off')
     ax.set_xlim(*xlim)
     ax.set_ylim(*ylim)
     ax.set_aspect('equal')
@@ -284,11 +375,37 @@ def main() -> None:
     (des_com_point,) = ax.plot([], [], marker='P', markersize=10, linestyle='', color='tab:cyan',
                                markeredgecolor='black', zorder=7)
 
-    info_text = ax.text(
-        0.02, 0.98, '', transform=ax.transAxes, ha='left', va='top', fontsize=10,
-        bbox=dict(boxstyle='round', facecolor='white', alpha=0.85)
+    # Side panel, top to bottom: flag badges, numeric readout, legend.
+    # These sit slightly inside the panel and draw unclipped: Axes.text() clips
+    # its artists to the axes rectangle, which would otherwise cut the rounded
+    # box of anything anchored flush against the left edge.
+    # PANEL_TOP leaves room above the first badge for its rounded box, which is
+    # drawn outside the text's own anchor point.
+    PANEL_LEFT = 0.02
+    PANEL_TOP = 0.96
+
+    # Gamepad-activated modes: one badge per flag, greyed out until the tick at
+    # which the corresponding button was pressed, green with a check mark after.
+    flag_texts = []
+    if control_flags is not None:
+        for i in range(len(CONTROL_FLAG_LABELS)):
+            flag_texts.append(side.text(
+                PANEL_LEFT, PANEL_TOP - 0.055 * i, '', transform=side.transAxes,
+                ha='left', va='top', fontsize=11, fontweight='bold', family='DejaVu Sans',
+                bbox=dict(boxstyle='round,pad=0.45', facecolor='0.92', edgecolor='0.6', alpha=0.9)
+            ))
+
+    # Monospaced, so that the numbers stay in column as they change.
+    info_text = side.text(
+        PANEL_LEFT, PANEL_TOP - 0.055 * len(flag_texts) - 0.03, '', transform=side.transAxes,
+        ha='left', va='top', fontsize=9, family='DejaVu Sans Mono', linespacing=1.5,
+        bbox=dict(boxstyle='round,pad=0.5', facecolor='white', edgecolor='0.8', alpha=0.95)
     )
-    title_text = ax.text(0.5, 1.02, '', transform=ax.transAxes, ha='center', va='bottom', fontsize=12)
+
+    for text_artist in flag_texts + [info_text]:
+        text_artist.set_clip_on(False)
+    title_text = ax.text(0.5, 1.02, '', transform=ax.transAxes, ha='center', va='bottom',
+                         fontsize=12)
 
     legend_handles = [
         mpatches.Patch(facecolor='tab:red', edgecolor='tab:red', alpha=0.2, label='ZMP admissible box (moving box)'),
@@ -308,14 +425,53 @@ def main() -> None:
         mpatches.Patch(facecolor='tab:orange', edgecolor='black', alpha=0.5, label='Right foot (support, des.)'),
         Line2D([0], [0], color='black', linewidth=1.8, label='Support polygon (double support)'),
     ]
-    ax.legend(handles=legend_handles, loc='lower right', fontsize=8)
-
     all_artists = [box_patch, left_foot_patch, right_foot_patch, support_polygon_line,
                    trail_line, zmp_point, est_trail_line, est_zmp_point, com_trail_line, com_point,
-                   des_com_trail_line, des_com_point, info_text, title_text]
+                   des_com_trail_line, des_com_point, info_text, title_text] + flag_texts
+
+    # Artists with nothing to show before the loop is closed (their logs start at
+    # wbc_ticks[0]); the foot patches and the support polygon are left out because
+    # their visibility is already decided per frame by the contact flags.
+    trajectory_artists = [box_patch, trail_line, zmp_point, est_trail_line, est_zmp_point,
+                          com_trail_line, com_point, des_com_trail_line, des_com_point]
+
+    def update_flag_panel(main_tick):
+        for i, flag_text in enumerate(flag_texts):
+            active = control_flags[main_tick, i] > 0.5
+            flag_text.set_text(f"{'✓' if active else '✗'}  {CONTROL_FLAG_LABELS[i]}")
+            flag_text.set_color('tab:green' if active else '0.45')
+            patch = flag_text.get_bbox_patch()
+            patch.set_facecolor('#dff2df' if active else '0.92')
+            patch.set_edgecolor('tab:green' if active else '0.6')
+
+    def draw_preroll_frame(main_tick):
+        """A tick before X: the flag panel is the only thing with data."""
+        for artist in trajectory_artists:
+            artist.set_visible(False)
+        left_foot_patch.set_visible(False)
+        right_foot_patch.set_visible(False)
+        support_polygon_line.set_visible(False)
+        update_flag_panel(main_tick)
+        info_text.set_text(
+            f"t     {main_tick * DT:8.3f} s\n"
+            f"tick  {main_tick} (open loop)\n"
+            "\n"
+            "waiting for the closed\n"
+            "loop (X): no ZMP/CoM/\n"
+            "foot logs yet\n"
+            "\n"
+            f"pre-roll at {PREROLL_SPEEDUP}x speed"
+        )
+        title_text.set_text("Waiting for the gamepad to close the loop")
+        return all_artists
 
     def draw_frame(frame_idx):
-        k = frame_indices[frame_idx]
+        phase, k = frames[frame_idx]
+        if phase == 'pre':
+            return draw_preroll_frame(k)
+        for artist in trajectory_artists:
+            artist.set_visible(True)
+
         center = box_center[k, :2]
         yaw = box_yaw[k]
         zmp = des_zmp[k, :2]
@@ -366,33 +522,59 @@ def main() -> None:
         else:
             support_polygon_line.set_visible(False)
 
+        if control_flags is not None:
+            update_flag_panel(int(wbc_ticks[k]))
+
+        # Main-loop clock, so that time runs continuously across the pre-roll.
+        t_now = (wbc_ticks[k] if wbc_ticks is not None else k) * DT
         state_name = WALKING_STATE_NAMES.get(int(walking_state[k]), 'Unknown')
+        # Short lines, one quantity each: the side panel is narrow, and the
+        # numbers are easier to compare stacked than run together on one line.
         info_text.set_text(
-            f"t = {k * DT:.3f} s (tick {k}/{n - 1})\n"
-            f"walking state = {state_name}\n"
-            f"des. ZMP = ({zmp[0]:.3f}, {zmp[1]:.3f}) m — {'INSIDE' if inside else 'OUTSIDE'} box\n"
-            f"est. ZMP = ({est[0]:.3f}, {est[1]:.3f}) m — {'INSIDE' if est_inside else 'OUTSIDE'} box\n"
-            f"|des - est| = {np.linalg.norm(zmp - est) * 1000:.1f} mm\n"
-            f"des. CoM (PLIP) = ({dcom[0]:.3f}, {dcom[1]:.3f}) m\n"
-            f"CoM (KF) = ({com[0]:.3f}, {com[1]:.3f}) m — |des - KF| = "
-            f"{np.linalg.norm(dcom - com) * 1000:.1f} mm\n"
-            f"box center = ({center[0]:.3f}, {center[1]:.3f}) m, yaw = {np.degrees(yaw):.1f} deg\n"
-            f"box size = {BOX_LENGTH:.2f} x {BOX_WIDTH:.2f} m"
+            f"t     {t_now:8.3f} s\n"
+            f"tick  {k}/{n - 1}\n"
+            f"state {state_name}\n"
+            "\n"
+            f"des. ZMP  {zmp[0]:6.3f} {zmp[1]:6.3f}  {'IN' if inside else 'OUT':>3}\n"
+            f"est. ZMP  {est[0]:6.3f} {est[1]:6.3f}  {'IN' if est_inside else 'OUT':>3}\n"
+            f"|des-est| {np.linalg.norm(zmp - est) * 1000:6.1f} mm\n"
+            "\n"
+            f"des. CoM  {dcom[0]:6.3f} {dcom[1]:6.3f}\n"
+            f"KF   CoM  {com[0]:6.3f} {com[1]:6.3f}\n"
+            f"|des-KF|  {np.linalg.norm(dcom - com) * 1000:6.1f} mm\n"
+            "\n"
+            f"box cent. {center[0]:6.3f} {center[1]:6.3f}\n"
+            f"box yaw   {np.degrees(yaw):6.1f} deg\n"
+            f"box size  {BOX_LENGTH:.2f} x {BOX_WIDTH:.2f} m"
         )
-        title_text.set_text("Desired (PLIP) / estimated (RB-WO) ZMP and desired (PLIP) / KF CoM "
+        title_text.set_text("Desired (PLIP) / estimated (RB-WO) ZMP and desired (PLIP) / KF CoM\n"
                             "vs. ZMP box and support foot/feet")
 
         return all_artists
+
+    # The legend goes right under the readout, whose height depends on how many
+    # lines of text it holds — so fill it in, let the figure lay itself out, and
+    # measure where it actually ends before anchoring the legend below it. The
+    # closed-loop readout is the taller of the two, so measure that one, not the
+    # pre-roll frame the animation happens to open on.
+    draw_frame(min(len(preroll_ticks), len(frames) - 1))
+    fig.canvas.draw()
+    info_bottom = side.transAxes.inverted().transform(
+        (0.0, info_text.get_window_extent().y0))[1]
+    side.legend(handles=legend_handles, loc='upper left',
+                bbox_to_anchor=(0.0, info_bottom - 0.04),
+                fontsize=8.5, borderaxespad=0.0, labelspacing=0.7, handlelength=2.2,
+                framealpha=0.95)
 
     state = {'idx': 0}
 
     def update(_frame):
         idx = state['idx']
         artists = draw_frame(idx)
-        state['idx'] = (idx + 1) % len(frame_indices)
+        state['idx'] = (idx + 1) % len(frames)
         return artists
 
-    ani = FuncAnimation(fig, update, frames=len(frame_indices), init_func=lambda: draw_frame(0),
+    ani = FuncAnimation(fig, update, frames=len(frames), init_func=lambda: draw_frame(0),
                         interval=PLAYBACK_STRIDE * DT * 1000.0, blit=True, repeat=True)
 
     running = [True]
@@ -402,7 +584,7 @@ def main() -> None:
         if running[0]:
             ani.event_source.stop()
             running[0] = False
-        state['idx'] = (state['idx'] + delta) % len(frame_indices)
+        state['idx'] = (state['idx'] + delta) % len(frames)
         draw_frame(state['idx'])
         fig.canvas.draw_idle()
 
@@ -417,12 +599,13 @@ def main() -> None:
             step(-1)
     fig.canvas.mpl_connect('key_press_event', on_key)
 
-    print(f"[INFO] {len(frame_indices)} frames (stride={PLAYBACK_STRIDE}, "
+    preroll_note = (f"{len(preroll_ticks)} open-loop pre-roll frames at {PREROLL_SPEEDUP}x + "
+                    if preroll_ticks else "")
+    print(f"[INFO] {preroll_note}{len(frame_indices)} frames (stride={PLAYBACK_STRIDE}, "
           f"{n} total ticks @ {CONTROL_FREQUENCY_HZ:.0f} Hz) loaded from {folder} — "
           "space: pause/resume, left/right arrows: step, "
           "use the toolbar below the plot to zoom/pan.")
-    plt.tight_layout()
-    plt.show()
+    plt.show()  # no tight_layout: the margins are set on the gridspec above
 
 
 if __name__ == '__main__':

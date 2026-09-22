@@ -28,18 +28,20 @@ const std::array<float, G1_NUM_MOTOR> Kp_cl{
     
     150, 150, 150, 200, 40, 40,    // left leg
     150, 150, 150, 200, 40, 40,    // right leg
-    100, 100, 100,                // waist
+    100, 100, 100,                // waist 
     100, 100, 100, 15,  10, 10, 10,   // left arm
     100, 100, 100, 15,  10, 10, 10   // right arm
     
+    
 
     /*
-    20, 20, 20, 30, 20, 20,      // left leg
-    20, 20, 20, 30, 20, 20,      // right leg
-    10,  10,  10,                     // waist yaw/roll/pitch
-    10, 10, 10, 10,  2, 2, 2,   // left arm
-    10, 10, 10, 10,  2, 2, 2    // right arm
+    40, 40, 40, 40, 30, 30,      // left leg
+    40, 40, 40, 40, 30, 30,      // right leg
+    70,  70,  70,                     // waist yaw/roll/pitch
+    20, 20, 20, 20,  5, 5, 5,   // left arm
+    20, 20, 20, 20,  5, 5, 5    // right arm
     */
+    
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
@@ -73,6 +75,7 @@ const std::array<float, G1_NUM_MOTOR> Kd_cl{
     10, 10, 10,
     10, 10, 10, 2, 2, 2, 2,
     10, 10, 10, 2, 2, 2, 2
+    
     
 };
 
