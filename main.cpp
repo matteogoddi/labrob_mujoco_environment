@@ -53,6 +53,25 @@ bool curve = false;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
+// ── Per-joint velocity safety threshold (rad/s) ───────────────────────────────
+// Default for every joint; the ankle rolls are the only exception.  At every
+// DS->SS switch the WBC contact set changes in a single tick and the feedforward
+// on the new support ankle roll steps by ~8 Nm: that joint gets kicked to
+// ~1.7 rad/s raw (~1.0 rad/s after the EMA) for a few ms and then settles on its
+// own.  No other joint goes past 0.7 rad/s, so a single threshold ends up being
+// tuned on those two.  3.0 rad/s is still 10% of their URDF velocity limit (30).
+static constexpr double default_joint_vel_safety_limit = 1.5;
+static const std::map<std::string, double> joint_vel_safety_limit = {
+    {"left_ankle_roll_joint",  3.0},
+    {"right_ankle_roll_joint", 3.0},
+};
+
+static double vel_safety_limit_of(const std::string& jname) {
+    const auto it = joint_vel_safety_limit.find(jname);
+    return (it == joint_vel_safety_limit.end()) ? default_joint_vel_safety_limit
+                                                : it->second;
+}
+
 using Clock = std::chrono::steady_clock;
 
 // ── Experiment duration bookkeeping ───────────────────────────────────────────
@@ -289,13 +308,15 @@ static void send_dds_command(
         int jid = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
+            const double vel_limit = vel_safety_limit_of(jname);
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
-                std::abs(robot_state.joint_state[jname].vel) > 0.8   || // safe 1.0
-                std::abs(joint_command[jname]) > 45.0) {                // safe 40.0
+                std::abs(robot_state.joint_state[jname].vel) > vel_limit ||
+                std::abs(joint_command[jname]) > 50.0) {                // safe 40.0
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
-                          << " tau=" << joint_command[jname] 
+                          << " (dq limit " << vel_limit << ")"
+                          << " tau=" << joint_command[jname]
                           << " at time t = " << t_s << std::endl;
                 signalHandler(SIGINT);
             }
@@ -786,8 +807,8 @@ int main(const int argc, const char* argv[]) {
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                                 // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
                                 q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                dq_ref_joints[i] = 0;
-                                // dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                                // dq_ref_joints[i] = 0;
+                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
 
                                 if (std::abs(q_ref_joints[i] - robot_state.joint_state.at(jname).pos) > 1.0) {
                                     std::cout << "Reference joint pos update term saturated" << std::endl;

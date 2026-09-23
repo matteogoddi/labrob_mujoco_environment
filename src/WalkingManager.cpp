@@ -574,7 +574,7 @@ WalkingManager::update(
         robot_data,
         q,
         qdot,
-        whole_body_controller_ptr_->get_q_ddot()        // APPROX: acceleration from WBC, not from state
+        Eigen::VectorXd::Zero(njnt + 6) // whole_body_controller_ptr_->get_q_ddot()        // APPROX: acceleration from WBC, not from state
     );
     
     L_dot_ = robot_data.dhg.angular();
@@ -706,7 +706,7 @@ WalkingManager::update(
     // From RB-WO    
     Eigen::Vector3d ef_zmp_3d = Eigen::Vector3d::Zero();
 
-    if (total_force.z() > 1e-5 && t_obs_msec_ >= 2000) {
+    if (total_force.z() > 1e-5 && t_obs_msec_ >= 2000 && false) {
 
         // SECOND FORMULA FOR ZMP POSITION WITH FORCE ESTIMATION WITH 1 CONTACT POINT PER FOOT
 
@@ -1246,15 +1246,15 @@ WalkingManager::update(
                 //                         + 0.5 * dt * dt * (des_acc_com_ - Kd * des_LipState.com_vel_ + K * (zmp_ref - des_LipState.zmp_pos_));
 
                 // DCM-based stabilizer
-            //     Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
-            //     Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
-            //     const double Kz = 3.0;
-            //     const double Kzm = 2.0;
-            //     Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); // + Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
-            //    p_z_ref.z() = des_LipState.zmp_pos_.z();           // <-- unica riga che serve per togliere la z
+                Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
+                Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
+                const double Kz = 3.0;
+                const double Kzm = 2.0;
+                Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); // + Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
+                p_z_ref.z() = des_LipState.zmp_pos_.z();           // <-- unica riga che serve per togliere la z
                
-            //    // relazione PLIP esatta: p̈_c = η²(p_c − p_z) + w, coerente con l'integrazione dell'MPC
-            //    p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
+               // relazione PLIP esatta: p̈_c = η²(p_c − p_z) + w, coerente con l'integrazione dell'MPC
+               p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
 
                 
             }
@@ -1341,8 +1341,8 @@ WalkingManager::update(
     } else {
 
         // Regular closed-loop IS-MPC
-        desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
-                                       + discrete_plip_dynamics_ptr_->get_disturbance();
+        // desired_gait_configuration.com.acc = eta2 * (des_LipState.com_pos_ - des_LipState.zmp_pos_)
+        //                                + discrete_plip_dynamics_ptr_->get_disturbance();
 
 
         // Open-loop IS-MPC with P stabilization
@@ -1361,7 +1361,7 @@ WalkingManager::update(
 
 
         // Open-loop IS-MPC with DCM-based stabilization
-        // desired_gait_configuration.com.acc = p_c_ddot_ref;
+        desired_gait_configuration.com.acc = p_c_ddot_ref;
         
     }
 
@@ -1505,6 +1505,8 @@ WalkingManager::update(
         }
     } // end of parallel sections
     auto end_wbc = std::chrono::system_clock::now();
+    // int wbc_status = whole_body_controller_ptr_->wbc_solver_status();
+    // std::cout << "[WBC] status = " << wbc_status << std::endl;
 
     /////////////////////////////////////
     // END WHOLE BODY CONTROLLER FUNCTION CALL
