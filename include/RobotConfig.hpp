@@ -196,3 +196,60 @@ const std::map<std::string, double> joint_initial_positions = {
     {"right_wrist_pitch_joint",     0.0},
     {"right_wrist_yaw_joint",       0.0},
 };
+
+// Initial joint configuration for the object-carrying demo (radians).
+// Lower body and waist are identical to joint_initial_positions: only the arms
+// change, so that the two hands can hold an object in front of the torso.
+// The arm angles are built so that the carrying posture is "clean":
+//   - shoulder_pitch + elbow = 0.5 rad -> the forearms point forward and
+//     slightly downward. Keeping them perfectly horizontal would be the natural
+//     choice, but it pushes the hands about 10 cm further in front of the
+//     pelvis, and the resulting lever arm of the payload makes single support
+//     hard to balance: the robot loses balance on the first steps. Holding the
+//     object closer, as a person would, is what makes the demo walk;
+//   - wrist_pitch = -(shoulder_pitch + elbow) -> it cancels the forearm tilt, so
+//     the palms stay vertical and face each other, which is the orientation
+//     needed to hold a box sideways;
+//   - shoulder_roll = wrist_roll = 0. Opening the shoulders a little and closing
+//     the wrists by the same amount looks more natural and widens the grip, but
+//     those two joints are almost a null-space pair: rotating one and counter-
+//     rotating the other barely moves the hand, so the wrist task does not see
+//     it and only the (weak) postural task opposes it. With an object in the
+//     hands the load drives exactly that direction, the shoulders splay by more
+//     than 20 deg and the box ends up carried 15 deg askew. Leaving both at zero
+//     removes the pair from the posture and the arms stay where they are put.
+//     The price is a narrower grip: the hands end up ~28 cm apart.
+// This map is the single place where the carrying posture is defined: the HAC
+// rest positions r_i_bar and the WBC postural reference are both derived from
+// the measured initial configuration, so they follow it automatically.
+const std::map<std::string, double> joint_initial_positions_object = {
+    {"left_hip_pitch_joint",       -0.44},
+    {"left_hip_roll_joint",         0.04},
+    {"left_hip_yaw_joint",          0.0},
+    {"left_knee_joint",             0.95},
+    {"left_ankle_pitch_joint",     -0.50},
+    {"left_ankle_roll_joint",       0.0},
+    {"right_hip_pitch_joint",      -0.44},
+    {"right_hip_roll_joint",       -0.04},
+    {"right_hip_yaw_joint",         0.0},
+    {"right_knee_joint",            0.95},
+    {"right_ankle_pitch_joint",    -0.50},
+    {"right_ankle_roll_joint",      0.0},
+    {"waist_yaw_joint",             0.0},
+    {"waist_roll_joint",            0.0},
+    {"waist_pitch_joint",           0.0},
+    {"left_shoulder_pitch_joint",  -0.10},
+    {"left_shoulder_roll_joint",    0.00},
+    {"left_shoulder_yaw_joint",     0.0},
+    {"left_elbow_joint",            0.60},
+    {"left_wrist_roll_joint",       0.00},
+    {"left_wrist_pitch_joint",     -0.50},
+    {"left_wrist_yaw_joint",        0.0},
+    {"right_shoulder_pitch_joint", -0.10},
+    {"right_shoulder_roll_joint",   0.00},
+    {"right_shoulder_yaw_joint",    0.0},
+    {"right_elbow_joint",           0.60},
+    {"right_wrist_roll_joint",       0.00},
+    {"right_wrist_pitch_joint",    -0.50},
+    {"right_wrist_yaw_joint",       0.0},
+};

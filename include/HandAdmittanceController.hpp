@@ -110,6 +110,24 @@ public:
         const Eigen::Matrix3d& R_F
     );
 
+    /**
+     * Set the rest forces f_i_bar (world frame) after construction.
+     *
+     * f_i_bar is the force the hand is expected to feel when the admittance is
+     * at rest: with an object held in both hands this is NOT zero but the share
+     * of the object weight carried by hand i, i.e. (0, 0, -m_obj*g/2) with the
+     * usual convention (force exerted ON the robot). Leaving it at zero would
+     * make the static weight of the object a permanent force error and the
+     * admittance would settle with the hands sagging by f_bar_z / K_z.
+     *
+     * @param f_l_bar_W  Rest force on left hand in WORLD frame [N]
+     * @param f_r_bar_W  Rest force on right hand in WORLD frame [N]
+     */
+    void setRestForces(
+        const Eigen::Vector3d& f_l_bar_W,
+        const Eigen::Vector3d& f_r_bar_W
+    );
+
     // --- Outputs for WBC (world frame) ---
 
     Eigen::Vector3d getLeftHandRef()     const;  ///< r_l*   (world)

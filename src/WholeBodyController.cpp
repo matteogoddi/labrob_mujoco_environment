@@ -195,6 +195,9 @@ WholeBodyController::WholeBodyController(
   Jra_             = Eigen::MatrixXd::Zero(6, nj);
   J_lsole_des_     = Eigen::MatrixXd::Zero(6, nv);
   J_rsole_des_     = Eigen::MatrixXd::Zero(6, nv);
+  // Wrist Jacobians at the desired trajectory, for the external-load feedforward
+  J_lwrist_des_    = Eigen::MatrixXd::Zero(6, nv);
+  J_rwrist_des_    = Eigen::MatrixXd::Zero(6, nv);
   M_inertia_des_   = Eigen::MatrixXd::Zero(nv, nv);
   A_acc_wbc_       = Eigen::MatrixXd::Zero(12, nv);
   b_acc_wbc_       = Eigen::VectorXd::Zero(12);
@@ -461,6 +464,16 @@ WholeBodyController::compute_inverse_dynamics(
   b_wbc_.segment(12, 3*nc)    = b_no_contact_;
   b_wbc_.tail(6)              = -cu_;
 
+  // External hand loads in the unactuated (floating-base) dynamics:
+  //   Mu*qddot + cu = Jlu^T*wl + Jru^T*wr + Jlw_u^T*w_l_ext + Jrw_u^T*w_r_ext
+  // Moved to the right-hand side, they add + J_wrist_base^T * w_ext to b, with
+  // the linear rows of the Jacobian carrying the force and the angular rows the
+  // moment. Zero unless set_external_wrist_forces() has been called.
+  b_wbc_.tail(6).noalias() += J_lwrist_.topRows<3>().leftCols(6).transpose()    * f_lwrist_ext_;
+  b_wbc_.tail(6).noalias() += J_rwrist_.topRows<3>().leftCols(6).transpose()    * f_rwrist_ext_;
+  b_wbc_.tail(6).noalias() += J_lwrist_.bottomRows<3>().leftCols(6).transpose() * m_lwrist_ext_;
+  b_wbc_.tail(6).noalias() += J_rwrist_.bottomRows<3>().leftCols(6).transpose() * m_rwrist_ext_;
+
   // C_wbc: update only friction blocks (C_acc block set in constructor)
   for (int i = 0; i < nc; ++i) {
     C_force_left_.block(4*i, 3*i, 4, 3).noalias()  = C_force_block_ * current.lsole.pos.R.transpose();
@@ -517,6 +530,10 @@ WholeBodyController::compute_inverse_dynamics(
   pinocchio::computeJointJacobians(robot_model, robot_data, q_id);
   pinocchio::getFrameJacobian(robot_model, robot_data, lsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_lsole_des_);
   pinocchio::getFrameJacobian(robot_model, robot_data, rsole_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_rsole_des_);
+  // Wrist Jacobians at the desired trajectory, used below to turn the external
+  // hand loads into a feedforward torque (see set_external_wrist_forces())
+  pinocchio::getFrameJacobian(robot_model, robot_data, lwrist_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_lwrist_des_);
+  pinocchio::getFrameJacobian(robot_model, robot_data, rwrist_idx_, pinocchio::LOCAL_WORLD_ALIGNED, J_rwrist_des_);
 
   M_inertia_des_ = pinocchio::crba(robot_model, robot_data, q_id);
   M_inertia_des_.triangularView<Eigen::StrictlyLower>() =
@@ -563,6 +580,14 @@ WholeBodyController::compute_inverse_dynamics(
   const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
       - Jla_.transpose() * left_foot_wrench_
       - Jra_.transpose() * right_foot_wrench_
+      // Gravity/load compensation of the external hand wrenches: the actuated
+      // rows of the dynamics read Ma*qddot + ca = tau + Jc^T*w + Jw_a^T*w_ext,
+      // so the payload held by the hands must be subtracted from the feedforward
+      // torque. Zero unless set_external_wrist_forces() has been called.
+      - J_lwrist_des_.topRows<3>().rightCols(nj).transpose()    * f_lwrist_ext_
+      - J_rwrist_des_.topRows<3>().rightCols(nj).transpose()    * f_rwrist_ext_
+      - J_lwrist_des_.bottomRows<3>().rightCols(nj).transpose() * m_lwrist_ext_
+      - J_rwrist_des_.bottomRows<3>().rightCols(nj).transpose() * m_rwrist_ext_
       + Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj))
       + Kp * (q_full_des_.tail(nj) - q.tail(nj));
       

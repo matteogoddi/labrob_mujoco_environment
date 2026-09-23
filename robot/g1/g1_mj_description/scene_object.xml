@@ -1,0 +1,75 @@
+<mujoco model="unitreeg1 carried object scene">
+
+  <!-- Scene of the carried-object experiment (main_object.cpp).
+       Same robot and same ground as stair_steps.xml, plus a free body held by
+       the two hands. -->
+
+  <include file="g1_29dof_with_hand_rev_1_0.xml"/>
+
+  <statistic center="1.0 0.7 1.0" extent="0.8"/>
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.1 0.1 0.1" specular="0.9 0.9 0.9"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="-140" elevation="-20"/>
+  </visual>
+  <asset>
+    <texture type="skybox" builtin="flat" rgb1="0 0 0" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    <hfield name="hf1" size="5 5 0.01 0.01" file="texture/heightmap.png" />
+  </asset>
+
+  <worldbody>
+    <light pos="1 0 3.5" dir="0 0 -1" directional="true"/>
+    <geom name="floor1" pos="0 0 0" type="hfield" condim="3" conaffinity="15" hfield="hf1" friction=".8 .1 .1" priority="1" material="groundplane" />
+
+    <!-- Object carried by the robot.
+         pos/size/mass here are only placeholders: main_object.cpp overwrites
+         the half-sizes and the mass (kObjectHalfSize / kObjectMass) and places
+         the body between the two palms at startup, so the dimensions and the
+         weight of the experiment are defined in one single place, in C++.
+         contype/conaffinity = 0: the object never collides, it is held purely
+         by the two weld constraints below. Without this, the box would fight
+         against the (spring-driven, unactuated) fingers it overlaps with. -->
+    <body name="carried_object" pos="0.30 0 0.76">
+      <freejoint name="carried_object_joint"/>
+      <geom name="carried_object_geom" type="box" size="0.09 0.12 0.09"
+            mass="2.0" rgba="0.75 0.45 0.15 1"
+            contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+
+  <!-- Grasp: the object is welded to both hands, which is the two-handed
+       equivalent of a firm grip and is what transmits to the arms both the
+       weight of the object and the force applied to it. The closed fingers are
+       what the grasp looks like; this is what the grasp does.
+
+       Both the anchor point and the relative pose of each weld are recomputed
+       at runtime by main_object.cpp, for two reasons. MuJoCo bakes the relative
+       pose from the model reference configuration qpos0, which is NOT the
+       carrying posture the experiment starts from; and the anchor has to sit in
+       the palm rather than at the origin of the wrist body, otherwise the box
+       hangs 10 cm off the axis joining the two anchors and its own weight rocks
+       it around the wrists.
+
+       torquescale stays at 1, i.e. the weld also constrains the orientation of
+       the object. Without it the box is held at two points only and is free to
+       spin about the axis joining them: gravity does not drive that rotation
+       (the centre of mass lies on the axis) but nothing damps it either, and
+       the box ends up tumbling by tens of degrees as the arms move.
+
+       solref is softer than the 0.02 s default because the two anchors sit ~14
+       cm out on either side of the object while the solver sizes the constraint
+       from the inertia at its centre of mass. The effective inertia it sees is
+       several times too large, and at the default stiffness the grasp blows up
+       in the first second. 0.05 s is still stiff enough that the object follows
+       the hands within a degree. -->
+
+  <equality>
+    <weld name="grasp_left"  body1="carried_object" body2="left_wrist_yaw_link"
+          solref="0.05 1" solimp="0.9 0.95 0.001" torquescale="1"/>
+    <weld name="grasp_right" body1="carried_object" body2="right_wrist_yaw_link"
+          solref="0.05 1" solimp="0.9 0.95 0.001" torquescale="1"/>
+  </equality>
+
+</mujoco>

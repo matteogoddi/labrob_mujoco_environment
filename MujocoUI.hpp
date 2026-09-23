@@ -154,6 +154,42 @@ class MujocoUI {
       glfwPollEvents();
   }
 
+  // Variant used by the carried-object experiment: on top of the two hand
+  // forces it draws (in green) the force applied to the object, which in that
+  // experiment is the actual source of the motion.
+  void renderWithObjectForce(
+      const Eigen::Vector3d& p_lhand,
+      const Eigen::Vector3d& f_lhand,
+      const Eigen::Vector3d& p_rhand,
+      const Eigen::Vector3d& f_rhand,
+      const Eigen::Vector3d& p_object,
+      const Eigen::Vector3d& f_object
+  ) {
+      mjrRect viewport = {0, 0, 0, 0};
+      glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);
+      mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
+
+      float rgba_left[4]   = {0.0f, 0.4f, 1.0f, 0.9f};
+      float rgba_right[4]  = {1.0f, 0.3f, 0.0f, 0.9f};
+      float rgba_object[4] = {0.1f, 0.9f, 0.2f, 0.9f};
+      float scale = 0.05f; // 0.05 m/N -> a 10 N force is drawn 50 cm long
+
+      mjtNum from_l[3] = {p_lhand.x(), p_lhand.y(), p_lhand.z()};
+      mjtNum f_l[3]    = {f_lhand.x(), f_lhand.y(), f_lhand.z()};
+      mjtNum from_r[3] = {p_rhand.x(), p_rhand.y(), p_rhand.z()};
+      mjtNum f_r[3]    = {f_rhand.x(), f_rhand.y(), f_rhand.z()};
+      mjtNum from_o[3] = {p_object.x(), p_object.y(), p_object.z()};
+      mjtNum f_o[3]    = {f_object.x(), f_object.y(), f_object.z()};
+
+      addForceArrow(from_l, f_l, scale, rgba_left);
+      addForceArrow(from_r, f_r, scale, rgba_right);
+      addForceArrow(from_o, f_o, scale, rgba_object);
+
+      mjr_render(viewport, &scn_, &con_);
+      glfwSwapBuffers(window_);
+      glfwPollEvents();
+  }
+
  protected:
   MujocoUI() = default;
 

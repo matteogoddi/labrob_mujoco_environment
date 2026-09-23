@@ -153,6 +153,20 @@ void HandAdmittanceController::reset(
 }
 
 // ---------------------------------------------------------------------------
+
+// Set the rest forces used as reference in the admittance force error
+// R_F^T (f_i - f_i_bar). Used by the object-carrying experiment to declare the
+// static share of the object weight held by each hand, so that simply holding
+// the object produces no admittance motion.
+void HandAdmittanceController::setRestForces(
+    const Eigen::Vector3d& f_l_bar_W,
+    const Eigen::Vector3d& f_r_bar_W
+) {
+    f_l_bar_W_ = f_l_bar_W;
+    f_r_bar_W_ = f_r_bar_W;
+}
+
+// ---------------------------------------------------------------------------
 // Getters
 // ---------------------------------------------------------------------------
 

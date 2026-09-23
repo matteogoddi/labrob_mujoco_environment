@@ -48,6 +48,35 @@ class WalkingManager {
     hac_f_r_W = f_r_W;
   }
 
+  // Declare the static load held by each hand (world frame, force exerted ON
+  // the robot), used by the object-carrying experiment. It sets the HAC rest
+  // forces f_i_bar so that merely holding the object produces no admittance
+  // motion, and enables the compensation of the same load in the WBC inverse
+  // dynamics (the payload is not part of the robot model). Must be called after
+  // init(), which is where the HAC is constructed.
+  //
+  // grip_offset is where the load is actually applied, expressed in the wrist
+  // frame: an object gripped in the palm hangs about 10 cm in front of the
+  // wrist, and that offset turns its weight into a moment on the wrist joints.
+  // Leave it at zero for a load applied at the wrist itself.
+  void setCarriedObjectLoad(
+    const Eigen::Vector3d& f_l_bar_W,
+    const Eigen::Vector3d& f_r_bar_W,
+    const Eigen::Vector3d& grip_offset = Eigen::Vector3d::Zero()
+  ) {
+    hac_ptr_->setRestForces(f_l_bar_W, f_r_bar_W);
+    hand_load_bar_l_ = f_l_bar_W;
+    hand_load_bar_r_ = f_r_bar_W;
+    hand_load_grip_offset_ = grip_offset;
+    compensate_hand_load_ = true;
+  }
+
+  // Estimated external wrist forces (world frame), stacked [left; right].
+  // Exposed for logging/rendering of the carried-object experiment.
+  const Eigen::VectorXd& get_estimated_wrist_forces() const {
+    return estimated_force_wrist;
+  }
+
   void saveLogs();
 
   void update(
@@ -227,6 +256,20 @@ private:
   labrob::Foot hac_last_support_foot_ = labrob::Foot::LEFT; // to detect switch support in HAC
 
   bool hac_wrist_task_was_active_ = false;  ///< previous-tick state of wrist_task_active, to detect activation edge
+
+  ///< true only in the carried-object experiment (see setCarriedObjectLoad()):
+  ///< forwards the estimated wrist forces to the WBC for load compensation.
+  bool compensate_hand_load_ = false;
+
+  ///< Nominal static load held by each hand, declared through
+  ///< setCarriedObjectLoad(). Used as compensation while the wrench observer is
+  ///< still in its transient and has no usable estimate yet.
+  Eigen::Vector3d hand_load_bar_l_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d hand_load_bar_r_ = Eigen::Vector3d::Zero();
+
+  ///< Point of application of that load in the wrist frame (the grip point in
+  ///< the palm), used to turn it into a moment on the wrist.
+  Eigen::Vector3d hand_load_grip_offset_ = Eigen::Vector3d::Zero();
 
 
   // Private memebers RW-BO

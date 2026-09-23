@@ -73,3 +73,24 @@ target_link_libraries(main
   WalkingControllerLibrary
   unitree_sdk2
 )
+
+# Carried-object experiment (simulation only).
+# RobotInterface.cpp is still compiled in because the controller library uses
+# the shared state it defines (stateMutex & friends), not because this
+# executable talks to the robot.
+add_executable(main_object
+  main_object.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/RobotInterface.cpp
+)
+target_include_directories(main_object
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    mujoco::mujoco
+)
+target_link_libraries(main_object
+  glfw
+  mujoco::mujoco
+  pinocchio::pinocchio
+  WalkingControllerLibrary
+  unitree_sdk2
+)

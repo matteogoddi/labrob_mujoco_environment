@@ -1385,6 +1385,30 @@ WalkingManager::update(
           << "\n";
     }
 
+    // Carried-object experiment only: compensate in the inverse dynamics the
+    // weight of the payload held by the hands, which is absent from the robot
+    // model and would otherwise leave the arms sagging by about tau_load/Kp_arm.
+    //
+    // Only the NOMINAL load declared through setCarriedObjectLoad() is fed back,
+    // never the measured one: the estimated wrist force also contains the
+    // reaction of the grasp, and compensating a constraint reaction is positive
+    // feedback (the arm pushes harder, the constraint pushes back harder, the
+    // compensation grows). The varying part of the hand force is what the
+    // admittance controller is for, and it is already accounted for as a
+    // disturbance in the PLIP model used by the MPC.
+    //
+    // The load is gripped in the palm, not at the wrist frame, so it also shows
+    // up as a moment r x f on the wrist joints (r is the grip offset rotated
+    // into the world). Compensating only the force leaves that moment to the
+    // weak postural task, and the wrist pitch gives way by about a radian.
+    if (compensate_hand_load_) {
+        const Eigen::Vector3d r_l = T_lwrist.rotation() * hand_load_grip_offset_;
+        const Eigen::Vector3d r_r = T_rwrist.rotation() * hand_load_grip_offset_;
+        whole_body_controller_ptr_->set_external_wrist_forces(
+            hand_load_bar_l_, hand_load_bar_r_,
+            r_l.cross(hand_load_bar_l_), r_r.cross(hand_load_bar_r_));
+    }
+
     auto start_wbc = std::chrono::system_clock::now();
     #pragma omp parallel sections num_threads(2)
     {

@@ -90,6 +90,36 @@ class WholeBodyController {
       const labrob::GaitConfiguration& desired
   );
 
+  /**
+   * Declare the external wrench currently applied to each hand (world frame,
+   * exerted ON the robot at the wrist frame), so that the inverse dynamics
+   * compensates it.
+   *
+   * The robot model used here does not contain any carried payload, therefore
+   * a load held in the hands is, for the WBC, an unmodelled disturbance: the
+   * feedforward torque is short of J_wrist^T w_ext and the arms settle with a
+   * steady-state droop of roughly tau_load / Kp_arm. Feeding the load back in
+   * closes that gap, both in the floating-base dynamics constraint of the QP
+   * and in the output torque.
+   *
+   * The moments matter as much as the forces whenever the load is not held at
+   * the wrist itself: an object gripped in the palm hangs ~10 cm in front of
+   * the wrist frame, which turns its weight into about 1 N.m on the wrist pitch.
+   * Left out, that torque alone bends the wrist by a radian.
+   *
+   * All four vectors default to zero, so the behaviour of the experiments that
+   * never call this method is unchanged.
+   */
+  void set_external_wrist_forces(const Eigen::Vector3d& f_lwrist_W,
+                                 const Eigen::Vector3d& f_rwrist_W,
+                                 const Eigen::Vector3d& m_lwrist_W = Eigen::Vector3d::Zero(),
+                                 const Eigen::Vector3d& m_rwrist_W = Eigen::Vector3d::Zero()) {
+    f_lwrist_ext_ = f_lwrist_W;
+    f_rwrist_ext_ = f_rwrist_W;
+    m_lwrist_ext_ = m_lwrist_W;
+    m_rwrist_ext_ = m_rwrist_W;
+  }
+
   const Eigen::VectorXd& get_q_ddot() const { return q_ddot_; }
   const Eigen::VectorXd& get_q_dot_des() const { return q_dot_des_; }
   const Eigen::VectorXd& get_q_des() const { return q_des_; }
@@ -141,6 +171,14 @@ class WholeBodyController {
   std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
   Eigen::VectorXd left_foot_wrench_, right_foot_wrench_;
 
+  // External wrench applied to each hand (world frame, exerted ON the robot at
+  // the wrist frame), zero unless set through set_external_wrist_forces(): used
+  // to compensate a payload that is not part of the robot model.
+  Eigen::Vector3d f_lwrist_ext_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d f_rwrist_ext_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d m_lwrist_ext_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d m_rwrist_ext_ = Eigen::Vector3d::Zero();
+
   
   // ── pre-allocated buffers — no malloc in the 1kHz hot path ──────────────
 
@@ -173,6 +211,10 @@ class WholeBodyController {
   // state since they enter the QP's instantaneous floating-base dynamics
   // constraint).
   Eigen::MatrixXd J_lsole_des_, J_rsole_des_;
+  // Wrist Jacobians re-evaluated at the desired trajectory, used to map the
+  // external hand forces into the feedforward torque consistently with
+  // Ma_/ca_/Jla_/Jra_ above (see set_external_wrist_forces()).
+  Eigen::MatrixXd J_lwrist_des_, J_rwrist_des_;
   Eigen::MatrixXd M_inertia_des_;
   Eigen::MatrixXd H_wbc_;
   Eigen::VectorXd f_wbc_;
