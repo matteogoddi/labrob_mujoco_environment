@@ -309,7 +309,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     // the orientation tasks regulate *deviations* from the initial attitude;
     // absolute verticality stays enforced by the CoM/ZMP tasks.
     // Left at identity in simulation, where the model starts upright.
-    if (useRobot) {
+    if (useRobot && false) {
         auto tilt_of = [](const Eigen::Matrix3d& R) {
             return Eigen::Matrix3d(
                 labrob::Rz<double>(std::atan2(R(1, 0), R(0, 0))).transpose() * R
@@ -421,12 +421,12 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     labrob::FootstepPlannerCoop::Params coop_fp;
     coop_fp.F                    = 4;
     coop_fp.T_step_ms            = 2000.0;
-    coop_fp.double_support_ratio = 0.4;
-    coop_fp.step_height          = 0.06;
+    coop_fp.double_support_ratio = 0.7; // 0.4;
+    coop_fp.step_height          = 0.04; // 0.06;
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
     coop_fp.ell = foot_separation;
-    //coop_fp.ell = 0.20;
+    // coop_fp.ell = 0.23;
     std::cout << "Initial foot separation (ell) = " << coop_fp.ell << " m" << std::endl;
     coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
@@ -811,7 +811,7 @@ WalkingManager::update(
     bool coop_planner_ran = false;
 
     if (!coop_walking_triggered_ &&
-        walking_data_.getWalkingState() == WalkingState::Standing &&
+        walking_data_.getWalkingState() == WalkingState::Standing && //true)
         hac_ptr_->isEhAboveThreshold())
     {
         std::cout << "[COOP] Walking triggered at t=" << t_msec_
@@ -1248,13 +1248,14 @@ WalkingManager::update(
                 // DCM-based stabilizer
                 Eigen::Vector3d dcm = kf_LipState.com_pos_ + 1/std::sqrt(eta2) * kf_LipState.com_vel_;
                 Eigen::Vector3d dcm_des = des_LipState.com_pos_ + 1/std::sqrt(eta2) * des_LipState.com_vel_;
-                const double Kz = 3.0;
+                const double Kz = 3.0; // 3.0;
                 const double Kzm = 2.0;
-                Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des); // + Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
+                Eigen::Vector3d p_z_ref = des_LipState.zmp_pos_ + Kz * (dcm - dcm_des) + Kzm * (des_LipState.zmp_pos_ - ef_zmp_3d);
                 p_z_ref.z() = des_LipState.zmp_pos_.z();           // <-- unica riga che serve per togliere la z
                
                // relazione PLIP esatta: p̈_c = η²(p_c − p_z) + w, coerente con l'integrazione dell'MPC
-               p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
+               // p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) - Eigen::Vector3d(0.0, 0.0, 9.81);
+               p_c_ddot_ref = eta2 * (des_LipState.com_pos_ - p_z_ref) + current_disturbance;
 
                 
             }

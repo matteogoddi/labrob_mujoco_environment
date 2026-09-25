@@ -167,7 +167,8 @@ double FootstepPlannerCoop::computeDeltaTheta(
         const Eigen::Vector2d t(-diff.y(), diff.x());
         delta_theta = std::atan2(t.y(), t.x());
     }
-    delta_theta = std::clamp(delta_theta, -M_PI / 6.0, M_PI / 6.0);  // ±30°
+    // delta_theta = std::clamp(delta_theta, -M_PI / 6.0, M_PI / 6.0);  // ±30°
+    delta_theta = std::clamp(delta_theta, 0.01, 0.01);
     delta_theta_prev_ = delta_theta;
     return delta_theta;
 }

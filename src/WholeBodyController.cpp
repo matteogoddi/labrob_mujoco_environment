@@ -32,28 +32,26 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.Kp_wrist = 30;
   params.Kd_wrist = 10.0;
   
-  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;//60;
-  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;//12;
+  params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;
+  params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;
 
   
-  // // Set joint regularization gains suitable for lateral and curved walks
-  // if (lateral || curve || true) {
-  //   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 90;
-  //   params.Kp_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
-  //   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
-  //   params.Kd_joint_matrix.block(6, 6, 12, 12).setZero(); // both legs
-  //   params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
-  //   params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
-  // }
+  // Set joint regularization gains suitable for lateral and curved walks
+    // params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 200;
+    // params.Kp_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Identity(12, 12) * 60; // both legs
+    // params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
+    // params.Kd_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Identity(12, 12) * 12; // both legs
+    // // params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
+    // // params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
   
 
-  params.weight_q_ddot           = 1e-3; // 1e-4;
+  params.weight_q_ddot           = 1e-3;
   params.weight_com              = 1;
   params.weight_lsole            = 1;
   params.weight_rsole            = 1;
   params.weight_lwrist            = 1e-3;
   params.weight_rwrist            = 1e-3;
-  params.weight_torso            = 1e-3; // 1e-3;
+  params.weight_torso            = 1e-3;// 1e-3;
   params.weight_pelvis           = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation       = 1e-4;
