@@ -425,8 +425,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     coop_fp.step_height          = 0.04; // 0.06;
     // Calcola ell dalla posizione iniziale misurata
     const double foot_separation = std::abs( T_lsole_init.translation().y() - T_rsole_init.translation().y());  // ≈ 0.276m
-    coop_fp.ell = foot_separation;
-    // coop_fp.ell = 0.23;
+    // coop_fp.ell = foot_separation;
+    coop_fp.ell = 0.23;
     std::cout << "Initial foot separation (ell) = " << coop_fp.ell << " m" << std::endl;
     coop_fp.kp_x = 0.4;  coop_fp.kp_y = 0.4;
     coop_fp.kd_x = 0.3;  coop_fp.kd_y = 0.3;
