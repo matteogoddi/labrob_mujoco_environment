@@ -156,6 +156,46 @@ for _method in ('plot', 'bar', 'axhline'):
     setattr(matplotlib.axes.Axes, _method, _track_partial(_method))
 
 
+# ---------------------------------------------------------------------------
+# Title style
+# ---------------------------------------------------------------------------
+# Every title of the script looks like the ones of wrist_forces_overview: the
+# title of a figure (its suptitle, or the title of its only plot) in bold 13 pt,
+# the title of each subplot of a multi-panel figure in regular 12 pt. The style
+# is enforced here, so the individual set_title/suptitle calls carry no font
+# options of their own.
+FIGURE_TITLE_STYLE = dict(fontsize=13, fontweight='bold', fontstyle='normal',
+                          fontfamily=plt.rcParams['font.family'], color='black')
+SUBPLOT_TITLE_STYLE = dict(FIGURE_TITLE_STYLE, fontsize=12, fontweight='normal')
+
+
+def _panel_count(fig):
+    """Number of distinct subplot slots of `fig` (a twinx shares its host's)."""
+    slots = set()
+    for ax in fig.axes:
+        spec = ax.get_subplotspec()
+        if spec is not None:
+            slots.add((id(spec.get_gridspec()), spec.num1, spec.num2))
+    return len(slots)
+
+
+_original_set_title = matplotlib.axes.Axes.set_title
+_original_suptitle = plt.Figure.suptitle
+
+
+def _styled_set_title(self, label, *args, **kwargs):
+    style = SUBPLOT_TITLE_STYLE if _panel_count(self.figure) > 1 else FIGURE_TITLE_STYLE
+    return _original_set_title(self, label, *args, **{**kwargs, **style})
+
+
+def _styled_suptitle(self, t, **kwargs):
+    return _original_suptitle(self, t, **{**kwargs, **FIGURE_TITLE_STYLE})
+
+
+matplotlib.axes.Axes.set_title = _styled_set_title
+plt.Figure.suptitle = _styled_suptitle
+
+
 def _figure_has_data(fig):
     """True when at least one artist of `fig` carries a finite value.
 
@@ -409,6 +449,16 @@ if __name__ == '__main__':
     estimated_force_rsole = _load('estimated_force_rsole.txt', 3)
     estimated_moment_lsole = _load('estimated_moment_lsole.txt', 3)
     estimated_moment_rsole = _load('estimated_moment_rsole.txt', 3)
+    # Ground-truth sole wrenches from the MuJoCo contacts (simulation only, see
+    # sole_wrench_from_mujoco in main.cpp); None when the run did not log them.
+    has_gt_sole_wrench = os.path.exists(folder + '/gt_force_lsole.txt')
+    if has_gt_sole_wrench:
+        gt_force_lsole = _load('gt_force_lsole.txt', 3)
+        gt_force_rsole = _load('gt_force_rsole.txt', 3)
+        gt_moment_lsole = _load('gt_moment_lsole.txt', 3)
+        gt_moment_rsole = _load('gt_moment_rsole.txt', 3)
+    else:
+        gt_force_lsole = gt_force_rsole = gt_moment_lsole = gt_moment_rsole = None
     wbc_accelerations = _load('wbc_accelerations.txt', 35)
     wbc_force_lsole = _load('wbc_force_lsole.txt', 6)
     wbc_force_rsole = _load('wbc_force_rsole.txt', 6)
@@ -959,7 +1009,7 @@ if __name__ == '__main__':
             ax.legend(loc='best', frameon=True, fontsize=9)
             ax.tick_params(axis='both', labelsize=9)
         axes[-1].set_xlabel('Time [s]', fontsize=11)
-        fig.suptitle(f'WBC Corner Forces - {foot_name} Sole', fontsize=12)
+        fig.suptitle(f'WBC Corner Forces - {foot_name} Sole')
         fig.tight_layout()
         fig.savefig(f"images/wbc_solutions/wbc_sole_forces/{filename}.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
@@ -983,7 +1033,7 @@ if __name__ == '__main__':
             ax.legend(loc='best', frameon=True, fontsize=9)
             ax.tick_params(axis='both', labelsize=9)
         axes[-1].set_xlabel('Time [s]', fontsize=11)
-        fig.suptitle(f'Friction Cone Constraint - {foot_name} Sole', fontsize=12)
+        fig.suptitle(f'Friction Cone Constraint - {foot_name} Sole')
         fig.tight_layout()
         fig.savefig(f"images/wbc_solutions/friction_cone/{filename}.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
@@ -991,7 +1041,20 @@ if __name__ == '__main__':
     _plot_friction_cone(friction_cone_ratio_left_x, friction_cone_ratio_left_y, 'Left', 'friction_cone_left')
     _plot_friction_cone(friction_cone_ratio_right_x, friction_cone_ratio_right_y, 'Right', 'friction_cone_right')
 
+    # Ground truth (simulation only) is drawn dashed in the colour of the
+    # estimated component it refers to, underneath the estimate.
+    def _plot_gt(ax, gt, components, label_fmt, linewidth=1.2):
+        if gt is None:
+            return
+        for idx, color, comp in components:
+            ax.plot(t, gt[:, idx], label=label_fmt.format(comp), color=color,
+                    linestyle='--', linewidth=linewidth, alpha=0.8, zorder=1)
+
+    force_components = ((0, 'blue', 'X'), (1, 'orange', 'Y'), (2, 'green', 'Z'))
+    moment_components = ((0, 'blue', 'Mx'), (1, 'orange', 'My'))
+
     fig, ax = plt.subplots()
+    _plot_gt(ax, gt_force_lsole, force_components, 'Ground Truth Force Left Sole {}')
     ax.plot(t, estimated_force_lsole[:, 0], label='Estimated Force Left Sole X', color='blue')
     ax.plot(t, estimated_force_lsole[:, 1], label='Estimated Force Left Sole Y', color='orange')
     ax.plot(t, estimated_force_lsole[:, 2], label='Estimated Force Left Sole Z', color='green')
@@ -1006,6 +1069,7 @@ if __name__ == '__main__':
 
     #plot estimated forces on right sole
     fig, ax = plt.subplots()
+    _plot_gt(ax, gt_force_rsole, force_components, 'Ground Truth Force Right Sole {}')
     ax.plot(t, estimated_force_rsole[:, 0], label='Estimated Force Right Sole X', color='blue')
     ax.plot(t, estimated_force_rsole[:, 1], label='Estimated Force Right Sole Y', color='orange')
     ax.plot(t, estimated_force_rsole[:, 2], label='Estimated Force Right Sole Z', color='green')
@@ -1019,6 +1083,7 @@ if __name__ == '__main__':
     plt.close(fig)
 
     fig, ax = plt.subplots()
+    _plot_gt(ax, gt_moment_lsole, moment_components, 'Ground Truth Moment Left Sole {}')
     ax.plot(t, estimated_moment_lsole[:, 0], label='Estimated Moment Left Sole Mx', color='blue')
     ax.plot(t, estimated_moment_lsole[:, 1], label='Estimated Moment Left Sole My', color='orange')
     ax.set_xlabel('Time [s]')
@@ -1031,6 +1096,7 @@ if __name__ == '__main__':
     plt.close(fig)
 
     fig, ax = plt.subplots()
+    _plot_gt(ax, gt_moment_rsole, moment_components, 'Ground Truth Moment Right Sole {}')
     ax.plot(t, estimated_moment_rsole[:, 0], label='Estimated Moment Right Sole Mx', color='blue')
     ax.plot(t, estimated_moment_rsole[:, 1], label='Estimated Moment Right Sole My', color='orange')
     ax.set_xlabel('Time [s]')
@@ -1046,23 +1112,26 @@ if __name__ == '__main__':
     # one figure for the linear forces and one for the moments, so the two feet
     # can be read against each other on a shared time and value axis.
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True, sharey=True)
-    for ax, data, foot_name in zip(
+    for ax, data, gt, foot_name in zip(
         axes,
         (estimated_force_lsole, estimated_force_rsole),
+        (gt_force_lsole, gt_force_rsole),
         ('Left', 'Right'),
     ):
+        _plot_gt(ax, gt, ((0, 'blue', 'x'), (1, 'orange', 'y'), (2, 'green', 'z')),
+                 r'$f_{{{}}}^{{\mathrm{{gt}}}}$', linewidth=1.4)
         ax.plot(t, data[:, 0], label=r'$f_x$', color='blue', linewidth=1.8)
         ax.plot(t, data[:, 1], label=r'$f_y$', color='orange', linewidth=1.8)
         ax.plot(t, data[:, 2], label=r'$f_z$', color='green', linewidth=1.8)
         ax.axhline(0, color='k', linewidth=0.8, linestyle='--')
-        ax.set_title(f'{foot_name} Sole', fontsize=11)
+        ax.set_title(f'{foot_name} Sole')
         ax.set_xlabel('Time [s]', fontsize=10)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(loc='best', frameon=True, fontsize=10)
         ax.tick_params(labelsize=9)
     # sharey hides the right subplot's tick labels: one label on the left is enough
     axes[0].set_ylabel('Estimated Force [N]', fontsize=11)
-    fig.suptitle('Estimated Sole Forces', fontsize=13)
+    fig.suptitle('Estimated Sole Forces')
     fig.tight_layout()
     fig.savefig(
         "images/wrench_estimations/sole_wrenches/estimated_force_soles_overview.png",
@@ -1072,21 +1141,24 @@ if __name__ == '__main__':
     plt.close(fig)
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5), sharex=True, sharey=True)
-    for ax, data, foot_name in zip(
+    for ax, data, gt, foot_name in zip(
         axes,
         (estimated_moment_lsole, estimated_moment_rsole),
+        (gt_moment_lsole, gt_moment_rsole),
         ('Left', 'Right'),
     ):
+        _plot_gt(ax, gt, ((0, 'blue', 'x'), (1, 'orange', 'y')),
+                 r'$m_{{{}}}^{{\mathrm{{gt}}}}$', linewidth=1.4)
         ax.plot(t, data[:, 0], label=r'$m_x$', color='blue', linewidth=1.8)
         ax.plot(t, data[:, 1], label=r'$m_y$', color='orange', linewidth=1.8)
         ax.axhline(0, color='k', linewidth=0.8, linestyle='--')
-        ax.set_title(f'{foot_name} Sole', fontsize=11)
+        ax.set_title(f'{foot_name} Sole')
         ax.set_xlabel('Time [s]', fontsize=10)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(loc='best', frameon=True, fontsize=10)
         ax.tick_params(labelsize=9)
     axes[0].set_ylabel('Estimated Moment [Nm]', fontsize=11)
-    fig.suptitle('Estimated Sole Moments', fontsize=13)
+    fig.suptitle('Estimated Sole Moments')
     fig.tight_layout()
     fig.savefig(
         "images/wrench_estimations/sole_wrenches/estimated_moment_soles_overview.png",
@@ -1094,6 +1166,43 @@ if __name__ == '__main__':
         bbox_inches='tight'
     )
     plt.close(fig)
+
+    # Error stats against the ground truth, in the same format as the wrists.
+    # Only the components drawn in the plots above are reported.
+    def _print_sole_error_stats(est, gt, title, symbol, labels, unit):
+        if gt is None:
+            print(f"[{title}] Ground truth not available — no stats computed.")
+            return
+        idx = list(range(len(labels)))
+        err = est[:, idx] - gt[:, idx]
+        if not np.isfinite(err).any():
+            print(f"[{title}] estimate and ground truth never overlap — "
+                  f"no stats computed.")
+            return
+        norm_err = np.linalg.norm(err, axis=1)
+        print(f"\n{'='*50}")
+        print(f"  Error — {title}")
+        print(f"{'='*50}")
+        print(f"  {'Axis':<6} {f'Mean Error [{unit}]':>20} {f'Variance [{unit}²]':>18}")
+        print(f"  {'-'*46}")
+        for i, lbl in enumerate(labels):
+            mean_i = _nan_mean(err[:, i], axis=None)
+            var_i = np.nanvar(err[:, i])
+            print(f"  {symbol}_{lbl:<4}  {mean_i:>20.4f} {var_i:>18.4f}")
+        print(f"  {'-'*46}")
+        print(f"  {'||err||':<6} {f'Mean Error [{unit}]':>20} {f'Variance [{unit}²]':>18}")
+        print(f"  {'':6}  {_nan_mean(norm_err, axis=None):>20.4f} "
+              f"{np.nanvar(norm_err):>18.4f}")
+        print(f"{'='*50}")
+
+    _print_sole_error_stats(estimated_force_rsole, gt_force_rsole,
+                            'Sole Force RIGHT', 'F', ['x', 'y', 'z'], 'N')
+    _print_sole_error_stats(estimated_force_lsole, gt_force_lsole,
+                            'Sole Force LEFT', 'F', ['x', 'y', 'z'], 'N')
+    _print_sole_error_stats(estimated_moment_rsole, gt_moment_rsole,
+                            'Sole Moment RIGHT', 'M', ['x', 'y'], 'Nm')
+    _print_sole_error_stats(estimated_moment_lsole, gt_moment_lsole,
+                            'Sole Moment LEFT', 'M', ['x', 'y'], 'Nm')
 
 
 
@@ -1121,7 +1230,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Acceleration [$\mathrm{m/s^2}$]', fontsize=11)
-    ax.set_title('Desired Center of Mass Acceleration', fontsize=12)
+    ax.set_title('Desired Center of Mass Acceleration')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1155,7 +1264,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Disturbance [$\mathrm{m/s^2}$]', fontsize=11)
-    ax.set_title('PLIP Disturbance Term (before integration)', fontsize=12)
+    ax.set_title('PLIP Disturbance Term (before integration)')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1189,7 +1298,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Desired Center of Mass Position', fontsize=12)
+    ax.set_title('Desired Center of Mass Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1223,7 +1332,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Desired Center of Mass Velocity', fontsize=12)
+    ax.set_title('Desired Center of Mass Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1257,7 +1366,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Desired Zero Moment Point Position', fontsize=12)
+    ax.set_title('Desired Zero Moment Point Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1295,7 +1404,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Zero Moment Point Position Error', fontsize=12)
+    ax.set_title('Zero Moment Point Position Error')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1329,7 +1438,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Center of Mass Position Error', fontsize=12)
+    ax.set_title('Center of Mass Position Error')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1363,7 +1472,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Center of Mass Velocity Error', fontsize=12)
+    ax.set_title('Center of Mass Velocity Error')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1415,7 +1524,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Zero Moment Point Position', fontsize=12)
+    ax.set_title('Comparison between reference and actual Zero Moment Point Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1467,7 +1576,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Center of Mass Position', fontsize=12)
+    ax.set_title('Comparison between reference and actual Center of Mass Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1519,7 +1628,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between reference and actual Center of Mass Velocity', fontsize=12)
+    ax.set_title('Comparison between reference and actual Center of Mass Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1558,7 +1667,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position $x$ [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Motion in the forward direction', fontsize=12)
+    ax.set_title('Motion in the forward direction')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1597,7 +1706,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position $y$ [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Motion in the lateral direction', fontsize=12)
+    ax.set_title('Motion in the lateral direction')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='upper left',
@@ -1636,7 +1745,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position $z$ [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Motion in the vertical direction', fontsize=12)
+    ax.set_title('Motion in the vertical direction')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1717,7 +1826,7 @@ if __name__ == '__main__':
         ax.tick_params(axis='both', labelsize=9)
         ax_rate.tick_params(axis='both', labelsize=9)
     axes[-1].set_xlabel('Time [s]', fontsize=11)
-    fig.suptitle('Centroidal Angular Momentum and its Rate of Change', fontsize=12)
+    fig.suptitle('Centroidal Angular Momentum and its Rate of Change')
     fig.tight_layout()
     fig.savefig(
         "images/com/angular_momentum_plot.png",
@@ -1749,7 +1858,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Desired Left Sole Position', fontsize=12)
+    ax.set_title('Desired Left Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1783,7 +1892,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Desired Right Sole Position', fontsize=12)
+    ax.set_title('Desired Right Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1817,7 +1926,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Error between Desired and Actual Left Sole Position', fontsize=12)
+    ax.set_title('Error between Desired and Actual Left Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1851,7 +1960,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Error between Desired and Actual Right Sole Position', fontsize=12)
+    ax.set_title('Error between Desired and Actual Right Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1903,7 +2012,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Left Sole Position', fontsize=12)
+    ax.set_title('Comparison between Desired and Actual Left Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1955,7 +2064,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Right Sole Position', fontsize=12)
+    ax.set_title('Comparison between Desired and Actual Right Sole Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -1989,7 +2098,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Error between Desired and Actual Left Sole Velocity', fontsize=12)
+    ax.set_title('Error between Desired and Actual Left Sole Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2023,7 +2132,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Error between Desired and Actual Right Sole Velocity', fontsize=12)
+    ax.set_title('Error between Desired and Actual Right Sole Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2075,7 +2184,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Left Sole Velocity', fontsize=12)
+    ax.set_title('Comparison between Desired and Actual Left Sole Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2127,7 +2236,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between Desired and Actual Right Sole Velocity', fontsize=12)
+    ax.set_title('Comparison between Desired and Actual Right Sole Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2167,7 +2276,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -2201,7 +2310,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -2229,7 +2338,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -2257,7 +2366,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -2287,7 +2396,7 @@ if __name__ == '__main__':
                 linewidth=2)
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured Joints Position', fontsize=12)
+    ax.set_title('Error between EKF and Measured Joints Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2317,7 +2426,7 @@ if __name__ == '__main__':
                 linewidth=2)
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured Joints Velocity', fontsize=12)
+    ax.set_title('Error between EKF and Measured Joints Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2351,7 +2460,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('EKF Base Position', fontsize=12)
+    ax.set_title('EKF Base Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2385,7 +2494,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('EKF Base Velocity', fontsize=12)
+    ax.set_title('EKF Base Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2424,7 +2533,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('EKF Base Orientation Quat', fontsize=12)
+    ax.set_title('EKF Base Orientation Quat')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2458,7 +2567,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{grad}$]', fontsize=11)
-    ax.set_title('EKF Base Orientation RPY', fontsize=12)
+    ax.set_title('EKF Base Orientation RPY')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2492,7 +2601,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('EKF Base Angular Velocity', fontsize=12)
+    ax.set_title('EKF Base Angular Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2515,7 +2624,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), mse_position, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Mean Squared Error', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Joint Position and Feedback Joint Position', fontsize=16)
+    ax.set_title('Mean Squared Error between EKF Joint Position and Feedback Joint Position')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2529,7 +2638,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), mse_velocity, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Mean Squared Error', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
+    ax.set_title('Mean Squared Error between EKF Joint Velocity and Feedback Joint Velocity')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2549,7 +2658,7 @@ if __name__ == '__main__':
     ax.bar(range(10, 13), mse_base_angular_velocity, label='Angular Velocity MSE', color='red', alpha=0.7)
     ax.set_xlabel('Base State Index', fontsize=14)
     ax.set_ylabel('Mean Squared Error', fontsize=14)
-    ax.set_title('Mean Squared Error between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_title('Mean Squared Error between EKF Base States and Simulated Base States')
     ax.set_xticks(range(13))
     ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
                         'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
@@ -2565,7 +2674,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), variance_position, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance between EKF Joint Position and Feedback Joint Position', fontsize=16)
+    ax.set_title('Variance between EKF Joint Position and Feedback Joint Position')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2579,7 +2688,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), variance_velocity, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance between EKF Joint Velocity and Feedback Joint Velocity', fontsize=16)
+    ax.set_title('Variance between EKF Joint Velocity and Feedback Joint Velocity')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2599,7 +2708,7 @@ if __name__ == '__main__':
     ax.bar(range(10, 13), variance_base_angular_velocity, label='Angular Velocity Variance', color='red', alpha=0.7)
     ax.set_xlabel('Base State Index', fontsize=14)
     ax.set_ylabel('Variance', fontsize=14)
-    ax.set_title('Variance between EKF Base States and Simulated Base States', fontsize=16)
+    ax.set_title('Variance between EKF Base States and Simulated Base States')
     ax.set_xticks(range(13))
     ax.set_xticklabels(['Position X', 'Position Y', 'Position Z', 'Velocity X', 'Velocity Y', 'Velocity Z', 'Orientation W', 'Orientation X', 'Orientation Y', 'Orientation Z',
                         'Angular Velocity X', 'Angular Velocity Y', 'Angular Velocity Z'], rotation=45, fontsize=8)
@@ -2615,7 +2724,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), variance_measured_velocity, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_title('Variance of Feedback Joint Velocity')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2629,7 +2738,7 @@ if __name__ == '__main__':
     ax.bar(range(num_joints), variance_ekf_velocity, color='skyblue')
     ax.set_xlabel('Joint Index', fontsize=14)
     ax.set_ylabel(r'Variance', fontsize=14)
-    ax.set_title('Variance of Feedback Joint Velocity', fontsize=16)
+    ax.set_title('Variance of Feedback Joint Velocity')
     ax.set_xticks(range(num_joints))
     ax.set_xticklabels([name.strip().replace("_"," ").replace("joint", "") for name in joint_names], rotation=45, fontsize=8)
     ax.grid(axis='y', linestyle='--', alpha=0.7)
@@ -2701,7 +2810,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured Base Position', fontsize=12)
+    ax.set_title('Comparison between EKF and Measured Base Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2753,7 +2862,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured Base Velocity', fontsize=12)
+    ax.set_title('Comparison between EKF and Measured Base Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2816,7 +2925,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Orientation Quat', fontsize=12)
+    ax.set_title('Comparison between EKF and Measured IMU Orientation Quat')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2868,7 +2977,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Orientation RPY', fontsize=12)
+    ax.set_title('Comparison between EKF and Measured IMU Orientation RPY')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2920,7 +3029,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
-    ax.set_title('Comparison between EKF and Measured IMU Angular Velocity', fontsize=12)
+    ax.set_title('Comparison between EKF and Measured IMU Angular Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2955,7 +3064,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured Base Position', fontsize=12)
+    ax.set_title('Error between EKF and Measured Base Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -2989,7 +3098,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured Base Velocity', fontsize=12)
+    ax.set_title('Error between EKF and Measured Base Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3028,7 +3137,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured IMU Orientation Quat', fontsize=12)
+    ax.set_title('Error between EKF and Measured IMU Orientation Quat')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3062,7 +3171,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured IMU Orientation RPY', fontsize=12)
+    ax.set_title('Error between EKF and Measured IMU Orientation RPY')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3096,7 +3205,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
-    ax.set_title('Error between EKF and Measured IMU Angular Velocity', fontsize=12)
+    ax.set_title('Error between EKF and Measured IMU Angular Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3135,7 +3244,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Position [$\mathrm{m}$]', fontsize=11)
-    ax.set_title('Odometry Base Position', fontsize=12)
+    ax.set_title('Odometry Base Position')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3169,7 +3278,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Velocity [$\mathrm{m/s}$]', fontsize=11)
-    ax.set_title('Odometry Base Velocity', fontsize=12)
+    ax.set_title('Odometry Base Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3208,7 +3317,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('Odometry IMU Orientation Quat', fontsize=12)
+    ax.set_title('Odometry IMU Orientation Quat')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3242,7 +3351,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Odometry IMU Orientation RPY', fontsize=12)
+    ax.set_title('Odometry IMU Orientation RPY')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3281,7 +3390,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{quat}$]', fontsize=11)
-    ax.set_title('Measured IMU Orientation Quat', fontsize=12)
+    ax.set_title('Measured IMU Orientation Quat')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3315,7 +3424,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Orientation [$\mathrm{rad}$]', fontsize=11)
-    ax.set_title('Measured IMU Orientation RPY', fontsize=12)
+    ax.set_title('Measured IMU Orientation RPY')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3349,7 +3458,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Angular Velocity [$\mathrm{rad/s}$]', fontsize=11)
-    ax.set_title('Measured Base Angular Velocity', fontsize=12)
+    ax.set_title('Measured Base Angular Velocity')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3383,7 +3492,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'Acceleration [$\mathrm{m/s^2}$]', fontsize=11)
-    ax.set_title('Measured IMU Acceleration', fontsize=12)
+    ax.set_title('Measured IMU Acceleration')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.legend(
         loc='best',
@@ -3424,7 +3533,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Position [$\mathrm{rad}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -3452,7 +3561,7 @@ if __name__ == '__main__':
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Velocity [$\mathrm{rad/s}$]', fontsize=11)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.set_title(group_name.replace('_', ' ').title(), fontsize=12)
+        ax.set_title(group_name.replace('_', ' ').title())
         ax.legend(
             loc='upper left',
             frameon=True,
@@ -3486,7 +3595,7 @@ if __name__ == '__main__':
             )
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'Torque [$\mathrm{Nm}$]', fontsize=11)
-        ax.set_title(f'Measured Motor Torques — {group_name.replace("_", " ").title()}', fontsize=12)
+        ax.set_title(f'Measured Motor Torques — {group_name.replace("_", " ").title()}')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(loc='best', frameon=True, fontsize=7)
         ax.tick_params(axis='both', labelsize=10)
@@ -3508,7 +3617,7 @@ if __name__ == '__main__':
             ax.plot(t, motor_tau_ff[:, i], label=r'$\tau_{ff}$ (WBC)', linewidth=1.2)
             ax.plot(t, motor_tau_cmd[:, i], label=r'$\tau_{ff}+\tau_{PD}$', linewidth=1.2, linestyle='--')
             ax.plot(t, measured_joint_torque[:, i], label=r'$\tau_{est}$ (motor)', linewidth=1.2)
-            ax.set_title(joint_names[i].strip(), fontsize=10)
+            ax.set_title(joint_names[i].strip())
             ax.set_ylabel(r'Torque [$\mathrm{Nm}$]', fontsize=9)
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             ax.legend(loc='upper left', frameon=True, fontsize=7)
@@ -3534,7 +3643,7 @@ if __name__ == '__main__':
         ax.set_xticks(range(len(values)))
         ax.set_xticklabels(short_names, rotation=60, ha='right', fontsize=7)
         ax.set_ylabel(r'Torque [$\mathrm{Nm}$]', fontsize=11)
-        ax.set_title(fr'{title} torque error $\tau_{{est}} - (\tau_{{ff}}+\tau_{{PD}})$', fontsize=12)
+        ax.set_title(fr'{title} torque error $\tau_{{est}} - (\tau_{{ff}}+\tau_{{PD}})$')
         ax.grid(axis='y', linestyle='--', alpha=0.7)
         fig.tight_layout()
         fig.savefig(
@@ -3575,7 +3684,7 @@ if __name__ == '__main__':
             )
         ax.set_xlabel('Iteration', fontsize=11)
         ax.set_ylabel(r'Execution Time [$\mu s$]', fontsize=11)
-        ax.set_title(f'{name} Execution Time per Iteration', fontsize=12)
+        ax.set_title(f'{name} Execution Time per Iteration')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.tick_params(axis='both', labelsize=10)
         ax.legend(frameon=True, fontsize=10)
@@ -3611,7 +3720,7 @@ if __name__ == '__main__':
     )
     ax.set_xlabel('Iteration', fontsize=11)
     ax.set_ylabel(r'Total Execution Time [$\mu s$]', fontsize=11)
-    ax.set_title('Total Execution Time per Iteration', fontsize=12)
+    ax.set_title('Total Execution Time per Iteration')
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
     ax.tick_params(axis='both', labelsize=10)
     ax.legend(frameon=True, fontsize=10)
@@ -3646,7 +3755,7 @@ if __name__ == '__main__':
     axes[0].plot(t_hac, hac_eh[:, 0], linewidth=1.8, label=r'$e_{h,x}$')
     axes[0].axhline(0, color='k', linewidth=0.8, linestyle='--')
     axes[0].set_ylabel(r'$e_{h,x}$ [m]', fontsize=11)
-    axes[0].set_title(r'Average Hand Position Error $e_h$ (F frame)', fontsize=12)
+    axes[0].set_title(r'Average Hand Position Error $e_h$ (F frame)')
     axes[0].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
     axes[0].legend(fontsize=10)
 
@@ -3667,7 +3776,7 @@ if __name__ == '__main__':
     axes[0].plot(t_hac, hac_eh_dot[:, 0], linewidth=1.8, color='tab:green', label=r'$\dot{e}_{h,x}$')
     axes[0].axhline(0, color='k', linewidth=0.8, linestyle='--')
     axes[0].set_ylabel(r'$\dot{e}_{h,x}$ [m/s]', fontsize=11)
-    axes[0].set_title(r'Average Hand Error Derivative $\dot{e}_h$ (F frame)', fontsize=12)
+    axes[0].set_title(r'Average Hand Error Derivative $\dot{e}_h$ (F frame)')
     axes[0].grid(True, linestyle='--', linewidth=0.5, alpha=0.7)
     axes[0].legend(fontsize=10)
 
@@ -3701,7 +3810,7 @@ if __name__ == '__main__':
         ax.legend(fontsize=10)
         ax.tick_params(labelsize=9)
 
-    fig.suptitle('Hand Admittance Controller — AHE', fontsize=13)
+    fig.suptitle('Hand Admittance Controller — AHE')
     fig.tight_layout()
     fig.savefig('images/hac/hac_overview.png', dpi=300, bbox_inches='tight')
     plt.close(fig)
@@ -3815,7 +3924,7 @@ if __name__ == '__main__':
 
         # Componenti Fx / Fy / Fz
         fig, axes = plt.subplots(3, 1, figsize=(11, 8), sharex=True)
-        fig.suptitle(f'Force estimate — Wrist {side_label}', fontsize=13, fontweight='bold')
+        fig.suptitle(f'Force estimate — Wrist {side_label}')
 
         for i, (ax, lbl, ec, gc) in enumerate(zip(axes, WF_LABELS, WF_EST_COLORS, WF_GT_COLORS)):
             ax.plot(t_wf, f_est[sl_wf, i], linewidth=1.5, color=ec,
@@ -3843,7 +3952,7 @@ if __name__ == '__main__':
                     label=r'$\|F\|$ ground truth')
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'$\|F\|$ [N]', fontsize=11)
-        ax.set_title(f'Force norm — Wrist {side_label}', fontsize=12)
+        ax.set_title(f'Force norm — Wrist {side_label}')
         ax.legend(fontsize=10)
         ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
         fig.tight_layout()
@@ -3873,12 +3982,12 @@ if __name__ == '__main__':
             ax.legend(fontsize=9, loc='upper right')
             ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
             ax.tick_params(labelsize=9)
-        axes[0, col].set_title(f'{side_label} Wrist', fontsize=12)
+        axes[0, col].set_title(f'{side_label} Wrist')
         axes[-1, col].set_xlabel('Time [s]', fontsize=11)
     # sharey='row' hides the right column's tick labels: label the left one only.
     for i, lbl in enumerate(WF_LABELS):
         axes[i, 0].set_ylabel(rf'$F_{{{lbl}}}$ [N]', fontsize=11)
-    fig.suptitle('Force estimate — both wrists', fontsize=13, fontweight='bold')
+    fig.suptitle('Force estimate — both wrists')
     fig.tight_layout()
     _wf_save(fig, 'wrist_forces_overview.png')
 
@@ -3898,7 +4007,7 @@ if __name__ == '__main__':
 
     ax.set_xlabel('Time [s]', fontsize=11)
     ax.set_ylabel(r'$\|F\|$', fontsize=11)
-    ax.set_title('Comparison of norms: both wrists', fontsize=12)
+    ax.set_title('Comparison of norms: both wrists')
     ax.legend(fontsize=10)
     ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
     fig.tight_layout()
@@ -3917,7 +4026,7 @@ if __name__ == '__main__':
         ax.axhline(0, color='k', linewidth=0.7, linestyle=':', alpha=0.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'$\|r\|$', fontsize=11)
-        ax.set_title('Residual vector norm', fontsize=12)
+        ax.set_title('Residual vector norm')
         ax.legend(fontsize=10)
         ax.grid(True, linestyle='--', linewidth=0.5, alpha=0.6)
         fig.tight_layout()
@@ -3985,7 +4094,7 @@ if __name__ == '__main__':
             ax.plot(t_arm, right_arm_res[:, i], linewidth=1.5)
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel('Residual [Nm]', fontsize=11)
-            ax.set_title(f'Right Arm Residual — {right_arm_joint_labels[i]}', fontsize=12)
+            ax.set_title(f'Right Arm Residual — {right_arm_joint_labels[i]}')
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             fig.tight_layout()
             fig.savefig(f'images/residuals/right_arm/{right_arm_joint_labels[i]}_residual.png',
@@ -3997,7 +4106,7 @@ if __name__ == '__main__':
             ax.plot(t_arm, right_arm_res[:, i], label=right_arm_joint_labels[i], linewidth=1.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel('Residual [Nm]', fontsize=11)
-        ax.set_title('Right Arm — All Joint Residuals', fontsize=12)
+        ax.set_title('Right Arm — All Joint Residuals')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(fontsize=8, loc='best')
         fig.tight_layout()
@@ -4017,7 +4126,7 @@ if __name__ == '__main__':
             ax.plot(t_arm_l, left_arm_res[:, i], linewidth=1.5)
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel('Residual [Nm]', fontsize=11)
-            ax.set_title(f'Left Arm Residual — {left_arm_joint_labels[i]}', fontsize=12)
+            ax.set_title(f'Left Arm Residual — {left_arm_joint_labels[i]}')
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             fig.tight_layout()
             fig.savefig(f'images/residuals/left_arm/{left_arm_joint_labels[i]}_residual.png',
@@ -4029,7 +4138,7 @@ if __name__ == '__main__':
             ax.plot(t_arm_l, left_arm_res[:, i], label=left_arm_joint_labels[i], linewidth=1.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel('Residual [Nm]', fontsize=11)
-        ax.set_title('Left Arm — All Joint Residuals', fontsize=12)
+        ax.set_title('Left Arm — All Joint Residuals')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(fontsize=8, loc='best')
         fig.tight_layout()
@@ -4056,7 +4165,7 @@ if __name__ == '__main__':
             ax.plot(t, res[:, i], linewidth=1.5)
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel(ylabel, fontsize=11)
-            ax.set_title(f'{group_title} Residual — {joint_labels[i]}', fontsize=12)
+            ax.set_title(f'{group_title} Residual — {joint_labels[i]}')
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             fig.tight_layout()
             fig.savefig(f'{outdir}/{joint_labels[i]}_residual.png', dpi=150, bbox_inches='tight')
@@ -4067,7 +4176,7 @@ if __name__ == '__main__':
             ax.plot(t, res[:, i], label=joint_labels[i], linewidth=1.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(ylabel, fontsize=11)
-        ax.set_title(f'{group_title} — All DOF Residuals', fontsize=12)
+        ax.set_title(f'{group_title} — All DOF Residuals')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(fontsize=8, loc='best')
         fig.tight_layout()
@@ -4132,15 +4241,16 @@ if __name__ == '__main__':
         for i in range(n_dof):
             ax = axes_p[i]
             ax.plot(t_gm, p_data[:, i], color=cmap_gm(i % 20), linewidth=1.2)
-            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}', fontsize=7)
+            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}')
             ax.set_xlabel('t [s]', fontsize=6)
             ax.set_ylabel('p [kg·m²/s]', fontsize=6)
             ax.tick_params(labelsize=6)
             ax.grid(True, linestyle='--', linewidth=0.4, alpha=0.6)
         for j in range(n_dof, len(axes_p)):
             axes_p[j].set_visible(False)
-        fig_p.suptitle('Generalized Momentum p(t) — all DOFs', fontsize=13)
-        fig_p.tight_layout()
+        fig_p.suptitle('Generalized Momentum p(t) — all DOFs')
+        # Leave room above the top row for the figure title.
+        fig_p.tight_layout(rect=(0, 0, 1, 0.98))
         fig_p.savefig('images/generalized_momentum/p_all_dofs.png', dpi=150, bbox_inches='tight')
         plt.close(fig_p)
 
@@ -4151,15 +4261,16 @@ if __name__ == '__main__':
         for i in range(n_dof):
             ax = axes_p0[i]
             ax.plot(t_gm, p0_data[:, i], color=cmap_gm(i % 20), linewidth=1.2, linestyle='--')
-            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}', fontsize=7)
+            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}')
             ax.set_xlabel('t [s]', fontsize=6)
             ax.set_ylabel('p₀ [kg·m²/s]', fontsize=6)
             ax.tick_params(labelsize=6)
             ax.grid(True, linestyle='--', linewidth=0.4, alpha=0.6)
         for j in range(n_dof, len(axes_p0)):
             axes_p0[j].set_visible(False)
-        fig_p0.suptitle('Initial Generalized Momentum p₀ — all DOFs', fontsize=13)
-        fig_p0.tight_layout()
+        fig_p0.suptitle('Initial Generalized Momentum p₀ — all DOFs')
+        # Leave room above the top row for the figure title.
+        fig_p0.tight_layout(rect=(0, 0, 1, 0.98))
         fig_p0.savefig('images/generalized_momentum/p0_all_dofs.png', dpi=150, bbox_inches='tight')
         plt.close(fig_p0)
 
@@ -4172,7 +4283,7 @@ if __name__ == '__main__':
             color = cmap_gm(i % 20)
             ax.plot(t_gm, p_data[:, i],  color=color, linewidth=1.2, label='p')
             ax.plot(t_gm, p0_data[:, i], color=color, linewidth=1.2, linestyle='--', label='p₀')
-            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}', fontsize=7)
+            ax.set_title(dof_labels[i] if i < len(dof_labels) else f'DOF {i}')
             ax.set_xlabel('t [s]', fontsize=6)
             ax.tick_params(labelsize=6)
             ax.grid(True, linestyle='--', linewidth=0.4, alpha=0.6)
@@ -4180,8 +4291,9 @@ if __name__ == '__main__':
                 ax.legend(fontsize=6)
         for j in range(n_dof, len(axes_cmp)):
             axes_cmp[j].set_visible(False)
-        fig_cmp.suptitle('Generalized Momentum p(t) vs p₀ — all DOFs', fontsize=13)
-        fig_cmp.tight_layout()
+        fig_cmp.suptitle('Generalized Momentum p(t) vs p₀ — all DOFs')
+        # Leave room above the top row for the figure title.
+        fig_cmp.tight_layout(rect=(0, 0, 1, 0.98))
         fig_cmp.savefig('images/generalized_momentum/p_vs_p0_all_dofs.png', dpi=150, bbox_inches='tight')
         plt.close(fig_cmp)
 
@@ -4194,7 +4306,7 @@ if __name__ == '__main__':
             ax.plot(t_gm, p0_data[:, i], linewidth=1.5, linestyle='--', label='p₀')
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel('[kg·m²/s]', fontsize=11)
-            ax.set_title(f'Generalized Momentum — {label}', fontsize=11)
+            ax.set_title(f'Generalized Momentum — {label}')
             ax.legend(fontsize=9)
             ax.grid(True, linestyle='--', linewidth=0.4, alpha=0.6)
             fig.tight_layout()
@@ -4232,7 +4344,7 @@ if __name__ == '__main__':
             ax.plot(t_tg, right_arm_tg[:, i], linewidth=1.5)
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel(r'$\tau_m - g$ [Nm]', fontsize=11)
-            ax.set_title(fr'Right Arm $\tau_m - g$ — {right_arm_joint_labels[i]}', fontsize=12)
+            ax.set_title(fr'Right Arm $\tau_m - g$ — {right_arm_joint_labels[i]}')
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             fig.tight_layout()
             fig.savefig(f'images/tau_g/right_arm/{right_arm_joint_labels[i]}_tau_g.png',
@@ -4244,7 +4356,7 @@ if __name__ == '__main__':
             ax.plot(t_tg, right_arm_tg[:, i], label=right_arm_joint_labels[i], linewidth=1.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'$\tau_m - g$ [Nm]', fontsize=11)
-        ax.set_title(r'Right Arm — $\tau_m - g$ All Joints', fontsize=12)
+        ax.set_title(r'Right Arm — $\tau_m - g$ All Joints')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(fontsize=8, loc='best')
         fig.tight_layout()
@@ -4264,7 +4376,7 @@ if __name__ == '__main__':
             ax.plot(t_tg_l, left_arm_tg[:, i], linewidth=1.5)
             ax.set_xlabel('Time [s]', fontsize=11)
             ax.set_ylabel(r'$\tau_m - g$ [Nm]', fontsize=11)
-            ax.set_title(fr'Left Arm $\tau_m - g$ — {left_arm_joint_labels[i]}', fontsize=12)
+            ax.set_title(fr'Left Arm $\tau_m - g$ — {left_arm_joint_labels[i]}')
             ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
             fig.tight_layout()
             fig.savefig(f'images/tau_g/left_arm/{left_arm_joint_labels[i]}_tau_g.png',
@@ -4276,7 +4388,7 @@ if __name__ == '__main__':
             ax.plot(t_tg_l, left_arm_tg[:, i], label=left_arm_joint_labels[i], linewidth=1.5)
         ax.set_xlabel('Time [s]', fontsize=11)
         ax.set_ylabel(r'$\tau_m - g$ [Nm]', fontsize=11)
-        ax.set_title(r'Left Arm — $\tau_m - g$ All Joints', fontsize=12)
+        ax.set_title(r'Left Arm — $\tau_m - g$ All Joints')
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
         ax.legend(fontsize=8, loc='best')
         fig.tight_layout()

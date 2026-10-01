@@ -190,6 +190,53 @@ labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
     return rs;
 }
 
+// ── MuJoCo → ground-truth sole wrench ─────────────────────────────────────────
+// Wrench exerted by the environment on the foot body `foot_body_id`, summed over
+// its contacts and taken about the origin of the URDF frame "<side>_foot_link",
+// with world-aligned axes: the same point and axes as the foot wrenches of the
+// WristForceEstimator (LOCAL_WORLD_ALIGNED Jacobians of left/right_foot_link),
+// so the two can be compared directly. MuJoCo has no foot_link body, so its
+// origin is rebuilt from the ankle roll body and the fixed offset of the
+// left/right_foot_joint in g1_29dof_with_hand_rev_1_0.urdf.
+Eigen::Matrix<double, 6, 1> sole_wrench_from_mujoco(const mjModel* m, const mjData* d, int foot_body_id) {
+    static const Eigen::Vector3d foot_link_offset(0.035, 0.0, -0.0338);
+    using RowMajor3d = Eigen::Matrix<mjtNum, 3, 3, Eigen::RowMajor>;
+
+    Eigen::Map<const RowMajor3d> R_foot(d->xmat + 9 * foot_body_id);
+    Eigen::Map<const Eigen::Vector3d> p_body(d->xpos + 3 * foot_body_id);
+    const Eigen::Vector3d p_foot = p_body + R_foot * foot_link_offset;
+
+    Eigen::Matrix<double, 6, 1> wrench = Eigen::Matrix<double, 6, 1>::Zero();
+    for (int i = 0; i < d->ncon; ++i) {
+        const mjContact& con = d->contact[i];
+        if (con.geom[0] < 0 || con.geom[1] < 0) continue;
+        const int b1 = m->geom_bodyid[con.geom[0]];
+        const int b2 = m->geom_bodyid[con.geom[1]];
+        // mj_contactForce returns the force geom[0] exerts on geom[1] (the normal
+        // points from geom[0] to geom[1]): flip it when the foot is geom[0].
+        // Contacts with other parts of the robot itself are not external.
+        double sign;
+        if (b2 == foot_body_id && m->body_rootid[b1] != m->body_rootid[foot_body_id])
+            sign = 1.0;
+        else if (b1 == foot_body_id && m->body_rootid[b2] != m->body_rootid[foot_body_id])
+            sign = -1.0;
+        else
+            continue;
+
+        mjtNum f_local[6];
+        mj_contactForce(m, d, i, f_local);
+        // Rows of con.frame are the contact axes in world coordinates.
+        Eigen::Map<const RowMajor3d> R_con(con.frame);
+        const Eigen::Vector3d f = sign * R_con.transpose() * Eigen::Vector3d(f_local[0], f_local[1], f_local[2]);
+        const Eigen::Vector3d tau = sign * R_con.transpose() * Eigen::Vector3d(f_local[3], f_local[4], f_local[5]);
+        const Eigen::Vector3d p_con(con.pos[0], con.pos[1], con.pos[2]);
+
+        wrench.head<3>() += f;
+        wrench.tail<3>() += tau + (p_con - p_foot).cross(f);
+    }
+    return wrench;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 static void handle_gamepad(
@@ -724,6 +771,21 @@ int main(const int argc, const char* argv[]) {
                 static std::ofstream gt_left ("/tmp/gt_left_wrist.txt");
                 gt_right << f_r_test.transpose() << "\n";
                 gt_left  << f_l_test.transpose() << "\n";
+
+                // Ground-truth sole wrenches, from the contacts of the last
+                // mj_step2: the same state robot_state (and hence the wrench
+                // observer in walking_manager.update below) is built from, so
+                // each row lines up with the estimate logged in this tick.
+                {
+                    static const int l_foot_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_ankle_roll_link");
+                    static const int r_foot_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_ankle_roll_link");
+                    const auto w_lsole = sole_wrench_from_mujoco(mj_model_ptr, mj_data_ptr, l_foot_id);
+                    const auto w_rsole = sole_wrench_from_mujoco(mj_model_ptr, mj_data_ptr, r_foot_id);
+                    sensor_logger.log("gt_force_lsole",  Eigen::Vector3d(w_lsole.head<3>()));
+                    sensor_logger.log("gt_force_rsole",  Eigen::Vector3d(w_rsole.head<3>()));
+                    sensor_logger.log("gt_moment_lsole", Eigen::Vector3d(w_lsole.tail<3>()));
+                    sensor_logger.log("gt_moment_rsole", Eigen::Vector3d(w_rsole.tail<3>()));
+                }
 
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     int jid = mj_model_ptr->actuator_trnid[i * 2];
