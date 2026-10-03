@@ -574,6 +574,11 @@ int main(const int argc, const char* argv[]) {
             Eigen::Vector3d imu_acc            = Eigen::Vector3d::Zero();
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
+            // Set right after walking_manager.update(): every call appends exactly
+            // one row to the WalkingManager logs, so this marks which main-loop
+            // ticks those rows belong to (4th column of control_flags below).
+            bool wm_logged = false;
+
             if (useRobot) {
 
                 // ── Read sensors from SDK callbacks ───────────────────────────
@@ -795,6 +800,7 @@ int main(const int argc, const char* argv[]) {
 
 
                 walking_manager.update(robot_state, joint_command);
+                wm_logged = true;
 
                 auto t0 = std::chrono::steady_clock::now();
                 mj_step1(mj_model_ptr, mj_data_ptr);
@@ -830,6 +836,7 @@ int main(const int argc, const char* argv[]) {
 
                     case ExperimentMode::WBC:
                         walking_manager.update(robot_state, joint_command);
+                        wm_logged = true;
                         {
                             constexpr double cmd_dt = 0.002;
                             const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
@@ -889,6 +896,16 @@ int main(const int argc, const char* argv[]) {
                                  joint_command, Clock::now() - t_start,
                                  q_ref_joints, dq_ref_joints);
             }
+
+            // Gamepad-activated modes (A -> EKF, X -> closed loop, B -> wrench
+            // observer), logged from the very first tick — unlike the
+            // WalkingManager logs, which only start once X closed the loop.
+            // Column 3 lines the two timelines up (scripts/animate_zmp_box.py).
+            sensor_logger.log("control_flags", Eigen::Vector4d(
+                isEKFactive      ? 1.0 : 0.0,
+                isMPCLoopClosed  ? 1.0 : 0.0,
+                isObserverActive ? 1.0 : 0.0,
+                wm_logged        ? 1.0 : 0.0));
 
             last_sim_time = mj_data_ptr->time;
         }

@@ -1062,9 +1062,10 @@ if __name__ == '__main__':
     ax.set_ylabel('Estimated Force [N]')
     ax.set_title('Estimated Forces on Left Sole')
     ax.grid(True)
-    ax.legend()
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=3,
+              frameon=True, fontsize=8)
     fig.tight_layout()
-    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_left_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_left_sole.png", bbox_inches='tight')
     plt.close(fig)
 
     #plot estimated forces on right sole
@@ -1077,9 +1078,10 @@ if __name__ == '__main__':
     ax.set_ylabel('Estimated Force [N]')
     ax.set_title('Estimated Forces on Right Sole')
     ax.grid(True)
-    ax.legend()
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=3,
+              frameon=True, fontsize=8)
     fig.tight_layout()
-    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_right_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_force_right_sole.png", bbox_inches='tight')
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -1090,9 +1092,10 @@ if __name__ == '__main__':
     ax.set_ylabel('Estimated Moment [Nm]')
     ax.set_title('Estimated Moments on Left Sole')
     ax.grid(True)
-    ax.legend()
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=2,
+              frameon=True, fontsize=8)
     fig.tight_layout()
-    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_left_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_left_sole.png", bbox_inches='tight')
     plt.close(fig)
 
     fig, ax = plt.subplots()
@@ -1103,9 +1106,10 @@ if __name__ == '__main__':
     ax.set_ylabel('Estimated Moment [Nm]')
     ax.set_title('Estimated Moments on Right Sole')
     ax.grid(True)
-    ax.legend()
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.13), ncol=2,
+              frameon=True, fontsize=8)
     fig.tight_layout()
-    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_right_sole.png")
+    fig.savefig("images/wrench_estimations/sole_wrenches/estimated_moment_right_sole.png", bbox_inches='tight')
     plt.close(fig)
 
     # Side-by-side overviews (left sole on the left, right sole on the right),
@@ -1127,12 +1131,15 @@ if __name__ == '__main__':
         ax.set_title(f'{foot_name} Sole')
         ax.set_xlabel('Time [s]', fontsize=10)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.legend(loc='best', frameon=True, fontsize=10)
         ax.tick_params(labelsize=9)
     # sharey hides the right subplot's tick labels: one label on the left is enough
     axes[0].set_ylabel('Estimated Force [N]', fontsize=11)
     fig.suptitle('Estimated Sole Forces')
     fig.tight_layout()
+    # one legend shared by both panels, below them, so it covers no data
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.0),
+               ncol=len(labels), frameon=True, fontsize=10)
     fig.savefig(
         "images/wrench_estimations/sole_wrenches/estimated_force_soles_overview.png",
         dpi=300,
@@ -1155,11 +1162,14 @@ if __name__ == '__main__':
         ax.set_title(f'{foot_name} Sole')
         ax.set_xlabel('Time [s]', fontsize=10)
         ax.grid(True, which='both', linestyle='--', linewidth=0.5, alpha=0.7)
-        ax.legend(loc='best', frameon=True, fontsize=10)
         ax.tick_params(labelsize=9)
     axes[0].set_ylabel('Estimated Moment [Nm]', fontsize=11)
     fig.suptitle('Estimated Sole Moments')
     fig.tight_layout()
+    # one legend shared by both panels, below them, so it covers no data
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, 0.0),
+               ncol=len(labels), frameon=True, fontsize=10)
     fig.savefig(
         "images/wrench_estimations/sole_wrenches/estimated_moment_soles_overview.png",
         dpi=300,
