@@ -329,7 +329,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     Eigen::Vector3d p_CoM = robot_data.com[0];
     p_CoM_init = p_CoM;
-    double com_target_height = p_CoM.z() - T_lsole_init.translation().z();
+    double com_target_height = 0.7; //p_CoM.z() - T_lsole_init.translation().z();
     eta2 = 9.81 / com_target_height;
     Eigen::Vector3d p_ZMP = p_CoM - Eigen::Vector3d(0.0, 0.0, com_target_height);
     kf_LipState = labrob::LIPState(
@@ -376,9 +376,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     const Eigen::Vector3d p_lhand_W = robot_data.oMf[lwrist_idx_].translation();
     const Eigen::Vector3d p_rhand_W = robot_data.oMf[rwrist_idx_].translation();
     // --- HAC: Average Hand Error Threshold ---
-    const double eh_threshold = 0.05; // [m]
+    const double eh_threshold = 0.10; // [m]
     const int below_threshold_counter = 0;
-    const int below_threshold_limit = 5; // max number of samples of eh below the threshold preventing stopping procedure to start
+    const int below_threshold_limit = 1; // max number of samples of eh below the threshold preventing stopping procedure to start
     // Map to F frame --> obtain rest positions in local frame F
     Eigen::Vector3d r_l_bar = R_F_init.transpose() * (p_lhand_W - p_F_init);
     Eigen::Vector3d r_r_bar = R_F_init.transpose() * (p_rhand_W - p_F_init);
@@ -981,6 +981,7 @@ WalkingManager::update(
 
                         walking_data_.stopWalkingCoop(T_l_anchor, T_r_anchor, curr_sf);
                         coop_walking_active_ = false;
+                        coop_walking_triggered_ = false;
                     
                     } else {
                         integral_eh_ = coop_planner_ptr_->updateErrorIntegral(hac_ptr_->getEh(), controller_timestep_msec_ * 0.001);
