@@ -25,6 +25,7 @@
 #include <iomanip>
 #include <iostream>
 #include <algorithm>
+#include <limits>
 #include <map>
 #include <string>
 #include <thread>
@@ -705,10 +706,30 @@ int main(const int argc, const char* argv[]) {
                 mj_data_ptr->xpos[3 * rw_bid + 0],
                 mj_data_ptr->xpos[3 * rw_bid + 1],
                 mj_data_ptr->xpos[3 * rw_bid + 2]);
-            const Eigen::Vector3d p_object(
+            // The green arrow is drawn from the point where the line of action
+            // of the push leaves the box: sliding a force along its line of
+            // action does not change the wrench, and the box is opaque, so an
+            // arrow starting at the push point inside it would be hidden.
+            Eigen::Matrix3d R_obj;
+            for (int r = 0; r < 3; ++r)
+                for (int c = 0; c < 3; ++c)
+                    R_obj(r, c) = mj_data_ptr->xmat[9 * obj_bid + 3 * r + c];
+            const Eigen::Vector3d p_obj_centre(
                 mj_data_ptr->xpos[3 * obj_bid + 0],
                 mj_data_ptr->xpos[3 * obj_bid + 1],
                 mj_data_ptr->xpos[3 * obj_bid + 2]);
+            Eigen::Vector3d p_object = p_obj_centre + R_obj * pushOffsetInObject();
+            if (f_object.norm() > 1e-9) {
+                const Eigen::Vector3d q = pushOffsetInObject();
+                const Eigen::Vector3d d = R_obj.transpose() * f_object.normalized();
+                double t_exit = std::numeric_limits<double>::infinity();
+                for (int i = 0; i < 3; ++i) {
+                    if (std::abs(d[i]) < 1e-9) continue;
+                    const double face = d[i] > 0.0 ? kObjectHalfSize[i] : -kObjectHalfSize[i];
+                    t_exit = std::min(t_exit, (face - q[i]) / d[i]);
+                }
+                p_object += t_exit * f_object.normalized();
+            }
 
             // Blue/red arrows: forces estimated at the hands. Green arrow: force
             // applied to the object, i.e. the input of the experiment.

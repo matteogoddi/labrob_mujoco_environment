@@ -169,6 +169,19 @@ class MujocoUI {
       glfwGetFramebufferSize(window_, &viewport.width, &viewport.height);
       mjv_updateScene(model_ptr_, data_ptr_, &opt_, NULL, &cam_, mjCAT_ALL, &scn_);
 
+      // mjVIS_TRANSPARENT fades every dynamic geom, the carried object included:
+      // restore the object's own alpha so that it is drawn opaque, while the
+      // robot stays see-through.
+      const int object_geom_id =
+          mj_name2id(model_ptr_, mjOBJ_GEOM, "carried_object_geom");
+      for (int i = 0; i < scn_.ngeom; ++i) {
+        mjvGeom& g = scn_.geoms[i];
+        if (g.objtype == mjOBJ_GEOM && g.objid == object_geom_id) {
+          g.rgba[3]     = model_ptr_->geom_rgba[4 * object_geom_id + 3];
+          g.transparent = g.rgba[3] < 1.0f;
+        }
+      }
+
       float rgba_left[4]   = {0.0f, 0.4f, 1.0f, 0.9f};
       float rgba_right[4]  = {1.0f, 0.3f, 0.0f, 0.9f};
       float rgba_object[4] = {0.1f, 0.9f, 0.2f, 0.9f};
