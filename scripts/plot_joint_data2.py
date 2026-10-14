@@ -182,10 +182,14 @@ def _figure_has_data(fig):
 _skipped_figures = []
 
 # Mirror every PNG plot saved via fig.savefig("images/...") as a vector PDF
-# under SIM_PLOTS_DIR, preserving the same sub-directory layout as
+# under PDF_PLOTS_DIR, preserving the same sub-directory layout as
 # scripts/images/. This keeps a high-quality, vectorized copy of every plot
 # ready to be included in the thesis without touching each savefig() call.
+# PDF_PLOTS_DIR points to SIM_PLOTS_DIR for simulations and is switched to
+# REAL_EXP_PLOTS_DIR in __main__ when plotting a saved real experiment.
 SIM_PLOTS_DIR = os.path.expanduser('~/thesis/material/images/sim_plots')
+REAL_EXP_PLOTS_DIR = os.path.expanduser('~/thesis/material/images/real_exp')
+PDF_PLOTS_DIR = SIM_PLOTS_DIR
 _original_savefig = plt.Figure.savefig
 
 
@@ -196,7 +200,7 @@ def _savefig_and_mirror_pdf(self, fname, *args, **kwargs):
         return
     _original_savefig(self, fname, *args, **kwargs)
     if isinstance(fname, str) and fname.startswith('images/') and fname.endswith('.png'):
-        pdf_path = os.path.join(SIM_PLOTS_DIR, fname[len('images/'):-len('.png')] + '.pdf')
+        pdf_path = os.path.join(PDF_PLOTS_DIR, fname[len('images/'):-len('.png')] + '.pdf')
         os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
         _original_savefig(self, pdf_path, *args, **kwargs)
 
@@ -227,6 +231,7 @@ if __name__ == '__main__':
     else:
         folder = 'experiments/experiment_' + expNumber
         expType = "Experiment"
+        PDF_PLOTS_DIR = REAL_EXP_PLOTS_DIR
 
     endPlot = input("Enter the time (in seconds) at which you want to end the plots (or press Enter to plot all data): ")
     if endPlot != '':
