@@ -83,33 +83,37 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    pip install -r requirements.txt
    ```
 
-### How to run the code
+### Run the G1 Mode 13 simulation
 
-The G1 walking controller loads `g1_description/g1_29dof_mode_13.urdf`. The MuJoCo scene uses the matching `g1_mj_description/g1_29dof_mode_13.xml` and shares the URDF meshes. The full models have 29 body joints and two three-finger Dex3 hands with 7 joints each. The MuJoCo XML exposes all 43 motors. The walking controller includes the hands’ inertia at the finger pose measured when WBC takes over and commands the 29 body motors, including waist roll and pitch. The controller's two fixed sole frames are centered between the toe and heel contacts.
+From the repository root, configure and build the controller, then launch it from `build/` so it can find the scene and model files.
 
-In hardware mode, the program checks that LowState reports machine mode 13 before releasing the motion service. The new waist roll and pitch gains use `Kp = 40` and `Kd = 1` from the Unitree SDK's G1 low-level example.
+```bash
+cmake -S . -B build
+cmake --build build --target main --parallel
+cd build
+./main --sim
+```
 
-1. run python scripts:
-   ```bash
-   python3 scripts/'file_name'
-   ```
-2. execute main in simulation mode:
-   ```bash
-   cd build
-   make -j$(nproc)
-   ./main --sim
-   ```
+Click the MuJoCo window to give it keyboard focus. The window title and terminal both show the next key in English. Tap the indicated key on the number row or numeric keypad and wait for the next prompt. The robot can remain in either standing mode until you advance it.
 
-In the focused MuJoCo window, press the number keys in sequence. The window title and terminal show when each stage is ready for the next key. The number row and numeric keypad both work.
+| Key | Action | What to expect |
+| --- | --- | --- |
+| `1` | Open the arms slightly | Each palm moves about 3.7 cm out to the side while the forearms stay vertical. This gives the thumbs clearance from the legs. |
+| `2` | Close both hands | The second finger joints curl and both Dex3 hands form fists. |
+| `3` | Raise the forearms | Both forearms rise smoothly over about six seconds and finish horizontal, pointing forward. The window displays “Initialization complete.” |
+| `4` | Stand under joint PD control | Joint proportional–derivative (PD) control with gravity compensation holds the pose with both feet on the ground. |
+| `5` | Stand under whole-body control | The whole-body controller (WBC) takes over balance. The feet stay planted and the finger servos hold the fists. |
+| `6` | Walk forward under WBC | The robot shifts its weight onto one foot before taking its first step. |
 
-| Key | Simulation action |
-| --- | --- |
-| 1 | Move the arms slightly out to the sides with both forearms pointing down. |
-| 2 | Close both Dex3 hands, curling the second finger joints. |
-| 3 | Slowly raise both forearms over about six seconds until they point forward horizontally. |
-| 4 | Hold the pose in double support with joint PD and gravity compensation. |
-| 5 | Switch to whole-body control and stand in place. The finger servos hold the fists. |
-| 6 | Start the forward footstep plan, beginning with a weight transfer. |
+#### Model and hand appearance
+
+The walking controller loads the [G1 Mode 13 URDF](g1_description/g1_29dof_mode_13.urdf). The [MuJoCo scene](g1_mj_description/stair_steps.xml) includes the [matching robot XML](g1_mj_description/g1_29dof_mode_13.xml). Both models use the same [STL meshes](g1_description/meshes). Each Dex3 hand has a thumb, index finger and middle finger. All 14 finger segments use the light gray `finger_gray` material (RGBA `0.7 0.7 0.7 1`). To change their appearance, edit that material in both models and reopen the viewer.
+
+MuJoCo exposes 43 motors across 29 body joints and seven joints per hand. When WBC takes over, it uses the measured finger pose to include the hands’ inertia and commands the 29 body motors, including waist roll and pitch. Its two fixed sole frames are centered between the toe and heel contacts.
+
+### Run a Python script
+
+From the repository root with the virtual environment active, replace `<file_name>` with the script name and run `python3 scripts/<file_name>`.
 
 ### Visualization 
 
@@ -118,7 +122,9 @@ In the focused MuJoCo window, press the number keys in sequence. The window titl
 2. Open `g1_description/g1_29dof_mode_13.urdf` and press `Ctrl+Shift+P`, then press 'URDF Visualizer: Preview URDF/Xacro'
 
 
-### Laboratory simulation with UNITREE G1
+### Run on Unitree G1 hardware
+
+In hardware mode, the program checks that LowState reports machine mode 13 before releasing the motion service. The new waist roll and pitch gains use `Kp = 40` and `Kd = 1` from the Unitree SDK's G1 low-level example.
 
 In order to perform a laboratory simulation with the unitree G1 robot it is essential to download the 
 official SDK from the git repo "unitreerobotics" suited for the G1 humanoid.
@@ -166,7 +172,7 @@ The user manual can be found in (https://reliablerobotics.ai/wp-content/uploads/
       ```
 
 
-3. Run simulation:
+3. Run on the robot:
    0. Run examples
       ```bash
       ./'example_filename' 'network_interface'
