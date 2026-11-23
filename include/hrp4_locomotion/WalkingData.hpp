@@ -37,7 +37,8 @@ class WalkingData {
   void initializeWalkingData(
     double controller_timestep_msec,
     const labrob::SE3& T_lsole,
-    const labrob::SE3& T_rsole
+    const labrob::SE3& T_rsole,
+    bool regulate_posture = true
   );
 
   void addSteps(

@@ -137,7 +137,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
-    std::string robot_description_filename = "../g1_description/unitreeg1_2.urdf";
+    std::string robot_description_filename = "../g1_description/g1_29dof_mode_13.urdf";
 
     // Build Pinocchio model and data from URDF:
     pinocchio::Model full_robot_model;
@@ -148,19 +148,21 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         root_joint,
         full_robot_model
     );
-    const std::vector<std::string> joint_to_lock_names{
-    };
+    // Fold each hand into the wrist at its pose when WBC takes over.
+    auto locked_configuration = pinocchio::neutral(full_robot_model);
     std::vector<pinocchio::JointIndex> joint_ids_to_lock;
-    for (const auto& joint_name : joint_to_lock_names) {
-        if (full_robot_model.existJointName(joint_name)) {
-        joint_ids_to_lock.push_back(full_robot_model.getJointId(joint_name));
+    for (pinocchio::JointIndex id = 2; id < full_robot_model.joints.size(); ++id) {
+        const auto& name = full_robot_model.names[id];
+        if (name.rfind("left_hand_", 0) == 0 || name.rfind("right_hand_", 0) == 0) {
+            locked_configuration[full_robot_model.idx_qs[id]] = initial_robot_state.joint_state[name].pos;
+            joint_ids_to_lock.push_back(id);
         }
     }
 
     robot_model = pinocchio::buildReducedModel(
         full_robot_model,
         joint_ids_to_lock,
-        pinocchio::neutral(full_robot_model)
+        locked_configuration
     );
     sim_robot_data = pinocchio::Data(robot_model);
 
@@ -295,16 +297,9 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     walking_data_.initializeWalkingData(
         controller_timestep_msec_,
         labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-        labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
+        labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
+        useRobot
     );
-
-    if(!useRobot){
-        walking_data_.addSteps(
-            labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
-            labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation())
-        );
-    };
-    
 
     // Save and read again footstep plan to double check it's working:
     //std::string footstep_plan_path = "/tmp/ditch-footstep-plan-argos.txt";
@@ -334,7 +329,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         foot_constraint_square_width
     );
 
-    auto params = WholeBodyControllerParams::getDefaultParams();
+    auto params = WholeBodyControllerParams::getDefaultParams(robot_model.nv);
     whole_body_controller_ptr_ = std::make_shared<WholeBodyController>(
         params,
         robot_model,
@@ -1182,6 +1177,11 @@ WalkingManager::update(
                 labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
                 labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation())
             );
+            if (!useRobot) {
+                // Start the weight transfer now, regardless of the time spent standing.
+                walking_data_.footstep_plan.pop_front();
+                walking_data_.t0 = t_msec_;
+            }
             switchWalkingState = false;
         } else if (walking_data_.getWalkingState() == WalkingState::DoubleSupport) {
             std::cout << "Removing steps" << std::endl;
@@ -1543,21 +1543,24 @@ RobotState WalkingManager::getNewRobotState(RobotState robot_state){
     return robot_state;
 }
 
-void WalkingManager::saveLogs() {
+bool WalkingManager::saveLogs() {
 
-    //compute mean kalman gain matrix and save it to a file
-    Eigen::MatrixXd mean_Kalman_Gain = Eigen::MatrixXd::Zero(kalman_gain_log_[0].rows(), kalman_gain_log_[0].cols());
-    for (auto& Kalman_Gain : kalman_gain_log_) {
-        mean_Kalman_Gain += Kalman_Gain;
-    }
-    mean_Kalman_Gain /= kalman_gain_log_.size();
-    std::ofstream mean_kalman_gain_file("../mean_kalman_gain.txt");
-    for (int i = 0; i < mean_Kalman_Gain.rows(); ++i) {
-        for (int j = 0; j < mean_Kalman_Gain.cols(); ++j) {
-            mean_kalman_gain_file << mean_Kalman_Gain(i, j);
-            if (j < mean_Kalman_Gain.cols() - 1) mean_kalman_gain_file << " ";
+    if (sim_com_position_log_.empty()) return false;
+    if (!kalman_gain_log_.empty()) {
+        //compute mean kalman gain matrix and save it to a file
+        Eigen::MatrixXd mean_Kalman_Gain = Eigen::MatrixXd::Zero(kalman_gain_log_[0].rows(), kalman_gain_log_[0].cols());
+        for (auto& Kalman_Gain : kalman_gain_log_) {
+            mean_Kalman_Gain += Kalman_Gain;
         }
-        mean_kalman_gain_file << "\n";
+        mean_Kalman_Gain /= kalman_gain_log_.size();
+        std::ofstream mean_kalman_gain_file("../mean_kalman_gain.txt");
+        for (int i = 0; i < mean_Kalman_Gain.rows(); ++i) {
+            for (int j = 0; j < mean_Kalman_Gain.cols(); ++j) {
+                mean_kalman_gain_file << mean_Kalman_Gain(i, j);
+                if (j < mean_Kalman_Gain.cols() - 1) mean_kalman_gain_file << " ";
+            }
+            mean_kalman_gain_file << "\n";
+        }
     }
 
     std::ofstream joint_names_file("/tmp/joint_names.txt");
@@ -1836,6 +1839,7 @@ void WalkingManager::saveLogs() {
     }
 
 
+    return true;
 }
 
 

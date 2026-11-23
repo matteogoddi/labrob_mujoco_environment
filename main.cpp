@@ -1,4 +1,5 @@
 // std
+#include <array>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -6,6 +7,7 @@
 #include <vector>
 #include <csignal>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
 #include <shared_mutex>
 #include <filesystem>
@@ -55,6 +57,7 @@ double startTimeIMUcalibrating = 0.0;
 Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 #include "MujocoUI.hpp"
+#include "SimulationStartup.hpp"
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
@@ -95,7 +98,7 @@ class DataBuffer {
   std::shared_mutex mutex;
 };
 
-const int G1_NUM_MOTOR = 27;
+constexpr int G1_NUM_MOTOR = 29;
 struct ImuState {
   std::array<float, 4> quaternion = {};
   std::array<float, 3> rpy = {};
@@ -119,7 +122,7 @@ struct MotorState {
 std::array<float, G1_NUM_MOTOR> Kp{
   700, 700, 700, 1000, 900, 500,      // legs sx
   700, 700, 700, 1000, 900, 500,      // legs dx
-  400,                   // waist
+  400, 40, 40,                       // waist yaw, roll, pitch
   300, 300, 300, 300,  200, 200, 200,  // arms sx
   300, 300, 300, 300,  200, 200, 200   // arms dx
 };
@@ -136,7 +139,7 @@ std::array<float, G1_NUM_MOTOR> Kp{
 std::array<float, G1_NUM_MOTOR> Kd{
   10, 10, 10, 10, 10, 10,     // legs sx
   10, 10, 10, 10, 10, 10,     // legs dx
-  10,             // waist
+  10, 1, 1,                   // waist yaw, roll, pitch
   10, 10, 10, 10, 10, 10, 10,  // arms sx
   10, 10, 10, 10, 10, 10, 10   // arms dx
 };
@@ -153,44 +156,46 @@ std::array<float, G1_NUM_MOTOR> Kd{
 std::mutex stateMutex;
 DataBuffer<MotorState> motor_state_buffer_;
 DataBuffer<MotorCommand> motor_command_buffer_;
-uint8_t mode_machine_ = 0;
+constexpr uint8_t G1_MODE_MACHINE = 13;
+int reported_mode_machine = -1;
+std::condition_variable low_state_received;
 
 enum class Mode {
 PR = 0,  // Series Control for Ptich/Roll Joints
 AB = 1   // Parallel Control for A/B Joints
 };
 
-// make a map between joint name and robot joint index
-std::map<std::string, int> joint_name_to_index = {
-  {"left_hip_pitch_joint", 0},
-  {"left_hip_roll_joint", 1},
-  {"left_hip_yaw_joint", 2},
-  {"left_knee_joint", 3},
-  {"left_ankle_pitch_joint", 4},
-  {"left_ankle_roll_joint", 5},
-  {"right_hip_pitch_joint", 6},
-  {"right_hip_roll_joint", 7},
-  {"right_hip_yaw_joint", 8},
-  {"right_knee_joint", 9},
-  {"right_ankle_pitch_joint", 10},
-  {"right_ankle_roll_joint", 11},
-  {"waist_yaw_joint", 12},
-  // {"waist_roll_joint", 13},        // NOTE INVALID for g1 23dof/29dof with waist locked
-  // {"waist_pitch_joint", 14},      // NOTE INVALID for g1 23dof/29dof with waist locked
-  {"left_shoulder_pitch_joint", 15},
-  {"left_shoulder_roll_joint", 16},
-  {"left_shoulder_yaw_joint", 17},
-  {"left_elbow_joint", 18},
-  {"left_wrist_roll_joint", 19},
-  {"left_wrist_pitch_joint", 20},   // NOTE INVALID for g1 23dof
-  {"left_wrist_yaw_joint", 21},       // NOTE INVALID for g1 23dof
-  {"right_shoulder_pitch_joint", 22},
-  {"right_shoulder_roll_joint", 23},
-  {"right_shoulder_yaw_joint", 24},
-  {"right_elbow_joint", 25},
-  {"right_wrist_roll_joint", 26},
-  {"right_wrist_pitch_joint", 27}, // NOTE INVALID for g1 23dof
-  {"right_wrist_yaw_joint", 28}      // NOTE INVALID for g1 23dof
+// Body joints in G1 LowState/LowCmd motor order.
+const std::array<std::string, G1_NUM_MOTOR> body_joint_names = {
+  "left_hip_pitch_joint",
+  "left_hip_roll_joint",
+  "left_hip_yaw_joint",
+  "left_knee_joint",
+  "left_ankle_pitch_joint",
+  "left_ankle_roll_joint",
+  "right_hip_pitch_joint",
+  "right_hip_roll_joint",
+  "right_hip_yaw_joint",
+  "right_knee_joint",
+  "right_ankle_pitch_joint",
+  "right_ankle_roll_joint",
+  "waist_yaw_joint",
+  "waist_roll_joint",
+  "waist_pitch_joint",
+  "left_shoulder_pitch_joint",
+  "left_shoulder_roll_joint",
+  "left_shoulder_yaw_joint",
+  "left_elbow_joint",
+  "left_wrist_roll_joint",
+  "left_wrist_pitch_joint",
+  "left_wrist_yaw_joint",
+  "right_shoulder_pitch_joint",
+  "right_shoulder_roll_joint",
+  "right_shoulder_yaw_joint",
+  "right_elbow_joint",
+  "right_wrist_roll_joint",
+  "right_wrist_pitch_joint",
+  "right_wrist_yaw_joint",
 };
 
 inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
@@ -226,28 +231,17 @@ void LowStateHandler(const void* msg){
   }
 
   std::lock_guard<std::mutex> lock(stateMutex);
-  for (int i = 0; i < G1_NUM_MOTOR + 2; ++i) {
-    if (i == 13 || i == 14) continue; // skip waist roll and pitch
-    else if (i < 13) {
-      motor_state_data.q[i] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i] = low_state.motor_state()[i].dq();
-    }
-    else if (i > 14) {
-      motor_state_data.q[i - 2] = low_state.motor_state()[i].q();
-      motor_state_data.dq[i - 2] = low_state.motor_state()[i].dq();
-    }
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    motor_state_data.q[i] = low_state.motor_state()[i].q();
+    motor_state_data.dq[i] = low_state.motor_state()[i].dq();
   }
 
   // update gamepad
   memcpy(rx_.buff, &low_state.wireless_remote()[0], 40);
   gamepad_.update(rx_.RF_RX);
   
-  if (mode_machine_ != low_state.mode_machine()) {
-    if (mode_machine_ == 0) {
-      std::cout << "G1 type: " << unsigned(low_state.mode_machine()) << std::endl;
-    }
-    mode_machine_ = low_state.mode_machine();
-  }
+  reported_mode_machine = low_state.mode_machine();
+  low_state_received.notify_one();
 }
 
 ImuState imu_state_data;
@@ -322,7 +316,10 @@ void signalHandler(int signum) {
   std::getline(std::cin, user_input);
   if(user_input == "y" || user_input == "Y" || user_input == "yes" || user_input == "Yes" || user_input == "YES"){
     std::cout << "Saving logs..." << std::endl;
-    walking_manager.saveLogs();
+    if (!walking_manager.saveLogs()) {
+      std::cout << "No WBC samples to save." << std::endl;
+      exit(signum);
+    }
     std::cout << "Logs saved." << std::endl;
 
     if(useRobot){
@@ -501,8 +498,7 @@ int main(const int argc, const char* argv[]) {
       } 
     }
   } else {
-    isTotalBodyLoopClosed = true;
-    isCoMLoopClosed = true;
+    // WBC receives the measured MuJoCo state directly. Keep the EKF for logging.
     isEKFactive = true;
   }
   
@@ -513,14 +509,15 @@ int main(const int argc, const char* argv[]) {
   mjtNum r_hip_r_init = -0.04;
   mjtNum r_hip_p_init = -0.44;
   mjtNum r_knee_init = 0.95;
-  mjtNum r_ankle_p_init = -0.49;
-  mjtNum r_ankle_r_init = 0.07;
+  // Both soles rest flat on the simulated floor when PD takes the load.
+  mjtNum r_ankle_p_init = useRobot ? -0.49 : -0.50950;
+  mjtNum r_ankle_r_init = useRobot ? 0.07 : 0.02978;
   mjtNum l_hip_y_init = 0.0;
   mjtNum l_hip_r_init = -r_hip_r_init;
   mjtNum l_hip_p_init = r_hip_p_init;
   mjtNum l_knee_init = r_knee_init;
-  mjtNum l_ankle_p_init = r_ankle_p_init;
-  mjtNum l_ankle_r_init = -r_ankle_r_init;
+  mjtNum l_ankle_p_init = useRobot ? r_ankle_p_init : -0.50962;
+  mjtNum l_ankle_r_init = useRobot ? -r_ankle_r_init : -0.03267;
   mjtNum r_shoulder_p_init = 0.07;
   mjtNum r_shoulder_r_init = -0.12;
   mjtNum r_shoulder_y_init = 0.0;
@@ -536,7 +533,7 @@ int main(const int argc, const char* argv[]) {
   // mj_data_ptr->qpos[0] = 10.0;
   // mj_data_ptr->qpos[1] = 10.0;
 
-  mj_data_ptr->qpos[2] = 0.792151-0.125+0.0263 - 0.071 + 0.105 - 0.010526;
+  mj_data_ptr->qpos[2] = useRobot ? 0.716925 : 0.721069;
   mj_data_ptr->qpos[3] = 1.0;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "waist_yaw_joint")]] = waist_y_init;
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "right_hip_yaw_joint")]] = r_hip_y_init;
@@ -561,20 +558,46 @@ int main(const int argc, const char* argv[]) {
   mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[mj_name2id(mj_model_ptr, mjOBJ_JOINT, "left_elbow_joint")]] = l_elbow_p_init;
 
 
+  std::array<int, G1_NUM_MOTOR> body_actuators;
+  std::array<int, G1_NUM_MOTOR> body_joints;
   std::map<std::string, double> armatures;
-  for (int i = 0; i < mj_model_ptr->nu; ++i) {
-    int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-    std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-    int dof_id = mj_model_ptr->jnt_dofadr[joint_id];
-    armatures[joint_name] = mj_model_ptr->dof_armature[dof_id];
+  for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+    const auto& name = body_joint_names[i];
+    const int actuator = mj_name2id(mj_model_ptr, mjOBJ_ACTUATOR, name.c_str());
+    const int joint = mj_name2id(mj_model_ptr, mjOBJ_JOINT, name.c_str());
+    if (actuator < 0 || joint < 0 || mj_model_ptr->actuator_trntype[actuator] != mjTRN_JOINT ||
+        mj_model_ptr->actuator_trnid[2 * actuator] != joint) {
+      std::cerr << "Invalid body motor in MuJoCo model: " << name << std::endl;
+      mj_deleteData(mj_data_ptr);
+      mj_deleteModel(mj_model_ptr);
+      return 1;
+    }
+    body_actuators[i] = actuator;
+    body_joints[i] = joint;
+    armatures[name] = mj_model_ptr->dof_armature[mj_model_ptr->jnt_dofadr[joint]];
   }
 
-  // Walking Manager:
-  labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
-  
-  walking_manager.init(robot_state, armatures);
-
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
+  if (!useRobot) {
+    // The low-inertia Dex3 fingers have their own gains.
+    std::vector<labrob::PdGains> gains(mj_model_ptr->nu, {1.8, 0.035});
+    for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+      // The simulated ankles settle in double support with less damping than the hardware gains.
+      const double damping = body_joint_names[i].find("_ankle_") != std::string::npos ? 4.0 : Kd[i];
+      gains[body_actuators[i]] = {Kp[i], damping};
+    }
+    if (!labrob::prepareSimulation(*mj_model_ptr, *mj_data_ptr, mujoco_ui, gains)) {
+      mj_deleteData(mj_data_ptr);
+      mj_deleteModel(mj_model_ptr);
+      return 0;
+    }
+    // Release body motors to WBC torque control. The fingers continue holding their grip.
+    for (int actuator : body_actuators) mj_model_ptr->actuator_biastype[actuator] = mjBIAS_NONE;
+  }
+
+  labrob::RobotState robot_state = robot_state_from_mujoco(mj_model_ptr, mj_data_ptr);
+  walking_manager.init(robot_state, armatures);
+  if (!useRobot) mujoco_ui.promptStage(6, "Standing under whole-body control. Press 6 to walk forward.");
 
   static int framerate = 60.0;
 
@@ -587,6 +610,21 @@ int main(const int argc, const char* argv[]) {
     std::cout << "Using robot with network interface: " << netInterface << std::endl;
     ChannelFactory::Instance()->Init(0, netInterface);
     std::cout << "ChannelFactory initialized with interface: " << netInterface << std::endl;
+
+    lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
+    lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
+    {
+      std::unique_lock<std::mutex> lock(stateMutex);
+      if (!low_state_received.wait_for(lock, std::chrono::seconds(5),
+                                       [] { return reported_mode_machine >= 0; })) {
+        std::cerr << "Timed out waiting for G1 LowState." << std::endl;
+        return 1;
+      }
+      if (reported_mode_machine != G1_MODE_MACHINE) {
+        std::cerr << "Expected G1 mode 13, received " << reported_mode_machine << std::endl;
+        return 1;
+      }
+    }
 
     msc.reset(new MotionSwitcherClient());
     msc->SetTimeout(5.0f);
@@ -605,8 +643,6 @@ int main(const int argc, const char* argv[]) {
 
     lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));
     lowcmd_publisher->InitChannel();
-    lowstate_subscriber.reset(new ChannelSubscriber<LowState_>(HG_STATE_TOPIC));
-    lowstate_subscriber->InitChannel(std::bind(&LowStateHandler, std::placeholders::_1), 1);
     imutorso_subscriber.reset(new ChannelSubscriber<IMUState_>(HG_IMU_TORSO));
     imutorso_subscriber->InitChannel(std::bind(&imuTorsoHandler, std::placeholders::_1), 1);
     
@@ -617,12 +653,17 @@ int main(const int argc, const char* argv[]) {
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
+    if (!useRobot && mujoco_ui.takeStagePress()) {
+      switchWalkingState = true;
+      mujoco_ui.promptStage(0, "Forward walking started. Shifting weight for the first step.");
+    }
+
     mjtNum simstart = mj_data_ptr->time;
     while( mj_data_ptr->time - simstart < 1.0/framerate ) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
-      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + mj_model_ptr->nu + 3 + mj_model_ptr->nu + 6 + 6);
+      Eigen::VectorXd actual_output = Eigen::VectorXd::Zero(3 + G1_NUM_MOTOR + 3 + G1_NUM_MOTOR + 6 + 6);
 
       // if userobot is true, update the robot state from the real robot
       if (useRobot) {
@@ -675,18 +716,16 @@ int main(const int argc, const char* argv[]) {
           imu_state_data.quaternion[2],
           imu_state_data.quaternion[3]
         ));
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
           actual_output[3 + i] = motor_state_data.q[i];
-          actual_output[3 + mj_model_ptr->nu + i + 3] = motor_state_data.dq[i];
+          actual_output[3 + G1_NUM_MOTOR + i + 3] = motor_state_data.dq[i];
         }
-        actual_output[3 + mj_model_ptr->nu] = imu_state_data.omega[0];
-        actual_output[3 + mj_model_ptr->nu + 1] = imu_state_data.omega[1];
-        actual_output[3 + mj_model_ptr->nu + 2] = imu_state_data.omega[2];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu] = imu_state_data.accelerometer[0];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 1] = imu_state_data.accelerometer[1];
-        // actual_output[3 + 3 + 2 * mj_model_ptr->nu + 2] = imu_state_data.accelerometer[2];
+        actual_output[3 + G1_NUM_MOTOR] = imu_state_data.omega[0];
+        actual_output[3 + G1_NUM_MOTOR + 1] = imu_state_data.omega[1];
+        actual_output[3 + G1_NUM_MOTOR + 2] = imu_state_data.omega[2];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR] = imu_state_data.accelerometer[0];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR + 1] = imu_state_data.accelerometer[1];
+        // actual_output[3 + 3 + 2 * G1_NUM_MOTOR + 2] = imu_state_data.accelerometer[2];
 
         imu_accelerometer = Eigen::Vector3d(
           imu_state_data.accelerometer[0],
@@ -710,14 +749,12 @@ int main(const int argc, const char* argv[]) {
       // } // end of parallel sections
       walking_manager.update(robot_state, joint_command, actual_output);
 
-      if (false){
+      if (!useRobot) {
         auto start_integration = std::chrono::steady_clock::now();
         mj_step1(mj_model_ptr, mj_data_ptr);
   
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
-          mj_data_ptr->ctrl[i] = joint_command[joint_name];
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          mj_data_ptr->ctrl[body_actuators[i]] = joint_command[body_joint_names[i]];
         }
   
         mj_step2(mj_model_ptr, mj_data_ptr);
@@ -747,9 +784,9 @@ int main(const int argc, const char* argv[]) {
         mj_data_ptr->qvel[3] = robot_state.angular_velocity.x();
         mj_data_ptr->qvel[4] = robot_state.angular_velocity.y();
         mj_data_ptr->qvel[5] = robot_state.angular_velocity.z();
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          const int joint_id = body_joints[i];
+          const auto& joint_name = body_joint_names[i];
           mj_data_ptr->qpos[mj_model_ptr->jnt_qposadr[joint_id]] = robot_state.joint_state[joint_name].pos;
           mj_data_ptr->qvel[mj_model_ptr->jnt_dofadr[joint_id]] = robot_state.joint_state[joint_name].vel;
         }
@@ -758,7 +795,7 @@ int main(const int argc, const char* argv[]) {
         // mju_zero(mj_data_ptr->ctrl, mj_model_ptr->nu);
         mju_zero(mj_data_ptr->qfrc_applied, mj_model_ptr->nv);
         mju_zero(mj_data_ptr->qacc, mj_model_ptr->nv);
-        mju_zero(mj_data_ptr->act, mj_model_ptr->nu);
+        mju_zero(mj_data_ptr->act, mj_model_ptr->na);
 
         mj_data_ptr->time += 0.002;
 
@@ -781,8 +818,6 @@ int main(const int argc, const char* argv[]) {
         // impose kp and kd to increase linearly with time
         if (mj_data_ptr->time < 5.0f) {
           for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-            int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-            std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
             motor_command.kp[i] = 0.0f + Kp[i] * (mj_data_ptr->time / 5.0f);
             motor_command.kd[i] = Kd[i];
           }
@@ -793,9 +828,8 @@ int main(const int argc, const char* argv[]) {
         }
 
         // assegna i valori di controllo per i giunti
-        for (int i = 0; i < mj_model_ptr->nu; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id));
+        for (int i = 0; i < G1_NUM_MOTOR; ++i) {
+          const auto& joint_name = body_joint_names[i];
 
           // if the values are too big in module, turn off the robot
           if (std::abs(robot_state.joint_state[joint_name].pos) > 2 || std::abs(robot_state.joint_state[joint_name].vel) > 15 || std::abs(joint_command[joint_name]) > 100.0)  {
@@ -816,13 +850,10 @@ int main(const int argc, const char* argv[]) {
         // Costruisci comando DDS
         LowCmd_ dds_low_command;
         dds_low_command.mode_pr() = static_cast<uint8_t>(Mode::PR);
-        dds_low_command.mode_machine() = mode_machine_;
+        dds_low_command.mode_machine() = G1_MODE_MACHINE;
       
         for (int i = 0; i < G1_NUM_MOTOR; ++i) {
-          int joint_id = mj_model_ptr->actuator_trnid[i * 2];
-          std::string joint_name = std::string(mj_id2name(mj_model_ptr, mjOBJ_JOINT, joint_id)); 
-          int robot_idx = joint_name_to_index[joint_name];
-          auto &cmd = dds_low_command.motor_cmd().at(robot_idx);
+          auto &cmd = dds_low_command.motor_cmd().at(i);
           cmd.mode() = 1;
           cmd.q()    = motor_command.q_target[i];
           cmd.dq()   = motor_command.dq_target[i];

@@ -85,6 +85,10 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
 
 ### How to run the code
 
+The G1 walking controller loads `g1_description/g1_29dof_mode_13.urdf`. The MuJoCo scene uses the matching `g1_mj_description/g1_29dof_mode_13.xml` and shares the URDF meshes. The full models have 29 body joints and two three-finger Dex3 hands with 7 joints each. The MuJoCo XML exposes all 43 motors. The walking controller includes the hands’ inertia at the finger pose measured when WBC takes over and commands the 29 body motors, including waist roll and pitch. The controller's two fixed sole frames are centered between the toe and heel contacts.
+
+In hardware mode, the program checks that LowState reports machine mode 13 before releasing the motion service. The new waist roll and pitch gains use `Kp = 40` and `Kd = 1` from the Unitree SDK's G1 low-level example.
+
 1. run python scripts:
    ```bash
    python3 scripts/'file_name'
@@ -96,11 +100,22 @@ To install HPIPM (together with Blasfeo), follow the instructions under the sect
    ./main --sim
    ```
 
+In the focused MuJoCo window, press the number keys in sequence. The window title and terminal show when each stage is ready for the next key. The number row and numeric keypad both work.
+
+| Key | Simulation action |
+| --- | --- |
+| 1 | Move the arms slightly out to the sides with both forearms pointing down. |
+| 2 | Close both Dex3 hands, curling the second finger joints. |
+| 3 | Slowly raise both forearms over about six seconds until they point forward horizontally. |
+| 4 | Hold the pose in double support with joint PD and gravity compensation. |
+| 5 | Switch to whole-body control and stand in place. The finger servos hold the fists. |
+| 6 | Start the forward footstep plan, beginning with a weight transfer. |
+
 ### Visualization 
 
 1. Install vscode extension "URDF Visualizer"
 
-2. Open "unitreeg1.urdf" and press ```CTRL+SHIFT*P```, then press 'URDF Visualizer: Preview URDF/Xacro'
+2. Open `g1_description/g1_29dof_mode_13.urdf` and press `Ctrl+Shift+P`, then press 'URDF Visualizer: Preview URDF/Xacro'
 
 
 ### Laboratory simulation with UNITREE G1

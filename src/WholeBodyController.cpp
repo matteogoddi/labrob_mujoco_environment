@@ -16,8 +16,8 @@
 
 namespace labrob {
 
-WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
-  static WholeBodyControllerParams params;
+WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams(int nv) {
+  WholeBodyControllerParams params;
 
   params.Kp_motion = 30.0;
   params.Kd_motion = 10.0;
@@ -31,7 +31,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_torso = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation = 1e-4;
-  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(6 + 27, 6 + 27) * 1e-4;
+  params.weight_regulation_matrix = Eigen::MatrixXd::Identity(nv, nv) * params.weight_regulation;
   // params.weight_regulation_matrix.block(10, 10, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
   // params.weight_regulation_matrix.block(16, 16, 1, 1) = Eigen::MatrixXd::Identity(1, 1) * 1e-3;
   //fare matrice identità e asssegnare valori più alti per l'ankle roll

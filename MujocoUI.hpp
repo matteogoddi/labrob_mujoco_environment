@@ -1,3 +1,6 @@
+#pragma once
+
+#include <iostream>
 
 // GLFW
 #include <GLFW/glfw3.h>
@@ -45,6 +48,19 @@ class MujocoUI {
 
     // process pending GUI events, call GLFW callbacks
     glfwPollEvents();
+  }
+
+  void promptStage(int key, const char* message) {
+    expected_key_ = key;
+    stage_pressed_ = false;
+    glfwSetWindowTitle(window_, message);
+    std::cout << message << std::endl;
+  }
+
+  bool takeStagePress() {
+    const bool pressed = stage_pressed_;
+    stage_pressed_ = false;
+    return pressed;
   }
 
   bool windowShouldClose() {
@@ -166,6 +182,15 @@ class MujocoUI {
     mjv_makeScene(model_ptr_, &scn_, 1000);
     mjr_makeContext(model_ptr_, &con_, mjFONTSCALE_100);
 
+    glfwSetKeyCallback(window_, [](GLFWwindow*, int key, int, int action, int) {
+      auto& ui = *getInstance();
+      if (action == GLFW_PRESS && ui.expected_key_ > 0 &&
+          (key == GLFW_KEY_0 + ui.expected_key_ || key == GLFW_KEY_KP_0 + ui.expected_key_)) {
+        ui.stage_pressed_ = true;
+        ui.expected_key_ = 0;
+      }
+    });
+
     // install GLFW mouse callbacks
     glfwSetCursorPosCallback(
         window_,
@@ -205,6 +230,8 @@ class MujocoUI {
   mjrContext con_;                     // custom GPU context
 
   GLFWwindow* window_;
+  int expected_key_ = 0;
+  bool stage_pressed_ = false;
 
   // Mouse interaction:
   bool button_left_;
@@ -215,5 +242,5 @@ class MujocoUI {
 
 };
 
-MujocoUI* MujocoUI::mujoco_ui_ptr_ = nullptr;
+inline MujocoUI* MujocoUI::mujoco_ui_ptr_ = nullptr;
 } // end namespace labrob

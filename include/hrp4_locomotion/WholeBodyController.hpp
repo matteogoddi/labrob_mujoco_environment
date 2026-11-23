@@ -51,7 +51,7 @@ struct WholeBodyControllerParams {
   double foot_length;
   double foot_width;
 
-  static WholeBodyControllerParams getDefaultParams();
+  static WholeBodyControllerParams getDefaultParams(int nv);
 };
 
 class WholeBodyController {

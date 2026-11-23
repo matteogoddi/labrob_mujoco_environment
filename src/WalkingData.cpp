@@ -71,18 +71,21 @@ void
 WalkingData::initializeWalkingData(
   double controller_timestep_msec,
   const labrob::SE3& T_lsole,
-  const labrob::SE3& T_rsole
+  const labrob::SE3& T_rsole,
+  bool regulate_posture
 ){
-    footstep_plan.push_back(labrob::FootstepPlanElement(
-        labrob::DoubleSupportConfiguration(
-            labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
-            labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
-            labrob::Foot::RIGHT
-        ),
-        0.0,
-        2000,
-        labrob::WalkingState::Init
-    ));
+    if (regulate_posture) {
+      footstep_plan.push_back(labrob::FootstepPlanElement(
+          labrob::DoubleSupportConfiguration(
+              labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
+              labrob::SE3(T_rsole.rotation(), T_rsole.translation()),
+              labrob::Foot::RIGHT
+          ),
+          0.0,
+          2000,
+          labrob::WalkingState::Init
+      ));
+    }
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),
@@ -101,13 +104,13 @@ WalkingData::addSteps(
   const labrob::SE3& T_rsole
 ){
     double swing_foot_trajectory_height = 0.05;
-    double step_length_x = 0.0;
+    double step_length_x = 0.01; //default 0.0
     double step_length_y = 0.0;
     double step_rotation = 0.0;
     int n_steps = 10;
 
-    double double_support_duration = 6000;
-    double single_support_duration = 6000;
+    double double_support_duration = 2500; //default 6000
+    double single_support_duration = 1000; //default 6000
     footstep_plan.push_back(labrob::FootstepPlanElement(
         labrob::DoubleSupportConfiguration(
             labrob::SE3(T_lsole.rotation(), T_lsole.translation()),

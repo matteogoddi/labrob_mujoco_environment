@@ -66,6 +66,7 @@ target_link_libraries(WalkingControllerLibrary
 
 add_executable(main
   main.cpp
+  SimulationStartup.cpp
 )
 target_include_directories(main
   PUBLIC

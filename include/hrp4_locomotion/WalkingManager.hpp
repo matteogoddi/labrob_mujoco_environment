@@ -38,7 +38,7 @@ class WalkingManager {
 
   RobotState getNewRobotState(RobotState robot_state);
 
-  void saveLogs();
+  bool saveLogs();
 
   void update(
       const labrob::RobotState& sim_robot_state,
