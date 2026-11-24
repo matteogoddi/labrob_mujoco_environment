@@ -108,6 +108,17 @@ class WholeBodyController {
   int get_n_contacts() const { return n_contacts_; }
   double get_mu() const { return params_.mu; }
 
+  // ZMP references used to build the CoM task error in
+  // compute_inverse_dynamics(): zmp_ref is the center of the ISMPC ZMP
+  // constraint box, des_zmp_wbc is the ZMP of the integrated (P)LIP state.
+  // WalkingManager refreshes them once per control cycle, right before the
+  // inverse-dynamics call.
+  void set_zmp_references(const Eigen::Vector3d& zmp_ref,
+                          const Eigen::Vector3d& des_zmp_wbc) {
+    zmp_ref_ = zmp_ref;
+    des_zmp_wbc_ = des_zmp_wbc;
+  }
+
   // INFO
   int  wbc_solver_status()      const { return wbc_solver_ptr_->get_status(); }
   
@@ -140,6 +151,9 @@ class WholeBodyController {
 
   std::unique_ptr<labrob::QpSolver> wbc_solver_ptr_;
   Eigen::VectorXd left_foot_wrench_, right_foot_wrench_;
+
+  Eigen::Vector3d zmp_ref_ = Eigen::Vector3d::Zero();
+  Eigen::Vector3d des_zmp_wbc_ = Eigen::Vector3d::Zero();
 
   
   // ── pre-allocated buffers — no malloc in the 1kHz hot path ──────────────

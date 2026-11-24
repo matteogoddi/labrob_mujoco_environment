@@ -17,29 +17,31 @@ const std::array<float, G1_NUM_MOTOR> Kp_cl{
     0, 0, 0, 0, 0, 0, 0    // arms
     */
 
-    /*    
-    400, 400, 400, 600, 400, 300,      // legs
-    400, 400, 400, 600, 400, 300,      // legs
-    250, 250, 150,                     // waist
-    120, 120, 120, 70,  40, 40, 40,   // arms
-    120, 120, 120, 70,  40, 40, 40    // arms
-    */
+        
+    // 400, 400, 400, 600, 400, 300,      // legs
+    // 400, 400, 400, 600, 400, 300,      // legs
+    // 250, 250, 150,                     // waist
+    // 120, 120, 120, 70,  40, 40, 40,   // arms
+    // 120, 120, 120, 70,  40, 40, 40    // arms
+    
 
     
     150, 150, 150, 200, 40, 40,    // left leg
     150, 150, 150, 200, 40, 40,    // right leg
-    100, 100, 100,                // waist
+    100, 100, 100,                // waist 
     100, 100, 100, 15,  10, 10, 10,   // left arm
     100, 100, 100, 15,  10, 10, 10   // right arm
     
+    
 
     /*
-    20, 20, 20, 30, 20, 20,      // left leg
-    20, 20, 20, 30, 20, 20,      // right leg
-    10,  10,  10,                     // waist yaw/roll/pitch
-    10, 10, 10, 10,  2, 2, 2,   // left arm
-    10, 10, 10, 10,  2, 2, 2    // right arm
+    40, 40, 40, 40, 30, 30,      // left leg
+    40, 40, 40, 40, 30, 30,      // right leg
+    70,  70,  70,                     // waist yaw/roll/pitch
+    20, 20, 20, 20,  5, 5, 5,   // left arm
+    20, 20, 20, 20,  5, 5, 5    // right arm
     */
+    
 };
 
 const std::array<float, G1_NUM_MOTOR> Kd_cl{
@@ -73,6 +75,7 @@ const std::array<float, G1_NUM_MOTOR> Kd_cl{
     10, 10, 10,
     10, 10, 10, 2, 2, 2, 2,
     10, 10, 10, 2, 2, 2, 2
+    
     
 };
 
@@ -184,14 +187,14 @@ const std::map<std::string, double> joint_initial_positions = {
     {"left_shoulder_pitch_joint",   0.07},
     {"left_shoulder_roll_joint",    0.25},
     {"left_shoulder_yaw_joint",     0.0},
-    {"left_elbow_joint",            1.13},
+    {"left_elbow_joint",            -0.07}, // 1.13},
     {"left_wrist_roll_joint",       0.0},
     {"left_wrist_pitch_joint",      0.0},
     {"left_wrist_yaw_joint",        0.0},
     {"right_shoulder_pitch_joint",  0.07},
     {"right_shoulder_roll_joint",  -0.25},
     {"right_shoulder_yaw_joint",    0.0},
-    {"right_elbow_joint",           1.13},
+    {"right_elbow_joint",           -0.07}, // 1.13},
     {"right_wrist_roll_joint",      0.0},
     {"right_wrist_pitch_joint",     0.0},
     {"right_wrist_yaw_joint",       0.0},

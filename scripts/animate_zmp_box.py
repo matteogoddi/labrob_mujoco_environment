@@ -65,9 +65,7 @@ with a pre-roll over those earlier main-loop ticks, where the plot is empty (no
 ZMP/CoM/foot logs exist yet) and only the flags advance: it starts
 PREROLL_LEAD_S before the first button press, runs at PREROLL_SPEEDUP x real
 time, and ends exactly where the closed-loop part below begins. In simulation
-main.cpp closes the loop and turns the observer on at the first tick, so there
-is no pre-roll at all (and the EKF badge stays grey: the simulation feeds the
-WBC the MuJoCo ground-truth state, the EKF never runs).
+main.cpp turns all three on at the first tick, so there is no pre-roll at all.
 
 The two timelines are lined up through column 3 of control_flags, which marks the
 main-loop ticks that have a WalkingManager log row; the time shown is always the
@@ -121,8 +119,7 @@ PREROLL_SPEEDUP = 10  # pre-roll playback speed relative to the closed-loop part
 PREROLL_LEAD_S = 1.0  # start the pre-roll this long before the first button press
 
 # Gamepad-activated modes, in the column order of control_flags.txt
-# (logged at the end of the main-loop tick in main.cpp; buttons handled in
-# handle_gamepad there).
+# (WalkingManager.cpp LOGS block; buttons handled in main.cpp handle_gamepad).
 CONTROL_FLAG_LABELS = ('EKF (A)', 'closed loop (X)', 'observer (B)')
 
 WALKING_STATE_NAMES = {  # include/WalkingState.hpp enum order

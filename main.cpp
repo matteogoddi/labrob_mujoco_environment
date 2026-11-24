@@ -53,6 +53,25 @@ bool curve = false;
 
 Eigen::VectorXd measured_joint_velocity = Eigen::VectorXd::Zero(29);
 
+// ── Per-joint velocity safety threshold (rad/s) ───────────────────────────────
+// Default for every joint; the ankle rolls are the only exception.  At every
+// DS->SS switch the WBC contact set changes in a single tick and the feedforward
+// on the new support ankle roll steps by ~8 Nm: that joint gets kicked to
+// ~1.7 rad/s raw (~1.0 rad/s after the EMA) for a few ms and then settles on its
+// own.  No other joint goes past 0.7 rad/s, so a single threshold ends up being
+// tuned on those two.  3.0 rad/s is still 10% of their URDF velocity limit (30).
+static constexpr double default_joint_vel_safety_limit = 1.5;// 1.5;
+static const std::map<std::string, double> joint_vel_safety_limit = {
+    {"left_ankle_roll_joint",  3.5},
+    {"right_ankle_roll_joint", 3.5},
+};
+
+static double vel_safety_limit_of(const std::string& jname) {
+    const auto it = joint_vel_safety_limit.find(jname);
+    return (it == joint_vel_safety_limit.end()) ? default_joint_vel_safety_limit
+                                                : it->second;
+}
+
 using Clock = std::chrono::steady_clock;
 
 // ── Experiment duration bookkeeping ───────────────────────────────────────────
@@ -190,53 +209,6 @@ labrob::RobotState robot_state_from_mujoco(mjModel* m, mjData* d) {
     return rs;
 }
 
-// ── MuJoCo → ground-truth sole wrench ─────────────────────────────────────────
-// Wrench exerted by the environment on the foot body `foot_body_id`, summed over
-// its contacts and taken about the origin of the URDF frame "<side>_foot_link",
-// with world-aligned axes: the same point and axes as the foot wrenches of the
-// WristForceEstimator (LOCAL_WORLD_ALIGNED Jacobians of left/right_foot_link),
-// so the two can be compared directly. MuJoCo has no foot_link body, so its
-// origin is rebuilt from the ankle roll body and the fixed offset of the
-// left/right_foot_joint in g1_29dof_with_hand_rev_1_0.urdf.
-Eigen::Matrix<double, 6, 1> sole_wrench_from_mujoco(const mjModel* m, const mjData* d, int foot_body_id) {
-    static const Eigen::Vector3d foot_link_offset(0.035, 0.0, -0.0338);
-    using RowMajor3d = Eigen::Matrix<mjtNum, 3, 3, Eigen::RowMajor>;
-
-    Eigen::Map<const RowMajor3d> R_foot(d->xmat + 9 * foot_body_id);
-    Eigen::Map<const Eigen::Vector3d> p_body(d->xpos + 3 * foot_body_id);
-    const Eigen::Vector3d p_foot = p_body + R_foot * foot_link_offset;
-
-    Eigen::Matrix<double, 6, 1> wrench = Eigen::Matrix<double, 6, 1>::Zero();
-    for (int i = 0; i < d->ncon; ++i) {
-        const mjContact& con = d->contact[i];
-        if (con.geom[0] < 0 || con.geom[1] < 0) continue;
-        const int b1 = m->geom_bodyid[con.geom[0]];
-        const int b2 = m->geom_bodyid[con.geom[1]];
-        // mj_contactForce returns the force geom[0] exerts on geom[1] (the normal
-        // points from geom[0] to geom[1]): flip it when the foot is geom[0].
-        // Contacts with other parts of the robot itself are not external.
-        double sign;
-        if (b2 == foot_body_id && m->body_rootid[b1] != m->body_rootid[foot_body_id])
-            sign = 1.0;
-        else if (b1 == foot_body_id && m->body_rootid[b2] != m->body_rootid[foot_body_id])
-            sign = -1.0;
-        else
-            continue;
-
-        mjtNum f_local[6];
-        mj_contactForce(m, d, i, f_local);
-        // Rows of con.frame are the contact axes in world coordinates.
-        Eigen::Map<const RowMajor3d> R_con(con.frame);
-        const Eigen::Vector3d f = sign * R_con.transpose() * Eigen::Vector3d(f_local[0], f_local[1], f_local[2]);
-        const Eigen::Vector3d tau = sign * R_con.transpose() * Eigen::Vector3d(f_local[3], f_local[4], f_local[5]);
-        const Eigen::Vector3d p_con(con.pos[0], con.pos[1], con.pos[2]);
-
-        wrench.head<3>() += f;
-        wrench.tail<3>() += tau + (p_con - p_foot).cross(f);
-    }
-    return wrench;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 static void handle_gamepad(
@@ -336,13 +308,16 @@ static void send_dds_command(
         int jid = m->actuator_trnid[i * 2];
         std::string jname = mj_id2name(m, mjOBJ_JOINT, jid);
         if (wbc_active) {
+            const double vel_limit = vel_safety_limit_of(jname);
             if (std::abs(robot_state.joint_state[jname].pos) > 1.5 ||
-                std::abs(robot_state.joint_state[jname].vel) > 1.5   || // safe 1.0
-                std::abs(joint_command[jname]) > 45.0) {                // safe 40.0
+                std::abs(robot_state.joint_state[jname].vel) > vel_limit ||
+                std::abs(joint_command[jname]) > 55.0) {                // safe 40.0
                 std::cout << "Safety limit exceeded on " << jname << ": "
                           << "q="   << robot_state.joint_state[jname].pos
                           << " dq=" << robot_state.joint_state[jname].vel
-                          << " tau=" << joint_command[jname] << std::endl;
+                          << " (dq limit " << vel_limit << ")"
+                          << " tau=" << joint_command[jname]
+                          << " at time t = " << t_s << std::endl;
                 signalHandler(SIGINT);
             }
             motor_command.q_target[i]  = static_cast<float>(q_ref[i]);
@@ -574,10 +549,11 @@ int main(const int argc, const char* argv[]) {
             Eigen::Vector3d imu_acc            = Eigen::Vector3d::Zero();
             Eigen::Vector3d imu_gyro           = Eigen::Vector3d::Zero();
 
-            // Set right after walking_manager.update(): every call appends exactly
-            // one row to the WalkingManager logs, so this marks which main-loop
-            // ticks those rows belong to (4th column of control_flags below).
-            bool wm_logged = false;
+            // Set below wherever walking_manager.update() is actually called, so
+            // that the control_flags channel can mark which main-loop ticks have a
+            // corresponding row in the WalkingManager logs (see the log call at the
+            // end of this tick).
+            bool wbc_updated = false;
 
             if (useRobot) {
 
@@ -777,21 +753,6 @@ int main(const int argc, const char* argv[]) {
                 gt_right << f_r_test.transpose() << "\n";
                 gt_left  << f_l_test.transpose() << "\n";
 
-                // Ground-truth sole wrenches, from the contacts of the last
-                // mj_step2: the same state robot_state (and hence the wrench
-                // observer in walking_manager.update below) is built from, so
-                // each row lines up with the estimate logged in this tick.
-                {
-                    static const int l_foot_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "left_ankle_roll_link");
-                    static const int r_foot_id = mj_name2id(mj_model_ptr, mjOBJ_BODY, "right_ankle_roll_link");
-                    const auto w_lsole = sole_wrench_from_mujoco(mj_model_ptr, mj_data_ptr, l_foot_id);
-                    const auto w_rsole = sole_wrench_from_mujoco(mj_model_ptr, mj_data_ptr, r_foot_id);
-                    sensor_logger.log("gt_force_lsole",  Eigen::Vector3d(w_lsole.head<3>()));
-                    sensor_logger.log("gt_force_rsole",  Eigen::Vector3d(w_rsole.head<3>()));
-                    sensor_logger.log("gt_moment_lsole", Eigen::Vector3d(w_lsole.tail<3>()));
-                    sensor_logger.log("gt_moment_rsole", Eigen::Vector3d(w_rsole.tail<3>()));
-                }
-
                 for (int i = 0; i < mj_model_ptr->nu; ++i) {
                     int jid = mj_model_ptr->actuator_trnid[i * 2];
                     std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
@@ -800,7 +761,7 @@ int main(const int argc, const char* argv[]) {
 
 
                 walking_manager.update(robot_state, joint_command);
-                wm_logged = true;
+                wbc_updated = true;
 
                 auto t0 = std::chrono::steady_clock::now();
                 mj_step1(mj_model_ptr, mj_data_ptr);
@@ -836,7 +797,7 @@ int main(const int argc, const char* argv[]) {
 
                     case ExperimentMode::WBC:
                         walking_manager.update(robot_state, joint_command);
-                        wm_logged = true;
+                        wbc_updated = true;
                         {
                             constexpr double cmd_dt = 0.002;
                             const Eigen::VectorXd& jddot = walking_manager.get_wbc_q_ddot();
@@ -845,8 +806,9 @@ int main(const int argc, const char* argv[]) {
                                 int jid = mj_model_ptr->actuator_trnid[i * 2];
                                 std::string jname = mj_id2name(mj_model_ptr, mjOBJ_JOINT, jid);
                                 // q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
-                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + std::clamp(robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt, -1.0, 1.0);
-                                dq_ref_joints[i] = 0;//robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
+                                q_ref_joints[i]  = robot_state.joint_state.at(jname).pos + robot_state.joint_state.at(jname).vel * cmd_dt + 0.5 * jddot_joints[i] * cmd_dt * cmd_dt;
+                                // dq_ref_joints[i] = 0;
+                                dq_ref_joints[i] = robot_state.joint_state.at(jname).vel + jddot_joints[i] * cmd_dt;
 
                                 if (std::abs(q_ref_joints[i] - robot_state.joint_state.at(jname).pos) > 1.0) {
                                     std::cout << "Reference joint pos update term saturated" << std::endl;
@@ -897,15 +859,18 @@ int main(const int argc, const char* argv[]) {
                                  q_ref_joints, dq_ref_joints);
             }
 
-            // Gamepad-activated modes (A -> EKF, X -> closed loop, B -> wrench
-            // observer), logged from the very first tick — unlike the
-            // WalkingManager logs, which only start once X closed the loop.
-            // Column 3 lines the two timelines up (scripts/animate_zmp_box.py).
+            // Which gamepad-activated modes are on at this tick: A -> EKF, X ->
+            // closed loop (MPC/WBC), B -> wrench observer (handle_gamepad above).
+            // Logged from the main loop, not from WalkingManager, because the
+            // WalkingManager logs only start once X has closed the loop — the
+            // whole point here is to also cover the ticks before that.  The 4th
+            // column marks the ticks that do have a WalkingManager log row, so
+            // that scripts can line the two timelines up (scripts/animate_zmp_box.py).
             sensor_logger.log("control_flags", Eigen::Vector4d(
                 isEKFactive      ? 1.0 : 0.0,
                 isMPCLoopClosed  ? 1.0 : 0.0,
                 isObserverActive ? 1.0 : 0.0,
-                wm_logged        ? 1.0 : 0.0));
+                wbc_updated      ? 1.0 : 0.0));
 
             last_sim_time = mj_data_ptr->time;
         }

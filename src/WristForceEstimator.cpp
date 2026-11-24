@@ -41,9 +41,9 @@ namespace labrob {
         Ki_(Ki),
         W_ext_(Eigen::VectorXd::Zero(24)),
         W_ext_filt_(Eigen::VectorXd::Zero(24)),
-        filter_alpha_x_(0.00628), // 0.00628 designed basing on T_step
-        filter_alpha_y_(0.006),
-        filter_alpha_z_(0.006),
+        filter_alpha_x_(0.0005), // 0.00628 designed basing on T_step
+        filter_alpha_y_(0.0005),
+        filter_alpha_z_(0.0005),
         alpha_matrix_(Eigen::MatrixXd::Zero(24, 24)),
         right_wrist_frame_(right_wrist_frame),
         left_wrist_frame_(left_wrist_frame),
