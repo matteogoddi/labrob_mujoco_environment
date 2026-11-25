@@ -67,7 +67,13 @@ target_link_libraries(WalkingControllerLibrary
 add_executable(main
   main.cpp
   SimulationStartup.cpp
+  SimulationObserver.cpp
 )
+# SDK2 and Foxy ship incompatible Cyclone DDS libraries with the same SONAME.
+# Prefer this native executable's linked library directories in a sourced ROS shell.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(main PRIVATE "LINKER:--disable-new-dtags")
+endif()
 target_include_directories(main
   PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

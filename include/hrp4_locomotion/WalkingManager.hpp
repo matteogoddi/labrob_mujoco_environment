@@ -22,6 +22,8 @@
 #include <labrob_qpsolvers/qpsolvers.hpp>
 
 
+namespace Json { class Value; }
+
 namespace labrob {
 
 class WalkingManager {
@@ -39,6 +41,8 @@ class WalkingManager {
   RobotState getNewRobotState(RobotState robot_state);
 
   bool saveLogs();
+
+  Json::Value visualizationSnapshot(bool hardware) const;
 
   void update(
       const labrob::RobotState& sim_robot_state,

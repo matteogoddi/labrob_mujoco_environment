@@ -1,0 +1,69 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Selection
+    Name: Selection
+Visualization Manager:
+  Class: ""
+  Enabled: true
+  Global Options:
+    Fixed Frame: world
+    Background Color: 41; 45; 51
+    Frame Rate: 60
+  Displays:
+    - Class: rviz/Grid
+      Name: Ground (0.1 m)
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 24
+      Alpha: 0.28
+      Line Style:
+        Value: Lines
+    - Class: rviz/RobotModel
+      Name: G1 measured pose
+      Robot Description: /g1_observer/robot_description
+      Enabled: true
+      Alpha: 0.5
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz/MarkerArray
+      Name: Walking diagnostics
+      Marker Topic: /g1_observer/markers
+      Enabled: true
+    - Class: rviz/TF
+      Name: Compare TF frames
+      Enabled: false
+      Marker Scale: 0.12
+      Show Names: true
+      Show Arrows: false
+      Frames:
+        All Enabled: false
+        pelvis:
+          Value: true
+        left_foot_link:
+          Value: true
+        right_foot_link:
+          Value: true
+        wbc_left_foot_link:
+          Value: true
+        wbc_right_foot_link:
+          Value: true
+        torso_link:
+          Value: true
+        wbc_torso_link:
+          Value: true
+  Tools:
+    - Class: rviz/Interact
+    - Class: rviz/MoveCamera
+    - Class: rviz/Select
+    - Class: rviz/Measure
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 2.3
+      Pitch: 0.29
+      Yaw: 0.76
+      Focal Point: {X: 0.04, Y: 0, Z: 0.56}
+Window Geometry:
+  Width: 1120
+  Height: 800

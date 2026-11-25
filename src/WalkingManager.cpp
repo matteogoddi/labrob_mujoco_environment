@@ -346,7 +346,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
 
     discrete_lip_dynamics_ptr_mpc_ = std::make_unique<labrob::DiscreteLIPDynamics>(
         std::sqrt(9.81 / com_target_height),
-        0.1 * controller_timestep_msec_
+        0.001 * mpc_timestep_msec
     );
 
     Kalman_Gain = Eigen::MatrixXd::Zero(2 * (njnt + 6), n_ekf_output);

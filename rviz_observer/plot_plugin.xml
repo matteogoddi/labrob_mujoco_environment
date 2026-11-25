@@ -1,0 +1,5 @@
+<library path="g1_live_plots">
+  <class name="g1_wbc_observer/LivePlots" type="g1_wbc_observer::PlotPanel" base_class_type="rviz_common::Panel">
+    <description>Live G1 ZMP tracking and joint signals.</description>
+  </class>
+</library>

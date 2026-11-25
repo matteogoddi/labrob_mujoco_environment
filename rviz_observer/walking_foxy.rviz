@@ -1,0 +1,80 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Selection
+    Name: Selection
+  - Class: g1_wbc_observer/LivePlots
+    Name: Live plots
+Visualization Manager:
+  Class: ""
+  Enabled: true
+  Global Options:
+    Fixed Frame: world
+    Background Color: 41; 45; 51
+    Frame Rate: 60
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Ground (0.1 m)
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 24
+      Alpha: 0.28
+      Line Style:
+        Value: Lines
+    - Class: rviz_default_plugins/RobotModel
+      Name: G1 measured pose
+      Description Source: Topic
+      Description Topic:
+        Value: /g1_observer/robot_description
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        Depth: 1
+      Enabled: true
+      Alpha: 0.5
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/MarkerArray
+      Name: Walking diagnostics
+      Topic:
+        Value: /g1_observer/markers
+        Depth: 1
+      Enabled: true
+    - Class: rviz_default_plugins/TF
+      Name: Compare TF frames
+      Enabled: false
+      Marker Scale: 0.12
+      Show Names: true
+      Show Arrows: false
+      Frames:
+        All Enabled: false
+        pelvis:
+          Value: true
+        left_foot_link:
+          Value: true
+        right_foot_link:
+          Value: true
+        wbc_left_foot_link:
+          Value: true
+        wbc_right_foot_link:
+          Value: true
+        torso_link:
+          Value: true
+        wbc_torso_link:
+          Value: true
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/Measure
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Target Frame: pelvis
+      Distance: 2.3
+      Pitch: 0.29
+      Yaw: 0.76
+      Focal Point: {X: 0.04, Y: 0, Z: -0.12}
+Window Geometry:
+  QMainWindow State: 000000ff00000000fd0000000200000000000000e600000323fc0200000002fb000000100044006900730070006c00610079007301000000110000018f0000001700fffffffb0000001200530065006c0065006300740069006f006e01000001a60000018e0000001700ffffff000000010000017200000323fc0200000001fb00000014004c00690076006500200070006c006f007400730100000011000003230000001700ffffff0000033c0000032300000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  Width: 1440
+  Height: 800

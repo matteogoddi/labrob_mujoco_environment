@@ -58,6 +58,7 @@ Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 #include "MujocoUI.hpp"
 #include "SimulationStartup.hpp"
+#include "SimulationObserver.hpp"
 
 using namespace unitree::robot;
 using namespace unitree_hg::msg::dds_;
@@ -443,10 +444,13 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 int main(const int argc, const char* argv[]) {
 
   std::string netInterface;
+  bool observe = false;
 
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
-    if (a == "--sim") {
+    if (a == "--rviz") {
+        observe = true;
+    } else if (a == "--sim") {
         useSim = true;
     } else if (a == "--robot" && i + 1 < argc) {
         useRobot = true;
@@ -455,6 +459,10 @@ int main(const int argc, const char* argv[]) {
     }
   }
 
+  if (observe && !useSim) {
+    std::cerr << "Use --rviz with --sim or --robot." << std::endl;
+    return 1;
+  }
   if(!useRobot && !useSim) {
     std::cerr << "Please specify either --sim or --robot <network_interface>" << std::endl;
     return -1;
@@ -577,6 +585,9 @@ int main(const int argc, const char* argv[]) {
     armatures[name] = mj_model_ptr->dof_armature[mj_model_ptr->jnt_dofadr[joint]];
   }
 
+  std::unique_ptr<labrob::SimulationObserver> observer;
+  if (observe) observer = std::make_unique<labrob::SimulationObserver>(useRobot);
+
   auto& mujoco_ui = *labrob::MujocoUI::getInstance(mj_model_ptr, mj_data_ptr);
   if (!useRobot) {
     // The low-inertia Dex3 fingers have their own gains.
@@ -586,7 +597,13 @@ int main(const int argc, const char* argv[]) {
       const double damping = body_joint_names[i].find("_ankle_") != std::string::npos ? 4.0 : Kd[i];
       gains[body_actuators[i]] = {Kp[i], damping};
     }
-    if (!labrob::prepareSimulation(*mj_model_ptr, *mj_data_ptr, mujoco_ui, gains)) {
+    std::function<void()> observe_pose;
+    if (observer) {
+      observe_pose = [&] {
+        observer->sampleStartup(*mj_model_ptr, *mj_data_ptr, robot_state_from_mujoco(mj_model_ptr, mj_data_ptr));
+      };
+    }
+    if (!labrob::prepareSimulation(*mj_model_ptr, *mj_data_ptr, mujoco_ui, gains, observe_pose)) {
       mj_deleteData(mj_data_ptr);
       mj_deleteModel(mj_model_ptr);
       return 0;
@@ -757,7 +774,9 @@ int main(const int argc, const char* argv[]) {
           mj_data_ptr->ctrl[body_actuators[i]] = joint_command[body_joint_names[i]];
         }
   
+        const double sample_time = mj_data_ptr->time;
         mj_step2(mj_model_ptr, mj_data_ptr);
+        if (observer) observer->sample(sample_time, walking_manager, robot_state, *mj_model_ptr, *mj_data_ptr);
 
         auto end_integration = std::chrono::steady_clock::now();
         auto integration_duration = end_integration - start_integration;
@@ -864,6 +883,7 @@ int main(const int argc, const char* argv[]) {
       
         dds_low_command.crc() = Crc32Core((uint32_t*)&dds_low_command, (sizeof(dds_low_command) >> 2) - 1);
         lowcmd_publisher->Write(dds_low_command);
+        if (observer) observer->sampleController(mj_data_ptr->time, walking_manager, robot_state);
       }
 
       next_tick += std::chrono::milliseconds(2);

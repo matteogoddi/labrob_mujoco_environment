@@ -1,0 +1,12 @@
+<launch>
+  <arg name="gui" default="true"/>
+  <arg name="urdf" default="$(dirname)/../g1_description/g1_29dof_mode_13.urdf"/>
+  <group ns="g1_observer">
+    <param name="robot_description" command="/usr/bin/python3 $(dirname)/scripts/observer.py --description $(arg urdf)"/>
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+      <param name="publish_frequency" value="120.0"/>
+    </node>
+    <node pkg="g1_wbc_observer" type="observer.py" name="bridge" output="screen" required="true"/>
+    <node if="$(arg gui)" pkg="rviz" type="rviz" name="rviz" args="-d $(dirname)/walking.rviz" required="true"/>
+  </group>
+</launch>
