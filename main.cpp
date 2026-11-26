@@ -58,6 +58,8 @@ Eigen::Vector3d imu_accelerometer = Eigen::Vector3d::Zero();
 
 #include "MujocoUI.hpp"
 #include "SimulationStartup.hpp"
+#include "G1Body.hpp"
+#include "Mode5Experiment.hpp"
 #include "SimulationObserver.hpp"
 
 using namespace unitree::robot;
@@ -164,61 +166,6 @@ std::condition_variable low_state_received;
 enum class Mode {
 PR = 0,  // Series Control for Ptich/Roll Joints
 AB = 1   // Parallel Control for A/B Joints
-};
-
-// Body joints in G1 LowState/LowCmd motor order.
-const std::array<std::string, G1_NUM_MOTOR> body_joint_names = {
-  "left_hip_pitch_joint",
-  "left_hip_roll_joint",
-  "left_hip_yaw_joint",
-  "left_knee_joint",
-  "left_ankle_pitch_joint",
-  "left_ankle_roll_joint",
-  "right_hip_pitch_joint",
-  "right_hip_roll_joint",
-  "right_hip_yaw_joint",
-  "right_knee_joint",
-  "right_ankle_pitch_joint",
-  "right_ankle_roll_joint",
-  "waist_yaw_joint",
-  "waist_roll_joint",
-  "waist_pitch_joint",
-  "left_shoulder_pitch_joint",
-  "left_shoulder_roll_joint",
-  "left_shoulder_yaw_joint",
-  "left_elbow_joint",
-  "left_wrist_roll_joint",
-  "left_wrist_pitch_joint",
-  "left_wrist_yaw_joint",
-  "right_shoulder_pitch_joint",
-  "right_shoulder_roll_joint",
-  "right_shoulder_yaw_joint",
-  "right_elbow_joint",
-  "right_wrist_roll_joint",
-  "right_wrist_pitch_joint",
-  "right_wrist_yaw_joint",
-};
-
-inline uint32_t Crc32Core(uint32_t *ptr, uint32_t len) {
-  uint32_t xbit = 0;
-  uint32_t data = 0;
-  uint32_t CRC32 = 0xFFFFFFFF;
-  const uint32_t dwPolynomial = 0x04c11db7;
-  for (uint32_t i = 0; i < len; i++) {
-    xbit = 1 << 31;
-    data = ptr[i];
-    for (uint32_t bits = 0; bits < 32; bits++) {
-      if (CRC32 & 0x80000000) {
-        CRC32 <<= 1;
-        CRC32 ^= dwPolynomial;
-      } else
-        CRC32 <<= 1;
-      if (data & xbit) CRC32 ^= dwPolynomial;
-
-      xbit >>= 1;
-    }
-  }
-  return CRC32;
 };
 
 MotorState motor_state_data;
@@ -443,6 +390,15 @@ robot_state_from_mujoco(mjModel* m, mjData* d) {
 
 int main(const int argc, const char* argv[]) {
 
+  if (argc == 3 && std::string(argv[1]) == "--robot5") {
+#ifdef G1_HAS_MODE5_EXPERIMENT
+    useRobot = true;
+    return runMode5Experiment(argv[2]);
+#else
+    std::cerr << "The staged Mode 5 controller is unavailable in this checkout." << std::endl;
+    return 1;
+#endif
+  }
   std::string netInterface;
   bool observe = false;
 
@@ -616,7 +572,7 @@ int main(const int argc, const char* argv[]) {
   walking_manager.init(robot_state, armatures);
   if (!useRobot) mujoco_ui.promptStage(6, "Standing under whole-body control. Press 6 to walk forward.");
 
-  static int framerate = 60.0;
+  constexpr double render_period = 1.0 / 60.0;
 
   ChannelPublisherPtr<LowCmd_> lowcmd_publisher;
   ChannelSubscriberPtr<LowState_> lowstate_subscriber;
@@ -667,6 +623,9 @@ int main(const int argc, const char* argv[]) {
 
   auto next_tick = std::chrono::steady_clock::now();
 
+  auto frame_deadline = next_tick;
+  double next_render_time = mj_data_ptr->time;
+  if (!useRobot) glfwSwapInterval(0);  // The simulation clock paces presentation.
   // Simulation loop:
   while (!mujoco_ui.windowShouldClose()) {
 
@@ -675,8 +634,8 @@ int main(const int argc, const char* argv[]) {
       mujoco_ui.promptStage(0, "Forward walking started. Shifting weight for the first step.");
     }
 
-    mjtNum simstart = mj_data_ptr->time;
-    while( mj_data_ptr->time - simstart < 1.0/framerate ) {
+    next_render_time = (useRobot ? mj_data_ptr->time : next_render_time) + render_period;
+    while (mj_data_ptr->time + 1e-10 < next_render_time) {
 
       auto start_sleep = std::chrono::steady_clock::now();
 
@@ -886,6 +845,7 @@ int main(const int argc, const char* argv[]) {
         if (observer) observer->sampleController(mj_data_ptr->time, walking_manager, robot_state);
       }
 
+      if (!useRobot) continue;
       next_tick += std::chrono::milliseconds(2);
 
       // Calcola quanto dormire
@@ -904,6 +864,14 @@ int main(const int argc, const char* argv[]) {
     mujoco_ui.render();
 
     auto end_render =  std::chrono::steady_clock::now();
+    if (!useRobot) {
+      // Include physics, WBC and rendering in a single wall-clock budget.
+      frame_deadline += std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+          std::chrono::duration<double>(render_period));
+      if (end_render - frame_deadline > std::chrono::milliseconds(100))
+        frame_deadline = end_render;
+      std::this_thread::sleep_until(frame_deadline);
+    }
     auto render_duration = end_render - start_render;
     if(render_duration > std::chrono::milliseconds(5))
       std::cout << "Warning: rendering took too long: " << std::chrono::duration_cast<std::chrono::microseconds>(render_duration).count() << " us" << std::endl;

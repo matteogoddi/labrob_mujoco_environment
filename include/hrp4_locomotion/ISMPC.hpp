@@ -33,6 +33,7 @@ class ISMPC{
       const labrob::LIPState& state
   );
 
+  bool solverHealthy() const { return qp_solver_ptr_->healthy(); }
   const Eigen::Vector3d& getInput() const;
 
   const Eigen::VectorXd& getInputSequenceX() const;

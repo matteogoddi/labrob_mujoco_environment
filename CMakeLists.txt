@@ -57,6 +57,7 @@ target_include_directories(WalkingControllerLibrary
 )
 
 target_link_libraries(WalkingControllerLibrary
+  mujoco::mujoco
   pinocchio::pinocchio
   ${hpipm_LIBRARIES}
   ${blasfeo_LIBRARIES}
@@ -69,6 +70,11 @@ add_executable(main
   SimulationStartup.cpp
   SimulationObserver.cpp
 )
+# The staged Mode 5 experiment is under development on this branch.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Mode5Experiment.cpp")
+  target_sources(main PRIVATE Mode5Experiment.cpp Mode5Kinematics.cpp)
+  target_compile_definitions(main PRIVATE G1_HAS_MODE5_EXPERIMENT)
+endif()
 # SDK2 and Foxy ship incompatible Cyclone DDS libraries with the same SONAME.
 # Prefer this native executable's linked library directories in a sourced ROS shell.
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

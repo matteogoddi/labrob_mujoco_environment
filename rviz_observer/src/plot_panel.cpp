@@ -18,6 +18,7 @@
 #include <pluginlib/class_list_macros.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <rviz_common/panel.hpp>
+#include <rviz_common/display_context.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 
 namespace g1_wbc_observer {
@@ -203,6 +204,20 @@ class PlotPanel : public rviz_common::Panel {
       for (auto* chart : charts) chart->refresh(node->now().seconds());
     });
     timer->start(50);
+    if (qEnvironmentVariableIntValue("G1_REPORT_FPS") == 1) {
+      using Clock = std::chrono::steady_clock;
+      auto* monitor = new QTimer(this);
+      connect(monitor, &QTimer::timeout, this,
+              [this, previous = getDisplayContext()->getFrameCount(), start = Clock::now()]() mutable {
+        const auto now = Clock::now();
+        const auto frames = getDisplayContext()->getFrameCount();
+        const double seconds = std::chrono::duration<double>(now - start).count();
+        RCLCPP_INFO(node->get_logger(), "RViz rendering: %.1f FPS", (frames - previous) / seconds);
+        previous = frames;
+        start = now;
+      });
+      monitor->start(5000);
+    }
   }
 
  private:

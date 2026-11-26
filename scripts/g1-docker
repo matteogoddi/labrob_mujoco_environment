@@ -1,0 +1,149 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+image=${G1_IMAGE:-g1-experiment:foxy}
+name=${G1_CONTAINER:-g1-experiment-$(id -u)}
+root=$(cd "$(dirname "$0")/.." && pwd)
+dev=0
+if [[ ${1:-} == dev ]]; then
+  shift
+  dev=1
+  if [[ -z ${G1_CONTAINER:-} ]]; then
+    key=$(printf '%s' "$root" | sha256sum)
+    name="${name}-${key:0:10}"
+  fi
+  name="${name}-dev"
+fi
+usage() {
+  cat <<'HELP'
+g1-docker dev up                 Mount this source checkout for simulation development
+g1-docker dev up robot INTERFACE Mount the checkout on the robot network
+g1-docker dev build              Build the mounted controller and RViz observer
+g1-docker dev sim|rviz           Run the development build in separate terminals
+g1-docker dev control            Start the physical Mode 13 controller in a robot session
+g1-docker dev exec COMMAND       Run in the checkout with the development overlay
+g1-docker dev down               Remove the development container
+g1-docker build                  Build the image from this checkout
+g1-docker up sim                 Start an isolated simulation container
+g1-docker up robot INTERFACE     Start a container on the robot network
+g1-docker sim                    Open the MuJoCo controller in this terminal
+g1-docker renderer               Print the OpenGL renderer used inside the container
+g1-docker rviz [launch args]     Open RViz in a second terminal
+g1-docker exec COMMAND [args]    Run a command with the container ROS environment
+g1-docker down                   Stop and remove the experiment container
+HELP
+}
+
+case "${1:-help}" in
+  build)
+    if (( dev )); then
+      exec docker exec "$name" /workspace/g1/docker/dev build
+    fi
+    exec docker build --tag "$image" "$root" ;;
+  up)
+    mounts=()
+    if (( dev )); then
+      [[ -f "$root/CMakeLists.txt" && -x "$root/docker/dev" ]] || {
+        echo "Run g1-docker dev up from a source checkout." >&2; exit 2;
+      }
+      mkdir -p "$root/build/docker-dev"
+      mounts+=(--volume "$root:/workspace/g1" --volume "$root/build/docker-dev:/workspace/g1/build"
+               --workdir /workspace/g1)
+      if [[ $# == 1 ]]; then set -- up sim; fi
+    fi
+    source_mode=${2:-}
+    case "$source_mode" in
+      sim) [[ $# == 2 ]] || { usage >&2; exit 2; }; iface=lo; network=none ;;
+      robot)
+        iface=${3:-}
+        if [[ $# != 3 || ! $iface =~ ^[a-zA-Z0-9_.:-]+$ || $iface == lo || ! -d /sys/class/net/$iface ]]; then
+          echo 'Specify the robot Ethernet interface shown by ip -br addr.' >&2
+          exit 2
+        fi
+        network=host ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    if (( dev )) && ! docker image inspect "$image" >/dev/null 2>&1; then
+      docker build --tag "$image" "$root"
+    fi
+    options=(--detach --init --name "$name" --label io.g1.experiment=true
+             --network "$network" --hostname "$(hostname)" --user "$(id -u):$(id -g)"
+             --env HOME=/tmp/g1-home --env QT_X11_NO_MITSHM=1
+             --env "G1_INTERFACE=$iface" --env "G1_SOURCE=$source_mode"
+             --env "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}")
+    if [[ -n ${DISPLAY:-} ]]; then
+      auth=${XAUTHORITY:-$HOME/.Xauthority}
+      if [[ ! -r $auth || ! -d /tmp/.X11-unix ]]; then
+        echo 'A local X11/XWayland session and its readable XAUTHORITY file are required for GUI windows.' >&2
+        exit 2
+      fi
+      options+=(--env DISPLAY --env XAUTHORITY=/tmp/g1.xauth
+                --volume "$auth:/tmp/g1.xauth:ro" --volume /tmp/.X11-unix:/tmp/.X11-unix:ro)
+    fi
+    # Mesa software rendering works without a GPU runtime. Pass render nodes
+    # and their actual host group IDs when direct rendering is available.
+    for device in /dev/dri/renderD*; do
+      if [[ -c $device ]]; then
+        options+=(--device "$device" --group-add "$(stat -c %g "$device")")
+      fi
+    done
+    gpu=${G1_NVIDIA:-auto}
+    if [[ $gpu == auto ]]; then
+      gpu=0
+      if command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 &&
+         [[ $(docker info --format '{{if index .Runtimes "nvidia"}}yes{{end}}') == yes ]]; then
+        gpu=1
+      fi
+    fi
+    if [[ $gpu == 1 ]]; then
+      options+=(--gpus all --env NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility,compute)
+    fi
+    data=${G1_DATA:-$PWD/experiments}
+    mkdir -p "$data"
+    options+=(--volume "$(cd "$data" && pwd):/opt/g1/experiments")
+    if (( dev )); then options+=(--volume "$(cd "$data" && pwd):/workspace/g1/experiments"); fi
+    exec docker run "${mounts[@]}" "${options[@]}" "$image" sleep infinity ;;
+  sim|rviz|renderer|exec|control|down)
+    if [[ $(docker inspect --type container --format '{{index .Config.Labels "io.g1.experiment"}}' "$name") != true ]]; then
+      echo "Start an experiment container with g1-docker up first." >&2
+      exit 1
+    fi
+    action=$1
+    shift
+    if [[ $action == down ]]; then
+      docker stop "$name" >/dev/null
+      exec docker rm "$name"
+    fi
+    if [[ $action == sim && $(docker inspect --format '{{.HostConfig.NetworkMode}}' "$name") != none ]]; then
+      echo 'Start a simulation container with g1-docker up sim.' >&2
+      exit 2
+    fi
+    tty=()
+    [[ -t 0 && -t 1 ]] && tty=(-it)
+    if [[ $action == renderer ]]; then
+      exec docker exec "$name" python3 -c '
+import ctypes as c
+glfw = c.CDLL("libglfw.so.3")
+gl = c.CDLL("libGL.so.1")
+if not glfw.glfwInit():
+    raise SystemExit("GLFW could not open the container display")
+glfw.glfwWindowHint(0x00020004, 0)  # GLFW_VISIBLE
+glfw.glfwCreateWindow.restype = c.c_void_p
+window = glfw.glfwCreateWindow(16, 16, b"Renderer check", None, None)
+if not window:
+    raise SystemExit("Could not create an OpenGL context")
+glfw.glfwMakeContextCurrent(c.c_void_p(window))
+gl.glGetString.restype = c.c_char_p
+print(gl.glGetString(0x1F01).decode())  # GL_RENDERER
+glfw.glfwTerminate()'
+    fi
+    if (( dev )); then
+      exec docker exec "${tty[@]}" "$name" /workspace/g1/docker/dev "$action" "$@"
+    fi
+    if [[ $action == control ]]; then usage >&2; exit 2; fi
+    if [[ $action != exec ]]; then set -- "$action" "$@"; fi
+    [[ $# -gt 0 ]] || { usage >&2; exit 2; }
+    exec docker exec "${tty[@]}" "$name" /usr/local/bin/g1-env "$@" ;;
+  help|-h|--help) usage ;;
+  *) usage >&2; exit 2 ;;
+esac

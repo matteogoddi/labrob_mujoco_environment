@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read-only Unitree G1 mode-13 observer. No publisher uses a Unitree command topic."""
+"""Read-only Unitree G1 body observer. No publisher uses a Unitree command topic."""
 import math
 import os
 import socket
@@ -101,6 +101,7 @@ class HardwareObserver(Node):
     def __init__(self):
         super().__init__("hardware_observer")
         urdf = self.declare_parameter("urdf", "").value
+        self.hardware_mode = self.declare_parameter("hardware_mode", 13).value
         self.model = BodyKinematics(urdf)
         self.base_source = self.declare_parameter("base_source", "controller").value
         self.tf = tf2_ros.TransformBroadcaster(self)
@@ -124,9 +125,12 @@ class HardwareObserver(Node):
             self.create_subscription(SportModeState, "/sportmodestate", self.on_sport, qos)
             self.buffer = tf2_ros.Buffer()
             self.listener = tf2_ros.TransformListener(self.buffer, self)
-        self.stream = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
-        self.stream.bind("\0g1-wbc-hardware-" + str(os.getuid()))
-        self.stream.setblocking(False)
+        self.stream = None
+        # The native WBC telemetry producer is built for Mode 13.
+        if self.hardware_mode == 13:
+            self.stream = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            self.stream.bind("\0g1-wbc-hardware-" + str(os.getuid()))
+            self.stream.setblocking(False)
         self.create_timer(1 / 60, self.update)
         self.last_state_ns = self.last_cmd_ns = -1
 
@@ -182,16 +186,16 @@ class HardwareObserver(Node):
 
     def update(self):
         now = self.get_clock().now()
-        incoming = latest_frame(self.stream)
+        incoming = latest_frame(self.stream) if self.stream is not None else None
         if incoming is not None:
             self.frame = incoming
         if not self.state or now.nanoseconds - self.state[0].nanoseconds > STALE_NS:
             self.report("Waiting for fresh /lowstate")
             return
         stamp, state = self.state
-        if state.mode_machine != 13 or state.mode_pr != 0:
+        if state.mode_machine != self.hardware_mode or state.mode_pr != 0:
             self.report(f"G1 reported mode_machine={state.mode_machine}, mode_pr={state.mode_pr}. "
-                        "The displayed model requires mode_machine=13 and serial PR coordinates (0).")
+                        f"The displayed model requires mode_machine={self.hardware_mode} and serial PR coordinates (0).")
             return
         if stamp.nanoseconds == self.last_state_ns:
             return
@@ -257,12 +261,14 @@ class HardwareObserver(Node):
                              abs(frame["stamp_ns"] - self.cmd[0].nanoseconds) <= MAX_SKEW_NS)
             overlay.extend(self.command_markers(local, frame["pelvis"] if use_reference else None))
         source = self.base_source if base is not None else "pelvis-relative"
-        self.report("G1 mode 13 | encoders live | base: " + source +
-                    (" | WBC live" if aligned else " | waiting for WBC telemetry"), overlay)
+        status = f"G1 mode {self.hardware_mode} | encoders live | base: {source}"
+        if self.hardware_mode == 13:
+            status += " | WBC live" if aligned else " | waiting for WBC telemetry"
+        self.report(status, overlay)
 
     def command_markers(self, header, reference):
         stamp, cmd = self.cmd
-        if cmd.mode_machine != 13 or cmd.mode_pr != 0:
+        if cmd.mode_machine != self.hardware_mode or cmd.mode_pr != 0:
             return []
         motors = cmd.motor_cmd[:len(NAMES)]
         if not all(math.isfinite(m.q) for m in motors):
@@ -309,7 +315,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        node.stream.close()
+        if node.stream is not None:
+            node.stream.close()
         node.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()

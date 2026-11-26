@@ -40,7 +40,8 @@ WalkingManager::WalkingManager() :
 
 bool
 WalkingManager::init(const labrob::RobotState& initial_robot_state,
-                     std::map<std::string, double> &armatures) {
+                     std::map<std::string, double> &armatures, bool staged_mode5) {
+    staged_mode5_ = staged_mode5;
     cov_x = Eigen::Matrix3d::Identity();
     cov_y = Eigen::Matrix3d::Identity();
     cov_z = Eigen::Matrix3d::Identity();
@@ -137,7 +138,8 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
     kalman_gain_log_.reserve(max_steps);
 
     // Read URDF from file:
-    std::string robot_description_filename = "../g1_description/g1_29dof_mode_13.urdf";
+    std::string robot_description_filename = staged_mode5 ? "../g1_description/g1_29dof_with_hand_rev_1_0.urdf"
+                                                        : "../g1_description/g1_29dof_mode_13.urdf";
 
     // Build Pinocchio model and data from URDF:
     pinocchio::Model full_robot_model;
@@ -298,7 +300,7 @@ WalkingManager::init(const labrob::RobotState& initial_robot_state,
         controller_timestep_msec_,
         labrob::SE3(T_lsole_init.rotation(), T_lsole_init.translation()),
         labrob::SE3(T_rsole_init.rotation(), T_rsole_init.translation()),
-        useRobot
+        useRobot && !staged_mode5
     );
 
     // Save and read again footstep plan to double check it's working:
@@ -1177,7 +1179,7 @@ WalkingManager::update(
                 labrob::SE3(T_lsole_sim.rotation(), T_lsole_sim.translation()),
                 labrob::SE3(T_rsole_sim.rotation(), T_rsole_sim.translation())
             );
-            if (!useRobot) {
+            if (!useRobot || staged_mode5_) {
                 // Start the weight transfer now, regardless of the time spent standing.
                 walking_data_.footstep_plan.pop_front();
                 walking_data_.t0 = t_msec_;
@@ -1390,7 +1392,7 @@ WalkingManager::update(
     int idx = 0;
     for(pinocchio::JointIndex joint_id = 2; joint_id < (pinocchio::JointIndex) robot_model.njoints; ++joint_id) {
         const auto& joint_name = robot_model.names[joint_id];
-        measured_torques(idx++) = joint_command[joint_name];
+        measured_torques(idx++) = staged_mode5_ ? sim_robot_state.joint_state[joint_name].eff : joint_command[joint_name];
     }
 
 
@@ -1519,6 +1521,16 @@ WalkingManager::update(
     execution_time_kf_log_.push_back(kf_duration);
     execution_time_mpc_log_.push_back(mpc_duration);
     execution_time_wbc_log_.push_back(wbc_duration);
+}
+
+int WalkingManager::stanceFeet() const {
+    const auto& phase = walking_data_.footstep_plan.front();
+    if (phase.getWalkingState() != WalkingState::SingleSupport) return 3;
+    return phase.getFeetPlacement().getSupportFoot() == Foot::LEFT ? 1 : 2;
+}
+
+bool WalkingManager::solversHealthy() const {
+    return whole_body_controller_ptr_->solverHealthy() && ismpc_ptr_->solverHealthy();
 }
 
 RobotState WalkingManager::getNewRobotState(RobotState robot_state){

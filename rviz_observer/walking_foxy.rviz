@@ -9,7 +9,7 @@ Visualization Manager:
   Class: ""
   Enabled: true
   Global Options:
-    Fixed Frame: world
+    Fixed Frame: pelvis
     Background Color: 41; 45; 51
     Frame Rate: 60
   Displays:

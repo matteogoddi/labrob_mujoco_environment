@@ -30,7 +30,12 @@ class WalkingManager {
  public:
   WalkingManager();
 
-  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures);
+  bool init(const labrob::RobotState& initial_robot_state, std::map<std::string, double> &armatures,
+            bool staged_mode5 = false);
+
+  // Bit 0 is the left stance foot and bit 1 is the right.
+  int stanceFeet() const;
+  bool solversHealthy() const;
 
   LIPState updateKF(LIPState filtered, LIPState current, const Eigen::Vector3d &input);
 
@@ -79,6 +84,7 @@ class WalkingManager {
   Eigen::Vector3d imu_accelerometer_sum_ = Eigen::Vector3d::Zero();
   double imu_accelerometer_count_ = 0;
 
+  bool staged_mode5_ = false;
   int njnt;
 
   pinocchio::FrameIndex lsole_idx_;

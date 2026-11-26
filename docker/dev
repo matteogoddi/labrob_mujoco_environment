@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -eo pipefail
+cd /workspace/g1
+case "$1" in
+  build)
+    target=GENERIC
+    if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then target=X64_INTEL_HASWELL; fi
+    jobs=${G1_BUILD_JOBS:-2}
+    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/mujoco -DTARGET="$target"
+    cmake --build build --target main lip_simulator_main --parallel "$jobs"
+    source /opt/ros/foxy/setup.bash
+    source /opt/unitree-ros/local_setup.bash
+    export CMAKE_BUILD_PARALLEL_LEVEL="$jobs"
+    colcon --log-base build/ros2/log build --base-paths rviz_observer --symlink-install \
+      --build-base build/ros2/build --install-base build/ros2/install --cmake-args -DBUILD_TESTING=OFF
+    ;;
+  sim)
+    shift
+    cd build
+    [[ -x ./main ]] || { echo "Run g1-docker dev build first." >&2; exit 1; }
+    exec ./main --sim --rviz "$@" ;;
+  control)
+    [[ ${G1_SOURCE:-} == robot ]] || { echo "Use dev up robot INTERFACE for hardware control." >&2; exit 2; }
+    cd build
+    [[ -x ./main ]] || { echo "Run g1-docker dev build first." >&2; exit 1; }
+    exec ./main --robot "$G1_INTERFACE" --rviz ;;
+  rviz|exec)
+    action=$1; shift
+    # g1-env sets the image's Foxy, DDS interface and Python paths first.
+    exec g1-env bash -c '
+      cd /workspace/g1
+      if [[ -f build/ros2/install/local_setup.bash ]]; then
+        source build/ros2/install/local_setup.bash
+      elif [[ $1 == rviz ]]; then
+        echo "Run g1-docker dev build first." >&2; exit 1
+      fi
+      action=$1; shift
+      if [[ $action == rviz ]]; then exec ./scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@"; fi
+      exec "$@"
+    ' bash "$action" "$@" ;;
+esac

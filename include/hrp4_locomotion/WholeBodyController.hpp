@@ -73,6 +73,7 @@ class WholeBodyController {
       const labrob::GaitConfiguration& desired
   );
 
+  bool solverHealthy() const { return wbc_solver_ptr_->healthy(); }
   Eigen::VectorXd get_q_ddot() const;
   Eigen::VectorXd get_flr() const;
   const Eigen::VectorXd& getLeftFootWrench() const { return left_foot_wrench_; }

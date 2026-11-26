@@ -107,6 +107,7 @@ class HPIPMQPSolver : public QPSolver<double> {
     //std::cout << "Status = " << workspace_.status << std::endl;
   }
 
+  bool healthy() const override { return workspace_.status == 0; }
   const double* get_solution() const override {
     return u_;
   }

@@ -1,8 +1,96 @@
-# Unitree G1 Mode 13 Experiment Guide
+# Unitree G1 Experiment Guide
 
 The MuJoCo simulation and the physical G1 share a ROS 2 Foxy visualization interface in RViz2. Run the controller and RViz2 in separate terminals under the same user account on the same Linux host. You can open or restart RViz2 at any point during an experiment. If you observe simulation and hardware at the same time, use separate ROS domains for their observers so that topics with the same name stay separate.
 
-## 1. MuJoCo simulation
+## Docker deployment
+
+The image runs on a Linux x86-64 workstation with Docker Engine. MuJoCo and RViz2 use the host's local X11 or XWayland display. The image includes ROS 2 Foxy, the Unitree message types and DDS middleware, the native SDK2 controller, the robot models and the RViz plot panel.
+
+Build once from the project root. To distribute this build, give users the compressed image and the executable `scripts/g1-docker` launcher. Users who receive the archive can start at the load command.
+
+```bash
+# On the build machine
+./scripts/g1-docker build
+docker save g1-experiment:foxy | gzip > g1-experiment-foxy-linux-amd64.tar.gz
+
+# On another workstation
+docker load -i g1-experiment-foxy-linux-amd64.tar.gz
+```
+
+### Simulation
+
+```bash
+# Terminal 1
+./scripts/g1-docker up sim
+./scripts/g1-docker sim
+
+# Terminal 2
+./scripts/g1-docker rviz
+```
+
+Press keys 1 through 6 in the MuJoCo window as described below. Both programs run in the same container so the observer can reconnect to the controller's local telemetry socket. Restart RViz independently with Ctrl+C and the same command.
+
+### Develop the simulation on Ubuntu 22.04, 24.04 or 26.04
+
+Use an x86-64 Linux host with Docker Engine and a local X11 or XWayland session. The host supplies the kernel, display and graphics driver. The image supplies Ubuntu 20.04, ROS 2 Foxy, MuJoCo, the SDK and the compiler. CMake builds HPIPM and BLASFEO directly from the two source directories in your checkout. Different host installations of HPIPM, ROS or Python can coexist with this environment. Host installation instructions are available in the [Docker Engine Ubuntu guide](https://docs.docker.com/engine/install/ubuntu/).
+
+From a clone or download of this branch, the shortest development workflow is:
+
+```bash
+./scripts/g1-docker dev up       # Builds the environment image if missing
+./scripts/g1-docker dev build    # Builds this checkout inside the container
+./scripts/g1-docker dev sim      # Terminal 1
+./scripts/g1-docker dev rviz     # Terminal 2, in the same checkout
+```
+
+The first image build downloads dependencies. Loading the team's image archive first skips that build. The development container uses your user ID and a checkout-specific name. Keep using the launcher from the same checkout in both terminals.
+
+For an offline handoff, copy the image archive, source Git bundle and checksum file to the same directory. Import the image and clone the editable snapshot:
+
+```bash
+sha256sum -c SHA256SUMS
+docker load -i g1-experiment-foxy-linux-amd64.tar.gz
+git clone -b dai-Experiment g1-simulation-source.bundle g1-simulation
+cd g1-simulation
+git switch -c my-experiment
+./scripts/g1-docker dev up
+./scripts/g1-docker dev build
+```
+
+From the checkout, run `./scripts/g1-docker dev sim` in one terminal and `./scripts/g1-docker dev rviz` in another. Check the GPU with `./scripts/g1-docker dev renderer`. NVIDIA hosts need the NVIDIA Container Toolkit for accelerated graphics. The development build selects the AVX2 solver kernels on CPUs with AVX2 and FMA and the generic kernels on other supported x86-64 machines. Frame rates depend on the workstation.
+
+Edit the checkout using your normal editor. After changing C++ or the plot plugin, close the affected application, rerun `./scripts/g1-docker dev build`, and restart it. Use `./scripts/g1-docker dev exec bash` for a shell in the mounted checkout. Compiled files persist in `build/docker-dev/` across `dev down` and `dev up`. Each developer should build their own cache. Commit changes on your local branch and add your team's Git remote to share them. The bundle contains the handoff history and can be cloned offline.
+
+To test your working tree on hardware, close the simulation applications, then switch the development container to the robot network:
+
+```bash
+./scripts/g1-docker dev down
+./scripts/g1-docker dev up robot enp3s0    # Use the host's robot Ethernet interface
+./scripts/g1-docker dev rviz               # Mode 5 read-only viewer
+# In a second terminal
+./scripts/g1-docker dev exec ros2 topic hz /lowstate
+```
+
+The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. The explicit `./scripts/g1-docker dev control` command in a second terminal runs the checkout's physical Mode 13 controller and can move the robot. The staged Mode 5 physical 1–6 controller is under development. Its ground-frame handoff still requires implementation and validation.
+
+### Physical robot
+
+Connect the host Ethernet interface to the G1 and configure its IP on the robot's subnet. Stop the simulation session before reusing its container name. Start the hardware viewer with the interface name reported by `ip -br addr`.
+
+```bash
+./scripts/g1-docker down
+ip -br addr
+./scripts/g1-docker up robot enp3s0    # replace with your Ethernet interface
+./scripts/g1-docker rviz
+```
+
+From a second terminal, inspect the live bus with `./scripts/g1-docker exec ros2 topic hz /lowstate`. The robot container uses host networking and selects the specified interface for Cyclone DDS. Starting the container or RViz only observes the robot. The Mode 13 controller procedure below applies only to matching hardware. The Mode 5 display works independently of the staged Mode 5 control implementation.
+
+For Mode 13, start the viewer with `./scripts/g1-docker rviz hardware_mode:=13`. To run the physical experiment, open a control terminal with `./scripts/g1-docker exec bash`, change to `/opt/g1/build`, and use the hardware command below with the same Ethernet interface.
+
+Stop the controller and RViz before running `./scripts/g1-docker down`. Saved hardware experiments appear in `./experiments` on the host. Simulation text logs written to `/tmp` stay in the container until removal. Use `docker cp` to copy those logs before teardown. Set `G1_DATA` before startup to choose the hardware experiment directory. The launcher automatically selects NVIDIA graphics when the Docker NVIDIA runtime and driver are available. Use `./scripts/g1-docker renderer` to inspect the actual OpenGL renderer. Set `G1_NVIDIA=1` to require NVIDIA or `G1_NVIDIA=0` to disable it. For a five-second RViz frame-rate report, run `./scripts/g1-docker exec env G1_REPORT_FPS=1 g1-env rviz` in the viewer terminal. Set `G1_CONTAINER` in both terminals to choose another session name. For headless topic inspection, unset `DISPLAY` at startup and pass `gui:=false` to the RViz launcher.
+
+## 1. MuJoCo simulation (Mode 13)
 
 **Terminal 1: Start MuJoCo.** Run the executable from `build/` so it can locate the scene and robot model.
 
@@ -42,9 +130,11 @@ source ~/unitree_ros2/setup.sh
 ./scripts/run_rviz.sh robot
 ```
 
-Once `/lowstate` arrives, look for `G1 mode 13 | encoders live` in the status text. The model expects `mode_machine=13` and serial joint coordinates (`mode_pr=0`). RViz2 displays the 29 body joints, including the arms up to the palms. This terminal is sufficient for inspecting joint poses, IMU data, or existing `/lowcmd` messages.
+The hardware viewer defaults to Mode 5 with serial joint coordinates (`mode_pr=0`). Look for `G1 mode 5 | encoders live` when `/lowstate` arrives. RViz2 uses the 29 body encoders and the Rev 1.0 body model with fixed rubber hands and project sole frames. The hand geometry is a display assumption because the body state does not identify the installed hands. Joint state and IMU feedback are available without a controller. Matching `/lowcmd` messages enable command overlays. The observer rejects other machine modes and coordinate conventions. [Unitree Rev 1.0 model](https://github.com/unitreerobotics/unitree_ros/blob/157ff950351e5f535e03c5d85a16b7d594b3dbcc/robots/g1_description/g1_29dof_rev_1_0.urdf)
 
-**Terminal 2: Run the hardware WBC experiment.** Use the native Unitree SDK2 control terminal and enter the same network interface used by the observer. **This program checks the machine mode, releases the active motion service, and sends low-level motor commands to the physical robot.**
+For a Mode 13 robot, use `./scripts/run_rviz.sh robot hardware_mode:=13` to select its matching model and enable the project's WBC telemetry overlays.
+
+**Terminal 2: Run the hardware WBC experiment (Mode 13 only).** Use the native Unitree SDK2 control terminal and enter the same network interface used by the observer. **This program checks the machine mode, releases the active motion service, and sends low-level motor commands to the physical robot.**
 
 ```bash
 cd ~/G1_Experiment/labrob_mujoco_environment/build

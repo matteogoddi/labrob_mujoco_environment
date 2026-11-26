@@ -44,6 +44,8 @@ class QPSolverEigenWrapper {
     );
   }
 
+  bool healthy() const { return qp_solver_ptr_->healthy(); }
+
   Eigen::Matrix<Scalar, Eigen::Dynamic, 1>
   get_solution() {
     const auto* solution_ptr = qp_solver_ptr_->get_solution();

@@ -1,0 +1,11 @@
+.git
+**/.git
+build
+**/__pycache__
+**/*.pyc
+experiments
+images
+venv
+.vscode
+*.tar
+*.tar.gz

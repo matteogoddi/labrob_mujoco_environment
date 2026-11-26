@@ -25,6 +25,7 @@ class QPSolver {
       const Scalar* C,
       const Scalar* d_min,
       const Scalar* d_max) = 0;
+  virtual bool healthy() const { return true; }
   virtual const Scalar* get_solution() const = 0;
 
   const int num_variables_;

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -eo pipefail
+source /opt/ros/foxy/setup.bash
+source /opt/unitree-ros/local_setup.bash
+source /opt/g1-observer/local_setup.bash
+export CMAKE_PREFIX_PATH="/opt/mujoco:${CMAKE_PREFIX_PATH:-}"
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+iface=${G1_INTERFACE:-lo}
+if [[ ! $iface =~ ^[a-zA-Z0-9_.:-]+$ || ! -d /sys/class/net/$iface ]]; then
+  echo "Unknown network interface: $iface" >&2
+  exit 2
+fi
+export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$iface\"/></Interfaces></General></Domain></CycloneDDS>"
+mkdir -p "$HOME"
+case "${1:-bash}" in
+  check)
+    cd /opt/g1/build
+    # Run only the argument parser. The native binary must resolve its SDK DDS.
+    if output=$(./main 2>&1); then exit 1; fi
+    [[ $output == *"specify either"* ]]
+    ldd ./main | grep 'libddsc.so' | grep -q '/usr/local/lib/'
+    python3 - <<'PYTHON'
+import PyKDL
+import tf2_ros
+from rclpy.serialization import deserialize_message, serialize_message
+from unitree_hg.msg import LowState
+
+sample = LowState()
+sample.mode_machine = 5
+decoded = deserialize_message(serialize_message(sample), LowState)
+assert decoded.mode_machine == 5 and len(decoded.motor_state) == 35
+PYTHON
+    ros2 pkg prefix rviz2
+    ros2 pkg prefix g1_wbc_observer
+    test -s /opt/g1-observer/lib/libg1_live_plots.so
+    test -r ../g1_mj_description/stair_steps.xml
+    ;;
+  sim)
+    shift
+    cd /opt/g1/build
+    binary=./main
+    if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then binary=./main-avx2; fi
+    exec "$binary" --sim --rviz "$@" ;;
+  rviz) shift; exec /opt/g1/scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@" ;;
+  *) exec "$@" ;;
+esac

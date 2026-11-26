@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Run on the Ubuntu host after stopping experiments. Docker is restarted below.
+set -euo pipefail
+if ! command -v nvidia-ctk >/dev/null; then
+  temp_dir=$(mktemp -d)
+  trap 'rm -rf "$temp_dir"' EXIT
+  curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey |
+    gpg --dearmor > "$temp_dir/keyring.gpg"
+  curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list |
+    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' > "$temp_dir/toolkit.list"
+  sudo install -m 644 "$temp_dir/keyring.gpg" /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+  sudo install -m 644 "$temp_dir/toolkit.list" /etc/apt/sources.list.d/nvidia-container-toolkit.list
+  sudo apt-get update
+  sudo apt-get install -y nvidia-container-toolkit
+fi
+sudo nvidia-ctk runtime configure --runtime=docker
+sudo systemctl restart docker

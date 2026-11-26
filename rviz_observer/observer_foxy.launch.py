@@ -19,7 +19,8 @@ def start(context):
         scripts = Path(get_package_prefix("g1_wbc_observer")) / "lib/g1_wbc_observer"
         models = root / "g1_description"
     hardware = LaunchConfiguration("source").perform(context) == "robot"
-    urdf = models / "g1_29dof_mode_13.urdf"
+    mode = int(LaunchConfiguration("hardware_mode").perform(context)) if hardware else 13
+    urdf = models / ("g1_29dof_rev_1_0.urdf" if mode == 5 else "g1_29dof_mode_13.urdf")
     xml = ET.parse(urdf).getroot()
     for mesh in xml.iter("mesh"):
         mesh.set("filename", (models / mesh.get("filename")).as_uri())
@@ -35,7 +36,7 @@ def start(context):
                 xml.remove(link)
     description = ParameterValue(ET.tostring(xml, encoding="unicode"), value_type=str)
     program = "hardware_observer.py" if hardware else "observer.py"
-    params = {"urdf": str(urdf), "base_source": LaunchConfiguration("base_source")} if hardware else {}
+    params = {"urdf": str(urdf), "hardware_mode": mode, "base_source": LaunchConfiguration("base_source")} if hardware else {}
     fixed = LaunchConfiguration("fixed_frame").perform(context) or ("pelvis" if hardware else "world")
     actions = [
         Node(package="robot_state_publisher", executable="robot_state_publisher",
@@ -74,6 +75,8 @@ def start(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("source", default_value="sim", choices=["robot", "sim"]),
+        DeclareLaunchArgument("hardware_mode", default_value="5", choices=["5", "13"],
+                              description="Expected LowState mode_machine and matching hardware URDF"),
         DeclareLaunchArgument("base_source", default_value="controller",
                               choices=["controller", "odometry", "sport"]),
         DeclareLaunchArgument("state_topic", default_value="/lowstate"),
