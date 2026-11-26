@@ -215,46 +215,6 @@ void imuTorsoHandler(const void* msg) {
   imu_state_data.accelerometer[2] = imu_state.accelerometer()[2];
 }
 
-std::string queryServiceName(std::string form,std::string name)
-{
-    if(form == "0")
-    {
-        if(name == "normal" ) return "sport_mode"; 
-        if(name == "ai" ) return "ai_sport"; 
-        if(name == "advanced" ) return "advanced_sport"; 
-    }
-    else
-    {
-        if(name == "ai-w" ) return "wheeled_sport(go2W)"; 
-        if(name == "normal-w" ) return "wheeled_sport(b2W)";
-    }
-    return "";
-}
-
-int queryMotionStatus(std::shared_ptr<MotionSwitcherClient> msc)
-{
-    std::string robotForm,motionName;
-    int motionStatus;
-    int32_t ret = msc->CheckMode(robotForm,motionName);
-    if (ret == 0) {
-        std::cout << "CheckMode succeeded." << std::endl;
-    } else {
-        std::cout << "CheckMode failed. Error code: " << ret << std::endl;
-    }
-    if(motionName.empty())
-    {
-        std::cout << "The motion control-related service is deactivated." << std::endl;
-        motionStatus = 0;
-    }
-    else
-    {
-        std::string serviceName = queryServiceName(robotForm,motionName);
-        std::cout << "Service: "<< serviceName<< " is activate" << std::endl;
-        motionStatus = 1;
-    }
-    return motionStatus;
-};
-
 void signalHandler(int signum) {
   std::cerr << "Received signal " << signum << ", exiting..." << std::endl;
 
@@ -603,15 +563,18 @@ int main(const int argc, const char* argv[]) {
     msc->SetTimeout(5.0f);
     msc->Init();
 
-    while(queryMotionStatus(msc)){
-      std::cout << "try to deactivate the motion control - related service" << std::endl;
-      int32_t ret = msc->ReleaseMode();
-      if (ret == 0) {
-        std::cout << "Motion control service deactivated successfully." << std::endl;
-      } else {
-        std::cerr << "Failed to deactivate motion control service, retrying..." << std::endl;
-        sleep(5);
-      }
+    std::string robot_form, motion_name;
+    const auto mode_result = msc->CheckMode(robot_form, motion_name);
+    if (mode_result != 0) {
+      std::cerr << "Unable to verify the motion service (CheckMode error " << mode_result
+                << "). Stopping before low-level control." << std::endl;
+      return 1;
+    }
+    if (!motion_name.empty()) {
+      std::cerr << "Active motion service: " << motion_name
+                << ". Suspend the robot, enter Develop mode using the G1 procedure, then restart."
+                << std::endl;
+      return 1;
     }
 
     lowcmd_publisher.reset(new ChannelPublisher<LowCmd_>(HG_CMD_TOPIC));

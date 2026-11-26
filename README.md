@@ -47,7 +47,7 @@ To test your working tree on hardware, close the simulation applications, then s
 ./scripts/g1-docker dev exec ros2 topic hz /lowstate
 ```
 
-The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. The explicit `./scripts/g1-docker dev control` command in a second terminal runs the checkout's physical Mode 13 controller and can move the robot. The staged Mode 5 physical 1–6 controller is under development. Its ground-frame handoff still requires implementation and validation.
+The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. Complete the manual Develop-mode handoff in section 2 before running `./scripts/g1-docker dev control` in a second terminal. That command runs the physical Mode 13 controller and can move the robot. The staged Mode 5 physical 1–6 controller is under development. Its ground-frame handoff still requires implementation and validation.
 
 ### Run a packaged image
 
@@ -132,11 +132,22 @@ source ~/unitree_ros2/setup.sh
 ./scripts/run_rviz.sh robot
 ```
 
-The hardware viewer defaults to Mode 5 with serial joint coordinates (`mode_pr=0`). Look for `G1 mode 5 | encoders live` when `/lowstate` arrives. RViz2 uses the 29 body encoders and the Rev 1.0 body model with fixed rubber hands and project sole frames. The hand geometry is a display assumption because the body state does not identify the installed hands. Joint state and IMU feedback are available without a controller. Matching `/lowcmd` messages enable command overlays. The observer rejects other machine modes and coordinate conventions. [Unitree Rev 1.0 model](https://github.com/unitreerobotics/unitree_ros/blob/157ff950351e5f535e03c5d85a16b7d594b3dbcc/robots/g1_description/g1_29dof_rev_1_0.urdf)
+RViz uses the Model 13 URDF with both Dex3-1 hands for simulation and hardware. The hardware viewer expects `mode_machine=5` and `mode_pr=0` by default. On a robot reporting 13, pass `hardware_mode:=13` to enable the corresponding body data checks and WBC telemetry. Body feedback markers use the physical configuration's kinematic model, so on a Mode 5 robot they can differ from points on the Model 13 display mesh. Neither the mesh nor a value of 5 or 13 confirms Develop mode or foot contact.
 
-For a Mode 13 robot, use `./scripts/run_rviz.sh robot hardware_mode:=13` to select its matching model and enable the project's WBC telemetry overlays.
+**Check both hands before control.** The viewer reads 29 body joints from `/lowstate` and seven measured finger joints per hand from `unitree_hg/msg/HandState`. It selects a fresh `/dex3/<side>/state` stream for each hand, falling back to `/lf/dex3/<side>/state`. Look for `Dex3 left live, right live` in the viewer status. A side marked `waiting` has not supplied a usable sample. A side marked `stale` has stopped supplying fresh measurements. The last visible pose may persist in TF. During live body feedback, 29, 36 and 43 published joint names correspond to zero, one and two fresh hands. [Unitree Dex3 motor order](https://github.com/unitreerobotics/unitree_mujoco/blob/main/unitree_robots/g1/g1_joint_index_dds.md)
 
-**Terminal 2: Run the hardware WBC experiment (Mode 13 only).** Use the native Unitree SDK2 control terminal and enter the same network interface used by the observer. **This program checks the machine mode, releases the active motion service, and sends low-level motor commands to the physical robot.**
+In a second terminal, run the following inside the robot container (`./scripts/g1-docker dev exec bash`) or a shell with the Unitree ROS environment. Use the hand topics listed for your robot. Inspect publishers and incoming messages on each side.
+
+```bash
+ros2 topic list -t | grep -E 'dex3/.*/state|lowstate'
+ros2 topic info /lf/dex3/left/state
+ros2 topic info /lf/dex3/right/state
+ros2 topic echo /g1_observer/status
+```
+
+**Enter Develop mode before a low-level control test.** The read-only viewer can run as soon as state packets arrive. For a motor-command test, support the G1 on its hoist and follow the procedure for its firmware and remote. Unitree's G1 deployment guide starts with the suspended robot in zero torque, then uses `L2 + R2` to enter Debug (Develop) mode with damping. Confirm the mode locally before starting the controller. [Unitree physical deployment instructions](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/deploy/deploy_real/README.md#startup-process)
+
+**Terminal 2. Run the hardware WBC experiment on a matching Mode 13 robot.** The controller checks the reported machine mode and queries the motion service before opening its low-level command publisher. An active service or a failed query stops startup. Enter the same network interface used by the observer.
 
 ```bash
 cd ~/G1_Experiment/labrob_mujoco_environment/build

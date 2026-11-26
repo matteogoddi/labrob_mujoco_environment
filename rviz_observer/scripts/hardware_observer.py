@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Read-only Unitree G1 body observer. No publisher uses a Unitree command topic."""
+from functools import partial
 import math
 import os
 import socket
@@ -14,7 +15,7 @@ from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu, JointState
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Header, String
-from unitree_hg.msg import LowCmd, LowState
+from unitree_hg.msg import HandState, LowCmd, LowState
 
 from observer import (Diagnostics, Marker, MarkerArray, latest_frame, make_pose, marker, point,
                       quaternion, tf2_ros, transform, vector)
@@ -32,6 +33,13 @@ def motor_names():
 
 
 NAMES = motor_names()
+# Dex3-1 IDL motor order differs between the two hands.
+HAND_NAMES = {
+    side: [f"{side}_hand_{finger}_{index}_joint" for finger in fingers
+           for index in range(3 if finger == "thumb" else 2)]
+    for side, fingers in (("left", ("thumb", "middle", "index")),
+                          ("right", ("thumb", "index", "middle")))
+}
 MAX_SKEW_NS = 50_000_000
 STALE_NS = 250_000_000
 
@@ -118,6 +126,11 @@ class HardwareObserver(Node):
         qos = QoSProfile(depth=1, reliability=QoSReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(LowState, "/lowstate", self.on_state, qos)
         self.create_subscription(LowCmd, "/lowcmd", self.on_command, qos)
+        self.hand_samples = {}
+        for side in HAND_NAMES:
+            for prefix in ("", "/lf"):
+                topic = f"{prefix}/dex3/{side}/state"
+                self.create_subscription(HandState, topic, partial(self.on_hand, side, prefix), qos)
         if self.base_source == "odometry":
             self.create_subscription(Odometry, "base_odometry", self.on_odometry, qos)
         if self.base_source == "sport":
@@ -140,6 +153,25 @@ class HardwareObserver(Node):
             if (last.tick, last.mode_machine, last.mode_pr) == (msg.tick, msg.mode_machine, msg.mode_pr):
                 return
         self.state = self.get_clock().now(), msg
+
+    def on_hand(self, side, prefix, msg):
+        motors = msg.motor_state
+        if len(motors) == len(HAND_NAMES[side]) and all(
+                math.isfinite(value) for motor in motors for value in (motor.q, motor.dq, motor.tau_est)):
+            self.hand_samples[side, prefix] = self.get_clock().now().nanoseconds, motors
+
+    def append_hand(self, joints, side, now_ns):
+        # Prefer the standard stream when both DDS rates are available.
+        for prefix in ("", "/lf"):
+            sample = self.hand_samples.get((side, prefix))
+            if sample and 0 <= now_ns - sample[0] <= STALE_NS:
+                motors = sample[1]
+                joints.name.extend(HAND_NAMES[side])
+                joints.position.extend(m.q for m in motors)
+                joints.velocity.extend(m.dq for m in motors)
+                joints.effort.extend(m.tau_est for m in motors)
+                return "live"
+        return "stale" if any((side, prefix) in self.hand_samples for prefix in ("", "/lf")) else "waiting"
 
     def on_command(self, msg):
         self.cmd = self.get_clock().now(), msg
@@ -195,7 +227,7 @@ class HardwareObserver(Node):
         stamp, state = self.state
         if state.mode_machine != self.hardware_mode or state.mode_pr != 0:
             self.report(f"G1 reported mode_machine={state.mode_machine}, mode_pr={state.mode_pr}. "
-                        f"The displayed model requires mode_machine={self.hardware_mode} and serial PR coordinates (0).")
+                        f"The observer expects mode_machine={self.hardware_mode} and serial PR coordinates (0).")
             return
         if stamp.nanoseconds == self.last_state_ns:
             return
@@ -206,8 +238,10 @@ class HardwareObserver(Node):
             self.report("Invalid encoder sample")
             return
         local = Header(stamp=stamp.to_msg(), frame_id="pelvis")
-        self.joints.publish(JointState(header=local, name=NAMES, position=angles,
-                                       velocity=[m.dq for m in motors], effort=[m.tau_est for m in motors]))
+        joints = JointState(header=local, name=list(NAMES), position=angles,
+                            velocity=[m.dq for m in motors], effort=[m.tau_est for m in motors])
+        hands = [f"{side} {self.append_hand(joints, side, now.nanoseconds)}" for side in HAND_NAMES]
+        self.joints.publish(joints)
         imu = state.imu_state
         w, x, y, z = imu.quaternion
         if valid_pose([0, 0, 0, x, y, z, w]):
@@ -264,7 +298,7 @@ class HardwareObserver(Node):
         status = f"G1 mode {self.hardware_mode} | encoders live | base: {source}"
         if self.hardware_mode == 13:
             status += " | WBC live" if aligned else " | waiting for WBC telemetry"
-        self.report(status, overlay)
+        self.report(status + " | Dex3 " + ", ".join(hands), overlay)
 
     def command_markers(self, header, reference):
         stamp, cmd = self.cmd
