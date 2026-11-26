@@ -6,31 +6,7 @@ The MuJoCo simulation and the physical G1 share a ROS 2 Foxy visualization inter
 
 The image runs on a Linux x86-64 workstation with Docker Engine. MuJoCo and RViz2 use the host's local X11 or XWayland display. The image includes ROS 2 Foxy, the Unitree message types and DDS middleware, the native SDK2 controller, the robot models and the RViz plot panel.
 
-Build once from the project root. To distribute this build, give users the compressed image and the executable `scripts/g1-docker` launcher. Users who receive the archive can start at the load command.
-
-```bash
-# On the build machine
-./scripts/g1-docker build
-docker save g1-experiment:foxy | gzip > g1-experiment-foxy-linux-amd64.tar.gz
-
-# On another workstation
-docker load -i g1-experiment-foxy-linux-amd64.tar.gz
-```
-
-### Simulation
-
-```bash
-# Terminal 1
-./scripts/g1-docker up sim
-./scripts/g1-docker sim
-
-# Terminal 2
-./scripts/g1-docker rviz
-```
-
-Press keys 1 through 6 in the MuJoCo window as described below. Both programs run in the same container so the observer can reconnect to the controller's local telemetry socket. Restart RViz independently with Ctrl+C and the same command.
-
-### Develop the simulation on Ubuntu 22.04, 24.04 or 26.04
+### Develop from a checkout on Ubuntu 22.04, 24.04 or 26.04
 
 Use an x86-64 Linux host with Docker Engine and a local X11 or XWayland session. The host supplies the kernel, display and graphics driver. The image supplies Ubuntu 20.04, ROS 2 Foxy, MuJoCo, the SDK and the compiler. CMake builds HPIPM and BLASFEO directly from the two source directories in your checkout. Different host installations of HPIPM, ROS or Python can coexist with this environment. Host installation instructions are available in the [Docker Engine Ubuntu guide](https://docs.docker.com/engine/install/ubuntu/).
 
@@ -59,7 +35,7 @@ git switch -c my-experiment
 
 From the checkout, run `./scripts/g1-docker dev sim` in one terminal and `./scripts/g1-docker dev rviz` in another. Check the GPU with `./scripts/g1-docker dev renderer`. NVIDIA hosts need the NVIDIA Container Toolkit for accelerated graphics. The development build selects the AVX2 solver kernels on CPUs with AVX2 and FMA and the generic kernels on other supported x86-64 machines. Frame rates depend on the workstation.
 
-Edit the checkout using your normal editor. After changing C++ or the plot plugin, close the affected application, rerun `./scripts/g1-docker dev build`, and restart it. Use `./scripts/g1-docker dev exec bash` for a shell in the mounted checkout. Compiled files persist in `build/docker-dev/` across `dev down` and `dev up`. Each developer should build their own cache. Commit changes on your local branch and add your team's Git remote to share them. The bundle contains the handoff history and can be cloned offline.
+Edit the checkout using your normal editor. After changing C++ or the plot plugin, close the affected application, rerun `./scripts/g1-docker dev build`, and restart it. Use `./scripts/g1-docker dev exec bash` for a shell in the mounted checkout. Compiled files persist in `build/docker-dev/` across `dev down` and `dev up`. Each developer should build their own cache. BLASFEO configures `blasfeo/include/blasfeo_target.h` for the local CPU. If a generic build changes that generated file, leave it out of your commits. Commit changes on your local branch and add your team's Git remote to share them. The bundle contains the handoff history and can be cloned offline.
 
 To test your working tree on hardware, close the simulation applications, then switch the development container to the robot network:
 
@@ -73,7 +49,33 @@ To test your working tree on hardware, close the simulation applications, then s
 
 The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. The explicit `./scripts/g1-docker dev control` command in a second terminal runs the checkout's physical Mode 13 controller and can move the robot. The staged Mode 5 physical 1–6 controller is under development. Its ground-frame handoff still requires implementation and validation.
 
-### Physical robot
+### Run a packaged image
+
+Build once from the project root. To distribute this build, give users the compressed image and the executable `scripts/g1-docker` launcher. Users who receive the archive can start at the load command.
+
+```bash
+# On the build machine
+./scripts/g1-docker build
+docker save g1-experiment:foxy | gzip > g1-experiment-foxy-linux-amd64.tar.gz
+
+# On another workstation
+docker load -i g1-experiment-foxy-linux-amd64.tar.gz
+```
+
+#### Simulation
+
+```bash
+# Terminal 1
+./scripts/g1-docker up sim
+./scripts/g1-docker sim
+
+# Terminal 2
+./scripts/g1-docker rviz
+```
+
+Press keys 1 through 6 in the MuJoCo window as described below. Both programs run in the same container so the observer can reconnect to the controller's local telemetry socket. Restart RViz independently with Ctrl+C and the same command.
+
+#### Physical robot
 
 Connect the host Ethernet interface to the G1 and configure its IP on the robot's subnet. Stop the simulation session before reusing its container name. Start the hardware viewer with the interface name reported by `ip -br addr`.
 
