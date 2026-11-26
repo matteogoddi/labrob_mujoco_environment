@@ -8,4 +8,4 @@ if [[ ${G1_DEV:-0} == 1 ]]; then
     source /workspace/g1/build/ros2/install/local_setup.bash
   fi
 fi
-PS1="(g1-${G1_SOURCE:-sim}) \w \$ "
+PS1="\[\e[36m\](g1-${G1_SOURCE:-sim})\[\e[0m\] \w \$ "
