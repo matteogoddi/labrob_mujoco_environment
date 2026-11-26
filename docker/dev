@@ -6,8 +6,15 @@ case "$1" in
     target=GENERIC
     if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then target=X64_INTEL_HASWELL; fi
     jobs=${G1_BUILD_JOBS:-2}
-    cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/mujoco -DTARGET="$target"
-    cmake --build build --target main lip_simulator_main --parallel "$jobs"
+    # A sourced Foxy shell also adds ROS prefixes through PATH. Build the
+    # SDK controller with the image toolchain and the native Cyclone DDS ABI.
+    native=(env -i "HOME=$HOME" PATH=/usr/local/bin:/usr/bin:/bin)
+    fresh=()
+    if grep -Eq ':(PATH|FILEPATH)=/opt/(ros/|unitree-ros/)' build/CMakeCache.txt 2>/dev/null; then
+      fresh=(--fresh)
+    fi
+    "${native[@]}" cmake "${fresh[@]}" -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/mujoco -DTARGET="$target"
+    "${native[@]}" cmake --build build --target main lip_simulator_main --parallel "$jobs"
     source /opt/ros/foxy/setup.bash
     source /opt/unitree-ros/local_setup.bash
     export CMAKE_BUILD_PARALLEL_LEVEL="$jobs"
