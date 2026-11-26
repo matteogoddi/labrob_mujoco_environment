@@ -14,8 +14,14 @@ if [[ ${1:-} == dev ]]; then
   fi
   name="${name}-dev"
 fi
+# Keep interactive sessions separate from persistent "up" containers.
+if [[ ${1:-} == run || ${1:-} == shell ]]; then name="${name}-shell"; fi
 usage() {
   cat <<'HELP'
+g1-docker run sim                Start an interactive simulation environment with docker run
+g1-docker run robot INTERFACE    Start an interactive hardware environment with docker run
+g1-docker shell                  Join the running interactive environment from another terminal
+g1-docker dev run|shell          Use the same interactive workflow with your checkout mounted
 g1-docker dev up                 Mount this source checkout for simulation development
 g1-docker dev up robot INTERFACE Mount the checkout on the robot network
 g1-docker dev build              Build the mounted controller and RViz observer
@@ -40,7 +46,8 @@ case "${1:-help}" in
       exec docker exec "$name" /workspace/g1/docker/dev build
     fi
     exec docker build --tag "$image" "$root" ;;
-  up)
+  up|run)
+    action=$1
     mounts=()
     if (( dev )); then
       [[ -f "$root/CMakeLists.txt" && -x "$root/docker/dev" ]] || {
@@ -48,8 +55,8 @@ case "${1:-help}" in
       }
       mkdir -p "$root/build/docker-dev"
       mounts+=(--volume "$root:/workspace/g1" --volume "$root/build/docker-dev:/workspace/g1/build"
-               --workdir /workspace/g1)
-      if [[ $# == 1 ]]; then set -- up sim; fi
+               --workdir /workspace/g1 --env G1_DEV=1)
+      if [[ $# == 1 ]]; then set -- "$action" sim; fi
     fi
     source_mode=${2:-}
     case "$source_mode" in
@@ -66,7 +73,7 @@ case "${1:-help}" in
     if (( dev )) && ! docker image inspect "$image" >/dev/null 2>&1; then
       docker build --tag "$image" "$root"
     fi
-    options=(--detach --init --name "$name" --label io.g1.experiment=true
+    options=(--init --name "$name" --label io.g1.experiment=true
              --network "$network" --hostname "$(hostname)" --user "$(id -u):$(id -g)"
              --env HOME=/tmp/g1-home --env QT_X11_NO_MITSHM=1
              --env "G1_INTERFACE=$iface" --env "G1_SOURCE=$source_mode"
@@ -102,7 +109,16 @@ case "${1:-help}" in
     mkdir -p "$data"
     options+=(--volume "$(cd "$data" && pwd):/opt/g1/experiments")
     if (( dev )); then options+=(--volume "$(cd "$data" && pwd):/workspace/g1/experiments"); fi
-    exec docker run "${mounts[@]}" "${options[@]}" "$image" sleep infinity ;;
+    if [[ $action == run ]]; then
+      exec docker run --rm -it "${mounts[@]}" "${options[@]}" "$image" bash
+    fi
+    exec docker run --detach "${mounts[@]}" "${options[@]}" "$image" sleep infinity ;;
+  shell)
+    if [[ $(docker inspect --format '{{.State.Running}} {{index .Config.Labels "io.g1.experiment"}}' "$name" 2>/dev/null) != 'true true' ]]; then
+      echo "Start the environment with g1-docker run (or dev run) in the first terminal." >&2
+      exit 1
+    fi
+    exec docker exec -it "$name" g1-env bash ;;
   sim|rviz|renderer|exec|control|down)
     if [[ $(docker inspect --type container --format '{{index .Config.Labels "io.g1.experiment"}}' "$name") != true ]]; then
       echo "Start an experiment container with g1-docker up first." >&2

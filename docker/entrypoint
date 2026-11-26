@@ -12,7 +12,16 @@ if [[ ! $iface =~ ^[a-zA-Z0-9_.:-]+$ || ! -d /sys/class/net/$iface ]]; then
 fi
 export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$iface\"/></Interfaces></General></Domain></CycloneDDS>"
 mkdir -p "$HOME"
+# The short commands are symlinks to this entry point and work from any directory.
+case "${0##*/}" in sim|rviz|robot) set -- "${0##*/}" "$@" ;; esac
 case "${1:-bash}" in
+  bash)
+    if [[ $# -le 1 && -t 0 && -t 1 ]]; then
+      # The image runs with host numeric IDs. Skip Ubuntu's interactive sudo/group hint.
+      if [[ $HOME == /tmp/g1-home ]]; then touch "$HOME/.hushlogin"; fi
+      exec bash --rcfile /opt/g1/docker/interactive.bash -i
+    fi
+    exec bash "${@:2}" ;;
   check)
     cd /opt/g1/build
     # Run only the argument parser. The native binary must resolve its SDK DDS.
@@ -37,10 +46,22 @@ PYTHON
     ;;
   sim)
     shift
+    [[ ${G1_SOURCE:-sim} == sim ]] || { echo "Open a simulation environment to run sim." >&2; exit 2; }
+    if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev sim "$@"; fi
     cd /opt/g1/build
     binary=./main
     if grep -qw avx2 /proc/cpuinfo && grep -qw fma /proc/cpuinfo; then binary=./main-avx2; fi
     exec "$binary" --sim --rviz "$@" ;;
-  rviz) shift; exec /opt/g1/scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@" ;;
+  rviz)
+    shift
+    if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev rviz "$@"; fi
+    exec /opt/g1/scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@" ;;
+  robot)
+    [[ $# == 1 && ${G1_SOURCE:-sim} == robot && $iface != lo ]] || {
+      echo "Use robot in a hardware environment with the robot Ethernet interface." >&2; exit 2;
+    }
+    if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev control; fi
+    cd /opt/g1/build
+    exec ./main --robot "$iface" --rviz ;;
   *) exec "$@" ;;
 esac

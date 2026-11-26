@@ -1,10 +1,40 @@
 # Unitree G1 Experiment Guide
 
-The MuJoCo simulation and the physical G1 share a ROS 2 Foxy visualization interface in RViz2. Run the controller and RViz2 in separate terminals under the same user account on the same Linux host. You can open or restart RViz2 at any point during an experiment. If you observe simulation and hardware at the same time, use separate ROS domains for their observers so that topics with the same name stay separate.
+The MuJoCo simulation and the physical G1 share a ROS 2 Foxy visualization interface in RViz2. Run the controller and RViz2 in two terminals attached to the same experiment container. You can open or restart RViz2 at any point during an experiment. If you observe simulation and hardware at the same time, use separate ROS domains for their observers so that topics with the same name stay separate.
 
 ## Docker deployment
 
 The image runs on a Linux x86-64 workstation with Docker Engine. MuJoCo and RViz2 use the host's local X11 or XWayland display. The image includes ROS 2 Foxy, the Unitree message types and DDS middleware, the native SDK2 controller, the robot models and the RViz plot panel.
+
+### Two interactive Docker terminals
+
+Build the current image once with `./scripts/g1-docker build`, or load the team's current image archive. Then open both terminals in the project directory.
+
+| Session | Terminal 1 on the host | At the first container prompt | Terminal 2 on the host | At the second container prompt |
+| --- | --- | --- | --- | --- |
+| MuJoCo | `./scripts/g1-docker run sim` | `rviz` | `./scripts/g1-docker shell` | `sim` |
+| Physical G1 | `./scripts/g1-docker run robot enp3s0` | `rviz` | `./scripts/g1-docker shell` | `ros2 topic echo /g1_observer/status` |
+
+Replace `enp3s0` with the host's robot Ethernet interface. The first command starts an interactive container with `docker run --rm -it`. The second terminal joins it with `docker exec -it`. Both prompts show `(g1-sim)` or `(g1-robot)`. The terminals share the controller's local telemetry socket. Ctrl+C stops the foreground program and returns to its prompt. Stop both programs before typing `exit` in the first shell, which removes the container.
+
+On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
+
+For source development, use `./scripts/g1-docker dev run sim` (or `dev run robot INTERFACE`) in the first terminal. Type `build` once inside that shell, then `rviz`. Use `./scripts/g1-docker dev shell` in the second terminal. The short commands use the mounted checkout and its build cache.
+
+#### Using Docker directly
+
+The launcher configures graphics, mounts and network settings. For a local NVIDIA/X11 workstation, the equivalent interactive simulation session can also be started directly:
+
+```bash
+docker run --rm -it --init --name g1-lab --network none \
+  --hostname "$(hostname)" --user "$(id -u):$(id -g)" -e HOME=/tmp/g1-home \
+  --gpus all -e NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility,compute \
+  -e DISPLAY -e QT_X11_NO_MITSHM=1 -e XAUTHORITY=/tmp/g1.xauth \
+  -v "${XAUTHORITY:-$HOME/.Xauthority}:/tmp/g1.xauth:ro" \
+  -v /tmp/.X11-unix:/tmp/.X11-unix:ro g1-experiment:foxy
+```
+
+Type `rviz` inside. From a second host terminal, run `docker exec -it g1-lab g1-env bash` and type `sim`. For a hardware session, replace `--network none` in the first command with `--network host -e G1_SOURCE=robot -e G1_INTERFACE=enp3s0` using the robot-facing interface. Mount a writable host directory at `/opt/g1/experiments` to keep saved hardware logs after exit.
 
 ### Develop from a checkout on Ubuntu 22.04, 24.04 or 26.04
 

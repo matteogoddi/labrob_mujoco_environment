@@ -73,6 +73,8 @@ COPY . .
 COPY --from=controller /opt/g1/build/main /opt/g1/build/lip_simulator_main build/
 COPY --from=controller /opt/g1/build-avx2/main build/main-avx2
 COPY docker/entrypoint /usr/local/bin/g1-env
-RUN chmod +x /usr/local/bin/g1-env && /usr/local/bin/g1-env check
+RUN chmod +x /usr/local/bin/g1-env && \
+    for command in sim rviz robot; do ln -s g1-env "/usr/local/bin/$command"; done && \
+    /usr/local/bin/g1-env check
 ENTRYPOINT ["/usr/local/bin/g1-env"]
 CMD ["bash"]
