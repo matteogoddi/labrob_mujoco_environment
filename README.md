@@ -12,14 +12,14 @@ Build the current image once with `./scripts/g1-docker build`, or load the team'
 
 | Session | Terminal 1 on the host | At the first container prompt | Terminal 2 on the host | At the second container prompt |
 | --- | --- | --- | --- | --- |
-| MuJoCo | `./scripts/g1-docker run sim` | `rviz` | `./scripts/g1-docker shell` | `sim` |
-| Physical G1 | `./scripts/g1-docker run robot enp3s0` | `rviz` | `./scripts/g1-docker shell` | `ros2 topic echo /g1_observer/status` |
+| MuJoCo | `./scripts/g1-docker run sim` | `rviz` | `./scripts/g1-docker run sim` | `sim` |
+| Physical G1 | `./scripts/g1-docker run robot` | `rviz` | `./scripts/g1-docker run robot` | `ros2 topic echo /g1_observer/status` |
 
-Replace `enp3s0` with the host's robot Ethernet interface. The first command starts an interactive container with `docker run --rm -it`. The second terminal joins it with `docker exec -it`. Both prompts show `(g1-sim)` or `(g1-robot)`. The terminals share the controller's local telemetry socket. Ctrl+C stops the foreground program and returns to its prompt. Stop both programs before typing `exit` in the first shell, which removes the container.
+Use the same host command in both terminals. Simulation and hardware have distinct container names and can run concurrently. On first use, `run robot` selects the single active physical Ethernet interface, or the only physical Ethernet interface if its link is down. On multi-NIC hosts, specify the robot-facing interface with `./scripts/g1-docker run robot enp3s0`. Later terminals reuse the session's interface. The first command starts an interactive container with `docker run --rm -it`. The second terminal joins it with `docker exec -it`. Both prompts show `(g1-sim)` or `(g1-robot)`. The terminals share the controller's local telemetry socket. Ctrl+C stops the foreground program and returns to its prompt. Stop both programs before typing `exit` in the first shell, which removes the container.
 
 On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
 
-For source development, use `./scripts/g1-docker dev run sim` (or `dev run robot INTERFACE`) in the first terminal. Type `build` once inside that shell, then `rviz`. Use `./scripts/g1-docker dev shell` in the second terminal. The short commands use the mounted checkout and its build cache.
+For source development, use `./scripts/g1-docker dev run sim` (or `dev run robot INTERFACE`) in the first terminal. Type `build` once inside that shell, then `rviz`. Repeat the same `dev run` command in the second terminal. The short commands use the mounted checkout and its build cache.
 
 #### Using Docker directly
 

@@ -18,10 +18,9 @@ fi
 if [[ ${1:-} == run || ${1:-} == shell ]]; then name="${name}-shell"; fi
 usage() {
   cat <<'HELP'
-g1-docker run sim                Start an interactive simulation environment with docker run
-g1-docker run robot INTERFACE    Start an interactive hardware environment with docker run
-g1-docker shell                  Join the running interactive environment from another terminal
-g1-docker dev run|shell          Use the same interactive workflow with your checkout mounted
+g1-docker run sim                Open or join the interactive simulation environment
+g1-docker run robot [INTERFACE]  Open or join the interactive hardware environment
+g1-docker dev run sim|robot      Open or join the same environment with your checkout mounted
 g1-docker dev up                 Mount this source checkout for simulation development
 g1-docker dev up robot INTERFACE Mount the checkout on the robot network
 g1-docker dev build              Build the mounted controller and RViz observer
@@ -40,6 +39,46 @@ g1-docker down                   Stop and remove the experiment container
 HELP
 }
 
+# Docker reserves a container name before its first shell starts. A concurrent
+# terminal can observe that brief "created" state before docker exec is ready.
+join_session() {
+  local info id state label nic checkout attempt
+  for attempt in {1..30}; do
+    info=$(docker container inspect --format '{{.Id}}|{{.State.Status}}|{{index .Config.Labels "io.g1.session"}}|{{index .Config.Labels "io.g1.interface"}}|{{index .Config.Labels "io.g1.checkout"}}' "$name" 2>/dev/null) || return 1
+    IFS='|' read -r id state label nic checkout <<< "$info"
+    if [[ $label != "$source_mode" || (-n $iface && $iface != "$nic") || ($dev == 1 && $checkout != "$root") ]]; then
+      echo "Container $name belongs to another configuration. Check the interface, checkout or G1_CONTAINER." >&2
+      exit 2
+    fi
+    case $state in
+      running) exec docker exec -it "$id" g1-env bash ;;
+      created) sleep 0.1 ;;
+      *) echo "Container $name is $state. Check it with docker ps -a." >&2; exit 1 ;;
+    esac
+  done
+  echo "Container $name is still starting. Repeat the same run command." >&2
+  exit 1
+}
+
+robot_interface() {
+  local path nic
+  local wired=() active=()
+  for path in /sys/class/net/*; do
+    [[ -e $path/device && ! -d $path/wireless && ! -e $path/phy80211 && $(<"$path/type") == 1 ]] || continue
+    nic=${path##*/}
+    wired+=("$nic")
+    if [[ $(<"$path/operstate") == up ]]; then active+=("$nic"); fi
+  done
+  if (( ${#active[@]} == 1 )); then
+    printf '%s\n' "${active[0]}"
+  elif (( ${#wired[@]} == 1 )); then
+    printf '%s\n' "${wired[0]}"
+  else
+    echo "Select the G1 Ethernet interface from ip -br addr and use: g1-docker run robot INTERFACE" >&2
+    return 2
+  fi
+}
+
 case "${1:-help}" in
   build)
     if (( dev )); then
@@ -48,6 +87,7 @@ case "${1:-help}" in
     exec docker build --tag "$image" "$root" ;;
   up|run)
     action=$1
+    if [[ $action == run && $# == 1 ]]; then set -- run sim; fi
     mounts=()
     if (( dev )); then
       [[ -f "$root/CMakeLists.txt" && -x "$root/docker/dev" ]] || {
@@ -63,13 +103,23 @@ case "${1:-help}" in
       sim) [[ $# == 2 ]] || { usage >&2; exit 2; }; iface=lo; network=none ;;
       robot)
         iface=${3:-}
-        if [[ $# != 3 || ! $iface =~ ^[a-zA-Z0-9_.:-]+$ || $iface == lo || ! -d /sys/class/net/$iface ]]; then
+        if [[ $action == run && $# == 2 ]]; then
+          iface=${G1_INTERFACE:-}
+        elif [[ $# != 3 || -z $iface ]]; then
+          usage >&2; exit 2
+        fi
+        if [[ -n $iface && ( ! $iface =~ ^[a-zA-Z0-9_.:-]+$ || $iface == lo || ! -d /sys/class/net/$iface ) ]]; then
           echo 'Specify the robot Ethernet interface shown by ip -br addr.' >&2
           exit 2
         fi
         network=host ;;
       *) usage >&2; exit 2 ;;
     esac
+    if [[ $action == run ]]; then
+      name="${name}-$source_mode"
+      join_session || :
+      if [[ -z $iface ]]; then iface=$(robot_interface); fi
+    fi
     if (( dev )) && ! docker image inspect "$image" >/dev/null 2>&1; then
       docker build --tag "$image" "$root"
     fi
@@ -110,15 +160,27 @@ case "${1:-help}" in
     options+=(--volume "$(cd "$data" && pwd):/opt/g1/experiments")
     if (( dev )); then options+=(--volume "$(cd "$data" && pwd):/workspace/g1/experiments"); fi
     if [[ $action == run ]]; then
-      exec docker run --rm -it "${mounts[@]}" "${options[@]}" "$image" bash
+      options+=(--label "io.g1.session=$source_mode" --label "io.g1.interface=$iface")
+      if (( dev )); then options+=(--label "io.g1.checkout=$root"); fi
+      # If two terminals create the same session together, the loser joins the winner.
+      result=0
+      docker run --rm -it "${mounts[@]}" "${options[@]}" "$image" bash || result=$?
+      if (( result == 125 )); then join_session || :; fi
+      exit "$result"
     fi
     exec docker run --detach "${mounts[@]}" "${options[@]}" "$image" sleep infinity ;;
   shell)
-    if [[ $(docker inspect --format '{{.State.Running}} {{index .Config.Labels "io.g1.experiment"}}' "$name" 2>/dev/null) != 'true true' ]]; then
-      echo "Start the environment with g1-docker run (or dev run) in the first terminal." >&2
-      exit 1
+    # Compatibility with the previous shared name and with a single new session.
+    sessions=()
+    for candidate in "$name" "$name-sim" "$name-robot"; do
+      if [[ $(docker container inspect --format '{{.State.Running}} {{index .Config.Labels "io.g1.experiment"}}' "$candidate" 2>/dev/null) == 'true true' ]]; then
+        sessions+=("$candidate")
+      fi
+    done
+    if (( ${#sessions[@]} != 1 )); then
+      echo "Choose a session with run sim or run robot." >&2; exit 1
     fi
-    exec docker exec -it "$name" g1-env bash ;;
+    exec docker exec -it "${sessions[0]}" g1-env bash ;;
   sim|rviz|renderer|exec|control|down)
     if [[ $(docker inspect --type container --format '{{index .Config.Labels "io.g1.experiment"}}' "$name") != true ]]; then
       echo "Start an experiment container with g1-docker up first." >&2
