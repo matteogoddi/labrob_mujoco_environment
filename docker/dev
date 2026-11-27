@@ -14,7 +14,7 @@ case "$1" in
       fresh=(--fresh)
     fi
     "${native[@]}" cmake "${fresh[@]}" -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/mujoco -DTARGET="$target"
-    "${native[@]}" cmake --build build --target main lip_simulator_main --parallel "$jobs"
+    "${native[@]}" cmake --build build --target main lip_simulator_main g1_step1 --parallel "$jobs"
     source /opt/ros/foxy/setup.bash
     source /opt/unitree-ros/local_setup.bash
     export CMAKE_BUILD_PARALLEL_LEVEL="$jobs"

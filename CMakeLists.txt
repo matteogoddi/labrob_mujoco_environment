@@ -92,6 +92,12 @@ target_link_libraries(main
   unitree_sdk2
 )
 
+add_executable(g1_step1 Mode5ArmStep.cpp)
+target_link_libraries(g1_step1 PRIVATE unitree_sdk2)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_options(g1_step1 PRIVATE "LINKER:--disable-new-dtags")
+endif()
+
 add_executable(lip_simulator_main
 lip_simulator_main.cpp
 )

@@ -54,7 +54,7 @@ COPY src src
 COPY blasfeo blasfeo
 COPY hpipm hpipm
 RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=/opt/mujoco -DTARGET=GENERIC && \
-    cmake --build build --target main lip_simulator_main --parallel "${BUILD_JOBS}"
+    cmake --build build --target main lip_simulator_main g1_step1 --parallel "${BUILD_JOBS}"
 
 # Keep the portable binary for older x86-64 hosts. The optimized BLASFEO
 # kernels substantially reduce the time spent in the 500 Hz walking solve.
@@ -70,11 +70,11 @@ WORKDIR /opt/g1
 RUN apt-get -o Acquire::Retries=3 update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       python3-matplotlib python3-seaborn python3-scipy python3-imageio && rm -rf /var/lib/apt/lists/*
 COPY . .
-COPY --from=controller /opt/g1/build/main /opt/g1/build/lip_simulator_main build/
+COPY --from=controller /opt/g1/build/main /opt/g1/build/lip_simulator_main /opt/g1/build/g1_step1 build/
 COPY --from=controller /opt/g1/build-avx2/main build/main-avx2
 COPY docker/entrypoint /usr/local/bin/g1-env
 RUN chmod +x /usr/local/bin/g1-env && \
-    for command in sim rviz robot; do ln -s g1-env "/usr/local/bin/$command"; done && \
+    for command in sim rviz robot step1; do ln -s g1-env "/usr/local/bin/$command"; done && \
     /usr/local/bin/g1-env check
 ENTRYPOINT ["/usr/local/bin/g1-env"]
 CMD ["bash"]

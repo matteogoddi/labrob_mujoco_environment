@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Run from the host: docker run --rm --network none g1-experiment:foxy tests/step1/run
+set -euo pipefail
+cd /opt/g1
+c++ -std=c++17 -O2 -I. -I/usr/local/include/ddscxx tests/step1/peer.cpp \
+  -L/usr/local/lib -Wl,--disable-new-dtags,-rpath,/usr/local/lib \
+  -lunitree_sdk2 -lddscxx -lddsc -lpthread -o /tmp/g1-step1-peer
+exec python3 tests/step1/check.py /opt/g1/build/g1_step1 /tmp/g1-step1-peer

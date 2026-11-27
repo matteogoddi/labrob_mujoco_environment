@@ -13,7 +13,7 @@ fi
 export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$iface\"/></Interfaces></General></Domain></CycloneDDS>"
 mkdir -p "$HOME"
 # The short commands are symlinks to this entry point and work from any directory.
-case "${0##*/}" in sim|rviz|robot) set -- "${0##*/}" "$@" ;; esac
+case "${0##*/}" in sim|rviz|robot|step1) set -- "${0##*/}" "$@" ;; esac
 case "${1:-bash}" in
   bash)
     if [[ $# -le 1 && -t 0 && -t 1 ]]; then
@@ -28,6 +28,8 @@ case "${1:-bash}" in
     if output=$(./main 2>&1); then exit 1; fi
     [[ $output == *"specify either"* ]]
     ldd ./main | grep 'libddsc.so' | grep -q '/usr/local/lib/'
+    test -x /usr/local/bin/step1
+    ldd ./g1_step1 | grep 'libddsc.so' | grep -q '/usr/local/lib/'
     python3 - <<'PYTHON'
 import PyKDL
 import tf2_ros
@@ -56,6 +58,14 @@ PYTHON
     shift
     if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev rviz "$@"; fi
     exec /opt/g1/scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@" ;;
+  step1)
+    [[ $# == 1 && ${G1_SOURCE:-sim} == robot && $iface != lo && ${ROS_DOMAIN_ID:-0} == 0 ]] || {
+      echo "Use step1 in a robot environment on the G1 Ethernet interface and DDS domain 0." >&2; exit 2;
+    }
+    binary=/opt/g1/build/g1_step1
+    if [[ ${G1_DEV:-0} == 1 ]]; then binary=/workspace/g1/build/g1_step1; fi
+    [[ -x $binary ]] || { echo "Build the Mode 5 step1 target first." >&2; exit 1; }
+    exec "$binary" "$iface" ;;
   robot)
     [[ $# == 1 && ${G1_SOURCE:-sim} == robot && $iface != lo ]] || {
       echo "Use robot in a hardware environment with the robot Ethernet interface." >&2; exit 2;

@@ -1,4 +1,5 @@
 #include "SimulationStartup.hpp"
+#include "Stage1Pose.hpp"
 #include "MujocoUI.hpp"
 
 #include <chrono>
@@ -114,12 +115,12 @@ bool prepareSimulation(mjModel& m, mjData& d, MujocoUI& ui, const std::vector<Pd
   };
   Pose pose(d.qpos, d.qpos + m.nq);
   // Mirrored poses keep the palms beside the torso as the elbows move outward.
-  setArms(m, pose, -0.0473, 0.20, 1.3954, 1.7231);
+  setArms(m, pose, initial_arm_pose[0], initial_arm_pose[1], initial_arm_pose[2], initial_arm_pose[3]);
   mju_copy(d.qpos, pose.data(), m.nq);
   mj_forward(&m, &d);
 
   if (!waitForKey(ui, 1, "Ready. Press 1 to open both arms slightly to the sides.", render)) return false;
-  setArms(m, pose, -0.0554, 0.42, 1.4655, 1.9414);
+  setArms(m, pose, open_arm_pose[0], open_arm_pose[1], open_arm_pose[2], open_arm_pose[3]);
   if (!moveTo(m, d, ui, pose, 75, render)) return false;
 
   if (!waitForKey(ui, 2, "Stage 1 complete. Forearms are pointing down. Press 2 to close both hands.", render)) return false;

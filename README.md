@@ -17,7 +17,7 @@ Build the current image once with `./scripts/g1-docker build`, or load the team'
 
 Use the same host command in both terminals. Simulation and hardware have distinct container names and can run concurrently. On first use, `run robot` selects the single active physical Ethernet interface, or the only physical Ethernet interface if its link is down. On multi-NIC hosts, specify the robot-facing interface with `./scripts/g1-docker run robot enp3s0`. Later terminals reuse the session's interface. The first command starts an interactive container with `docker run --rm -it`. The second terminal joins it with `docker exec -it`. Both prompts show `(g1-sim)` or `(g1-robot)`. The terminals share the controller's local telemetry socket. Ctrl+C stops the foreground program and returns to its prompt. Stop both programs before typing `exit` in the first shell, which removes the container.
 
-On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
+On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. The separate `step1` command in the second terminal opens the suspended arm test described in section 2. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
 
 For source development, use `./scripts/g1-docker dev run sim` (or `dev run robot INTERFACE`) in the first terminal. Type `build` once inside that shell, then `rviz`. Repeat the same `dev run` command in the second terminal. The short commands use the mounted checkout and its build cache.
 
@@ -77,7 +77,7 @@ To test your working tree on hardware, close the simulation applications, then s
 ./scripts/g1-docker dev exec ros2 topic hz /lowstate
 ```
 
-The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. Complete the manual Develop-mode handoff in section 2 before running `./scripts/g1-docker dev control` in a second terminal. That command runs the physical Mode 13 controller and can move the robot. The staged Mode 5 physical 1–6 controller is under development. Its ground-frame handoff still requires implementation and validation.
+The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. Complete the manual Develop-mode handoff in section 2 before running `./scripts/g1-docker dev control` in a second terminal. That command runs the physical Mode 13 controller and can move the robot. Use `step1` for the suspended Mode 5 arm-only test in section 2. Stages 2–6 and the ground-frame handoff still require implementation and validation.
 
 ### Run a packaged image
 
@@ -116,7 +116,7 @@ ip -br addr
 ./scripts/g1-docker rviz
 ```
 
-From a second terminal, inspect the live bus with `./scripts/g1-docker exec ros2 topic hz /lowstate`. The robot container uses host networking and selects the specified interface for Cyclone DDS. Starting the container or RViz only observes the robot. The Mode 13 controller procedure below applies only to matching hardware. The Mode 5 display works independently of the staged Mode 5 control implementation.
+From a second terminal, inspect the live bus with `./scripts/g1-docker exec ros2 topic hz /lowstate`. The robot container uses host networking and selects the specified interface for Cyclone DDS. Starting the container or RViz only observes the robot. The Mode 13 controller procedure below applies only to matching hardware. The Mode 5 arm test has its own `step1` command.
 
 For Mode 13, start the viewer with `./scripts/g1-docker rviz hardware_mode:=13`. To run the physical experiment, open a control terminal with `./scripts/g1-docker exec bash`, change to `/opt/g1/build`, and use the hardware command below with the same Ethernet interface.
 
@@ -174,6 +174,23 @@ ros2 topic info /lf/dex3/left/state
 ros2 topic info /lf/dex3/right/state
 ros2 topic echo /g1_observer/status
 ```
+
+### Mode 5 suspended arm test in Docker
+
+Keep the hoist supporting the full robot throughout this test. The release request can remove whole-body support. Start in the suspended zero-torque condition specified for the robot firmware, provide clearance for both arms, stop other low-level control programs, and keep an operator at the physical stop. State packets and RViz cannot verify hoist support. [Unitree physical deployment procedure](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/deploy/deploy_real/README.md#startup-process)
+
+Keep the hardware RViz window open. In a second terminal, enter the updated hardware container with `./scripts/g1-docker run robot`, then run `step1`. Each key is immediate in this terminal; independent confirmations must be pressed separately. In an existing development checkout, run `build` after updating the source. A container created from an earlier packaged image retains its original commands. To keep an older viewer open and start a separate control shell using the updated image, use `G1_CONTAINER=g1-arm-test ./scripts/g1-docker run robot INTERFACE` on the host.
+
+| Key | Effect |
+| --- | --- |
+| `d`, then `y` | Confirm that the robot is suspended, in zero torque and clear. Request release of the active motion service, then check its reported state. Wait for `Develop verified. Arms idle.` |
+| `1` | Capture measured arm angles and open both arms once over four seconds. The terminal reports when measured angles settle at the targets and the position hold begins. |
+| **Space**, `x`, Esc or Ctrl+C | Abort the test from any phase. End the arm stream; while ownership is verified, first send disable packets. Keep supporting the arms and body. Use the independent physical stop for an emergency, lost terminal or network failure. A switch RPC already sent can still complete. |
+| `r`, then `y` | While ready or holding, release the arms first. After separate confirmation, request the motion service recorded before this session and verify its name. Restoring a service can change the robot's posture. If the robot was already in Develop mode at entry, use the physical remote for recovery. |
+
+The first three shoulder axes and elbow on each side receive the simulation Stage 1 **change** from the current pose. On the left the offsets are approximately −0.008, +0.220, +0.070 and +0.218 radians. Right shoulder roll and yaw are mirrored. Only those eight motors are enabled. Other body slots in `/lowcmd` are disabled and no Dex3 commands are published. Arm PD uses the SDK example gains (40 and 1) with a stiffness ramp. These settings and tracking limits require validation on the physical unit. The container requests serial PR coordinates and machine mode 5, checks CRC and advancing state ticks, and monitors service status, other command writers, joint feedback and command timing. The keyboard abort is a best-effort software stop. Confirm the physical state with the remote before recovery. [Unitree motion switcher](https://github.com/unitreerobotics/xr_teleoperate/blob/main/teleop/utils/motion_switcher.py) · [Unitree low-level example](https://github.com/unitreerobotics/unitree_sdk2/blob/f29ee9f234851e9e79f75102c0f9e83008d8fdd1/example/g1/low_level/g1_ankle_swing_example.cpp)
+
+### Mode 13 WBC experiment
 
 **Enter Develop mode before a low-level control test.** The read-only viewer can run as soon as state packets arrive. For a motor-command test, support the G1 on its hoist and follow the procedure for its firmware and remote. Unitree's G1 deployment guide starts with the suspended robot in zero torque, then uses `L2 + R2` to enter Debug (Develop) mode with damping. Confirm the mode locally before starting the controller. [Unitree physical deployment instructions](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/deploy/deploy_real/README.md#startup-process)
 
