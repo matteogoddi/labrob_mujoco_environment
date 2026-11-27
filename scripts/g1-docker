@@ -105,6 +105,29 @@ robot_interface() {
   fi
 }
 
+# Test the same type of OpenGL context used by MuJoCo. The probe uses a
+# hidden window and an isolated network even when preparing a robot shell.
+renderer_probe='
+import ctypes as c
+glfw = c.CDLL("libglfw.so.3")
+gl = c.CDLL("libGL.so.1")
+if not glfw.glfwInit():
+    raise SystemExit("GLFW could not open the container display")
+glfw.glfwWindowHint(0x00020004, 0)  # GLFW_VISIBLE
+glfw.glfwCreateWindow.restype = c.c_void_p
+window = glfw.glfwCreateWindow(16, 16, b"Renderer check", None, None)
+if not window:
+    raise SystemExit("Could not create an OpenGL context")
+glfw.glfwMakeContextCurrent(c.c_void_p(window))
+gl.glGetString.restype = c.c_char_p
+print(gl.glGetString(0x1F01).decode())
+glfw.glfwTerminate()'
+
+probe_gl() {
+  docker run --rm --network none --user "$(id -u):$(id -g)" --env HOME=/tmp/g1-home \
+    "${graphics[@]}" "$@" --entrypoint python3 "$image" -c "$renderer_probe"
+}
+
 case "${1:-help}" in
   build)
     if (( dev )); then
@@ -151,36 +174,95 @@ case "${1:-help}" in
     fi
     options=(--init --name "$name" --label io.g1.experiment=true
              --network "$network" --hostname "$(hostname)" --user "$(id -u):$(id -g)"
-             --env HOME=/tmp/g1-home --env QT_X11_NO_MITSHM=1
+             --env HOME=/tmp/g1-home
              --env "G1_INTERFACE=$iface" --env "G1_SOURCE=$source_mode"
              --env "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}")
+    graphics=()
+    gpu=${G1_NVIDIA:-auto}
+    case "$gpu" in auto|0|1) ;; *) echo "G1_NVIDIA must be auto, 0 or 1." >&2; exit 2 ;; esac
+    wslg=0
+    if [[ -d /mnt/wslg && -d /mnt/wslg/.X11-unix ]]; then wslg=1; fi
     if [[ -n ${DISPLAY:-} ]]; then
+      socket=/tmp/.X11-unix
+      if (( wslg )); then socket=/mnt/wslg/.X11-unix; fi
+      [[ -d $socket ]] || { echo "Missing X11 socket directory: $socket" >&2; exit 2; }
+      graphics+=(--env DISPLAY --env QT_X11_NO_MITSHM=1 --volume "$socket:/tmp/.X11-unix:ro")
       auth=${XAUTHORITY:-$HOME/.Xauthority}
-      if [[ ! -r $auth || ! -d /tmp/.X11-unix ]]; then
-        echo 'A local X11/XWayland session and its readable XAUTHORITY file are required for GUI windows.' >&2
-        exit 2
+      if [[ -f $auth && -r $auth ]]; then
+        graphics+=(--env XAUTHORITY=/tmp/g1.xauth --volume "$auth:/tmp/g1.xauth:ro")
+      elif (( ! wslg )); then
+        echo 'A readable XAUTHORITY file is required for the local X11/XWayland session.' >&2; exit 2
       fi
-      options+=(--env DISPLAY --env XAUTHORITY=/tmp/g1.xauth
-                --volume "$auth:/tmp/g1.xauth:ro" --volume /tmp/.X11-unix:/tmp/.X11-unix:ro)
     fi
-    # Mesa software rendering works without a GPU runtime. Pass render nodes
-    # and their actual host group IDs when direct rendering is available.
+
+    # Pass the actual render-node group IDs, which vary between workstations.
+    mesa_pci=
     for device in /dev/dri/renderD*; do
       if [[ -c $device ]]; then
-        options+=(--device "$device" --group-add "$(stat -c %g "$device")")
+        graphics+=(--device "$device" --group-add "$(stat -c %g "$device")")
+        pci_dir=/sys/class/drm/${device##*/}/device
+        if [[ -r $pci_dir/vendor && $(<"$pci_dir/vendor") =~ ^0x(8086|1002)$ ]]; then
+          address=$(basename "$(readlink -f "$pci_dir")")
+          if [[ $address =~ ^[[:xdigit:]]{4}:[[:xdigit:]]{2}:[[:xdigit:]]{2}\.[0-7]$ ]] &&
+              [[ -z $mesa_pci || ( -r $pci_dir/boot_vga && $(<"$pci_dir/boot_vga") == 1 ) ]]; then
+            mesa_pci="pci-${address//[:.]/_}"
+          fi
+        fi
       fi
     done
-    gpu=${G1_NVIDIA:-auto}
-    if [[ $gpu == auto ]]; then
-      gpu=0
-      if command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1 &&
-         [[ $(docker info --format '{{if index .Runtimes "nvidia"}}yes{{end}}') == yes ]]; then
-        gpu=1
+    nvidia=()
+    if (( wslg )); then
+      if [[ -c /dev/dxg && -d /usr/lib/wsl/lib ]]; then
+        graphics+=(--device /dev/dxg --group-add "$(stat -c %g /dev/dxg)"
+                   --volume /usr/lib/wsl:/usr/lib/wsl:ro --env LD_LIBRARY_PATH=/usr/lib/wsl/lib)
+        nvidia=(--env MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA)
+      fi
+    elif [[ $gpu == 1 || ( $gpu == auto && -c /dev/nvidiactl ) ]] ||
+        { [[ $gpu == auto ]] && command -v nvidia-smi >/dev/null && nvidia-smi -L >/dev/null 2>&1; }; then
+      nvidia=(--gpus all --env NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility,compute)
+    fi
+
+    renderer=
+    if [[ -n ${DISPLAY:-} ]]; then
+      if [[ $gpu != 0 && ${#nvidia[@]} -gt 0 ]]; then
+        renderer=$(probe_gl "${nvidia[@]}") || renderer=
+        if (( ! wslg )) && [[ ${renderer,,} != *nvidia* ]]; then
+          nvidia+=(--env __NV_PRIME_RENDER_OFFLOAD=1 --env __GLX_VENDOR_LIBRARY_NAME=nvidia)
+          renderer=$(probe_gl "${nvidia[@]}") || renderer=
+        fi
+        if [[ ${renderer,,} == *nvidia* ]]; then
+          graphics+=("${nvidia[@]}")
+        else
+          renderer=
+        fi
+      fi
+      if [[ -z $renderer ]]; then
+        if [[ $gpu == 1 ]]; then echo 'The OpenGL probe could not select NVIDIA.' >&2; exit 1; fi
+        if (( ! wslg )); then
+          graphics+=(--env __GLX_VENDOR_LIBRARY_NAME=mesa)
+          if [[ -n $mesa_pci ]]; then
+            if renderer=$(probe_gl --env "DRI_PRIME=$mesa_pci") &&
+                [[ -n $renderer && ${renderer,,} != *llvmpipe* && ${renderer,,} != *softpipe* ]]; then
+              graphics+=(--env "DRI_PRIME=$mesa_pci")
+            else
+              renderer=
+            fi
+          fi
+        fi
+        [[ -n $renderer ]] || renderer=$(probe_gl) || { echo 'Could not open an OpenGL window. Check the display socket and driver.' >&2; exit 1; }
+      fi
+      echo "OpenGL renderer: $renderer"
+      case "${renderer,,}" in *llvmpipe*|*softpipe*|*swrast*|*basic\ render*)
+        echo "Software rendering is active. Check the host graphics setup for real-time use." >&2 ;;
+      esac
+    elif [[ $gpu != 0 && ${#nvidia[@]} -gt 0 ]]; then
+      # Headless observation does not require an OpenGL context.
+      if (( wslg )) || [[ $gpu == 1 ]] ||
+          [[ $(docker info --format '{{if index .Runtimes "nvidia"}}yes{{end}}') == yes ]]; then
+        graphics+=("${nvidia[@]}")
       fi
     fi
-    if [[ $gpu == 1 ]]; then
-      options+=(--gpus all --env NVIDIA_DRIVER_CAPABILITIES=graphics,display,utility,compute)
-    fi
+    options+=("${graphics[@]}")
     data=${G1_DATA:-$PWD/experiments}
     mkdir -p "$data"
     options+=(--volume "$(cd "$data" && pwd):/opt/g1/experiments")
@@ -228,21 +310,7 @@ case "${1:-help}" in
     tty=()
     [[ -t 0 && -t 1 ]] && tty=(-it)
     if [[ $action == renderer ]]; then
-      exec docker exec "$name" python3 -c '
-import ctypes as c
-glfw = c.CDLL("libglfw.so.3")
-gl = c.CDLL("libGL.so.1")
-if not glfw.glfwInit():
-    raise SystemExit("GLFW could not open the container display")
-glfw.glfwWindowHint(0x00020004, 0)  # GLFW_VISIBLE
-glfw.glfwCreateWindow.restype = c.c_void_p
-window = glfw.glfwCreateWindow(16, 16, b"Renderer check", None, None)
-if not window:
-    raise SystemExit("Could not create an OpenGL context")
-glfw.glfwMakeContextCurrent(c.c_void_p(window))
-gl.glGetString.restype = c.c_char_p
-print(gl.glGetString(0x1F01).decode())  # GL_RENDERER
-glfw.glfwTerminate()'
+      exec docker exec "$name" python3 -c "$renderer_probe"
     fi
     if (( dev )); then
       exec docker exec "${tty[@]}" "$name" /workspace/g1/docker/dev "$action" "$@"

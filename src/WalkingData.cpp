@@ -107,7 +107,7 @@ WalkingData::addSteps(
     double step_length_x = 0.01; //default 0.0
     double step_length_y = 0.0;
     double step_rotation = 0.0;
-    int n_steps = 10;
+    int n_steps = 10; //default 10
 
     double double_support_duration = 2500; //default 6000
     double single_support_duration = 1000; //default 6000
