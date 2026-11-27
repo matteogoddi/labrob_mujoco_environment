@@ -13,13 +13,15 @@ Build the current image once with `./scripts/g1-docker build`, or load the team'
 | Session | Terminal 1 on the host | At the first container prompt | Terminal 2 on the host | At the second container prompt |
 | --- | --- | --- | --- | --- |
 | MuJoCo | `./scripts/g1-docker run sim` | `rviz` | `./scripts/g1-docker run sim` | `sim` |
-| Physical G1 | `./scripts/g1-docker run robot` | `rviz` | `./scripts/g1-docker run robot` | `ros2 topic echo /g1_observer/status` |
+| Physical G1 (Mode 5) | `./scripts/g1-docker run robot` | `rviz` | `./scripts/g1-docker run robot` | `robot` |
 
 Use the same host command in both terminals. Simulation and hardware have distinct container names and can run concurrently. On first use, `run robot` selects the single active physical Ethernet interface, or the only physical Ethernet interface if its link is down. On multi-NIC hosts, specify the robot-facing interface with `./scripts/g1-docker run robot enp3s0`. Later terminals reuse the session's interface. The first command starts an interactive container with `docker run --rm -it`. The second terminal joins it with `docker exec -it`. Both prompts show `(g1-sim)` or `(g1-robot)`. The terminals share the controller's local telemetry socket. Ctrl+C stops the foreground program and returns to its prompt. Stop both programs before typing `exit` in the first shell, which removes the container.
 
-On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. The separate `step1` command in the second terminal opens the suspended arm test described in section 2. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
+On a physical G1 reporting Mode 5, `rviz` displays the Model 13 mesh and live body and Dex3 feedback. The `robot` command in the second terminal opens the suspended arm test described in section 2. On a matching Mode 13 G1, use `rviz hardware_mode:=13`. After completing the Develop-mode handoff in section 2, `robot --mode13` in the second terminal starts the physical **Mode 13** motor controller. Starting the shell or viewer only observes the robot.
 
 For source development, use `./scripts/g1-docker dev run sim` (or `dev run robot INTERFACE`) in the first terminal. Type `build` once inside that shell, then `rviz`. Repeat the same `dev run` command in the second terminal. The short commands use the mounted checkout and its build cache.
+
+After updating the image, stop the foreground programs and exit the old shells when the robot is secured. Reopen both terminals with the same host command to use the new image. This also applies to older images that report `getpwuid error. uid:1000`. The updated entry point provides the SDK with an account record for the host UID inside the container.
 
 #### Using Docker directly
 
@@ -77,7 +79,7 @@ To test your working tree on hardware, close the simulation applications, then s
 ./scripts/g1-docker dev exec ros2 topic hz /lowstate
 ```
 
-The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. Complete the manual Develop-mode handoff in section 2 before running `./scripts/g1-docker dev control` in a second terminal. That command runs the physical Mode 13 controller and can move the robot. Use `step1` for the suspended Mode 5 arm-only test in section 2. Stages 2–6 and the ground-frame handoff still require implementation and validation.
+The compiled targets persist when you switch sessions. On a matching Mode 13 G1, start the viewer with `./scripts/g1-docker dev rviz hardware_mode:=13`. Complete the manual Develop-mode handoff in section 2 before running `./scripts/g1-docker dev control` in a second terminal. That command runs the physical Mode 13 controller and can move the robot. In an interactive hardware shell, use `robot` for the suspended Mode 5 arm-only test in section 2. Stages 2–6 and the ground-frame handoff still require implementation and validation.
 
 ### Run a packaged image
 
@@ -116,7 +118,7 @@ ip -br addr
 ./scripts/g1-docker rviz
 ```
 
-From a second terminal, inspect the live bus with `./scripts/g1-docker exec ros2 topic hz /lowstate`. The robot container uses host networking and selects the specified interface for Cyclone DDS. Starting the container or RViz only observes the robot. The Mode 13 controller procedure below applies only to matching hardware. The Mode 5 arm test has its own `step1` command.
+From a second terminal, inspect the live bus with `./scripts/g1-docker exec ros2 topic hz /lowstate`. The robot container uses host networking and selects the specified interface for Cyclone DDS. Starting the container or RViz only observes the robot. The Mode 13 controller procedure below applies only to matching hardware. Type `robot` in the interactive hardware shell for the Mode 5 arm test.
 
 For Mode 13, start the viewer with `./scripts/g1-docker rviz hardware_mode:=13`. To run the physical experiment, open a control terminal with `./scripts/g1-docker exec bash`, change to `/opt/g1/build`, and use the hardware command below with the same Ethernet interface.
 
@@ -179,7 +181,7 @@ ros2 topic echo /g1_observer/status
 
 Keep the hoist supporting the full robot throughout this test. The release request can remove whole-body support. Start in the suspended zero-torque condition specified for the robot firmware, provide clearance for both arms, stop other low-level control programs, and keep an operator at the physical stop. State packets and RViz cannot verify hoist support. [Unitree physical deployment procedure](https://github.com/unitreerobotics/unitree_rl_gym/blob/main/deploy/deploy_real/README.md#startup-process)
 
-Keep the hardware RViz window open. In a second terminal, enter the updated hardware container with `./scripts/g1-docker run robot`, then run `step1`. Each key is immediate in this terminal; independent confirmations must be pressed separately. In an existing development checkout, run `build` after updating the source. A container created from an earlier packaged image retains its original commands. To keep an older viewer open and start a separate control shell using the updated image, use `G1_CONTAINER=g1-arm-test ./scripts/g1-docker run robot INTERFACE` on the host.
+Keep the hardware RViz window open. In a second terminal, enter the updated hardware container with `./scripts/g1-docker run robot`, then type `robot`. Opening the controller starts observation. The operator requests each transition from that terminal. The former `step1` command is an alias. In a development checkout, run `build` after updating the source.
 
 | Key | Effect |
 | --- | --- |

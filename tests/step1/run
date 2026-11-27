@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Run from the host: docker run --rm --network none g1-experiment:foxy tests/step1/run
+# Run from the host: docker run --rm --network none --user 1000:1000 -e HOME=/tmp/g1-home g1-experiment:foxy tests/step1/run
 set -euo pipefail
 cd /opt/g1
+# SDK2 uses libc's passwd lookup even when DDS runs entirely on loopback.
+python3 -c 'import os, pwd; assert pwd.getpwuid(os.getuid()).pw_name'
 c++ -std=c++17 -O2 -I. -I/usr/local/include/ddscxx tests/step1/peer.cpp \
   -L/usr/local/lib -Wl,--disable-new-dtags,-rpath,/usr/local/lib \
   -lunitree_sdk2 -lddscxx -lddsc -lpthread -o /tmp/g1-step1-peer

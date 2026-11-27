@@ -1,5 +1,22 @@
 #!/usr/bin/env bash
 set -eo pipefail
+# SDK2 queries libc for the numeric Docker user during initialization. Provide a
+# private account database when the host UID has no entry in the image.
+uid=$(id -u)
+if ! getent passwd "$uid" >/dev/null; then
+  gid=$(id -g)
+  identity=$(mktemp -d /tmp/g1-identity.XXXXXXXX)
+  if [[ -z ${HOME:-} || $HOME == / || $HOME == /root ]]; then export HOME="$identity/home"; fi
+  cp /etc/passwd "$identity/passwd"
+  cp /etc/group "$identity/group"
+  printf 'g1-%s:x:%s:%s:G1 operator:%s:/bin/bash\n' "$uid" "$uid" "$gid" "$HOME" >> "$identity/passwd"
+  if ! getent group "$gid" >/dev/null; then
+    printf 'g1-%s:x:%s:\n' "$gid" "$gid" >> "$identity/group"
+  fi
+  export NSS_WRAPPER_PASSWD="$identity/passwd" NSS_WRAPPER_GROUP="$identity/group"
+  export LD_PRELOAD="libnss_wrapper.so${LD_PRELOAD:+:$LD_PRELOAD}"
+  getent passwd "$uid" >/dev/null || { echo "Cannot resolve container UID $uid for SDK2." >&2; exit 1; }
+fi
 source /opt/ros/foxy/setup.bash
 source /opt/unitree-ros/local_setup.bash
 source /opt/g1-observer/local_setup.bash
@@ -58,20 +75,19 @@ PYTHON
     shift
     if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev rviz "$@"; fi
     exec /opt/g1/scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@" ;;
-  step1)
-    [[ $# == 1 && ${G1_SOURCE:-sim} == robot && $iface != lo && ${ROS_DOMAIN_ID:-0} == 0 ]] || {
-      echo "Use step1 in a robot environment on the G1 Ethernet interface and DDS domain 0." >&2; exit 2;
+  robot|step1)
+    [[ ${G1_SOURCE:-sim} == robot && $iface != lo && ${ROS_DOMAIN_ID:-0} == 0 ]] || {
+      echo "Use robot in a hardware environment on the G1 Ethernet interface and DDS domain 0." >&2; exit 2;
     }
+    if [[ $1 == robot && $# == 2 && $2 == --mode13 ]]; then
+      if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev control; fi
+      cd /opt/g1/build
+      exec ./main --robot "$iface" --rviz
+    fi
+    [[ $# == 1 ]] || { echo "Usage: robot [--mode13]" >&2; exit 2; }
     binary=/opt/g1/build/g1_step1
     if [[ ${G1_DEV:-0} == 1 ]]; then binary=/workspace/g1/build/g1_step1; fi
-    [[ -x $binary ]] || { echo "Build the Mode 5 step1 target first." >&2; exit 1; }
+    [[ -x $binary ]] || { echo "Run build in the development shell first." >&2; exit 1; }
     exec "$binary" "$iface" ;;
-  robot)
-    [[ $# == 1 && ${G1_SOURCE:-sim} == robot && $iface != lo ]] || {
-      echo "Use robot in a hardware environment with the robot Ethernet interface." >&2; exit 2;
-    }
-    if [[ ${G1_DEV:-0} == 1 ]]; then exec /workspace/g1/docker/dev control; fi
-    cd /opt/g1/build
-    exec ./main --robot "$iface" --rviz ;;
   *) exec "$@" ;;
 esac
