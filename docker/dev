@@ -24,12 +24,12 @@ case "$1" in
   sim)
     shift
     cd build
-    [[ -x ./main ]] || { echo "Run g1-docker dev build first." >&2; exit 1; }
+    [[ -x ./main ]] || { echo "Type build inside the checkout shell first." >&2; exit 1; }
     exec ./main --sim --rviz "$@" ;;
   control)
     [[ ${G1_SOURCE:-} == robot ]] || { echo "Use dev up robot INTERFACE for hardware control." >&2; exit 2; }
     cd build
-    [[ -x ./main ]] || { echo "Run g1-docker dev build first." >&2; exit 1; }
+    [[ -x ./main ]] || { echo "Type build inside the checkout shell first." >&2; exit 1; }
     exec ./main --robot "$G1_INTERFACE" --rviz ;;
   rviz|exec)
     action=$1; shift
@@ -39,7 +39,7 @@ case "$1" in
       if [[ -f build/ros2/install/local_setup.bash ]]; then
         source build/ros2/install/local_setup.bash
       elif [[ $1 == rviz ]]; then
-        echo "Run g1-docker dev build first." >&2; exit 1
+        echo "Type build inside the checkout shell first." >&2; exit 1
       fi
       action=$1; shift
       if [[ $action == rviz ]]; then exec ./scripts/run_rviz.sh "${G1_SOURCE:-sim}" "$@"; fi

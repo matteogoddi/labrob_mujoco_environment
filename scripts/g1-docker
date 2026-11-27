@@ -3,11 +3,23 @@ set -euo pipefail
 
 image=${G1_IMAGE:-g1-experiment:foxy}
 name=${G1_CONTAINER:-g1-experiment-$(id -u)}
+legacy_shell=
 root=$(cd "$(dirname "$0")/.." && pwd)
 dev=0
 if [[ ${1:-} == dev ]]; then
   shift
   dev=1
+elif [[ ${1:-} == run || ${1:-} == shell ]]; then
+  # A standalone distribution contains only the launcher and the image archive.
+  if [[ -f "$root/CMakeLists.txt" || -e "$root/docker/dev" ]]; then
+    [[ -f "$root/CMakeLists.txt" && -x "$root/docker/dev" ]] || {
+      echo "Incomplete checkout at $root. Restore CMakeLists.txt and docker/dev." >&2; exit 2;
+    }
+    dev=1
+    if [[ $1 == shell ]]; then legacy_shell="$name-shell"; fi
+  fi
+fi
+if (( dev )); then
   if [[ -z ${G1_CONTAINER:-} ]]; then
     key=$(printf '%s' "$root" | sha256sum)
     name="${name}-${key:0:10}"
@@ -20,7 +32,11 @@ usage() {
   cat <<'HELP'
 g1-docker run sim                Open or join the interactive simulation environment
 g1-docker run robot [INTERFACE]  Open or join the interactive hardware environment
-g1-docker dev run sim|robot      Open or join the same environment with your checkout mounted
+Run uses the checkout beside this launcher when present. Type build inside to compile it.
+A standalone launcher uses the binaries in the same image.
+
+Image packaging and persistent container commands
+g1-docker build                  Build the image from this checkout
 g1-docker dev up                 Mount this source checkout for simulation development
 g1-docker dev up robot INTERFACE Mount the checkout on the robot network
 g1-docker dev build              Build the mounted controller and RViz observer
@@ -28,7 +44,6 @@ g1-docker dev sim|rviz           Run the development build in separate terminals
 g1-docker dev control            Start the physical Mode 13 controller in a robot session
 g1-docker dev exec COMMAND       Run in the checkout with the development overlay
 g1-docker dev down               Remove the development container
-g1-docker build                  Build the image from this checkout
 g1-docker up sim                 Start an isolated simulation container
 g1-docker up robot INTERFACE     Start a container on the robot network
 g1-docker sim                    Open the MuJoCo controller in this terminal
@@ -39,19 +54,30 @@ g1-docker down                   Stop and remove the experiment container
 HELP
 }
 
+describe_session() {
+  if (( dev )); then
+    printf 'Image %s | checkout %s | build cache %s/build/docker-dev\n' "$1" "$root" "$root"
+    if [[ ! -x "$root/build/docker-dev/main" || ! -x "$root/build/docker-dev/g1_step1" || ! -r "$root/build/docker-dev/ros2/install/local_setup.bash" ]]; then
+      echo "First use: type build in one container terminal before starting the applications."
+    fi
+  else
+    printf 'Image %s | packaged binaries in /opt/g1/build\n' "$1"
+  fi
+}
+
 # Docker reserves a container name before its first shell starts. A concurrent
 # terminal can observe that brief "created" state before docker exec is ready.
 join_session() {
-  local info id state label nic checkout attempt
+  local info id state label nic checkout running_image attempt
   for attempt in {1..30}; do
-    info=$(docker container inspect --format '{{.Id}}|{{.State.Status}}|{{index .Config.Labels "io.g1.session"}}|{{index .Config.Labels "io.g1.interface"}}|{{index .Config.Labels "io.g1.checkout"}}' "$name" 2>/dev/null) || return 1
-    IFS='|' read -r id state label nic checkout <<< "$info"
+    info=$(docker container inspect --format '{{.Id}}|{{.State.Status}}|{{index .Config.Labels "io.g1.session"}}|{{index .Config.Labels "io.g1.interface"}}|{{index .Config.Labels "io.g1.checkout"}}|{{.Config.Image}}' "$name" 2>/dev/null) || return 1
+    IFS='|' read -r id state label nic checkout running_image <<< "$info"
     if [[ $label != "$source_mode" || (-n $iface && $iface != "$nic") || ($dev == 1 && $checkout != "$root") ]]; then
       echo "Container $name belongs to another configuration. Check the interface, checkout or G1_CONTAINER." >&2
       exit 2
     fi
     case $state in
-      running) exec docker exec -it "$id" g1-env bash ;;
+      running) describe_session "$running_image"; exec docker exec -it "$id" g1-env bash ;;
       created) sleep 0.1 ;;
       *) echo "Container $name is $state. Check it with docker ps -a." >&2; exit 1 ;;
     esac
@@ -163,6 +189,7 @@ case "${1:-help}" in
       options+=(--label "io.g1.session=$source_mode" --label "io.g1.interface=$iface")
       if (( dev )); then options+=(--label "io.g1.checkout=$root"); fi
       # If two terminals create the same session together, the loser joins the winner.
+      describe_session "$image"
       result=0
       docker run --rm -it "${mounts[@]}" "${options[@]}" "$image" bash || result=$?
       if (( result == 125 )); then join_session || :; fi
@@ -172,7 +199,9 @@ case "${1:-help}" in
   shell)
     # Compatibility with the previous shared name and with a single new session.
     sessions=()
-    for candidate in "$name" "$name-sim" "$name-robot"; do
+    candidates=("$name" "$name-sim" "$name-robot")
+    if [[ -n $legacy_shell ]]; then candidates+=("$legacy_shell" "$legacy_shell-sim" "$legacy_shell-robot"); fi
+    for candidate in "${candidates[@]}"; do
       if [[ $(docker container inspect --format '{{.State.Running}} {{index .Config.Labels "io.g1.experiment"}}' "$candidate" 2>/dev/null) == 'true true' ]]; then
         sessions+=("$candidate")
       fi
