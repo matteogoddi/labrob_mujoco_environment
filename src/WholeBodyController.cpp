@@ -21,28 +21,26 @@ namespace labrob {
 WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   static WholeBodyControllerParams params;
 
+  // CoM gains
   params.Kp_motion = 30; // 120.0;
   params.Kd_motion = 10; // 40.0;
-  params.Kp_regulation = 30.0;
-  params.Kd_regulation = 10.0;
+
+  // Torso/Pelvis gains
   params.Kp_orientation = 60; // 400.0;
   params.Kd_orientation = 60; // 80.0;
+
+  // Foot gains
   params.Kp_foot = 70.0;
   params.Kd_foot = 35.0;
+
+  // Wrist gains
   params.Kp_wrist = 30;
   params.Kd_wrist = 10.0;
   
+  // Joint regularization gains
   params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 200;
   params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + G1_NUM_MOTOR, 6 + G1_NUM_MOTOR) * 70;
 
-  
-  // Set joint regularization gains suitable for lateral and curved walks
-    // params.Kp_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 200;
-    // params.Kp_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Identity(12, 12) * 60; // both legs
-    // params.Kd_joint_matrix = Eigen::MatrixXd::Identity(6 + 29, 6 + 29) * 70;
-    // params.Kd_joint_matrix.block(6, 6, 12, 12) = Eigen::MatrixXd::Identity(12, 12) * 12; // both legs
-    // // params.Kp_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 120; // reset right hip joints
-    // // params.Kd_joint_matrix.block(12, 12, 3, 3) = Eigen::MatrixXd::Identity(3, 3) * 90; // reset right hip joints
   
 
   params.weight_q_ddot           = 1e-3;
@@ -51,7 +49,7 @@ WholeBodyControllerParams WholeBodyControllerParams::getDefaultParams() {
   params.weight_rsole            = 1;
   params.weight_lwrist            = 1e-3;
   params.weight_rwrist            = 1e-3;
-  params.weight_torso            = 1e-3;// 1e-3;
+  params.weight_torso            = 1e-3;
   params.weight_pelvis           = 1e-1;
   params.weight_angular_momentum = 1e-4;
   params.weight_regulation       = 1e-4;
@@ -399,12 +397,6 @@ WholeBodyController::compute_inverse_dynamics(
   Jlu_ = J_lsole_.leftCols(6);
   Jru_ = J_rsole_.leftCols(6);
 
-  /*
-  Ma_ = M_inertia_.bottomRows(nj);
-  ca_ = c.tail(nj);
-  Jla_ = J_lsole_.rightCols(nj);
-  Jra_ = J_rsole_.rightCols(nj);
-  */
 
   // Rotated contact points
   for (int i = 0; i < nc; ++i) {
@@ -495,10 +487,12 @@ WholeBodyController::compute_inverse_dynamics(
   left_foot_wrench_  = T_l_ * fl;
   right_foot_wrench_ = T_r_ * fr;
 
-  // Online reference generation (semi-implicit Euler on the state manifold):
-  // the floating base is integrated with pinocchio::integrate() so that its
-  // quaternion part is updated correctly (a plain vector sum would not stay
-  // a unit quaternion), while the joint part reduces to ordinary Euler
+  // ### ONLINE REFERENCE GENERATION ###
+
+  // Semi-implicit Euler on the state manifold: the floating base is integrated 
+  // with pinocchio::integrate() so that its quaternion part is updated
+  // correctly (a plain vector sum would not stay a unit quaternion),
+  // while the joint part reduces to ordinary Euler
   // integration since joints live in a vector space.
   q_full_dot_des_ = qdot + sample_time_ * q_ddot_;
   q_full_des_ = pinocchio::integrate(robot_model, q, sample_time_ * q_full_dot_des_);
@@ -532,14 +526,14 @@ WholeBodyController::compute_inverse_dynamics(
   ca_  = c_des.tail(nj);
   Jla_ = J_lsole_des_.rightCols(nj);
   Jra_ = J_rsole_des_.rightCols(nj);
+
+  // ### END ONLINE REFERENCE GENERATION ###
   
 
+  // ##### FINAL TORQUE COMPUTATION #####
+
+  // Gains for PD feedback
   Eigen::VectorXd Kd_vec = Eigen::VectorXd::Zero(nj);
-  // Kd_vec << 4, 4, 4, 6, 2, 2,
-  //           4, 4, 4, 6, 2, 2,
-  //           4, 4, 4,
-  //           4, 4, 4, 4, 4, 4, 4,
-  //           4, 4, 4, 4, 4, 4, 4;
   Kd_vec << 2, 2, 2, 3, 2, 2,
     2, 2, 2, 3, 2, 2,
     2, 2, 2,
@@ -548,12 +542,6 @@ WholeBodyController::compute_inverse_dynamics(
   Eigen::MatrixXd Kd = Kd_vec.asDiagonal();
 
   Eigen::VectorXd Kp_vec = Eigen::VectorXd::Zero(nj);
-  // Kp_vec << 150, 150, 150, 200, 40, 40,    // left leg
-  //           150, 150, 150, 200, 40, 40,    // right leg
-  //           100, 100, 100,                // waist
-  //           100, 100, 100, 15,  10, 10, 10,   // left arm
-  //           100, 100, 100, 15,  10, 10, 10;   // right arm
-
   Kp_vec << 40, 40, 40, 60, 40, 30,    // left leg
             40, 40, 40, 60, 40, 30,    // right leg
             25, 25, 15,                // waist
@@ -561,41 +549,20 @@ WholeBodyController::compute_inverse_dynamics(
             12, 12, 12, 7,  4, 4, 4;   // right arm
   Eigen::MatrixXd Kp = Kp_vec.asDiagonal();
 
-  
-  const Eigen::VectorXd tau = Ma_ * q_ddot_ + ca_
-      - Jla_.transpose() * left_foot_wrench_
-      - Jra_.transpose() * right_foot_wrench_;
-      
-      
-  // Check for limit exceeding
-  /*
-  double upper_limit, lower_limit;
-  for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid) {
-    
-    lower_limit = joint_limits.at(robot_model.names[jid + 2]).lower;
-    upper_limit = joint_limits.at(robot_model.names[jid + 2]).upper;
+  // Final torque command
+  const Eigen::VectorXd tau_ffw = Ma_ * q_ddot_ + ca_ 
+    - Jla_.transpose() * left_foot_wrench_ - Jra_.transpose() * right_foot_wrench_; // feedforward
+  const Eigen::VectorXd tau_fb = Kd * (q_full_dot_des_.tail(nj) - qdot.tail(nj)) + Kp * (q_full_des_.tail(nj) - q.tail(nj)); // PD feedback
+  const Eigen::VectorXd tau = (useRobot) ? tau_ffw : tau_ffw + tau_fb; // only ffw for real robot experiments
 
-    if (q_des_[jid] < lower_limit)
-      std::cout << "Joint " << robot_model.names[jid + 2] << " exceeding lower bound by " << lower_limit - q_des_[jid] << std::endl;
-
-    if (q_des_[jid] > upper_limit)
-      std::cout << "Joint " << robot_model.names[jid + 2] << " exceeding upper bound by " << q_des_[jid] - upper_limit << std::endl;
-    */
-
-    /*
-    int i = jid + 2;
-    std::cout << "joint pos update term: " << qdot.tail(nj)[i] * sample_time_ + 0.5 * q_ddot_[i] * sample_time_ * sample_time_ << std::endl;
-    if (jid == nj - 1)
-      std::cout << "END" << std::endl;
-  }
-  */
-  
-
+  // Convert to joint command for robot interface
   JointCommand joint_command;
   for (pinocchio::JointIndex jid = 0; jid < (pinocchio::JointIndex) nj; ++jid)
     joint_command[robot_model.names[jid + 2]] = tau[jid];
 
   return joint_command;
+
+  // ##### FINAL TORQUE COMPUTATION #####
 }
 
 } // namespace labrob

@@ -5,6 +5,11 @@
 
 namespace labrob {
 
+enum class LIP_TYPE {
+  LIP,  // nominal model: w = [0, 0, -g], eta^2 = g / z_c
+  PLIP  // w and eta^2 updated from wrist forces (see DiscreteLIPDynamics)
+};
+
 class LIPState {
  public:
   LIPState() = default;

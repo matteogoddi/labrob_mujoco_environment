@@ -24,6 +24,12 @@ too: it is reconstructed from the RB-WO foot wrenches (getLeft/RightFootWrench),
 falling back to the PLIP-reconstructed zmp_position when the total vertical
 force is ~0 or during the first 2 s of observer activity.
 
+The stabilized ZMP (stab_zmp_position, WalkingManager::stab_zmp_ref_) is
+overlaid as well: it is the MPC ZMP plus the additive correction of the DCM
+Stabilizer, i.e. the ZMP reference actually used for com.acc. Where the
+correction is not applied (t_obs < 2 s, lateral mode) it equals des_zmp_position.
+It is optional: older runs without that file are animated without it.
+
 The current CoM (kf_com_position, i.e. kf_LipState.com_pos_ output by
 com_kf_step, WalkingManager.cpp ~793) is overlaid as well, with its own trail.
 
@@ -189,6 +195,8 @@ def load_data(folder: Path, end_s):
     est_zmp = _load('ef_zmp_position.txt', 3)  # ZMP from RB-WO foot wrenches
     kf_com = _load('kf_com_position.txt', 3)   # CoM from the LIP Kalman filter (com_kf_step)
     des_com = _load('des_com_position.txt', 3)  # CoM from the PLIP integration (des_LipState.com_pos_)
+    # Optional: MPC ZMP + DCM stabilizer correction (WalkingManager::stab_zmp_ref_)
+    stab_zmp = _load('stab_zmp_position.txt', 3)
 
     # Optional, and on a timeline of its own: control_flags is logged by the main
     # loop (main.cpp) from the very first tick, whereas every channel above only
@@ -219,11 +227,14 @@ def load_data(folder: Path, end_s):
         control_flags = None  # pre-4-column format: no way to align the timelines
 
     n = min(len(v) for _, v in fields)
+    if stab_zmp is not None:
+        n = min(n, len(stab_zmp))
     if end_s is not None:
         n = min(n, int(end_s * CONTROL_FREQUENCY_HZ))
     return dict(
         control_flags=control_flags,
-        des_zmp=des_zmp[:n], est_zmp=est_zmp[:n], kf_com=kf_com[:n], des_com=des_com[:n],
+        des_zmp=des_zmp[:n], est_zmp=est_zmp[:n],
+        stab_zmp=stab_zmp[:n] if stab_zmp is not None else None, kf_com=kf_com[:n], des_com=des_com[:n],
         box_center=box_center[:n], box_yaw=box_yaw[:n],
         p_lsole_des=p_lsole_des[:n], p_rsole_des=p_rsole_des[:n],
         lsole_yaw=lsole_yaw[:n, 2], rsole_yaw=rsole_yaw[:n, 2],
@@ -265,6 +276,12 @@ def main() -> None:
     contact_flags, walking_state = data['contact_flags'], data['walking_state']
     est_zmp, kf_com, des_com = data['est_zmp'], data['kf_com'], data['des_com']
     control_flags = data['control_flags']
+    stab_zmp = data['stab_zmp']
+    has_stab = stab_zmp is not None
+    if not has_stab:
+        print("[warn] stab_zmp_position.txt not found: the stabilized ZMP (MPC ZMP + DCM "
+              "stabilizer correction) is not shown (it needs a run recorded after that "
+              "logging was added to WalkingManager.cpp).")
     if control_flags is None:
         print("[warn] control_flags.txt not found (or in the old 3-column format): the EKF / "
               "closed-loop / observer flag panel is disabled (it needs a run recorded after "
@@ -319,7 +336,8 @@ def main() -> None:
         for k in frame_indices
     ]).reshape(-1, 2)
     all_xy = np.vstack([des_zmp[:, :2], est_zmp[:, :2], kf_com[:, :2], des_com[:, :2],
-                        box_corners_all, foot_corners_all])
+                        box_corners_all, foot_corners_all]
+                       + ([stab_zmp[:, :2]] if has_stab else []))
     margin = 0.05
     xlim = (all_xy[:, 0].min() - margin, all_xy[:, 0].max() + margin)
     ylim = (all_xy[:, 1].min() - margin, all_xy[:, 1].max() + margin)
@@ -365,6 +383,11 @@ def main() -> None:
                                 alpha=0.6, zorder=5)
     (est_zmp_point,) = ax.plot([], [], marker='D', markersize=7, linestyle='', color='tab:purple',
                                markeredgecolor='black', zorder=6)
+
+    (stab_trail_line,) = ax.plot([], [], color='tab:olive', linewidth=1.0, linestyle='-.',
+                                 alpha=0.7, zorder=5)
+    (stab_zmp_point,) = ax.plot([], [], marker='*', markersize=13, linestyle='',
+                                markeredgecolor='black', zorder=6)
 
     (com_trail_line,) = ax.plot([], [], color='tab:brown', linewidth=1.0, alpha=0.6, zorder=5)
     (com_point,) = ax.plot([], [], marker='X', markersize=10, linestyle='', color='tab:brown',
@@ -421,6 +444,14 @@ def main() -> None:
         Line2D([0], [0], color='tab:cyan', linewidth=1.0, linestyle='--',
                marker='P', markersize=10, markerfacecolor='tab:cyan', markeredgecolor='black',
                label='des. CoM (PLIP integration) + trail'),
+    ]
+    if has_stab:
+        legend_handles += [
+            Line2D([0], [0], color='tab:olive', linewidth=1.0, linestyle='-.',
+                   marker='*', markersize=13, markerfacecolor='tab:olive', markeredgecolor='black',
+                   label='stab. ZMP (MPC + DCM corr.) + trail\n(red star: outside box)'),
+        ]
+    legend_handles += [
         mpatches.Patch(facecolor='tab:blue', edgecolor='black', alpha=0.5, label='Left foot (support, des.)'),
         mpatches.Patch(facecolor='tab:orange', edgecolor='black', alpha=0.5, label='Right foot (support, des.)'),
         Line2D([0], [0], color='black', linewidth=1.8, label='Support polygon (double support)'),
@@ -428,12 +459,16 @@ def main() -> None:
     all_artists = [box_patch, left_foot_patch, right_foot_patch, support_polygon_line,
                    trail_line, zmp_point, est_trail_line, est_zmp_point, com_trail_line, com_point,
                    des_com_trail_line, des_com_point, info_text, title_text] + flag_texts
+    if has_stab:
+        all_artists += [stab_trail_line, stab_zmp_point]
 
     # Artists with nothing to show before the loop is closed (their logs start at
     # wbc_ticks[0]); the foot patches and the support polygon are left out because
     # their visibility is already decided per frame by the contact flags.
     trajectory_artists = [box_patch, trail_line, zmp_point, est_trail_line, est_zmp_point,
                           com_trail_line, com_point, des_com_trail_line, des_com_point]
+    if has_stab:
+        trajectory_artists += [stab_trail_line, stab_zmp_point]
 
     def update_flag_panel(main_tick):
         for i, flag_text in enumerate(flag_texts):
@@ -494,6 +529,20 @@ def main() -> None:
         d_est = rot2(-yaw) @ (est - center)
         est_inside = (abs(d_est[0]) <= BOX_LENGTH / 2.0) and (abs(d_est[1]) <= BOX_WIDTH / 2.0)
 
+        stab_lines = ""
+        if has_stab:
+            stab = stab_zmp[k, :2]
+            stab_trail_line.set_data(stab_zmp[trail_start:k + 1, 0], stab_zmp[trail_start:k + 1, 1])
+            stab_zmp_point.set_data([stab[0]], [stab[1]])
+            d_stab = rot2(-yaw) @ (stab - center)
+            stab_inside = (abs(d_stab[0]) <= BOX_LENGTH / 2.0) and (abs(d_stab[1]) <= BOX_WIDTH / 2.0)
+            stab_zmp_point.set_color('tab:olive' if stab_inside else 'tab:red')
+            corr = stab - zmp
+            stab_lines = (
+                f"stab. ZMP {stab[0]:6.3f} {stab[1]:6.3f}  {'IN' if stab_inside else 'OUT':>3}\n"
+                f"corr. x/y {corr[0] * 1000:6.1f} {corr[1] * 1000:6.1f} mm\n"
+            )
+
         com = kf_com[k, :2]
         com_trail_line.set_data(kf_com[trail_start:k + 1, 0], kf_com[trail_start:k + 1, 1])
         com_point.set_data([com[0]], [com[1]])
@@ -537,6 +586,7 @@ def main() -> None:
             "\n"
             f"des. ZMP  {zmp[0]:6.3f} {zmp[1]:6.3f}  {'IN' if inside else 'OUT':>3}\n"
             f"est. ZMP  {est[0]:6.3f} {est[1]:6.3f}  {'IN' if est_inside else 'OUT':>3}\n"
+            f"{stab_lines}"
             f"|des-est| {np.linalg.norm(zmp - est) * 1000:6.1f} mm\n"
             "\n"
             f"des. CoM  {dcom[0]:6.3f} {dcom[1]:6.3f}\n"

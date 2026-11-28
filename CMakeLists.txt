@@ -27,11 +27,11 @@ set(hpipm_LIBRARIES /opt/hpipm/lib/libhpipm.a)
 
 add_library(
   WalkingControllerLibrary STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscretePLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/DiscreteLIPDynamics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FootstepPlannerCoop.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/HandAdmittanceController.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ISMPC.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Stabilizer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/StateEstimator.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/WalkingData.cpp

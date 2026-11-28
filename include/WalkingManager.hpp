@@ -10,8 +10,8 @@
 #include <pinocchio/multibody/model.hpp>
 
 #include <DiscreteLIPDynamics.hpp>
-#include <DiscretePLIPDynamics.hpp>
 #include <ISMPC.hpp>
+#include <Stabilizer.hpp>
 #include <JointCommand.hpp>
 #include <RobotState.hpp>
 #include <WalkingData.hpp>
@@ -190,9 +190,14 @@ private:
   int64_t t_msec_ = 0;
   int64_t t_obs_msec_ = 0;
 
+  // Model used by both the LIP dynamics and the IS-MPC (selected once here)
+  LIP_TYPE lip_type_ = LIP_TYPE::LIP;
   std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_;
-  std::unique_ptr<labrob::DiscretePLIPDynamics> discrete_plip_dynamics_ptr_;
-  std::unique_ptr<labrob::DiscreteLIPDynamics> discrete_lip_dynamics_ptr_mpc_;
+  // DCM stabilizer (holds a reference to *discrete_lip_dynamics_ptr_: declared after it)
+  std::unique_ptr<labrob::Stabilizer> stabilizer_ptr_;
+  // ZMP reference actually used for com.acc (MPC ZMP + stabilizer correction
+  // when the stabilizer is applied, plain MPC ZMP otherwise). Logged every tick.
+  Eigen::Vector3d stab_zmp_ref_ = Eigen::Vector3d::Zero();
   std::unique_ptr<labrob::HandAdmittanceController> hac_ptr_;
 
   // Roll/pitch tilt of torso and pelvis measured at loop closure, with the yaw

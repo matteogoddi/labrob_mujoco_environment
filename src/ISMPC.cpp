@@ -7,12 +7,12 @@ namespace labrob {
 ISMPC::ISMPC(
     int64_t prediction_horizon_msec,
     int64_t mpc_timestep_msec,
-    double eta,
-    const Eigen::Vector3d w,
+    const labrob::DiscreteLIPDynamics& lip_model,
     double foot_constraint_square_length,
     double foot_constraint_square_width
-) : mpc_timestep_msec_(mpc_timestep_msec),
-    eta_(eta),
+) : lip_model_(lip_model),
+    mpc_timestep_msec_(mpc_timestep_msec),
+    eta_(lip_model.getEta()),
     foot_constraint_square_length_(foot_constraint_square_length),
     foot_constraint_square_width_(foot_constraint_square_width),
     input_(Eigen::Vector3d::Zero()) {
@@ -72,9 +72,12 @@ void
 ISMPC::solve(
     int64_t time,
     const labrob::WalkingData& walking_data,
-    const labrob::LIPState& state,
-    const Eigen::Vector3d w
+    const labrob::LIPState& state
 ) {
+
+  // eta and disturbance from the prediction model (same values used by its integrate())
+  eta_ = lip_model_.getEta();
+  const Eigen::Vector3d& w = lip_model_.get_disturbance();
 
   // express footstep planner inside walking data with support foot as reference frame
 
@@ -180,19 +183,23 @@ ISMPC::solve(
   A_eq_.block(1,     N_, 1, N_) = aeq_scale * b_decay_.transpose();
   A_eq_.block(2, 2 * N_, 1, N_) = aeq_scale * b_decay_.transpose();
 
-  // Use this for LIP constraint
-  /*
-  b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0) + w.x()/std::pow(eta_, 2.0),
-      com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1) + w.y()/std::pow(eta_, 2.0),
-      com_pos(2) + state.com_vel_(2) / eta_ - (zmp_pos(2) + 9.81 / std::pow(eta_, 2.0));
-    */
-  
-  // PLIP constraint
-  
-  b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0) + w.x()/std::pow(eta_, 2.0),
-      com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1) + w.y()/std::pow(eta_, 2.0),
-      com_pos(2) + state.com_vel_(2) / eta_ - zmp_pos(2) + w.z() / std::pow(eta_, 2.0);
-    
+  // Stability constraint (DCM-based), depending on the model type
+  const double eta2 = eta_ * eta_;
+
+  if (lip_model_.get_type() == LIP_TYPE::LIP) {
+
+    // LIP constraint: only gravity along z
+    b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0),
+        com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1),
+        com_pos(2) + state.com_vel_(2) / eta_ - (zmp_pos(2) + 9.81 / eta2);
+
+  } else {
+
+    // Constraint with disturbance w on all axes (w.z() includes -g)
+    b_eq_ << com_pos(0) + state.com_vel_(0) / eta_ - zmp_pos(0) + w.x() / eta2,
+        com_pos(1) + state.com_vel_(1) / eta_ - zmp_pos(1) + w.y() / eta2,
+        com_pos(2) + state.com_vel_(2) / eta_ - zmp_pos(2) + w.z() / eta2;
+  }
 
   
   const Eigen::MatrixXd H_block = Eigen::MatrixXd::Identity(N_, N_) + beta_ * P_.transpose() * P_;
@@ -263,11 +270,6 @@ ISMPC::getZmpConstraintBoxYaw() const {
 double
 ISMPC::getEta() const {
   return eta_;
-}
-
-void
-ISMPC::setEta(double eta) {
-  eta_ = eta;
 }
 
 double
